@@ -1,0 +1,241 @@
+# 1. Get All Users (action: 'users')
+curl -X GET \
+  'http://your-api-endpoint.com/api/users' \
+  -H 'Token: your-token-here' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "actions": "users",
+    "limit": 10
+}'
+
+# Response Example (Success):
+# {
+#   "status": true,
+#   "msg": "Successful",
+#   "obj": [{user_data}]
+# }
+
+# Response Example (Error):
+# {
+#   "status": false,
+#   "msg": "method invalid; is method must GET"
+# }
+
+# 2. Get Single User (action: 'user')
+curl -X GET \
+  'http://your-api-endpoint.com/api/users' \
+  -H 'Token: your-token-here' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "actions": "user",
+    "chat_id": "123456789"
+}'
+
+# Response Example (Success):
+# {
+#   "status": true,
+#   "msg": "Successful",
+#   "obj": {user_data}
+# }
+
+# Response Example (Error):
+# {
+#   "status": false,
+#   "msg": "chat_id empty",
+#   "obj": []
+# }
+# {
+#   "status": false,
+#   "msg": "user not found",
+#   "obj": []
+# }
+
+# 3. Add New User (action: 'user_add')
+curl -X POST \
+  'http://your-api-endpoint.com/api/users' \
+  -H 'Token: your-token-here' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "actions": "user_add",
+    "chat_id": "123456789"
+}'
+
+# Response Example (Success):
+# {
+#   "status": true,
+#   "msg": "Successful"
+# }
+
+# Response Example (Error):
+# {
+#   "status": false,
+#   "msg": "user-id empty",
+#   "obj": []
+# }
+# {
+#   "status": false,
+#   "msg": "Telegram API error description",
+# }
+
+# 4. Get All Invoices (action: 'invoices')
+curl -X GET \
+  'http://your-api-endpoint.com/api/invoice' \
+  -H 'Token: your-token-here' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "actions": "invoices",
+    "limit": 10,
+    "page" : 1
+}'
+
+# Response Example (Success):
+# {
+#   "status": true,
+#   "msg": "Successful",
+#   "obj": [
+#     {
+#       "id_invoice": "random_id",
+#       "id_user": "chat_id",
+#       "username": "testuser",
+#       "Service_location": "Tehran",
+#       "time_sell": "unix_timestamp",
+#       "name_product": "product1",
+#       "price_product": "1000",
+#       "Status": "active",
+#       "note": "some note",
+#       "refral": null,
+#       "inboundid": "inbound_id"
+#     }
+#   ]
+# }
+
+# Response Example (Error):
+# {
+#   "status": false,
+#   "msg": "method invalid; is mthod must GET"
+# }
+
+# 5. Get Single Invoice (action: 'invoice')
+curl -X GET \
+  'http://your-api-endpoint.com/api/invoice' \
+  -H 'Token: your-token-here' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "actions": "invoice",
+    "username": "testuser"
+}'
+
+# Response Example (Success):
+# {
+#   "status": true,
+#   "msg": "Successful",
+#   "obj": {
+#     "id_invoice": "random_id",
+#     "id_user": "chat_id",
+#     "username": "testuser",
+#     "Service_location": "Tehran",
+#     "time_sell": "unix_timestamp",
+#     "name_product": "product1",
+#     "price_product": "1000",
+#     "Status": "active",
+#     "note": "some note",
+#     "refral": null,
+#     "inboundid": "inbound_id"
+#   }
+# }
+
+# Response Example (Error):
+# {
+#   "status": false,
+#   "msg": "username empty",
+#   "obj": []
+# }
+# {
+#   "status": false,
+#   "msg": "user not found",
+#   "obj": []
+# }
+
+# 6. Add New Invoice (action: 'invoice_add')
+curl -X POST \
+  'http://your-api-endpoint.com/api/invoice' \
+  -H 'Token: your-token-here' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "actions": "invoice_add",
+    "username": "testuser",
+    "name_product": "product1",
+    "chat_id": "123456789",
+    "location": "Tehran",
+    "status": "active",
+    "note": "optional note"
+}'
+
+# Response Example (Success):
+# {
+#   "status": true,
+#   "msg": "Successful"
+# }
+
+# Response Example (Errors):
+# {
+#   "status": false,
+#   "msg": "Missing required fields: username, chat_id",
+#   "obj": []
+# }
+# {
+#   "status": false,
+#   "msg": "product not found",
+#   "obj": []
+# }
+# {
+#   "status": false,
+#   "msg": "panel invalid",
+#   "obj": []
+# }
+# {
+#   "status": false,
+#   "msg": "User exists in the database.",
+#   "obj": []
+# }
+# {
+#   "status": false,
+#   "msg": "Chat id Not Found",
+#   "obj": []
+# }
+
+
+
+# 7. Get All services_other (action: 'services')
+curl -X GET \
+  'http://your-api-endpoint.com/api/service' \
+  -H 'Token: your-token-here' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "actions": "services",
+    "limit": 10
+}'
+
+# Response Example (Success):
+# {
+#   "status": true,
+#   "msg": "Successful",
+#   "obj": [
+#     {
+#       "id": 88,
+#       "id_user": "322323",
+#       "username": "username",
+#       "time": "2024/11/11 14:21:16",
+#       "price": "120000",
+#       "type": "extend_user",
+#       "status": "paid"
+#    }
+#   ]
+# }
+
+# Response Example (Error):
+# {
+#   "status": false,
+#   "msg": "method invalid; is mthod must GET"
+# }
+

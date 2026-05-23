@@ -1,0 +1,15 @@
+{
+    "name": "pro/project",
+    "type": "project",
+    "require": {
+        "php": "^8.2",
+        "endroid/qr-code": "^6.0",
+        "phpoffice/phpspreadsheet": "^4.1",
+        "paragonie/sodium_compat": "^1.20"
+    },
+    "suggest": {
+        "ext-gd": "Required for generating QR code images and for PhpSpreadsheet image features",
+        "ext-intl": "Recommended for internationalization support when processing spreadsheets",
+        "ext-zip": "Required to handle XLSX and other compressed spreadsheet formats"
+    }
+}

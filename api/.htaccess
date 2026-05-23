@@ -1,0 +1,25 @@
+# Faoxima Mini App – API directory protections
+# Blocks direct browser access to internal libraries while letting the
+# public entry points (miniapp.php, verify.php, etc.) work normally.
+
+# Disable directory listing
+Options -Indexes
+
+# Block direct access to internal folders
+RewriteEngine On
+RewriteRule ^lib/      - [F,L]
+RewriteRule ^handlers/ - [F,L]
+
+# Deny access to dotfiles, log files, and source backups
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+<FilesMatch "\.(log|bak|swp|orig|sql)$">
+    Require all denied
+</FilesMatch>
+
+# CORS for the mini app (tighten the origin to your real domain in production).
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set Referrer-Policy "no-referrer"
+</IfModule>

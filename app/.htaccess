@@ -1,0 +1,64 @@
+# Faoxima Mini App – frontend directory
+
+Options -Indexes -MultiViews
+
+# MIME types (set BEFORE rewrites so they apply unconditionally)
+<IfModule mod_mime.c>
+    AddType application/javascript .js
+    AddType application/javascript .mjs
+    AddType text/css             .css
+    AddType font/woff2           .woff2
+    AddType font/woff            .woff
+    AddType image/svg+xml        .svg
+</IfModule>
+
+# Force the correct Content-Type via headers too — some shared hosts override
+# AddType, and a wrong MIME on .js means modules silently fail to execute.
+<IfModule mod_headers.c>
+    <FilesMatch "\.(?:js|mjs)$">
+        Header set Content-Type "application/javascript; charset=utf-8"
+    </FilesMatch>
+    <FilesMatch "\.css$">
+        Header set Content-Type "text/css; charset=utf-8"
+    </FilesMatch>
+</IfModule>
+
+# Rewrites
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Real files / directories pass through unchanged.
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Anything else falls through to index.php (so deep links like #/services
+    # still work when shared as plain URLs).
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+# Cache: long for fonts/images, never for JS/CSS/PHP. Edge ignores this for
+# ES modules, which is why we ALSO version the directory (assets/v0.0.1/).
+<IfModule mod_headers.c>
+    <FilesMatch "\.(?:woff2?|svg|png|jpg|jpeg|gif|ico)$">
+        Header set Cache-Control "public, max-age=2592000"
+    </FilesMatch>
+    <FilesMatch "\.(?:css|js|mjs)$">
+        Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+        Header set Pragma "no-cache"
+        Header set Expires "0"
+    </FilesMatch>
+    <FilesMatch "\.php$">
+        Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+        Header set Pragma "no-cache"
+        Header set Expires "0"
+    </FilesMatch>
+</IfModule>
+
+# Block dotfiles and source backups.
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+<FilesMatch "\.(log|bak|swp|orig|sql|map)$">
+    Require all denied
+</FilesMatch>
