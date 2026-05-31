@@ -1095,13 +1095,22 @@ function DirectPayment($order_id, $image = 'images.jpg')
                 update("setting", "numbercount", $value);
             }
         }
+        $__paidShortfall = (float)($Payment_report['price'] ?? 0);
+        if ($__paidShortfall > 0) {
+            if (function_exists('balance_atomic_credit')) {
+                balance_atomic_credit($Balance_id['id'], $__paidShortfall);
+            } else {
+                $__creditBal = (float)($Balance_id['Balance'] ?? 0) + $__paidShortfall;
+                update("user", "Balance", $__creditBal, "id", $Balance_id['id']);
+            }
+        }
         if (function_exists('balance_atomic_charge')) {
             $__allowNegBp2 = (($Balance_id['agent'] ?? '') === 'n2') ? (int)($Balance_id['maxbuyagent'] ?? 0) : 0;
             balance_atomic_charge($Balance_id['id'], (float)$get_invoice['price_product'], $__allowNegBp2);
             $__refreshBp = select("user", "*", "id", $Balance_id['id'], "select");
             $Balance_prims = max(0, (int)($__refreshBp['Balance'] ?? 0));
         } else {
-            $Balance_prims = $Balance_id['Balance'] - $get_invoice['price_product'];
+            $Balance_prims = ((float)$Balance_id['Balance'] + $__paidShortfall) - (float)$get_invoice['price_product'];
             if ($Balance_prims <= 0) $Balance_prims = 0;
             update("user", "Balance", $Balance_prims, "id", $Balance_id['id']);
         }
