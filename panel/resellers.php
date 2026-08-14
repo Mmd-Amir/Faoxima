@@ -1,7 +1,7 @@
 <?php
 
-if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
-    define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
+if (!defined('HAMOIX_SKIP_BOTAPI_ROUTER')) {
+    define('HAMOIX_SKIP_BOTAPI_ROUTER', true);
 }
 session_start();
 require_once __DIR__ . '/../config.php';
@@ -193,7 +193,7 @@ function res_e($s)
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>مدیریت نمایندگان | فاکسیما</title>
+    <title>مدیریت نمایندگان | Hamoix</title>
     <link rel="stylesheet" href="css/theme.css">
     <script src="js/theme.js" defer></script>
 </head>

@@ -1,7 +1,7 @@
 <?php
 
-if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
-    define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
+if (!defined('HAMOIX_SKIP_BOTAPI_ROUTER')) {
+    define('HAMOIX_SKIP_BOTAPI_ROUTER', true);
 }
 
 
@@ -114,7 +114,7 @@ if (isset($_POST['login'])) {
             try {
                 if (is_array($admin_ids)) {
                     foreach ($admin_ids as $admin) {
-                        error_log('[faoxima] admin login: ' . $username);
+                        error_log('[hamoix] admin login: ' . $username);
                     }
                 }
             } catch (\Throwable $e) {
@@ -132,7 +132,7 @@ if (isset($_POST['login'])) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>ورود به پنل مدیریت | فاکسیما</title>
+    <title>ورود به پنل مدیریت | Hamoix</title>
     <link rel="stylesheet" href="css/theme.css">
     <link rel="stylesheet" href="css/aurora.css">
 <script src="js/theme.js" defer>
@@ -156,7 +156,7 @@ if (isset($_POST['login'])) {
         </div>
 
         <div class="login-body">
-            <h2>پنل مدیریت فاکسیما</h2>
+            <h2>پنل مدیریت Hamoix</h2>
             <p>برای ادامه، اطلاعات حساب خود را وارد کنید.</p>
 
             <?php if (!empty($texterrr)): ?>
@@ -199,17 +199,17 @@ if (isset($_POST['login'])) {
 
             
             <div class="login-social" style="display:flex; gap:10px; justify-content:center; margin-top:18px; padding-top:14px; border-top:1px solid var(--border, rgba(255,255,255,0.08));">
-                <a href="https://t.me/faoxima" target="_blank" rel="noopener noreferrer"
-                   aria-label="کانال تلگرام فاکسیما"
-                   title="کانال تلگرام فاکسیما"
+                <a href="https://github.com/hamed9898/Hamoix" target="_blank" rel="noopener noreferrer"
+                   aria-label="مخزن گیت‌هاب Hamoix"
+                   title="مخزن گیت‌هاب Hamoix"
                    style="display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:10px; background:var(--accent-soft, rgba(59,130,246,0.12)); color:var(--accent, #3b82f6); transition:transform .15s ease, background .15s ease;"
                    onmouseover="this.style.transform='translateY(-2px)';"
                    onmouseout="this.style.transform='translateY(0)';">
                     <?php echo icon('telegram', 'svg-icon'); ?>
                 </a>
-                <a href="https://github.com/Mmd-Amir/Faoxima" target="_blank" rel="noopener noreferrer"
-                   aria-label="مخزن گیت‌هاب فاکسیما"
-                   title="مخزن گیت‌هاب فاکسیما"
+                <a href="https://github.com/hamed9898/Hamoix" target="_blank" rel="noopener noreferrer"
+                   aria-label="مخزن گیت‌هاب Hamoix"
+                   title="مخزن گیت‌هاب Hamoix"
                    style="display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:10px; background:var(--accent-soft, rgba(59,130,246,0.12)); color:var(--accent, #3b82f6); transition:transform .15s ease, background .15s ease;"
                    onmouseover="this.style.transform='translateY(-2px)';"
                    onmouseout="this.style.transform='translateY(0)';">

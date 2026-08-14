@@ -163,7 +163,7 @@ usort($rows, function ($a, $b) { return $b['sortid'] <=> $a['sortid']; });
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>لیست درخواست‌ها | ربات فاکسیما</title>
+    <title>لیست درخواست‌ها | ربات Hamoix</title>
     <link rel="stylesheet" href="css/theme.css">
 <script src="js/theme.js" defer></script>
 </head>
@@ -245,7 +245,7 @@ usort($rows, function ($a, $b) { return $b['sortid'] <=> $a['sortid']; });
 <script src="js/datatable.js" defer></script>
 <script>
   document.addEventListener("DOMContentLoaded", function () {
-    FaoximaDT.init("#requestsTable");
+    HamoixDT.init("#requestsTable");
   });
 </script>
 </body>

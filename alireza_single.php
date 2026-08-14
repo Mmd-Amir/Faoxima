@@ -39,7 +39,7 @@ function get_clinetsalireza($username,$namepanel){
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel,"select");
     login($marzban_list_get['code_panel']);
     $curl = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($curl, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($curl, 'panel');
 
 curl_setopt_array($curl, array(
   CURLOPT_URL => $marzban_list_get['url_panel'].'/xui/API/inbounds',
@@ -187,7 +187,7 @@ function get_onlineclialireza($name_panel,$username){
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $name_panel,"select");
     login($marzban_list_get['code_panel']);
     $curl = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($curl, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($curl, 'panel');
 curl_setopt_array($curl, array(
   CURLOPT_URL => $marzban_list_get['url_panel'].'/xui/API/inbounds/onlines',
   CURLOPT_RETURNTRANSFER => true,

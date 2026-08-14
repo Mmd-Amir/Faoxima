@@ -52,7 +52,7 @@ $csrf = reseller_csrf_token();
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>ورود نمایندگان | فاکسیما</title>
+    <title>ورود نمایندگان | Hamoix</title>
     <link rel="stylesheet" href="../css/theme.css">
     <script src="../js/theme.js" defer></script>
 </head>
@@ -62,7 +62,7 @@ $csrf = reseller_csrf_token();
             <span class="terminal__lights"><i></i><i></i><i></i></span>
         </div>
         <div class="login-body">
-            <h2>پنل نمایندگی فاکسیما</h2>
+            <h2>پنل نمایندگی Hamoix</h2>
             <p>برای ادامه، اطلاعات حساب نمایندگی خود را وارد کنید.</p>
 
             <?php if (!$systemEnabled): ?>

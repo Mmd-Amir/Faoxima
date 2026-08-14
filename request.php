@@ -1,8 +1,8 @@
 <?php
 
-if (!function_exists('faoxima_dedup_error_log')) {
-    function faoxima_dedup_error_log($key, $message, $ttl = 3600) {
-        $cacheDir = sys_get_temp_dir() . '/faoxima_log_dedup';
+if (!function_exists('hamoix_dedup_error_log')) {
+    function hamoix_dedup_error_log($key, $message, $ttl = 3600) {
+        $cacheDir = sys_get_temp_dir() . '/hamoix_log_dedup';
         if (!is_dir($cacheDir)) {
             @mkdir($cacheDir, 0700, true);
         }
@@ -84,8 +84,8 @@ class CurlRequest {
             curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
         }
 
-        if (function_exists('faoxima_apply_curl_proxy')) {
-            faoxima_apply_curl_proxy($ch, 'panel');
+        if (function_exists('hamoix_apply_curl_proxy')) {
+            hamoix_apply_curl_proxy($ch, 'panel');
         }
 
         $finalHeaders = $this->prepareHeaders();
@@ -110,7 +110,7 @@ class CurlRequest {
             $host = parse_url($this->url, PHP_URL_HOST);
             $port = parse_url($this->url, PHP_URL_PORT);
             $dedupKey = 'curlerr|' . ($host ?: $this->url) . ':' . ($port ?: '') . '|' . $error;
-            faoxima_dedup_error_log(
+            hamoix_dedup_error_log(
                 $dedupKey,
                 sprintf('CurlRequest error calling %s: %s (HTTP code: %s)', $this->url, $error, var_export($httpCode, true))
             );
@@ -129,7 +129,7 @@ class CurlRequest {
             $host = parse_url($this->url, PHP_URL_HOST);
             $port = parse_url($this->url, PHP_URL_PORT);
             $dedupKey = 'curlhttp|' . ($host ?: $this->url) . ':' . ($port ?: '') . '|' . $httpCode;
-            faoxima_dedup_error_log(
+            hamoix_dedup_error_log(
                 $dedupKey,
                 sprintf('CurlRequest call to %s returned HTTP code %s', $this->url, var_export($httpCode, true))
             );

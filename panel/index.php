@@ -1,13 +1,13 @@
 <?php
 
 
-if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
-    define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
+if (!defined('HAMOIX_SKIP_BOTAPI_ROUTER')) {
+    define('HAMOIX_SKIP_BOTAPI_ROUTER', true);
 }
 
 
-if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
-    define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
+if (!defined('HAMOIX_SKIP_BOTAPI_ROUTER')) {
+    define('HAMOIX_SKIP_BOTAPI_ROUTER', true);
 }
 
 register_shutdown_function(static function () {
@@ -69,7 +69,7 @@ if (!$result) {
 }
 
 
-function faoxima_chart_data(\PDO $pdo, string $range, int $customDays = 7): array
+function hamoix_chart_data(\PDO $pdo, string $range, int $customDays = 7): array
 {
     $now = time();
 
@@ -156,7 +156,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'chart') {
     if (!in_array($range, ['24h', '7d', '3m', 'custom'], true)) $range = '7d';
     $days  = isset($_GET['days']) ? (int)$_GET['days'] : 7;
     try {
-        $payload = faoxima_chart_data($pdo, $range, $days);
+        $payload = hamoix_chart_data($pdo, $range, $days);
         echo json_encode(['ok' => true] + $payload, JSON_UNESCAPED_UNICODE);
     } catch (\Throwable $e) {
         http_response_code(500);
@@ -190,7 +190,7 @@ $resultcountday = (int)$stmt->fetchColumn();
 $resultcontsell = (int)$pdo->query("SELECT COUNT(*) FROM invoice WHERE (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') AND name_product != 'سرویس تست'")->fetchColumn();
 
 
-$initialChart = faoxima_chart_data($pdo, '7d');
+$initialChart = hamoix_chart_data($pdo, '7d');
 $json_labels  = json_encode($initialChart['labels'], JSON_UNESCAPED_UNICODE);
 $json_data    = json_encode($initialChart['data']);
 ?>
@@ -199,7 +199,7 @@ $json_data    = json_encode($initialChart['data']);
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>پنل مدیریت ربات فاکسیما</title>
+    <title>پنل مدیریت ربات Hamoix</title>
     <link rel="stylesheet" href="css/theme.css">
     <script src="js/theme.js" defer>
 
@@ -230,7 +230,7 @@ $json_data    = json_encode($initialChart['data']);
 
             <div class="welcome-banner">
                 <div class="welcome-banner__copy">
-                    <div class="welcome-banner__eyebrow"><?php echo icon('sparkles', 'svg-icon svg-xs'); ?> فضای مدیریت وب‌محور فاکسیما</div>
+                    <div class="welcome-banner__eyebrow"><?php echo icon('sparkles', 'svg-icon svg-xs'); ?> فضای مدیریت وب‌محور Hamoix</div>
                     <h2>همه‌چیز برای مدیریت فروش شما آماده است</h2>
                     <p>کاربران، سرویس‌ها، نمایندگان و اتصال به 3x-ui را از یک داشبورد ساده کنترل کنید.</p>
                 </div>
@@ -340,7 +340,7 @@ $json_data    = json_encode($initialChart['data']);
     }
 
     function renderChart() {
-        FaoximaChart.render('#salesChart', {
+        HamoixChart.render('#salesChart', {
             labels: currentLabels,
             data:   currentData,
             valueFormatter: function (v) {
@@ -410,8 +410,8 @@ $json_data    = json_encode($initialChart['data']);
     });
 
 
-    document.addEventListener('faoxima:themechange', function () {
-        if (typeof FaoximaChart !== 'undefined') renderChart();
+    document.addEventListener('hamoix:themechange', function () {
+        if (typeof HamoixChart !== 'undefined') renderChart();
     });
 })();
 </script>

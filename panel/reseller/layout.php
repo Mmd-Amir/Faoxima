@@ -45,8 +45,8 @@ if (!function_exists('reseller_layout_head')) {
     <script>
     (function () {
         try {
-            var color = localStorage.getItem('faoxima_color') || 'blue';
-            var theme = localStorage.getItem('faoxima_theme') || 'dark';
+            var color = localStorage.getItem('hamoix_color') || 'blue';
+            var theme = localStorage.getItem('hamoix_theme') || 'dark';
             var html = document.documentElement;
             if (!html.getAttribute('data-color')) html.setAttribute('data-color', color);
             if (!html.getAttribute('data-theme')) html.setAttribute('data-theme', theme);
@@ -116,7 +116,7 @@ if (!function_exists('reseller_layout_head')) {
     </ul>
     <div class="sidebar-version" style="margin-top:auto; padding:14px 16px; border-top:1px solid var(--border-soft,#2a2a35); display:flex; align-items:center; gap:8px; color:var(--text-muted,#8a8a9a); font-size:12px;">
         <span class="menu-symbol"><?php echo icon('user-tag', 'svg-icon svg-sm'); ?></span>
-        <span>پنل نمایندگی فاکسیما</span>
+        <span>پنل نمایندگی Hamoix</span>
     </div>
 </aside>
 

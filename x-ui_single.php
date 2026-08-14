@@ -158,7 +158,7 @@ function panel_login_cookie($code_panel)
 {
     $panel = select("marzban_panel", "*", "code_panel", $code_panel, "select");
     $curl = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($curl, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($curl, 'panel');
     curl_setopt_array($curl, array(
         CURLOPT_URL => $panel['url_panel'] . '/login',
         CURLOPT_RETURNTRANSFER => true,
@@ -582,8 +582,8 @@ function get_clinets($username, $namepanel)
 
     if (!empty($response['error']) && stripos((string) $response['error'], 'Inbound Not Found For Email') === false) {
         $dedupKey = 'xui_single_resp|' . (string) $response['error'];
-        if (function_exists('faoxima_dedup_error_log')) {
-            faoxima_dedup_error_log($dedupKey, json_encode($response));
+        if (function_exists('hamoix_dedup_error_log')) {
+            hamoix_dedup_error_log($dedupKey, json_encode($response));
         } else {
             error_log(json_encode($response));
         }

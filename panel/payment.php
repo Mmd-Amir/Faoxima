@@ -21,7 +21,7 @@ $listpayment = $query->fetchAll();
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>تراکنش‌ها | ربات فاکسیما</title>
+    <title>تراکنش‌ها | ربات Hamoix</title>
     <link rel="stylesheet" href="css/theme.css">
 <script src="js/theme.js" defer>
 
@@ -114,7 +114,7 @@ $listpayment = $query->fetchAll();
 </script>
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-    FaoximaDT.init("#paymentTable");
+    HamoixDT.init("#paymentTable");
 });
 
 function copyToClipboard(text) {

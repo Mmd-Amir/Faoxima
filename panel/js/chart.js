@@ -169,6 +169,6 @@
         }
     }
 
-    global.FaoximaChart = { render: render };
+    global.HamoixChart = { render: render };
 })(window);
 

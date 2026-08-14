@@ -74,8 +74,8 @@ if (!function_exists('reseller_pay_curl')) {
                 ? ['Content-Type: application/json', 'Accept: application/json']
                 : ['Content-Type: application/x-www-form-urlencoded'],
         ]);
-        if (function_exists('faoxima_apply_curl_proxy')) {
-            faoxima_apply_curl_proxy($ch, 'panel');
+        if (function_exists('hamoix_apply_curl_proxy')) {
+            hamoix_apply_curl_proxy($ch, 'panel');
         }
         $res = curl_exec($ch);
         curl_close($ch);

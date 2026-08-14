@@ -1,6 +1,6 @@
-# راهنمای استقرار فاکسیما روی سرور مجازی (VPS) — نسخه‌ی وب‌محور
+# راهنمای استقرار Hamoix روی سرور مجازی (VPS) — نسخه‌ی وب‌محور
 
-فاکسیما در این نسخه **بدون ربات تلگرام** است؛ فروش، مدیریت و نمایندگی همگی از طریق
+Hamoix در این نسخه **بدون ربات تلگرام** است؛ فروش، مدیریت و نمایندگی همگی از طریق
 پنل وب انجام می‌شود. این راهنما مخصوص اجرای نسخه‌ی وب‌محور روی یک VPS است.
 
 > پیش‌نیازها: سرور اوبونتو/دبیان با دسترسی root، دامنه (HTTPS الزامی است)،
@@ -29,14 +29,14 @@ bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.
 
 1. یک یا چند **Inbound** با پروتکل دلخواه (مثلاً VLESS + Reality) بسازید.
 2. از مسیر **Settings ← Security ← API Token** یک توکن API بسازید و کپی کنید.
-   (این توکن برای اتصال فاکسیما به 3x-ui نسخه‌های جدید ضروری است؛ ورود با
+   (این توکن برای اتصال Hamoix به 3x-ui نسخه‌های جدید ضروری است؛ ورود با
    یوزرنیم/پسورد روی 3x-ui نسخه‌ی 3.1 به بالا دیگر برای ساخت کاربر کار نمی‌کند.)
 3. در **Subscription Settings** لینک ساب‌اسکریپشن پنل را فعال/یادداشت کنید.
 
-## ۳) نصب فاکسیما
+## ۳) نصب Hamoix
 
 ```bash
-mkdir -p /var/www/faoxima && cd /var/www/faoxima
+mkdir -p /var/www/hamoix && cd /var/www/hamoix
 # آپلود یا clone سورس در همین مسیر (بدون پوشه‌ی installer در حالت نهایی)
 composer install --no-dev --no-interaction --prefer-dist
 ```
@@ -46,10 +46,10 @@ composer install --no-dev --no-interaction --prefer-dist
 - سپس `https://your-domain/installer` را باز کنید و مراحل نصب وب را تکمیل کنید.
 - **بعد از نصب، پوشه‌ی `installer` را حذف کنید:**
   ```bash
-  rm -rf /var/www/faoxima/installer
+  rm -rf /var/www/hamoix/installer
   ```
 
-### اتصال به 3x-ui در پنل ادمین فاکسیما
+### اتصال به 3x-ui در پنل ادمین Hamoix
 
 در پنل ادمین ← **پنل‌ها** یک پنل از نوع **x-ui_single (Sanaei single)** بسازید:
 
@@ -76,7 +76,7 @@ server {
     listen 443 ssl http2;
     server_name your-domain.com;
 
-    root /var/www/faoxima;
+    root /var/www/hamoix;
     index index.php;
 
     # ssl_certificate / ssl_certificate_key — از certbot
@@ -108,17 +108,17 @@ certbot --nginx -d your-domain.com
 
 ## ۵) کرون جاب (اجباری)
 
-فاکسیما برای کارهای دوره‌ای (بررسی انقضا سرویس‌ها، اعلان‌ها، وضعیت پنل‌ها) به یک
+Hamoix برای کارهای دوره‌ای (بررسی انقضا سرویس‌ها، اعلان‌ها، وضعیت پنل‌ها) به یک
 کرون نیاز دارد. در `crontab -e`:
 
 ```cron
-* * * * * php /var/www/faoxima/cron/cron.php >/dev/null 2>&1
+* * * * * php /var/www/hamoix/cron/cron.php >/dev/null 2>&1
 ```
 
 می‌توانید برای تشخیص مشکلات، خروجی را در یک فایل لاگ بگیرید:
 
 ```cron
-* * * * * php /var/www/faoxima/cron/cron.php >> /var/www/faoxima/logs/cron.log 2>&1
+* * * * * php /var/www/hamoix/cron/cron.php >> /var/www/hamoix/logs/cron.log 2>&1
 ```
 
 ## ۶) بهینه‌سازی PHP-FPM و OPcache
@@ -146,13 +146,13 @@ opcache.revalidate_freq = 60
 
 - **HTTPS الزامی است**؛ همه‌ی لینک‌ها و کال‌بک‌های درگاه پرداخت باید https باشند.
 - پوشه‌های `installer`، `vendor` و `storage` نباید از بیرون قابل دسترسی باشند.
-- پورت پنل 3x-ui را به‌جز از IP خودتان ببندید (یا فقط روی IP سرور فاکسیما باز باشد):
+- پورت پنل 3x-ui را به‌جز از IP خودتان ببندید (یا فقط روی IP سرور Hamoix باز باشد):
   ```bash
   ufw allow from YOUR_IP to any port 2053 proto tcp
   ```
 - برای سرورهای ایران، در صورت نیاز از خروجی پروکسی (HTTP/SOCKS) پیکربندی‌شده در
-  پنل ادمین استفاده کنید تا ارتباط فاکسیما با 3x-ui و درگاه‌ها قطع نشود.
+  پنل ادمین استفاده کنید تا ارتباط Hamoix با 3x-ui و درگاه‌ها قطع نشود.
 - بکاپ منظم دیتابیس:
   ```cron
-  0 3 * * * mysqldump -u faoxima -p'PASSWORD' faoxima | gzip > /root/backups/faoxima_$(date +\%F).sql.gz
+  0 3 * * * mysqldump -u hamoix -p'PASSWORD' hamoix | gzip > /root/backups/hamoix_$(date +\%F).sql.gz
   ```

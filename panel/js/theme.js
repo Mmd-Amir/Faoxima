@@ -1,8 +1,8 @@
 (function () {
     'use strict';
 
-    var COLOR_KEY = 'faoxima_color';
-    var THEME_KEY = 'faoxima_theme';
+    var COLOR_KEY = 'hamoix_color';
+    var THEME_KEY = 'hamoix_theme';
     var DEFAULT_COLOR = 'blue';
     var DEFAULT_THEME = 'dark';
     var ALLOWED_COLORS = ['red', 'blue', 'purple', 'yellow', 'orange', 'green'];
@@ -32,7 +32,7 @@
         }
 
         try {
-            document.dispatchEvent(new CustomEvent('faoxima:themechange', { detail: { color: color } }));
+            document.dispatchEvent(new CustomEvent('hamoix:themechange', { detail: { color: color } }));
         } catch (e) {}
     }
 
@@ -54,7 +54,7 @@
         }
 
         try {
-            document.dispatchEvent(new CustomEvent('faoxima:themechange', { detail: { theme: theme } }));
+            document.dispatchEvent(new CustomEvent('hamoix:themechange', { detail: { theme: theme } }));
         } catch (e) {}
     }
 
@@ -69,7 +69,7 @@
     document.documentElement.setAttribute('data-theme', savedTheme);
 
 
-    window.FaoximaTheme = {
+    window.HamoixTheme = {
         setColor: applyColor,
         setTheme: applyTheme,
         toggleTheme: function () {
@@ -79,7 +79,21 @@
     };
 
 
+    function normalizeBrand() {
+        var nodes = document.querySelectorAll('body *');
+        for (var i = 0; i < nodes.length; i++) {
+            if (nodes[i].children.length === 0 && nodes[i].textContent) {
+                nodes[i].textContent = nodes[i].textContent
+                    .replace(/فاکسیما/g, 'Hamoix');
+            }
+        }
+        if (document.title) {
+            document.title = document.title.replace(/فاکسیما/g, 'Hamoix');
+        }
+    }
+
     function ready() {
+        normalizeBrand();
         applyColor(savedColor);
         applyTheme(savedTheme);
 
@@ -155,7 +169,7 @@
         if (themeToggleBtn) {
             themeToggleBtn.addEventListener('click', function (ev) {
                 ev.stopPropagation();
-                window.FaoximaTheme.toggleTheme();
+                window.HamoixTheme.toggleTheme();
             });
         }
     }

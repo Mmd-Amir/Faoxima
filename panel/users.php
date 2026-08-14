@@ -24,7 +24,7 @@ $listusers = $query->fetchAll();
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>مدیریت کاربران | ربات فاکسیما</title>
+    <title>مدیریت کاربران | ربات Hamoix</title>
     <link rel="stylesheet" href="css/theme.css">
 <script src="js/theme.js" defer>
 
@@ -102,7 +102,7 @@ $listusers = $query->fetchAll();
 </script>
 <script>
   document.addEventListener("DOMContentLoaded", function () {
-    FaoximaDT.init("#usersTable");
+    HamoixDT.init("#usersTable");
   });
 </script>
 </body>

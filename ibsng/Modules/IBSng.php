@@ -711,7 +711,7 @@ class IBSng
             throw new \Exception('Url specified in curl request is empty ');
         }
         $this->handler = curl_init();
-        if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($this->handler, 'panel');
+        if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($this->handler, 'panel');
         curl_setopt($this->handler, CURLOPT_CONNECTTIMEOUT, 0);
         curl_setopt($this->handler, CURLOPT_TIMEOUT, $this->timeout);
         curl_setopt($this->handler, CURLOPT_URL, $url);

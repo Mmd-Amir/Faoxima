@@ -276,6 +276,6 @@
         tables.forEach(function (t) { init(t); });
     });
 
-    global.FaoximaDT = { init: init };
+    global.HamoixDT = { init: init };
 })(window);
 

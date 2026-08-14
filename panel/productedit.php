@@ -104,7 +104,7 @@ if ($product == false) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>ویرایش محصول | ربات فاکسیما</title>
+    <title>ویرایش محصول | ربات Hamoix</title>
     <link rel="stylesheet" href="css/theme.css">
 <script src="js/theme.js" defer>
 

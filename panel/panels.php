@@ -1,13 +1,13 @@
 <?php
 
 
-if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
-    define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
+if (!defined('HAMOIX_SKIP_BOTAPI_ROUTER')) {
+    define('HAMOIX_SKIP_BOTAPI_ROUTER', true);
 }
 
 
-if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
-    define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
+if (!defined('HAMOIX_SKIP_BOTAPI_ROUTER')) {
+    define('HAMOIX_SKIP_BOTAPI_ROUTER', true);
 }
 
 session_start();
@@ -58,8 +58,8 @@ $has_col = function (string $c) use (&$PANEL_COLS): bool {
 };
 
 
-if (!function_exists('faoxima_panel_authlog')) {
-    function faoxima_panel_authlog(string $stage, array $data = []): void {
+if (!function_exists('hamoix_panel_authlog')) {
+    function hamoix_panel_authlog(string $stage, array $data = []): void {
         static $path = null;
         static $opened = false;
         if ($path === null) {
@@ -86,8 +86,14 @@ if (!function_exists('faoxima_panel_authlog')) {
 }
 
 
-if (!function_exists('faoxima_panel_loghost')) {
-    function faoxima_panel_loghost(string $url): string {
+if (!function_exists('faoxima_panel_authlog')) {
+    function faoxima_panel_authlog(string $stage, array $data = []): void {
+        hamoix_panel_authlog($stage, $data);
+    }
+}
+
+if (!function_exists('hamoix_panel_loghost')) {
+    function hamoix_panel_loghost(string $url): string {
         $p = @parse_url($url);
         if (!is_array($p) || empty($p['host'])) return '(invalid-url)';
         $out = (isset($p['scheme']) ? $p['scheme'] . '://' : '') . $p['host'];
@@ -97,15 +103,15 @@ if (!function_exists('faoxima_panel_loghost')) {
         return $out;
     }
 }
-if (!function_exists('faoxima_panel_logfp')) {
-    function faoxima_panel_logfp(string $s): string {
+if (!function_exists('hamoix_panel_logfp')) {
+    function hamoix_panel_logfp(string $s): string {
         if ($s === '') return 'empty';
         return 'len=' . strlen($s) . ',sha=' . substr(sha1($s), 0, 8);
     }
 }
 
 
-function faoxima_test_panel_url_reachable(string $url): array {
+function hamoix_test_panel_url_reachable(string $url): array {
     if (!function_exists('curl_init')) return ['ok' => true, 'code' => 0, 'error' => null];
     $ch = curl_init();
     if (!$ch) return ['ok' => false, 'code' => 0, 'error' => 'cURL init ناموفق'];
@@ -119,7 +125,7 @@ function faoxima_test_panel_url_reachable(string $url): array {
         CURLOPT_CONNECTTIMEOUT => 3,
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_SSL_VERIFYHOST => false,
-        CURLOPT_USERAGENT      => 'FaoximaPanelWeb/1.0',
+        CURLOPT_USERAGENT      => 'HamoixPanelWeb/1.0',
     ]);
     curl_exec($ch);
     $err  = curl_error($ch);
@@ -140,7 +146,7 @@ function faoxima_test_panel_url_reachable(string $url): array {
 }
 
 
-function faoxima_http_post(string $url, string $body, array $headers = []): array {
+function hamoix_http_post(string $url, string $body, array $headers = []): array {
     if (!function_exists('curl_init')) return ['ok' => false, 'error' => 'cURL در PHP نیست', 'code' => 0, 'body' => ''];
     $ch = curl_init();
     curl_setopt_array($ch, [
@@ -152,7 +158,7 @@ function faoxima_http_post(string $url, string $body, array $headers = []): arra
         CURLOPT_CONNECTTIMEOUT => 3,
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_SSL_VERIFYHOST => false,
-        CURLOPT_USERAGENT      => 'FaoximaPanelWeb/1.0',
+        CURLOPT_USERAGENT      => 'HamoixPanelWeb/1.0',
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => $body,
         CURLOPT_HTTPHEADER     => $headers,
@@ -180,7 +186,7 @@ function faoxima_http_post(string $url, string $body, array $headers = []): arra
     return ['ok' => true, 'error' => '', 'code' => $code, 'body' => (string)$respBody, 'cookies' => $cookies];
 }
 
-function faoxima_http_get(string $url, array $headers = []): array {
+function hamoix_http_get(string $url, array $headers = []): array {
     if (!function_exists('curl_init')) return ['ok' => false, 'error' => 'cURL در PHP نیست', 'code' => 0, 'body' => ''];
     $ch = curl_init();
     curl_setopt_array($ch, [
@@ -192,7 +198,7 @@ function faoxima_http_get(string $url, array $headers = []): array {
         CURLOPT_CONNECTTIMEOUT => 3,
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_SSL_VERIFYHOST => false,
-        CURLOPT_USERAGENT      => 'FaoximaPanelWeb/1.0',
+        CURLOPT_USERAGENT      => 'HamoixPanelWeb/1.0',
         CURLOPT_HTTPHEADER     => $headers,
     ]);
     $respBody = curl_exec($ch);
@@ -204,7 +210,7 @@ function faoxima_http_get(string $url, array $headers = []): array {
 }
 
 
-function faoxima_test_panel_auth(string $url, string $username, string $password, string $apiKey, string $type, string $xuiToken = ''): array {
+function hamoix_test_panel_auth(string $url, string $username, string $password, string $apiKey, string $type, string $xuiToken = ''): array {
 
     
     if ($type === 'Manualsale') {
@@ -215,7 +221,7 @@ function faoxima_test_panel_auth(string $url, string $username, string $password
     
     if (in_array($type, ['x-ui_single', 'alireza_single', 's_ui'], true)) {
         if ($type === 'x-ui_single' && $xuiToken !== '') {
-            $rt = faoxima_http_get(
+            $rt = hamoix_http_get(
                 $url . '/panel/api/inbounds/list',
                 ['Authorization: Bearer ' . $xuiToken, 'Accept: application/json', 'X-Requested-With: XMLHttpRequest']
             );
@@ -237,7 +243,7 @@ function faoxima_test_panel_auth(string $url, string $username, string $password
         if ($username === '' || $password === '') {
             return ['ok' => true, 'verified' => false, 'message' => 'یوزرنیم یا پسورد خالی است'];
         }
-        $r = faoxima_http_post(
+        $r = hamoix_http_post(
             $url . '/login',
             http_build_query(['username' => $username, 'password' => $password]),
             ['Content-Type: application/x-www-form-urlencoded']
@@ -273,7 +279,7 @@ function faoxima_test_panel_auth(string $url, string $username, string $password
         if ($username === '' || $password === '') {
             return ['ok' => true, 'verified' => false, 'message' => 'یوزرنیم یا پسورد خالی است'];
         }
-        $r = faoxima_http_post(
+        $r = hamoix_http_post(
             $url . '/api/admin/token',
             http_build_query(['username' => $username, 'password' => $password, 'grant_type' => 'password']),
             ['Content-Type: application/x-www-form-urlencoded', 'Accept: application/json']
@@ -306,7 +312,7 @@ function faoxima_test_panel_auth(string $url, string $username, string $password
         $key = $apiKey !== '' ? $apiKey : $password;
         if ($key === '') return ['ok' => true, 'verified' => false, 'message' => 'API key خالی است'];
         $endpoint = $url . '/' . rawurlencode($key) . '/api/v2/admin/me/';
-        $r = faoxima_http_get($endpoint);
+        $r = hamoix_http_get($endpoint);
         if (!$r['ok']) return ['ok' => false, 'verified' => false, 'message' => 'اتصال ناموفق: ' . $r['error']];
         if ($r['code'] >= 200 && $r['code'] < 300) {
             return ['ok' => true, 'verified' => true, 'message' => 'ورود موفق '];
@@ -324,7 +330,7 @@ function faoxima_test_panel_auth(string $url, string $username, string $password
     if ($type === 'guard') {
         $key = $apiKey !== '' ? $apiKey : $password;
         if ($key === '') return ['ok' => true, 'verified' => false, 'message' => 'API key خالی است'];
-        $r = faoxima_http_get(
+        $r = hamoix_http_get(
             rtrim($url, '/') . '/api/admins/current',
             ['Accept: application/json', 'X-API-Key: ' . $key]
         );
@@ -347,7 +353,7 @@ function faoxima_test_panel_auth(string $url, string $username, string $password
         if ($username === '' || $password === '') {
             return ['ok' => true, 'verified' => false, 'message' => 'یوزرنیم یا پسورد خالی است'];
         }
-        $r = faoxima_http_post(
+        $r = hamoix_http_post(
             $url . '/api/authenticate',
             json_encode(['username' => $username, 'password' => $password], JSON_UNESCAPED_UNICODE),
             ['Content-Type: application/json', 'Accept: application/json']
@@ -378,7 +384,7 @@ function faoxima_test_panel_auth(string $url, string $username, string $password
     
     
     if (in_array($type, ['ibsng', 'mikrotik'], true)) {
-        $reach = faoxima_test_panel_url_reachable($url);
+        $reach = hamoix_test_panel_url_reachable($url);
         if ($reach['ok']) {
             return ['ok' => true, 'verified' => true, 'message' => 'سرور قابل دسترس است (اعتبارسنجی کامل برای این نوع پنل از وب پشتیبانی نمی‌شود — در ربات بررسی کنید)'];
         }
@@ -386,7 +392,7 @@ function faoxima_test_panel_auth(string $url, string $username, string $password
     }
 
     
-    $reach = faoxima_test_panel_url_reachable($url);
+    $reach = hamoix_test_panel_url_reachable($url);
     if (!$reach['ok']) {
         return ['ok' => false, 'verified' => false, 'message' => $reach['error']];
     }
@@ -446,13 +452,13 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'test_auth') {
         }
     }
 
-    $result = faoxima_test_panel_auth($url, $username, $password, $apiKey, $type, $xuiToken);
+    $result = hamoix_test_panel_auth($url, $username, $password, $apiKey, $type, $xuiToken);
     echo json_encode($result);
     exit;
 }
 
 
-function faoxima_validate_inbound_id(string $panelUrl, string $username, string $password, string $type, string $inboundId): array
+function hamoix_validate_inbound_id(string $panelUrl, string $username, string $password, string $type, string $inboundId): array
 {
     $url  = rtrim($panelUrl, '/');
     $id   = trim($inboundId);
@@ -464,7 +470,7 @@ function faoxima_validate_inbound_id(string $panelUrl, string $username, string 
     
     if ($type === 'WGDashboard') {
         
-        $loginResp = faoxima_http_post(
+        $loginResp = hamoix_http_post(
             $url . '/api/authenticate',
             json_encode(['username' => $username, 'password' => $password], JSON_UNESCAPED_UNICODE),
             ['Content-Type: application/json', 'Accept: application/json']
@@ -475,7 +481,7 @@ function faoxima_validate_inbound_id(string $panelUrl, string $username, string 
         if ($token === '') return ['ok' => false, 'message' => ' ورود به WGDashboard ناموفق — اعتبارها را بررسی کنید'];
 
         
-        $listResp = faoxima_http_get($url . '/api/getAllPeersData', ['Authorization: Bearer ' . $token]);
+        $listResp = hamoix_http_get($url . '/api/getAllPeersData', ['Authorization: Bearer ' . $token]);
         if (!$listResp['ok']) return ['ok' => false, 'message' => 'دریافت لیست کانفیگ‌های WGDashboard ناموفق'];
         $configs = json_decode($listResp['body'], true);
         if (!is_array($configs)) return ['ok' => false, 'message' => 'پاسخ WGDashboard قابل تفسیر نیست'];
@@ -499,7 +505,7 @@ function faoxima_validate_inbound_id(string $panelUrl, string $username, string 
     $numId = (int)$id;
 
     
-    $loginResp = faoxima_http_post(
+    $loginResp = hamoix_http_post(
         $url . '/login',
         http_build_query(['username' => $username, 'password' => $password]),
         ['Content-Type: application/x-www-form-urlencoded']
@@ -544,9 +550,9 @@ function faoxima_validate_inbound_id(string $panelUrl, string $username, string 
         : ['Accept: application/json'];
     foreach ($attempts as $ep) {
         if ($ep['method'] === 'GET') {
-            $listResp = faoxima_http_get($url . $ep['path'], $baseHdrs);
+            $listResp = hamoix_http_get($url . $ep['path'], $baseHdrs);
         } else {
-            $listResp = faoxima_http_post(
+            $listResp = hamoix_http_post(
                 $url . $ep['path'],
                 '',
                 array_merge($baseHdrs, ['Content-Type: application/x-www-form-urlencoded'])
@@ -586,7 +592,7 @@ function faoxima_validate_inbound_id(string $panelUrl, string $username, string 
 }
 
 
-function faoxima_validate_sublink(string $linksubx, string $type): array
+function hamoix_validate_sublink(string $linksubx, string $type): array
 {
     $url = trim($linksubx);
     if ($url === '') return ['ok' => false, 'message' => ' دامنه لینک ساب خالی است'];
@@ -600,7 +606,7 @@ function faoxima_validate_sublink(string $linksubx, string $type): array
     }
 
     
-    $resp = faoxima_http_get($url);
+    $resp = hamoix_http_get($url);
 
     if (!$resp['ok']) {
         return ['ok' => false, 'message' => 'اتصال به آدرس ساب ناموفق: ' . ($resp['error'] ?? 'خطای ناشناخته')];
@@ -659,7 +665,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'validate_inbound') {
             } catch (\Throwable $e) {}
         }
     }
-    echo json_encode(faoxima_validate_inbound_id($panelUrl, $username, $password, $type, $inboundId));
+    echo json_encode(hamoix_validate_inbound_id($panelUrl, $username, $password, $type, $inboundId));
     exit;
 }
 
@@ -668,7 +674,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'validate_sublink') {
     header('Content-Type: application/json; charset=utf-8');
     $linksubx = trim((string)($_POST['linksubx'] ?? ''));
     $type     = trim((string)($_POST['type']     ?? ''));
-    echo json_encode(faoxima_validate_sublink($linksubx, $type));
+    echo json_encode(hamoix_validate_sublink($linksubx, $type));
     exit;
 }
 
@@ -759,11 +765,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $agent     = (string)($_POST['agent']               ?? 'all');
 
 
-        faoxima_panel_authlog('ADD_START', [
+        hamoix_panel_authlog('ADD_START', [
             'name'         => $namePanel,
             'type'         => $type,
             'agent'        => $agent,
-            'url_host'     => faoxima_panel_loghost($urlPanel),
+            'url_host'     => hamoix_panel_loghost($urlPanel),
             'username'     => $userPanel,
             'has_password' => $passPanel !== '',
             'has_api_key'  => $apiKey !== '',
@@ -816,7 +822,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!empty($errors)) {
             $flash['err'] = '• ' . implode("\n• ", $errors);
-            faoxima_panel_authlog('ADD_VALIDATION_FAIL', ['name' => $namePanel, 'errors' => $errors]);
+            hamoix_panel_authlog('ADD_VALIDATION_FAIL', ['name' => $namePanel, 'errors' => $errors]);
         } else {
 
 
@@ -824,7 +830,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $testNote      = '';
 
             if ($type !== 'Manualsale') {
-                $auth = faoxima_test_panel_auth($urlPanel, $userPanel, $passPanel, $apiKey, $type, $xuiToken);
+                $auth = hamoix_test_panel_auth($urlPanel, $userPanel, $passPanel, $apiKey, $type, $xuiToken);
 
 
                 error_log(sprintf(
@@ -836,9 +842,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $auth['ok']       ? 'YES' : 'NO',
                     $auth['message']  ?? ''
                 ));
-                faoxima_panel_authlog('ADD_AUTH_TEST', [
+                hamoix_panel_authlog('ADD_AUTH_TEST', [
                     'type'     => $type,
-                    'url_host' => faoxima_panel_loghost($urlPanel),
+                    'url_host' => hamoix_panel_loghost($urlPanel),
                     'username' => $userPanel,
                     'verified' => (bool)$auth['verified'],
                     'ok'       => (bool)$auth['ok'],
@@ -903,7 +909,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
                 $statusLabel = $initialStatus === 'active' ? '«فعال»' : '«غیرفعال»';
                 $flash['ok'] = 'پنل جدید با وضعیت ' . $statusLabel . ' ثبت شد.' . $testNote;
-                faoxima_panel_authlog('ADD_DONE', [
+                hamoix_panel_authlog('ADD_DONE', [
                     'name'         => $namePanel,
                     'final_status' => $initialStatus,
                     'flash'        => $flash['ok'],
@@ -911,7 +917,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } catch (\Throwable $e) {
                 $flash['err'] = 'خطا در افزودن پنل: ' . $e->getMessage();
                 error_log('[panel/panels] add failed: ' . $e->getMessage());
-                faoxima_panel_authlog('ADD_ERROR', ['name' => $namePanel, 'error' => $e->getMessage()]);
+                hamoix_panel_authlog('ADD_ERROR', ['name' => $namePanel, 'error' => $e->getMessage()]);
             }
         }
     }
@@ -941,18 +947,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $nameCustom     = isset($_POST['namecustom'])      ? trim((string)$_POST['namecustom'])      : null;
 
 
-        faoxima_panel_authlog('EDIT_START', [
+        hamoix_panel_authlog('EDIT_START', [
             'id'                => $id,
             'name'              => $namePanel,
             'type'              => $type,
             'agent'             => $agent,
             'status_posted_raw' => array_key_exists('status', $_POST) ? (string)$_POST['status'] : '(missing)',
             'status_computed'   => $status,
-            'url_host'          => faoxima_panel_loghost($urlPanel),
+            'url_host'          => hamoix_panel_loghost($urlPanel),
             'username'          => $userPanel,
             'has_password'      => $passPanel !== '',
             'has_api_key'       => $apiKey !== '',
-            'pw_fp'             => faoxima_panel_logfp($passPanel),
+            'pw_fp'             => hamoix_panel_logfp($passPanel),
             'post_keys'         => array_keys($_POST),
         ]);
 
@@ -984,7 +990,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!empty($errors)) {
             $flash['err'] = '• ' . implode("\n• ", $errors);
-            faoxima_panel_authlog('EDIT_VALIDATION_FAIL', ['id' => $id, 'errors' => $errors]);
+            hamoix_panel_authlog('EDIT_VALIDATION_FAIL', ['id' => $id, 'errors' => $errors]);
         } else {
 
 
@@ -993,7 +999,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
             $willRunAuth = ($type !== 'Manualsale');
-            faoxima_panel_authlog('EDIT_BLOCK_DECISION', [
+            hamoix_panel_authlog('EDIT_BLOCK_DECISION', [
                 'id'                 => $id,
                 'status_posted'      => $status,
                 'type'               => $type,
@@ -1015,7 +1021,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $prevWasActive = isset($prev['status']) && $prev['status'] === 'active';
                         $sameUrl       = isset($prev['url_panel'])      && (string)$prev['url_panel']      === $urlPanel;
                         $sameUser      = isset($prev['username_panel']) && (string)$prev['username_panel'] === $userPanel;
-                        faoxima_panel_authlog('EDIT_SKIP_CHECK', [
+                        hamoix_panel_authlog('EDIT_SKIP_CHECK', [
                             'id'              => $id,
                             'pw_empty'        => true,
                             'key_empty'       => true,
@@ -1036,11 +1042,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             ));
                         }
                     } catch (\Throwable $e) {
-                        faoxima_panel_authlog('EDIT_SKIP_CHECK_ERROR', ['id' => $id, 'error' => $e->getMessage()]);
+                        hamoix_panel_authlog('EDIT_SKIP_CHECK_ERROR', ['id' => $id, 'error' => $e->getMessage()]);
 
                     }
                 } else {
-                    faoxima_panel_authlog('EDIT_SKIP_CHECK', [
+                    hamoix_panel_authlog('EDIT_SKIP_CHECK', [
                         'id'           => $id,
                         'pw_empty'     => $passPanel === '',
                         'key_empty'    => $apiKey   === '',
@@ -1069,18 +1075,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     } catch (\Throwable $e) {  }
                 }
 
-                faoxima_panel_authlog('EDIT_AUTH_RUNNING', [
+                hamoix_panel_authlog('EDIT_AUTH_RUNNING', [
                     'id'             => $id,
                     'type'           => $type,
-                    'url_host'       => faoxima_panel_loghost($urlPanel),
+                    'url_host'       => hamoix_panel_loghost($urlPanel),
                     'username'       => $userPanel,
-                    'effective_pw_fp'  => faoxima_panel_logfp($effectivePass),
-                    'effective_key_fp' => faoxima_panel_logfp($effectiveKey),
+                    'effective_pw_fp'  => hamoix_panel_logfp($effectivePass),
+                    'effective_key_fp' => hamoix_panel_logfp($effectiveKey),
                     'pw_source'        => $passPanel !== '' ? 'form' : 'db',
                     'key_source'       => $apiKey   !== '' ? 'form' : 'db',
                 ]);
 
-                $auth = faoxima_test_panel_auth($urlPanel, $userPanel, $effectivePass, $effectiveKey, $type, $effectiveToken);
+                $auth = hamoix_test_panel_auth($urlPanel, $userPanel, $effectivePass, $effectiveKey, $type, $effectiveToken);
 
 
                 error_log(sprintf(
@@ -1093,10 +1099,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $auth['ok']       ? 'YES' : 'NO',
                     $auth['message']  ?? ''
                 ));
-                faoxima_panel_authlog('EDIT_AUTH_TEST', [
+                hamoix_panel_authlog('EDIT_AUTH_TEST', [
                     'id'       => $id,
                     'type'     => $type,
-                    'url_host' => faoxima_panel_loghost($urlPanel),
+                    'url_host' => hamoix_panel_loghost($urlPanel),
                     'username' => $userPanel,
                     'verified' => (bool)$auth['verified'],
                     'ok'       => (bool)$auth['ok'],
@@ -1184,7 +1190,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
                 $flash['ok'] = 'پنل به‌روزرسانی شد.' . $testNote;
-                faoxima_panel_authlog('EDIT_DONE', [
+                hamoix_panel_authlog('EDIT_DONE', [
                     'id'                  => $id,
                     'final_status_in_sql' => $status,
                     'auth_failed'         => $authFailed,

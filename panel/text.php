@@ -36,7 +36,7 @@ $textbot = file_get_contents($Pathfile.'text.json');
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ویرایش متن — پنل فاکسیما</title>
+    <title>ویرایش متن — پنل Hamoix</title>
     <link rel="stylesheet" href="css/theme.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <script src="js/theme.js" defer>

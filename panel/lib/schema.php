@@ -1,10 +1,10 @@
 <?php
 
 
-if (!function_exists('faoxima_schema_table_exists')) {
+if (!function_exists('hamoix_schema_table_exists')) {
 
 
-function faoxima_schema_table_exists(PDO $pdo, string $table): bool {
+function hamoix_schema_table_exists(PDO $pdo, string $table): bool {
     try {
         $stmt = $pdo->prepare(
             "SELECT 1 FROM INFORMATION_SCHEMA.TABLES
@@ -19,7 +19,7 @@ function faoxima_schema_table_exists(PDO $pdo, string $table): bool {
 }
 
 
-function faoxima_schema_column_exists(PDO $pdo, string $table, string $column): bool {
+function hamoix_schema_column_exists(PDO $pdo, string $table, string $column): bool {
     try {
         $stmt = $pdo->prepare(
             "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
@@ -36,12 +36,12 @@ function faoxima_schema_column_exists(PDO $pdo, string $table, string $column): 
 }
 
 
-function faoxima_schema_ensure_column(PDO $pdo, string $table, string $column, string $definition): void {
-    if (!faoxima_schema_table_exists($pdo, $table)) {
+function hamoix_schema_ensure_column(PDO $pdo, string $table, string $column, string $definition): void {
+    if (!hamoix_schema_table_exists($pdo, $table)) {
 
         return;
     }
-    if (faoxima_schema_column_exists($pdo, $table, $column)) {
+    if (hamoix_schema_column_exists($pdo, $table, $column)) {
         return;
     }
     try {
@@ -58,31 +58,31 @@ function faoxima_schema_ensure_column(PDO $pdo, string $table, string $column, s
 }
 
 
-function faoxima_schema_ready(PDO $pdo): void {
-    if (!empty($_SESSION['__faoxima_schema_ok'])) {
+function hamoix_schema_ready(PDO $pdo): void {
+    if (!empty($_SESSION['__hamoix_schema_ok'])) {
         return;
     }
 
 
-    faoxima_schema_ensure_column(
+    hamoix_schema_ensure_column(
         $pdo, 'marzban_panel', 'emergency_panel_status',
         "VARCHAR(50) NOT NULL DEFAULT 'off_emergency_panel'"
     );
-    faoxima_schema_ensure_column(
+    hamoix_schema_ensure_column(
         $pdo, 'marzban_panel', 'national_net_status',
         "VARCHAR(50) NOT NULL DEFAULT 'off_national_net'"
     );
-    faoxima_schema_ensure_column(
+    hamoix_schema_ensure_column(
         $pdo, 'marzban_panel', 'emergency_source_panel',
         "VARCHAR(191) NULL"
     );
-    faoxima_schema_ensure_column(
+    hamoix_schema_ensure_column(
         $pdo, 'marzban_panel', 'stock_source_panel',
         "VARCHAR(191) NULL"
     );
 
 
-    if (!faoxima_schema_table_exists($pdo, 'crypto_wallets')) {
+    if (!hamoix_schema_table_exists($pdo, 'crypto_wallets')) {
         try {
             $pdo->exec("CREATE TABLE IF NOT EXISTS crypto_wallets (
                 id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -116,7 +116,7 @@ function faoxima_schema_ready(PDO $pdo): void {
     }
 
 
-    if (!faoxima_schema_table_exists($pdo, 'app')) {
+    if (!hamoix_schema_table_exists($pdo, 'app')) {
         try {
             $pdo->exec("CREATE TABLE IF NOT EXISTS app (
                 id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -129,7 +129,7 @@ function faoxima_schema_ready(PDO $pdo): void {
     }
 
 
-    if (!faoxima_schema_table_exists($pdo, 'shopSetting')) {
+    if (!hamoix_schema_table_exists($pdo, 'shopSetting')) {
         try {
             $pdo->exec("CREATE TABLE IF NOT EXISTS shopSetting (
                 Namevalue VARCHAR(500) PRIMARY KEY NOT NULL,
@@ -162,7 +162,7 @@ function faoxima_schema_ready(PDO $pdo): void {
     }
 
 
-    $_SESSION['__faoxima_schema_ok'] = true;
+    $_SESSION['__hamoix_schema_ok'] = true;
 }
 
 }

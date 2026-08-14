@@ -66,13 +66,13 @@ $expireTs = (int) ($svc['expire_at'] ?? 0);
 </head>
 <body class="public-page">
 <div class="public-brand">
-    <div class="public-brand__name"><span class="public-brand__mark"><?php echo icon('server', 'svg-icon svg-sm'); ?></span><span>فاکسیما · اشتراک امن</span></div>
+    <div class="public-brand__name"><span class="public-brand__mark"><?php echo icon('server', 'svg-icon svg-sm'); ?></span><span>Hamoix · اشتراک امن</span></div>
     <span class="app-status-pill">اتصال آماده</span>
 </div>
 <div class="sub-wrap">
     <div class="welcome-banner" style="margin-bottom:18px;">
         <div class="welcome-banner__copy">
-            <div class="welcome-banner__eyebrow"><?php echo icon('shield', 'svg-icon svg-xs'); ?> اشتراک امن فاکسیما</div>
+            <div class="welcome-banner__eyebrow"><?php echo icon('shield', 'svg-icon svg-xs'); ?> اشتراک امن Hamoix</div>
             <h2>اتصال شما آماده استفاده است</h2>
             <p>لینک اشتراک را در برنامه‌ی مورد علاقه‌تان وارد کنید یا با QR اسکن کنید.</p>
         </div>

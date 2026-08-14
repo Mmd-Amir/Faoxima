@@ -22,7 +22,7 @@ $listservices = $query->fetchAll();
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>خدمات انجام شده | ربات فاکسیما</title>
+    <title>خدمات انجام شده | ربات Hamoix</title>
     <link rel="stylesheet" href="css/theme.css">
 <script src="js/theme.js" defer>
 
@@ -102,7 +102,7 @@ $listservices = $query->fetchAll();
 </script>
 <script>
   document.addEventListener("DOMContentLoaded", function () {
-    FaoximaDT.init("#servicesTable");
+    HamoixDT.init("#servicesTable");
   });
 </script>
 </body>

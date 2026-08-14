@@ -4,8 +4,8 @@ require_once 'request.php';
 date_default_timezone_set('Asia/Tehran');
 
 function token_panel($code_panel,$verify = true){
-    if ($verify && isset($GLOBALS['__faoxima_panel_token_cache']['marzban'][$code_panel])) {
-        $cached = $GLOBALS['__faoxima_panel_token_cache']['marzban'][$code_panel];
+    if ($verify && isset($GLOBALS['__hamoix_panel_token_cache']['marzban'][$code_panel])) {
+        $cached = $GLOBALS['__hamoix_panel_token_cache']['marzban'][$code_panel];
         if (is_array($cached) && isset($cached['__cached_at']) && (time() - $cached['__cached_at']) < 300) {
             return $cached['payload'];
         }
@@ -24,7 +24,7 @@ function token_panel($code_panel,$verify = true){
         $timecurrent = time();
         $start_date = time() - strtotime($date['time']);
         if($start_date <= 3600){
-            $GLOBALS['__faoxima_panel_token_cache']['marzban'][$code_panel] = [
+            $GLOBALS['__hamoix_panel_token_cache']['marzban'][$code_panel] = [
                 '__cached_at' => time(),
                 'payload'     => $date,
             ];
@@ -56,7 +56,7 @@ function token_panel($code_panel,$verify = true){
         if (isset($panel['name_panel'])) {
             update("marzban_panel","datelogin",$data,'name_panel',$panel['name_panel']);
         }
-        $GLOBALS['__faoxima_panel_token_cache']['marzban'][$code_panel] = [
+        $GLOBALS['__hamoix_panel_token_cache']['marzban'][$code_panel] = [
             '__cached_at' => time(),
             'payload'     => ['time' => $time, 'access_token' => $body['access_token']],
         ];
@@ -174,7 +174,7 @@ function getusers($location,$status)
     $header_value = 'Bearer ';
 
     $ch = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($ch, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($ch, 'panel');
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_HTTPGET, true);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -213,7 +213,7 @@ function getinbounds($location)
     $header_value = 'Bearer ';
 
     $ch = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($ch, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($ch, 'panel');
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_HTTPGET, true);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -405,7 +405,7 @@ function Get_System_Stats($location){
     $header_value = 'Bearer ';
 
     $ch = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($ch, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($ch, 'panel');
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_HTTPGET, true);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -494,7 +494,7 @@ function Modifyuser_node($location,$id_node,array $data)
     $url =  $marzban_list_get['url_panel'].'/api/node/'.$id_node;
     $payload = json_encode($data);
     $ch = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($ch, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($ch, 'panel');
 curl_setopt($ch, CURLOPT_URL, $url);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
 curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
@@ -519,7 +519,7 @@ function hosts($location)
     $Check_token = token_panel($marzban_list_get['code_panel']);
     $url =  $marzban_list_get['url_panel'].'/api/hosts';
     $ch = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($ch, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($ch, 'panel');
 curl_setopt($ch, CURLOPT_URL, $url);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
 curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');

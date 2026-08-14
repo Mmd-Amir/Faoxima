@@ -1,8 +1,8 @@
 <?php
 
 function token_panelm($code_panel){
-    if (isset($GLOBALS['__faoxima_panel_token_cache']['marzneshin'][$code_panel])) {
-        $cached = $GLOBALS['__faoxima_panel_token_cache']['marzneshin'][$code_panel];
+    if (isset($GLOBALS['__hamoix_panel_token_cache']['marzneshin'][$code_panel])) {
+        $cached = $GLOBALS['__hamoix_panel_token_cache']['marzneshin'][$code_panel];
         if (is_array($cached) && isset($cached['__cached_at']) && (time() - $cached['__cached_at']) < 300) {
             return $cached['payload'];
         }
@@ -14,7 +14,7 @@ function token_panelm($code_panel){
         $timecurrent = time();
         $start_date = time() - strtotime($date['time']);
         if($start_date <= 3600){
-            $GLOBALS['__faoxima_panel_token_cache']['marzneshin'][$code_panel] = [
+            $GLOBALS['__hamoix_panel_token_cache']['marzneshin'][$code_panel] = [
                 '__cached_at' => time(),
                 'payload'     => $date,
             ];
@@ -41,7 +41,7 @@ function token_panelm($code_panel){
         )
     );
     $curl_token = curl_init($url_get_token);
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($curl_token, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($curl_token, 'panel');
     curl_setopt_array($curl_token, $options);
     $token = curl_exec($curl_token);
     if (curl_error($curl_token)) {
@@ -59,7 +59,7 @@ function token_panelm($code_panel){
             'access_token' => $body['access_token']
             ));
         update("marzban_panel","datelogin",$data,'name_panel',$panel['name_panel']);
-        $GLOBALS['__faoxima_panel_token_cache']['marzneshin'][$code_panel] = [
+        $GLOBALS['__hamoix_panel_token_cache']['marzneshin'][$code_panel] = [
             '__cached_at' => time(),
             'payload'     => ['time' => $time, 'access_token' => $body['access_token']],
         ];

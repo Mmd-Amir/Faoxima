@@ -8,7 +8,7 @@ function getdatauser($username,$location)
     $usernameac = $username;
     $url =  $marzban_list_get['url_panel'].'/api/v2/admin/user/';
     $ch = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($ch, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($ch, 'panel');
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_HTTPGET, true);
     curl_setopt($ch,CURLOPT_TIMEOUT_MS, 4000);

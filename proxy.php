@@ -5,8 +5,8 @@
  * Telegram and mini-app proxy settings are intentionally not supported.
  */
 
-if (!function_exists('faoxima_proxy_settings')) {
-    function faoxima_proxy_settings($forceReload = false)
+if (!function_exists('hamoix_proxy_settings')) {
+    function hamoix_proxy_settings($forceReload = false)
     {
         static $cache = null;
         if ($cache !== null && !$forceReload) {
@@ -30,8 +30,8 @@ if (!function_exists('faoxima_proxy_settings')) {
     }
 }
 
-if (!function_exists('faoxima_parse_proxy_url')) {
-    function faoxima_parse_proxy_url($url)
+if (!function_exists('hamoix_parse_proxy_url')) {
+    function hamoix_parse_proxy_url($url)
     {
         $url = trim((string) $url);
         if ($url === '') {
@@ -64,27 +64,27 @@ if (!function_exists('faoxima_parse_proxy_url')) {
     }
 }
 
-if (!function_exists('faoxima_proxy_for')) {
-    function faoxima_proxy_for($scope)
+if (!function_exists('hamoix_proxy_for')) {
+    function hamoix_proxy_for($scope)
     {
         if ($scope !== 'panel') {
             return null;
         }
-        $settings = faoxima_proxy_settings();
+        $settings = hamoix_proxy_settings();
         if ((string) $settings['panel_status'] !== '1' || $settings['panel_url'] === '') {
             return null;
         }
-        return faoxima_parse_proxy_url($settings['panel_url']);
+        return hamoix_parse_proxy_url($settings['panel_url']);
     }
 }
 
-if (!function_exists('faoxima_apply_curl_proxy')) {
-    function faoxima_apply_curl_proxy($ch, $scope)
+if (!function_exists('hamoix_apply_curl_proxy')) {
+    function hamoix_apply_curl_proxy($ch, $scope)
     {
         if (!is_resource($ch) && !(class_exists('CurlHandle') && $ch instanceof CurlHandle)) {
             return false;
         }
-        $proxy = faoxima_proxy_for($scope);
+        $proxy = hamoix_proxy_for($scope);
         if ($proxy === null) {
             return false;
         }

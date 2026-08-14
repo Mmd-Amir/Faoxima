@@ -33,7 +33,7 @@ if (!function_exists('alireza_tls_verifyhost')) {
 
 function loginalireza($url,$username,$password){
 $curl = curl_init();
-if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($curl, 'panel');
+if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($curl, 'panel');
 curl_setopt_array($curl, array(
   CURLOPT_URL => $url.'/login',
   CURLOPT_RETURNTRANSFER => true,
@@ -61,7 +61,7 @@ function get_useralireza($username,$namepanel){
     if(isset($loginalirezapanel['errror']))return;
     $usernameac = $username;
     $curl = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($curl, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($curl, 'panel');
 curl_setopt_array($curl, array(
   CURLOPT_URL => $marzban_list_get['url_panel'].'/xui/API/inbounds',
   CURLOPT_RETURNTRANSFER => true,
@@ -96,7 +96,7 @@ function checkportalireza($port,$namepanel){
     $loginalirezapanel = loginalireza($marzban_list_get['url_panel'],$marzban_list_get['username_panel'],$marzban_list_get['password_panel']);
     if(isset($loginalirezapanel['errror']))return;
     $curl = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($curl, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($curl, 'panel');
 
 curl_setopt_array($curl, array(
   CURLOPT_URL => $marzban_list_get['url_panel'].'/xui/API/inbounds',
@@ -177,7 +177,7 @@ function addinboundalireza($namepanel, $usernameac, $Port, $Expire,$Total, $Uuid
     $configpanel = json_encode($config,true);
 
     $curl = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($curl, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($curl, 'panel');
     curl_setopt_array($curl, array(
         CURLOPT_URL => $marzban_list_get['url_panel'].'/xui/API/inbounds/add',
         CURLOPT_RETURNTRANSFER => true,
@@ -211,7 +211,7 @@ function updateinboundalireza($namepanel, $inboundid,array $config){
     $configpanel = json_encode($config,true);
 
     $curl = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($curl, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($curl, 'panel');
     curl_setopt_array($curl, array(
         CURLOPT_URL => $marzban_list_get['url_panel'].'/xui/API/inbounds/update/'.$inboundid,
         CURLOPT_RETURNTRANSFER => true,
@@ -244,7 +244,7 @@ function ResetUserDataUsagealireza($usernamepanel, $namepanel){
     $loginalirezapanel = loginalireza($marzban_list_get['url_panel'],$marzban_list_get['username_panel'],$marzban_list_get['password_panel']);
     if(isset($loginalirezapanel['errror']))return;
     $curl = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($curl, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($curl, 'panel');
 curl_setopt_array($curl, array(
   CURLOPT_URL => $marzban_list_get['url_panel'].'/xui/API/inbounds/resetAllClientTraffics/'.$data_user['id'],
   CURLOPT_RETURNTRANSFER => true,
@@ -279,7 +279,7 @@ function remove_useralireza($location,$username){
     $loginalirezapanel = loginalireza($marzban_list_get['url_panel'],$marzban_list_get['username_panel'],$marzban_list_get['password_panel']);
     if(isset($loginalirezapanel['errror']))return;
     $curl = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($curl, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($curl, 'panel');
     curl_setopt_array($curl, array(
   CURLOPT_URL => $marzban_list_get['url_panel'].'/xui/API/inbounds/del/'.$data_user['id'],
   CURLOPT_RETURNTRANSFER => true,
@@ -309,7 +309,7 @@ function get_onlineuseralireza($name_panel,$username){
     $loginalirezapanel = loginalireza($marzban_list_get['url_panel'],$marzban_list_get['username_panel'],$marzban_list_get['password_panel']);
     if(isset($loginalirezapanel['errror']))return;
     $curl = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($curl, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($curl, 'panel');
 curl_setopt_array($curl, array(
   CURLOPT_URL => $marzban_list_get['url_panel'].'/xui/API/onlines',
   CURLOPT_RETURNTRANSFER => true,

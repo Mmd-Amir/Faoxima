@@ -1,6 +1,6 @@
-# فاکسیما — پنل وب فروش و مدیریت سرویس VPN
+# Hamoix — پنل وب فروش و مدیریت سرویس VPN
 
-فاکسیما یک سامانه‌ی وب‌محور برای فروش، مدیریت و نمایندگی سرویس‌های VPN است. این نسخه برای اجرا روی **VPS، سرور اختصاصی، cPanel و aaPanel** آماده شده و تمام عملیات اصلی از طریق پنل وب انجام می‌شود.
+Hamoix یک سامانه‌ی وب‌محور برای فروش، مدیریت و نمایندگی سرویس‌های VPN است. این نسخه برای اجرا روی **VPS، سرور اختصاصی، cPanel و aaPanel** آماده شده و تمام عملیات اصلی از طریق پنل وب انجام می‌شود.
 
 > **وضعیت این نسخه:** ربات تلگرام و مینی‌اپ از مسیر اجرایی محصول حذف شده‌اند. نام بعضی جدول‌ها و فیلدهای قدیمی در لایه‌ی مهاجرت دیتابیس ممکن است برای سازگاری با دیتابیس‌های قبلی باقی مانده باشد، اما نصب و استفاده‌ی جدید به توکن، webhook یا ربات تلگرام نیاز ندارد.
 
@@ -34,7 +34,7 @@
 
 ### اتصال به پنل‌های سرویس
 
-فاکسیما برای مدل‌های مختلف پنل سرویس آماده شده است، از جمله:
+Hamoix برای مدل‌های مختلف پنل سرویس آماده شده است، از جمله:
 
 - **3x-ui / Sanaei single** با پشتیبانی از API Token در نسخه‌های جدید
 - Marzban
@@ -45,7 +45,7 @@
 - MikroTik و IBSNG
 - Manual sale و چند adapter دیگر موجود در پروژه
 
-در اتصال به نسخه‌های جدید 3x-ui، توکن API روش پیشنهادی است. فاکسیما مسیرهای جدید `/panel/api/clients/*` را برای عملیات کلاینت‌ها پشتیبانی می‌کند و تبدیل quota از bytes به `totalGB` را در مرز API انجام می‌دهد.
+در اتصال به نسخه‌های جدید 3x-ui، توکن API روش پیشنهادی است. Hamoix مسیرهای جدید `/panel/api/clients/*` را برای عملیات کلاینت‌ها پشتیبانی می‌کند و تبدیل quota از bytes به `totalGB` را در مرز API انجام می‌دهد.
 
 ### ظاهر و تجربه کاربری
 
@@ -119,8 +119,8 @@ apt install -y nginx mariadb-server php8.2-fpm php8.2-cli php8.2-mysql \
   php8.2-curl php8.2-gd php8.2-zip php8.2-intl php8.2-mbstring \
   php8.2-xml php8.2-bcmath unzip curl composer
 
-mkdir -p /var/www/faoxima
-cd /var/www/faoxima
+mkdir -p /var/www/hamoix
+cd /var/www/hamoix
 # سورس را در این مسیر قرار دهید
 composer install --no-dev --no-interaction --prefer-dist
 ```
@@ -165,7 +165,7 @@ composer install --no-dev --no-interaction --prefer-dist
 
 ## نصب و اتصال 3x-ui
 
-فاکسیما خودش پنل 3x-ui را نصب نمی‌کند. ابتدا 3x-ui را روی VPS سرویس نصب کنید:
+Hamoix خودش پنل 3x-ui را نصب نمی‌کند. ابتدا 3x-ui را روی VPS سرویس نصب کنید:
 
 ```bash
 bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh)
@@ -176,7 +176,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.
 1. یک Inbound مناسب، مانند VLESS + Reality، بسازید.
 2. از بخش تنظیمات امنیتی، API Token بسازید.
 3. شناسه‌ی Inbound و لینک Subscription را یادداشت کنید.
-4. در فاکسیما به **پنل‌ها** بروید و نوع `x-ui_single` را انتخاب کنید.
+4. در Hamoix به **پنل‌ها** بروید و نوع `x-ui_single` را انتخاب کنید.
 5. آدرس پنل، توکن API، شناسه‌ی Inbound و لینک Subscription را وارد کنید.
 6. قبل از ساخت محصول، دکمه‌ی تست اتصال را اجرا کنید.
 
@@ -189,19 +189,19 @@ bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.
 کرون برای بررسی انقضا، وضعیت سرویس‌ها، پاک‌سازی و کارهای دوره‌ای ضروری است:
 
 ```cron
-* * * * * php /var/www/faoxima/cron/cron.php >/dev/null 2>&1
+* * * * * php /var/www/hamoix/cron/cron.php >/dev/null 2>&1
 ```
 
 برای عیب‌یابی موقت می‌توانید لاگ بگیرید:
 
 ```cron
-* * * * * php /var/www/faoxima/cron/cron.php >> /var/www/faoxima/logs/cron.log 2>&1
+* * * * * php /var/www/hamoix/cron/cron.php >> /var/www/hamoix/logs/cron.log 2>&1
 ```
 
 مسیر diagnostics:
 
 ```text
-/var/www/faoxima/cron/diag.php
+/var/www/hamoix/cron/diag.php
 ```
 
 پس از اطمینان از عملکرد، لاگ‌های حساس را در مسیر عمومی وب نگه ندارید و دسترسی آن‌ها را محدود کنید.
@@ -210,7 +210,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.
 
 ## درگاه‌های پرداخت و تنظیمات مالی
 
-فاکسیما adapterهای چند روش پرداخت را در اختیار دارد. روش‌های قابل استفاده به پیکربندی نسخه و فعال‌سازی از پنل بستگی دارند و می‌توانند شامل موارد زیر باشند:
+Hamoix adapterهای چند روش پرداخت را در اختیار دارد. روش‌های قابل استفاده به پیکربندی نسخه و فعال‌سازی از پنل بستگی دارند و می‌توانند شامل موارد زیر باشند:
 
 - کارت‌به‌کارت و تأیید دستی
 - درگاه‌های ریالی مانند ZarinPal، Zarinpey، Aqayepardakht و IranPay
@@ -233,7 +233,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.
 - بعد از نصب، `installer/` را حذف یا مسدود کنید.
 - `config.php`، `vendor/` و فایل‌های log را از دسترسی عمومی خارج کنید.
 - توکن API پنل‌ها و کلید درگاه‌ها را فقط در دیتابیس/تنظیمات امن سرور ذخیره کنید.
-- دسترسی پورت 3x-ui را با فایروال محدود کنید؛ ترجیحاً فقط IP سرور فاکسیما مجاز باشد.
+- دسترسی پورت 3x-ui را با فایروال محدود کنید؛ ترجیحاً فقط IP سرور Hamoix مجاز باشد.
 - برای ادمین‌ها و نمایندگان رمزهای یکتا و طولانی استفاده کنید.
 - از دیتابیس به‌صورت منظم backup بگیرید و backup را روی همان سرور نگه ندارید.
 - قبل از حذف یا مهاجرت، از `config.php` و دیتابیس نسخه‌ی پشتیبان بگیرید.
@@ -243,7 +243,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.
 
 ```bash
 mkdir -p /root/backups
-mysqldump -u faoxima -p faoxima | gzip > "/root/backups/faoxima_$(date +%F).sql.gz"
+mysqldump -u hamoix -p hamoix | gzip > "/root/backups/hamoix_$(date +%F).sql.gz"
 ```
 
 ---
@@ -278,7 +278,7 @@ mysqldump -u faoxima -p faoxima | gzip > "/root/backups/faoxima_$(date +%F).sql.
 - دسترسی فایروال و DNS را بررسی کنید.
 - معتبر بودن API Token را در خود 3x-ui بررسی کنید.
 - شناسه‌ی Inbound و مسیر پنل را دوباره بررسی کنید.
-- در صورت نیاز، پروکسی اتصال پنل را از تنظیمات فاکسیما فعال کنید.
+- در صورت نیاز، پروکسی اتصال پنل را از تنظیمات Hamoix فعال کنید.
 
 ### cron اجرا نمی‌شود
 
@@ -310,7 +310,7 @@ composer install --no-dev --no-interaction --prefer-dist
 
 - [استقرار کامل روی VPS](DEPLOY_VPS.md)
 - [راهنمای هاست cPanel / aaPanel](host.md)
-- [راهنمای نصب اسکریپت سرور](server.md)
+- [installer وب‌محور VPS](install-hamoix.sh)
 - [مخزن 3x-ui](https://github.com/MHSanaei/3x-ui)
 
 ---

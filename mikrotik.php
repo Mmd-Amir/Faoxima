@@ -4,7 +4,7 @@ require_once 'function.php';
 
 function login_mikrotik($url,$username,$password){
     $curl = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($curl, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($curl, 'panel');
     curl_setopt_array($curl, array(
       CURLOPT_URL => $url.'/rest/system/resource',
       CURLOPT_RETURNTRANSFER => true,
@@ -28,7 +28,7 @@ return $response;
 function addUser_mikrotik($name_panel,$username,$password,$group){
     $panel = select("marzban_panel","*","name_panel",$name_panel,"select");
     $curl = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($curl, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($curl, 'panel');
     $data = array(
         'name' => $username,
         'password' => $password
@@ -60,7 +60,7 @@ return $response;
 function set_profile_mikrotik($name_panel,$username,$prof_name){
     $panel = select("marzban_panel","*","name_panel",$name_panel,"select");
     $curl = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($curl, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($curl, 'panel');
     $data = array(
         'user' => $username,
         'profile' => $prof_name
@@ -91,7 +91,7 @@ return $response;
 function GetUsermikrotik($name_panel,$username){
     $panel = select("marzban_panel","*","name_panel",$name_panel,"select");
     $curl = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($curl, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($curl, 'panel');
     curl_setopt_array($curl, array(
       CURLOPT_URL => $panel['url_panel'].'/rest/user-manager/user?name='.$username,
       CURLOPT_RETURNTRANSFER => true,
@@ -116,7 +116,7 @@ return $response;
 function GetUsermikrotik_volume($name_panel,$id){
     $panel = select("marzban_panel","*","name_panel",$name_panel,"select");
     $curl = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($curl, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($curl, 'panel');
     $data = array(
         'once' => true,
         '.id' => $id
@@ -158,7 +158,7 @@ function deleteUser_mikrotik($name_panel,$username){
         return json_encode(array("error" => "user-not-found", "username" => $username));
     }
     $curl = curl_init();
-    if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($curl, 'panel');
+    if (function_exists('hamoix_apply_curl_proxy')) hamoix_apply_curl_proxy($curl, 'panel');
     $data = array(
         '.id' => $id
         );

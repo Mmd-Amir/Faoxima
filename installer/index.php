@@ -10,7 +10,7 @@ $configDirectory = $rootDirectory.'config.php';
 $tablesDirectory = $rootDirectory.'table.php';
 if(!file_exists($configDirectory) || !file_exists($tablesDirectory)) {
     $ERROR[] = "فایل های پروژه ناقص هستند.";
-    $ERROR[] = "فایل های پروژه را مجددا دانلود و بارگذاری کنید (<a href='https://github.com/Mmd-Amir/Faoxima/releases/'>‎🌐 Github</a>)";
+    $ERROR[] = "فایل های پروژه را مجددا دانلود و بارگذاری کنید (<a href='https://github.com/hamed9898/Hamoix/releases/'>‎🌐 Github</a>)";
 }
 if(phpversion() < 8.2){
     $ERROR[] = "نسخه PHP شما باید حداقل 8.2 باشد.";
@@ -56,7 +56,7 @@ if(isset($uPOST['submit']) && $uPOST['submit']) {
         $ERROR[] = 'آدرس پنل نامعتبر است.';
     }
     if(!isHttps()) {
-        $ERROR[] = 'پنل فاکسیما نیازمند فعال بودن SSL (https) هست';
+        $ERROR[] = 'پنل Hamoix نیازمند فعال بودن SSL (https) هست';
         $ERROR[] = '<i>اگر از فعال بودن SSL مطمئن هستید، سرور پشت proxy/CDN (مثل Cloudflare) است – headers را در cPanel چک کنید یا با https مستقیم باز کنید.</i>';
         $sslLink = 'https://' . $_SERVER['HTTP_HOST'] . $_SERVER['SCRIPT_NAME'];
         $ERROR[] = '<a href="' . $sslLink . '">' . $sslLink . '</a>';
@@ -83,7 +83,7 @@ if(isset($uPOST['submit']) && $uPOST['submit']) {
         $newConfigData = updateConfigValues($rawConfigData, $replacements, $replacementCount);
         if($replacementCount === 0 || file_put_contents($configDirectory,$newConfigData) === false) {
             $ERROR[] = '✏️❌ خطا در بازنویسی فایل تنظیمات پنل';
-            $ERROR[] = "فایل های پروژه را مجددا دانلود و بارگذاری کنید (<a href='https://github.com/Mmd-Amir/Faoxima/releases/'>‎🌐 Github</a>)";
+            $ERROR[] = "فایل های پروژه را مجددا دانلود و بارگذاری کنید (<a href='https://github.com/hamed9898/Hamoix/releases/'>‎🌐 Github</a>)";
     }
         else {
             $baseAddress = rtrim($document['address'], '/');
@@ -150,7 +150,7 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#0c0a09">
-    <title>نصب پنل وب فاکسیما</title>
+    <title>نصب پنل وب Hamoix</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -1000,7 +1000,7 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
             <div class="app-header-inner">
                 <a class="brand" href="#">
                     <span class="brand-mark"><svg><use href="#i-cog"/></svg></span>
-                    <span>فاکسیما</span>
+                    <span>Hamoix</span>
                 </a>
                 <div class="theme-switcher" role="radiogroup" aria-label="انتخاب رنگ پنل">
                     <button type="button" class="theme-swatch is-active" data-theme="red"    role="radio" aria-checked="true"  aria-label="قرمز"></button>
@@ -1019,7 +1019,7 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
                     <span class="pulse-dot"></span>
                     <span>نصب کننده‌ی هوشمند</span>
                 </div>
-                <h1>نصب خودکار <span class="accent">فاکسیما</span></h1>
+                <h1>نصب خودکار <span class="accent">Hamoix</span></h1>
                 <p>تنها چند مرحله ساده تا راه‌اندازی کامل پنل وب شما — بدون ربات و مینی‌اپ.</p>
             </div>
 
@@ -1140,9 +1140,9 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
         
         <footer class="app-footer">
             <p>
-                Faoxima Installer
+                Hamoix Installer
                 ·
-                <a href="https://github.com/Mmd-Amir/Faoxima" target="_blank" rel="noopener">گیت‌هاب</a>
+                <a href="https://github.com/hamed9898/Hamoix" target="_blank" rel="noopener">گیت‌هاب</a>
                 &copy; <?php echo date('Y'); ?>
             </p>
         </footer>
@@ -1155,7 +1155,7 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
 
         const TOTAL_WIZARD_STEPS  = 1;
         const TOTAL_INSTALL_FIELDS_INITIAL = <?php echo (int) $installFieldTotal; ?>;
-        const THEME_STORAGE_KEY   = 'faoxima_installer_theme';
+        const THEME_STORAGE_KEY   = 'hamoix_installer_theme';
 
         let currentStep         = <?php echo (int) $currentStep; ?>;
         let currentInstallField = <?php echo (int) $currentInstallField; ?>;

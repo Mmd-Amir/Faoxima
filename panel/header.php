@@ -85,8 +85,8 @@ $__avatar  = function_exists('mb_substr') ? mb_substr($__user, 0, 1, 'UTF-8') : 
 $__schemaLib = __DIR__ . '/lib/schema.php';
 if (is_file($__schemaLib) && is_readable($__schemaLib)) {
     @include_once $__schemaLib;
-    if (function_exists('faoxima_schema_ready') && isset($pdo) && $pdo instanceof PDO) {
-        try { faoxima_schema_ready($pdo); } catch (\Throwable $e) { error_log('[header] schema_ready failed: ' . $e->getMessage()); }
+    if (function_exists('hamoix_schema_ready') && isset($pdo) && $pdo instanceof PDO) {
+        try { hamoix_schema_ready($pdo); } catch (\Throwable $e) { error_log('[header] schema_ready failed: ' . $e->getMessage()); }
     }
 }
 ?>
@@ -100,8 +100,8 @@ $__themeStylePath = basename(dirname($_SERVER['SCRIPT_NAME'] ?? '')) === 'resell
     try {
 
 
-        var color = localStorage.getItem('faoxima_color') || 'blue';
-        var theme = localStorage.getItem('faoxima_theme') || 'dark';
+        var color = localStorage.getItem('hamoix_color') || 'blue';
+        var theme = localStorage.getItem('hamoix_theme') || 'dark';
         var html = document.documentElement;
         if (!html.getAttribute('data-color')) html.setAttribute('data-color', color);
         if (!html.getAttribute('data-theme')) html.setAttribute('data-theme', theme);
@@ -116,7 +116,7 @@ $__themeStylePath = basename(dirname($_SERVER['SCRIPT_NAME'] ?? '')) === 'resell
         </button>
         <a href="index.php" class="app-logo">
             <span class="app-logo__mark"><?php echo icon('server', 'svg-icon svg-sm'); ?></span>
-            پنل&nbsp;<span>فاکسیما</span>
+            پنل&nbsp;<span>Hamoix</span>
         </a>
         <span class="app-status-pill">پنل آنلاین — اتصال برقرار</span>
     </div>
@@ -126,9 +126,9 @@ $__themeStylePath = basename(dirname($_SERVER['SCRIPT_NAME'] ?? '')) === 'resell
             
             <span class="profile-avatar"
                   style="background:transparent; border-color:rgba(255,255,255,0.18); border-radius:10px; overflow:hidden; padding:0;"
-                  title="فاکسیما">
+                  title="Hamoix">
                 <img src="https://avatars.githubusercontent.com/u/238855591?s=80&v=4"
-                     alt="Faoxima"
+                     alt="Hamoix"
                      loading="lazy"
                      referrerpolicy="no-referrer"
                      width="36" height="36"

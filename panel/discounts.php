@@ -1,13 +1,13 @@
 <?php
 
 
-if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
-    define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
+if (!defined('HAMOIX_SKIP_BOTAPI_ROUTER')) {
+    define('HAMOIX_SKIP_BOTAPI_ROUTER', true);
 }
 
 
-if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
-    define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
+if (!defined('HAMOIX_SKIP_BOTAPI_ROUTER')) {
+    define('HAMOIX_SKIP_BOTAPI_ROUTER', true);
 }
 session_start();
 require_once __DIR__ . '/../config.php';
@@ -230,7 +230,7 @@ try {
     if ($rg) $giftList = $rg->fetchAll(PDO::FETCH_ASSOC);
 } catch (\Throwable $e) {  }
 
-function faoxima_d_label_type($t) {
+function hamoix_d_label_type($t) {
     switch ($t) {
         case 'percent': return ['درصدی', 'badge-success'];
         case 'amount':  return ['مبلغی', 'badge-info'];
@@ -238,7 +238,7 @@ function faoxima_d_label_type($t) {
         default:        return [htmlspecialchars((string)$t, ENT_QUOTES), 'badge-gray'];
     }
 }
-function faoxima_d_label_agent($a) {
+function hamoix_d_label_agent($a) {
     switch ($a) {
         case 'f':        return ['کاربر عادی', 'badge-info'];
         case 'n':        return ['نماینده', 'badge-purple'];
@@ -248,7 +248,7 @@ function faoxima_d_label_agent($a) {
         default:         return [htmlspecialchars((string)$a, ENT_QUOTES), 'badge-gray'];
     }
 }
-function faoxima_d_label_section($s) {
+function hamoix_d_label_section($s) {
     switch ($s) {
         case 'buy':    return ['خرید', 'badge-info'];
         case 'extend': return ['تمدید', 'badge-purple'];
@@ -265,7 +265,7 @@ function faoxima_d_label_section($s) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>کدهای تخفیف | پنل فاکسیما</title>
+    <title>کدهای تخفیف | پنل Hamoix</title>
     <link rel="stylesheet" href="css/theme.css">
     <script src="js/theme.js" defer>
 
@@ -336,11 +336,11 @@ function faoxima_d_label_section($s) {
                             if (!in_array($kind, ['percent','amount','free'], true)) {
                                 $kind = in_array(($d['type'] ?? ''), ['percent','amount','free'], true) ? $d['type'] : 'percent';
                             }
-                            [$typeLabel, $typeBadge] = faoxima_d_label_type($kind);
+                            [$typeLabel, $typeBadge] = hamoix_d_label_type($kind);
                             $sectionVal = $d['section'] ?? '';
                             if ($sectionVal === '') $sectionVal = in_array(($d['type'] ?? ''), ['buy','extend'], true) ? $d['type'] : 'all';
-                            [$secLabel, $secBadge] = faoxima_d_label_section($sectionVal);
-                            [$agentLabel, $agentBadge] = faoxima_d_label_agent($d['agent'] ?? '');
+                            [$secLabel, $secBadge] = hamoix_d_label_section($sectionVal);
+                            [$agentLabel, $agentBadge] = hamoix_d_label_agent($d['agent'] ?? '');
                             $valDisplay = htmlspecialchars((string)$d['price'], ENT_QUOTES);
                             if ($kind === 'percent') $valDisplay .= '%';
                             elseif ($kind === 'amount') $valDisplay = number_format((int)$d['price']) . ' <small>تومان</small>';
@@ -457,7 +457,7 @@ function faoxima_d_label_section($s) {
             <div class="form-row">
                 <div class="form-group">
                     <label class="form-label">کد تخفیف</label>
-                    <input type="text" name="codeDiscount" class="form-control" style="direction:ltr; font-family:'JetBrains Mono', monospace;" placeholder="FAOXIMA20" required>
+                    <input type="text" name="codeDiscount" class="form-control" style="direction:ltr; font-family:'JetBrains Mono', monospace;" placeholder="HAMOIX20" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">نوع تخفیف</label>
@@ -581,8 +581,8 @@ function faoxima_d_label_section($s) {
 </script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    FaoximaDT.init('#discountsTable');
-    FaoximaDT.init('#giftsTable');
+    HamoixDT.init('#discountsTable');
+    HamoixDT.init('#giftsTable');
 });
 
 function openModal(id) { var m = document.getElementById(id); if (m) m.classList.add('active'); }

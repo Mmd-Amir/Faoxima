@@ -9,7 +9,7 @@
 <details>
   <summary> دونیت </summary>
 
-👉 [حمایت از  ریفکتور کننده NowPayments](https://nowpayments.io/donation/faoximabot)
+👉 [حمایت از  ریفکتور کننده NowPayments](https://nowpayments.io/donation/hamoix)
 
 
 
@@ -27,14 +27,14 @@
 
   #### 1️⃣ ابتدا اسکریپت زیر را بر روی سرور اجرا کنید.
  ```
-  curl -L -o /root/install.sh https://raw.githubusercontent.com/Mmd-Amir/Faoxima/main/install.sh && bash /root/install.sh
+  curl -L -o /root/install-hamoix.sh https://raw.githubusercontent.com/hamed9898/Hamoix/main/install-hamoix.sh && bash /root/install-hamoix.sh
 ```
 
 #### 2️⃣ سپس گزینهٔ «1» را انتخاب کرده و اطلاعات مورد نیاز را مطابق درخواست وارد نمایید.
 #### 3️⃣ پس از اتمام کار، از اسکریپت خارج شوید و برای حذف فایل (Installer) دستور زیر را اجرا کنید:
 
 ```
-rm -r /var/www/html/faoxima/installer
+rm -r /var/www/html/hamoix/installer
 ```
 
 

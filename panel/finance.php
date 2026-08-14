@@ -1,13 +1,13 @@
 <?php
 
 
-if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
-    define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
+if (!defined('HAMOIX_SKIP_BOTAPI_ROUTER')) {
+    define('HAMOIX_SKIP_BOTAPI_ROUTER', true);
 }
 
 
-if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
-    define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
+if (!defined('HAMOIX_SKIP_BOTAPI_ROUTER')) {
+    define('HAMOIX_SKIP_BOTAPI_ROUTER', true);
 }
 session_start();
 require_once __DIR__ . '/../config.php';
@@ -219,12 +219,12 @@ $showSaved = isset($_GET['saved']);
 $savedNum  = isset($_GET['saved']) ? (int)$_GET['saved'] : 0;
 
 
-function faoxima_fin_is_on($cur, $on, $off) {
+function hamoix_fin_is_on($cur, $on, $off) {
     if ((string)$cur === (string)$on)  return true;
     if ((string)$cur === (string)$off) return false;
     return in_array(strtolower(trim((string)$cur)), ['1','on','true','yes'], true);
 }
-function faoxima_fin_mask_secret($v) {
+function hamoix_fin_mask_secret($v) {
     $v = (string)$v;
     $n = strlen($v);
     if ($n === 0) return '';
@@ -237,7 +237,7 @@ function faoxima_fin_mask_secret($v) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>تنظیمات مالی | پنل فاکسیما</title>
+    <title>تنظیمات مالی | پنل Hamoix</title>
     <link rel="stylesheet" href="css/theme.css">
     <link rel="stylesheet" href="css/admin-extra.css">
     <script src="js/theme.js" defer>
@@ -301,7 +301,7 @@ function faoxima_fin_mask_secret($v) {
                                         <?php if ($f['type'] === 'toggle'): ?>
                                             <label class="switch" title="<?php echo htmlspecialchars($key); ?>">
                                                 <input type="checkbox" id="<?php echo $idAttr; ?>" name="<?php echo $idAttr; ?>"
-                                                    <?php echo faoxima_fin_is_on($cur, $f['on'], $f['off']) ? 'checked' : ''; ?>>
+                                                    <?php echo hamoix_fin_is_on($cur, $f['on'], $f['off']) ? 'checked' : ''; ?>>
                                                 <span class="switch__slot"></span>
                                             </label>
                                         <?php elseif ($f['type'] === 'number'): ?>
@@ -312,7 +312,7 @@ function faoxima_fin_mask_secret($v) {
                                         <?php elseif ($f['type'] === 'secret'): ?>
                                             <input type="text" id="<?php echo $idAttr; ?>" name="<?php echo $idAttr; ?>"
                                                 value=""
-                                                placeholder="<?php echo htmlspecialchars(faoxima_fin_mask_secret($cur) ?: ($f['placeholder'] ?? ''), ENT_QUOTES); ?>"
+                                                placeholder="<?php echo htmlspecialchars(hamoix_fin_mask_secret($cur) ?: ($f['placeholder'] ?? ''), ENT_QUOTES); ?>"
                                                 style="direction:ltr; text-align:left; min-width: 180px;"
                                                 autocomplete="off">
                                         <?php elseif ($f['type'] === 'textbot'): ?>

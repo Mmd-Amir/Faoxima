@@ -1,13 +1,13 @@
 <?php
 
 
-if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
-    define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
+if (!defined('HAMOIX_SKIP_BOTAPI_ROUTER')) {
+    define('HAMOIX_SKIP_BOTAPI_ROUTER', true);
 }
 
 
-if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
-    define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
+if (!defined('HAMOIX_SKIP_BOTAPI_ROUTER')) {
+    define('HAMOIX_SKIP_BOTAPI_ROUTER', true);
 }
 session_start();
 require_once __DIR__ . '/../config.php';
@@ -112,7 +112,7 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_s
 $showSaved = isset($_GET['saved']);
 $savedNum  = isset($_GET['saved']) ? (int)$_GET['saved'] : 0;
 
-function faoxima_shop_is_on($cur, $on, $off) {
+function hamoix_shop_is_on($cur, $on, $off) {
     if ((string)$cur === (string)$on)  return true;
     if ((string)$cur === (string)$off) return false;
     return in_array(strtolower(trim((string)$cur)), ['1','on','true','yes'], true);
@@ -123,7 +123,7 @@ function faoxima_shop_is_on($cur, $on, $off) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>قابلیت‌های فروشگاه | پنل فاکسیما</title>
+    <title>قابلیت‌های فروشگاه | پنل Hamoix</title>
     <link rel="stylesheet" href="css/theme.css">
     <link rel="stylesheet" href="css/admin-extra.css">
     <script src="js/theme.js" defer>
@@ -190,7 +190,7 @@ function faoxima_shop_is_on($cur, $on, $off) {
                                             <?php if ($f['type'] === 'toggle'): ?>
                                                 <label class="switch" title="<?php echo htmlspecialchars($key); ?>">
                                                     <input type="checkbox" id="<?php echo $idAttr; ?>" name="<?php echo $idAttr; ?>"
-                                                        <?php echo faoxima_shop_is_on($cur, $f['on'], $f['off']) ? 'checked' : ''; ?>>
+                                                        <?php echo hamoix_shop_is_on($cur, $f['on'], $f['off']) ? 'checked' : ''; ?>>
                                                     <span class="switch__slot"></span>
                                                 </label>
                                             <?php else: ?>

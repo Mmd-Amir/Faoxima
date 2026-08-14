@@ -207,7 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_save'])) {
 $showSaved = isset($_GET['saved']);
 $savedNum  = isset($_GET['saved']) ? (int)$_GET['saved'] : 0;
 
-function faoxima_is_toggle_on($cur, $on, $off) {
+function hamoix_is_toggle_on($cur, $on, $off) {
     if ($cur === null) return false;
     if ((string)$cur === (string)$on)  return true;
     if ((string)$cur === (string)$off) return false;
@@ -219,7 +219,7 @@ function faoxima_is_toggle_on($cur, $on, $off) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>تنظیمات پنل | فاکسیما</title>
+    <title>تنظیمات پنل | Hamoix</title>
     <link rel="stylesheet" href="css/theme.css">
     <link rel="stylesheet" href="css/admin-extra.css">
     <script src="js/theme.js" defer>
@@ -286,7 +286,7 @@ function faoxima_is_toggle_on($cur, $on, $off) {
                                         <?php if ($f['type'] === 'toggle'): ?>
                                             <label class="switch" title="<?php echo htmlspecialchars($col); ?>">
                                                 <input type="checkbox" id="<?php echo $idAttr; ?>" name="<?php echo $idAttr; ?>"
-                                                    <?php echo faoxima_is_toggle_on($val, $f['on'], $f['off']) ? 'checked' : ''; ?>>
+                                                    <?php echo hamoix_is_toggle_on($val, $f['on'], $f['off']) ? 'checked' : ''; ?>>
                                                 <span class="switch__slot"></span>
                                             </label>
                                         <?php elseif ($f['type'] === 'number'): ?>

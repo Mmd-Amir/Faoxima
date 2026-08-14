@@ -1,13 +1,13 @@
 <?php
 
 
-if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
-    define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
+if (!defined('HAMOIX_SKIP_BOTAPI_ROUTER')) {
+    define('HAMOIX_SKIP_BOTAPI_ROUTER', true);
 }
 
 
-if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
-    define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
+if (!defined('HAMOIX_SKIP_BOTAPI_ROUTER')) {
+    define('HAMOIX_SKIP_BOTAPI_ROUTER', true);
 }
 session_start();
 require_once __DIR__ . '/../config.php';
@@ -58,20 +58,20 @@ foreach ($products as $p) {
 }
 
 
-function faoxima_product_name(array $p): string {
+function hamoix_product_name(array $p): string {
     return (string)($p['name_product'] ?? $p['Name_product'] ?? '');
 }
-function faoxima_product_volume(array $p): float {
+function hamoix_product_volume(array $p): float {
     if (isset($p['Volume_constraint'])) return (float)$p['Volume_constraint'];
     if (isset($p['volume_product']))    return (float)$p['volume_product'];
     return 0.0;
 }
-function faoxima_product_days(array $p): int {
+function hamoix_product_days(array $p): int {
     if (isset($p['Service_time'])) return (int)$p['Service_time'];
     if (isset($p['time_product'])) return (int)$p['time_product'];
     return 0;
 }
-function faoxima_product_price(array $p): int {
+function hamoix_product_price(array $p): int {
     if (isset($p['Price_product'])) return (int)$p['Price_product'];
     if (isset($p['price_product'])) return (int)$p['price_product'];
     return 0;
@@ -93,10 +93,10 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $price       = (int)($_POST['price']          ?? 0);
         if (isset($productByCode[$codeProduct])) {
             $p = $productByCode[$codeProduct];
-            $productName = faoxima_product_name($p);
-            if ($volumeGb    <= 0) $volumeGb    = faoxima_product_volume($p);
-            if ($serviceDays <= 0) $serviceDays = faoxima_product_days($p);
-            if ($price       <= 0) $price       = faoxima_product_price($p);
+            $productName = hamoix_product_name($p);
+            if ($volumeGb    <= 0) $volumeGb    = hamoix_product_volume($p);
+            if ($serviceDays <= 0) $serviceDays = hamoix_product_days($p);
+            if ($price       <= 0) $price       = hamoix_product_price($p);
         }
 
         $errors = [];
@@ -471,7 +471,7 @@ if (!$tableMissing) {
     }
 }
 
-function faoxima_stock_status_label(string $s): array {
+function hamoix_stock_status_label(string $s): array {
     switch ($s) {
         case 'active':    return [icon('circle-check', 'svg-icon svg-sm') . ' موجود', 'badge-active'];
         case 'reserved':  return [icon('lock', 'svg-icon svg-sm') . ' رزرو', 'badge-warning'];
@@ -486,7 +486,7 @@ function faoxima_stock_status_label(string $s): array {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>انبار شبکه ملی | پنل فاکسیما</title>
+    <title>انبار شبکه ملی | پنل Hamoix</title>
     <link rel="stylesheet" href="css/theme.css">
     <link rel="stylesheet" href="css/admin-extra.css">
     <script src="js/theme.js" defer>
@@ -614,7 +614,7 @@ function faoxima_stock_status_label(string $s): array {
                     </div>
                 <?php else: ?>
                     <?php foreach ($shelfConfigs as $cfg):
-                        [$stLabel, $stClass] = faoxima_stock_status_label((string)$cfg['status']);
+                        [$stLabel, $stClass] = hamoix_stock_status_label((string)$cfg['status']);
                         $cfgStatus = (string)$cfg['status'];
                     ?>
                         <div class="config-row" <?php if ($cfgStatus === 'disabled'): ?>style="opacity:0.6"<?php endif; ?>>
@@ -906,13 +906,13 @@ function faoxima_stock_status_label(string $s): array {
                                 <select name="codeproduct" class="form-control" id="product-select">
                                     <option value="auto">خودکار</option>
                                     <?php foreach ($products as $p):
-                                        $v = faoxima_product_volume($p);
-                                        $d = faoxima_product_days($p);
-                                        $pr = faoxima_product_price($p);
+                                        $v = hamoix_product_volume($p);
+                                        $d = hamoix_product_days($p);
+                                        $pr = hamoix_product_price($p);
                                     ?>
                                         <option value="<?php echo htmlspecialchars($p['code_product'] ?? '', ENT_QUOTES); ?>"
                                                 data-volume="<?php echo $v; ?>" data-days="<?php echo $d; ?>" data-price="<?php echo $pr; ?>">
-                                            <?php echo htmlspecialchars(faoxima_product_name($p), ENT_QUOTES); ?>
+                                            <?php echo htmlspecialchars(hamoix_product_name($p), ENT_QUOTES); ?>
                                             (<?php echo $v; ?>گیگ — <?php echo $d; ?>روز)
                                         </option>
                                     <?php endforeach; ?>
