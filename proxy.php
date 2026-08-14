@@ -1,18 +1,8 @@
 <?php
 
 /**
- * Outbound proxy support for Faoxima.
- *
- * Some operators run the bot on Iran-based hosts that cannot reach
- * api.telegram.org or foreign VPN panels directly. They can configure an
- * HTTP/SOCKS proxy (separately for Telegram and for panel connections) from
- * the admin settings page; these helpers read that configuration and apply it
- * to any cURL handle.
- *
- * Settings live on the single `setting` row:
- *   proxy_telegram_status / proxy_telegram_url
- *   proxy_panel_status    / proxy_panel_url
- * A URL looks like: socks5h://user:pass@1.2.3.4:1080  (scheme optional, http assumed)
+ * Outbound HTTP/SOCKS proxy support for connections to VPN panels.
+ * Telegram and mini-app proxy settings are intentionally not supported.
  */
 
 if (!function_exists('faoxima_proxy_settings')) {
@@ -22,25 +12,18 @@ if (!function_exists('faoxima_proxy_settings')) {
         if ($cache !== null && !$forceReload) {
             return $cache;
         }
-        $cache = [
-            'telegram_status' => '0',
-            'telegram_url'    => '',
-            'panel_status'    => '0',
-            'panel_url'       => '',
-        ];
+        $cache = ['panel_status' => '0', 'panel_url' => ''];
         $pdo = $GLOBALS['pdo'] ?? null;
         if ($pdo instanceof PDO) {
             try {
-                $stmt = $pdo->query("SELECT proxy_telegram_status, proxy_telegram_url, proxy_panel_status, proxy_panel_url FROM setting LIMIT 1");
+                $stmt = $pdo->query('SELECT proxy_panel_status, proxy_panel_url FROM setting LIMIT 1');
                 $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : null;
                 if (is_array($row)) {
-                    $cache['telegram_status'] = (string) ($row['proxy_telegram_status'] ?? '0');
-                    $cache['telegram_url']    = trim((string) ($row['proxy_telegram_url'] ?? ''));
-                    $cache['panel_status']    = (string) ($row['proxy_panel_status'] ?? '0');
-                    $cache['panel_url']       = trim((string) ($row['proxy_panel_url'] ?? ''));
+                    $cache['panel_status'] = (string) ($row['proxy_panel_status'] ?? '0');
+                    $cache['panel_url'] = trim((string) ($row['proxy_panel_url'] ?? ''));
                 }
-            } catch (\Throwable $e) {
-                // Columns may not exist yet on an un-migrated DB — fall back to "off".
+            } catch (Throwable $e) {
+                // The settings table may not be migrated on a fresh install.
             }
         }
         return $cache;
@@ -48,10 +31,6 @@ if (!function_exists('faoxima_proxy_settings')) {
 }
 
 if (!function_exists('faoxima_parse_proxy_url')) {
-    /**
-     * Parse a proxy URL into cURL options. Returns null when the URL is empty
-     * or unusable. Defaults to an HTTP proxy when no scheme is given.
-     */
     function faoxima_parse_proxy_url($url)
     {
         $url = trim((string) $url);
@@ -61,65 +40,48 @@ if (!function_exists('faoxima_parse_proxy_url')) {
         if (!preg_match('~^[a-z0-9]+://~i', $url)) {
             $url = 'http://' . $url;
         }
-        $p = parse_url($url);
-        if (!is_array($p) || empty($p['host'])) {
+        $parts = parse_url($url);
+        if (!is_array($parts) || empty($parts['host'])) {
             return null;
         }
-        $scheme = strtolower($p['scheme'] ?? 'http');
-        $typeMap = [
-            'http'    => CURLPROXY_HTTP,
-            'https'   => CURLPROXY_HTTP,
-            'socks4'  => CURLPROXY_SOCKS4,
+        $scheme = strtolower((string) ($parts['scheme'] ?? 'http'));
+        $types = [
+            'http' => CURLPROXY_HTTP,
+            'https' => CURLPROXY_HTTP,
+            'socks4' => CURLPROXY_SOCKS4,
             'socks4a' => CURLPROXY_SOCKS4A,
-            'socks5'  => CURLPROXY_SOCKS5,
+            'socks5' => CURLPROXY_SOCKS5,
             'socks5h' => CURLPROXY_SOCKS5_HOSTNAME,
         ];
-        $type = $typeMap[$scheme] ?? CURLPROXY_HTTP;
-        $port = isset($p['port']) ? (int) $p['port'] : (strpos($scheme, 'socks') === 0 ? 1080 : 8080);
-        $userpwd = '';
-        if (isset($p['user'])) {
-            $userpwd = rawurldecode($p['user']) . ':' . rawurldecode($p['pass'] ?? '');
-        }
         return [
-            'type'    => $type,
-            'host'    => $p['host'],
-            'port'    => $port,
-            'userpwd' => $userpwd,
-            'scheme'  => $scheme,
+            'type' => $types[$scheme] ?? CURLPROXY_HTTP,
+            'host' => $parts['host'],
+            'port' => isset($parts['port']) ? (int) $parts['port'] : (strpos($scheme, 'socks') === 0 ? 1080 : 8080),
+            'userpwd' => isset($parts['user'])
+                ? rawurldecode($parts['user']) . ':' . rawurldecode($parts['pass'] ?? '')
+                : '',
         ];
     }
 }
 
 if (!function_exists('faoxima_proxy_for')) {
-    /**
-     * Resolve the active proxy options for a scope ('telegram' | 'panel').
-     * Returns null when no proxy is enabled/configured for that scope.
-     */
     function faoxima_proxy_for($scope)
     {
-        $s = faoxima_proxy_settings();
-        if ($scope === 'telegram') {
-            $status = $s['telegram_status'];
-            $url    = $s['telegram_url'];
-        } else {
-            $status = $s['panel_status'];
-            $url    = $s['panel_url'];
-        }
-        if ((string) $status !== '1' || $url === '') {
+        if ($scope !== 'panel') {
             return null;
         }
-        return faoxima_parse_proxy_url($url);
+        $settings = faoxima_proxy_settings();
+        if ((string) $settings['panel_status'] !== '1' || $settings['panel_url'] === '') {
+            return null;
+        }
+        return faoxima_parse_proxy_url($settings['panel_url']);
     }
 }
 
 if (!function_exists('faoxima_apply_curl_proxy')) {
-    /**
-     * Apply the configured proxy for $scope to an existing cURL handle.
-     * Returns true when a proxy was applied, false otherwise.
-     */
     function faoxima_apply_curl_proxy($ch, $scope)
     {
-        if (!is_resource($ch) && !($ch instanceof \CurlHandle)) {
+        if (!is_resource($ch) && !(class_exists('CurlHandle') && $ch instanceof CurlHandle)) {
             return false;
         }
         $proxy = faoxima_proxy_for($scope);

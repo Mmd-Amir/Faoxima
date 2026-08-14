@@ -23,16 +23,14 @@ $tempPath = dirname(dirname($_SERVER['SCRIPT_NAME']));
 $tempPath = str_replace('//', '/', '/' . trim($tempPath, '/'));
 $webAddress = rtrim($_SERVER['HTTP_HOST'] . $tempPath, '/') . '/';
 $success = false;
-$tgBot = [];
-$botFirstMessage = '';
-// Only the simple cPanel-host installation is supported. The migration
+// Only the simple web-host installation is supported. The migration
 // (migrate_free_to_pro) and dedicated-server (VPS) install paths were removed,
 // so these are hard-forced regardless of any posted value.
 $installType = 'simple';
 $serverType  = 'cpanel';
 $hasDbBackup = 'no';
 $currentStep = 1;
-$installFieldTotal = 7;
+$installFieldTotal = 4;
 $currentInstallField = isset($uPOST['current_install_field']) ? (int)$uPOST['current_install_field'] : 1;
 $currentStep = 1;
 $currentInstallField = max(1, min($installFieldTotal, $currentInstallField));
@@ -47,46 +45,23 @@ function isHttps() {
 }
 if(isset($uPOST['submit']) && $uPOST['submit']) {
     $ERROR = [];
-    $SUCCESS[] = "✅ ربات با موفقیت نصب شد !";
+    $SUCCESS[] = "✅ نصب پنل وب آغاز شد";
     $rawConfigData = file_get_contents($configDirectory);
-    $tgAdminId = $uPOST['admin_id'];
-    $tgBotToken = $uPOST['tg_bot_token'];
     $dbInfo['host'] = 'localhost';
     $dbInfo['name'] = $uPOST['database_name'];
     $dbInfo['username'] = $uPOST['database_username'];
     $dbInfo['password'] = $uPOST['database_password'];
-    $inputUrl = $uPOST['bot_address_webhook'] ?? $webAddress . '/index.php';
-    $document = normalizeDomainAddress($inputUrl);
+    $document = normalizeDomainAddress('https://' . rtrim($webAddress, '/') . '/index.php');
     if ($document === null) {
-        $ERROR[] = 'آدرس ارائه شده برای ربات نامعتبر است.';
+        $ERROR[] = 'آدرس پنل نامعتبر است.';
     }
     if(!isHttps()) {
-        $ERROR[] = 'برای فعال سازی ربات تلگرام نیازمند فعال بودن SSL (https) هستید';
+        $ERROR[] = 'پنل فاکسیما نیازمند فعال بودن SSL (https) هست';
         $ERROR[] = '<i>اگر از فعال بودن SSL مطمئن هستید، سرور پشت proxy/CDN (مثل Cloudflare) است – headers را در cPanel چک کنید یا با https مستقیم باز کنید.</i>';
         $sslLink = 'https://' . $_SERVER['HTTP_HOST'] . $_SERVER['SCRIPT_NAME'];
         $ERROR[] = '<a href="' . $sslLink . '">' . $sslLink . '</a>';
     }
-    $isValidToken = isValidTelegramToken($tgBotToken);
-    if(!$isValidToken) {
-        $ERROR[] = "توکن ربات صحیح نمی باشد.";
-    }
-    if (!isValidTelegramId($tgAdminId)) {
-        $ERROR[] = "آیدی عددی ادمین نامعتبر است.";
-    }
-    if($isValidToken) {
-        $tgBot['details'] = getContents("https://api.telegram.org/bot".$tgBotToken."/getMe");
-        if($tgBot['details']['ok'] == false) {
-            $ERROR[] = "توکن ربات را بررسی کنید. <i>عدم توانایی دریافت جزئیات ربات.</i>";
-        }
-        else {
-            $tgBot['recognition'] = getContents("https://api.telegram.org/bot".$tgBotToken."/getChat?chat_id=".$tgAdminId);
-            if($tgBot['recognition']['ok'] == false) {
-                $ERROR[] = "<b>عدم شناسایی مدیر ربات:</b>";
-                $ERROR[] = "ابتدا ربات را فعال/استارت کنید با اکانت که میخواهید مدیر اصلی ربات باشد.";
-                $ERROR[] = "<a href='https://t.me/".$tgBot['details']['result']['username']."'>@".$tgBot['details']['result']['username']."</a>";
-            }
-        }
-    }
+
     try {
         $dsn = "mysql:host=" . $dbInfo['host'] . ";dbname=" . $dbInfo['name'] . ";charset=utf8mb4";
         $pdo = new PDO($dsn, $dbInfo['username'], $dbInfo['password']);
@@ -102,15 +77,12 @@ if(isset($uPOST['submit']) && $uPOST['submit']) {
             '{database_name}' => $dbInfo['name'],
             '{username_db}' => $dbInfo['username'],
             '{password_db}' => $dbInfo['password'],
-            '{API_KEY}' => $tgBotToken,
-            '{admin_number}' => $tgAdminId,
-            '{domain_name}' => $document['address'],
-            '{username_bot}' => $tgBot['details']['result']['username']
+            '{domain_name}' => $document['address']
         ];
         $replacementCount = 0;
         $newConfigData = updateConfigValues($rawConfigData, $replacements, $replacementCount);
         if($replacementCount === 0 || file_put_contents($configDirectory,$newConfigData) === false) {
-            $ERROR[] = '✏️❌ خطا در زمان بازنویسی اطلاعات فایل اصلی ربات';
+            $ERROR[] = '✏️❌ خطا در بازنویسی فایل تنظیمات پنل';
             $ERROR[] = "فایل های پروژه را مجددا دانلود و بارگذاری کنید (<a href='https://github.com/Mmd-Amir/Faoxima/releases/'>‎🌐 Github</a>)";
     }
         else {
@@ -118,18 +90,8 @@ if(isset($uPOST['submit']) && $uPOST['submit']) {
 
             $tableResult = getContents("https://".$baseAddress."/table.php");
             $SUCCESS[] = "✅ جداول دیتابیس ایجاد/بروزرسانی شد";
-            ensureAdminRecord($dbInfo, $tgAdminId);
-            $SUCCESS[] = "✅ Webhook تنظیم شد";
-            $botFirstMessage = "\n[🤖] شما به عنوان ادمین معرفی شدید.";
-            $telegramMessage = urlencode(' '.$SUCCESS[0].$botFirstMessage);
-            $replyMarkup = urlencode(json_encode([
-                'inline_keyboard' => [
-                    [
-                        ['text' => '⚙️ شروع ربات ', 'callback_data' => 'start']
-                    ]
-                ]
-            ], JSON_UNESCAPED_UNICODE));
-            getContents("https://api.telegram.org/bot{$tgBotToken}/sendMessage?chat_id={$tgAdminId}&text={$telegramMessage}&reply_markup={$replyMarkup}");
+            ensureAdminRecord($dbInfo, '0');
+            $SUCCESS[] = "✅ نصب وب‌محور تکمیل شد — نام کاربری ورود: admin";
             $success = true;
 
             scheduleInstallerSelfDelete(__DIR__);
@@ -183,12 +145,12 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
 }
 ?>
 <!DOCTYPE html>
-<html dir="rtl" lang="fa" data-theme="red">
+<html dir="rtl" lang="fa" data-theme="blue">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#0c0a09">
-    <title>نصب خودکار ربات فاکسیما</title>
+    <title>نصب پنل وب فاکسیما</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -204,16 +166,16 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
 
 
         :root {
-            --bg-base:        #0c0a09;
-            --bg-surface:     #1c1917;
-            --bg-elevated:    #292524;
-            --bg-input:       #16130f;
-            --border-subtle:  rgba(255, 255, 255, 0.08);
-            --border-strong:  rgba(255, 255, 255, 0.18);
-            --text-primary:   #fafaf9;
-            --text-secondary: #d6d3d1;
-            --text-muted:     #a8a29e;
-            --shadow-glow:    0 0 0 1px rgba(255, 255, 255, 0.05), 0 20px 60px -20px rgba(0, 0, 0, 0.5);
+            --bg-base:        #f1f3f8;
+            --bg-surface:     rgba(255,255,255,.90);
+            --bg-elevated:    #ffffff;
+            --bg-input:       #f8f9fc;
+            --border-subtle:  rgba(30,41,59,.12);
+            --border-strong:  rgba(30,41,59,.24);
+            --text-primary:   #172033;
+            --text-secondary: #526078;
+            --text-muted:     #7a8496;
+            --shadow-glow:    0 0 0 1px rgba(255,255,255,.8), 0 20px 60px -20px rgba(41,51,76,.16);
             --radius-sm: 8px;
             --radius-md: 12px;
             --radius-lg: 16px;
@@ -253,7 +215,7 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
         }
         .app-header {
             border-bottom: 1px solid var(--border-subtle);
-            background: rgba(12, 10, 9, 0.7);
+            background: rgba(255,255,255,.86);
             backdrop-filter: blur(12px);
             position: sticky;
             top: 0;
@@ -889,8 +851,37 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
             }
         }
     </style>
+    <style>
+        /* Aurora installer skin — intentionally mirrors the authenticated panels. */
+        .aurora-installer {
+            --bg-base:#080a13; --bg-surface:rgba(17,22,39,.78); --bg-elevated:#12182b; --bg-input:rgba(7,10,20,.52);
+            --border-subtle:rgba(148,163,184,.14); --border-strong:rgba(148,163,184,.30);
+            --text-primary:#f3f6ff; --text-secondary:#b2bdd5; --text-muted:#7784a2;
+            background-color:#080a13; color:var(--text-primary);
+            background-image:radial-gradient(circle at 8% 2%,rgba(124,92,246,.16),transparent 28%),radial-gradient(circle at 92% 12%,rgba(34,211,238,.11),transparent 26%),linear-gradient(180deg,#0d1120 0%,#080a13 100%);
+        }
+        .aurora-installer::before { content:""; position:fixed; inset:0; pointer-events:none; opacity:.2; background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px); background-size:42px 42px; mask-image:linear-gradient(to bottom,black,transparent 82%); }
+        .aurora-installer .app-header { background:rgba(10,14,28,.82); border-bottom-color:rgba(148,163,184,.14); }
+        .aurora-installer .brand { color:#f3f6ff; }
+        .aurora-installer .brand-mark { background:linear-gradient(135deg,#7c5cf6,#24c8df); border:0; color:#fff; box-shadow:0 10px 24px rgba(96,74,216,.30); }
+        .aurora-installer .hero h1 { letter-spacing:-.03em; }
+        .aurora-installer .hero h1 .accent, .aurora-installer .hero-badge { color:#a992ff; }
+        .aurora-installer .hero-badge { background:rgba(124,92,246,.13); border-color:rgba(169,146,255,.55); }
+        .aurora-installer .card, .aurora-installer .step { background:linear-gradient(145deg,rgba(255,255,255,.055),transparent 42%),var(--bg-surface); border-color:rgba(148,163,184,.16); box-shadow:0 18px 44px rgba(0,0,0,.22); }
+        .aurora-installer .step.is-active, .aurora-installer .choice-card.is-active { background:rgba(124,92,246,.16); border-color:#8b73ff; box-shadow:0 0 0 1px #8b73ff,0 12px 30px rgba(124,92,246,.20); }
+        .aurora-installer .step-num, .aurora-installer .choice-card, .aurora-installer .pill-btn, .aurora-installer details, .aurora-installer .file-input, .aurora-installer .form-input, .aurora-installer .btn-secondary { background:var(--bg-elevated); border-color:var(--border-subtle); color:var(--text-primary); }
+        .aurora-installer .form-input:focus { background:#0d1222; border-color:#8b73ff; box-shadow:0 0 0 3px rgba(124,92,246,.24); }
+        .aurora-installer .form-label, .aurora-installer .card-title, .aurora-installer .choice-card h3, .aurora-installer summary { color:var(--text-primary); }
+        .aurora-installer .form-hint, .aurora-installer .choice-card p, .aurora-installer .hero p, .aurora-installer .step-label, .aurora-installer .app-footer { color:var(--text-secondary); }
+        .aurora-installer .btn-primary, .aurora-installer .success-cta { background:linear-gradient(135deg,#7658eb,#28bfd5); border-color:transparent; color:#fff; box-shadow:0 10px 25px rgba(87,83,213,.28); }
+        .aurora-installer .btn-primary:hover, .aurora-installer .success-cta:hover { background:linear-gradient(135deg,#896eff,#32d3e7); color:#fff; }
+        .aurora-installer .warn-block { background:rgba(245,158,11,.10); border-color:rgba(245,158,11,.34); color:#fcd98a; }
+        .aurora-installer .alert-danger { background:rgba(239,68,68,.11); color:#fecaca; }
+        .aurora-installer .alert-success { background:rgba(34,197,94,.11); color:#bbf7d0; }
+        @media (max-width:640px) { .aurora-installer .app-main { padding-top:24px; } .aurora-installer .hero { margin-bottom:26px; } }
+    </style>
 </head>
-<body>
+<body class="aurora-installer">
     
     <svg width="0" height="0" style="position:absolute" aria-hidden="true">
         <defs>
@@ -990,13 +981,6 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
                 <line x1="15" y1="9" x2="9" y2="15"/>
                 <line x1="9" y1="9" x2="15" y2="15"/>
             </symbol>
-            <symbol id="i-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="11" width="18" height="10" rx="2" ry="2"/>
-                <circle cx="12" cy="5" r="2"/>
-                <path d="M12 7v4"/>
-                <line x1="8" y1="16" x2="8" y2="16"/>
-                <line x1="16" y1="16" x2="16" y2="16"/>
-            </symbol>
             <symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
             </symbol>
@@ -1035,8 +1019,8 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
                     <span class="pulse-dot"></span>
                     <span>نصب کننده‌ی هوشمند</span>
                 </div>
-                <h1>نصب خودکار <span class="accent">ربات فاکسیما</span></h1>
-                <p>تنها چند مرحله ساده تا راه‌اندازی کامل ربات شما — بدون نیاز به دانش فنی پیچیده.</p>
+                <h1>نصب خودکار <span class="accent">فاکسیما</span></h1>
+                <p>تنها چند مرحله ساده تا راه‌اندازی کامل پنل وب شما — بدون ربات و مینی‌اپ.</p>
             </div>
 
             <?php if (!empty($ERROR)): ?>
@@ -1052,9 +1036,9 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
                         <svg><use href="#i-check-circle"/></svg>
                         <div><?php echo implode("<br>", $SUCCESS); ?></div>
                     </div>
-                    <a class="success-cta" href="https://t.me/<?php echo $tgBot['details']['result']['username']; ?>">
-                        <svg><use href="#i-bot"/></svg>
-                        رفتن به ربات <?php echo "@" . $tgBot['details']['result']['username']; ?>
+                    <a class="success-cta" href="../panel/login.php">
+                        <svg><use href="#i-globe"/></svg>
+                        ورود به پنل مدیریت
                         <svg><use href="#i-arrow-left"/></svg>
                     </a>
 
@@ -1080,58 +1064,32 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
                             اطلاعات نصب
                         </h2>
 
-                        <div class="field-step <?php echo $currentInstallField === 1 ? 'is-active' : ''; ?>" data-field-step="1">
-                            <div class="form-field">
-                                <label class="form-label" for="admin_id"><svg><use href="#i-user"/></svg> آیدی عددی ادمین</label>
-                                <input class="form-input" type="text" id="admin_id" name="admin_id" placeholder="ADMIN TELEGRAM #ID" value="<?php echo escapeHtml($uPOST['admin_id'] ?? ''); ?>" required>
-                                <p class="form-hint">می‌توانید آیدی عددی خود را از ربات <code>@userinfobot</code> بگیرید.</p>
-                            </div>
-                        </div>
-
-                        <div class="field-step <?php echo $currentInstallField === 2 ? 'is-active' : ''; ?>" data-field-step="2">
-                            <div class="form-field">
-                                <label class="form-label" for="tg_bot_token"><svg><use href="#i-key"/></svg> توکن ربات تلگرام</label>
-                                <input class="form-input" type="text" id="tg_bot_token" name="tg_bot_token" placeholder="123456789:ABC-DEF1234ghIkl-zyx57W2v1u123ew11" value="<?php echo escapeHtml($uPOST['tg_bot_token'] ?? ''); ?>" required>
-                                <p class="form-hint">توکن را از <code>@BotFather</code> دریافت کنید.</p>
-                            </div>
-                        </div>
-
-                        <div class="field-step <?php echo $currentInstallField === 3 ? 'is-active' : ''; ?>" data-field-step="3">
+                                        <div class="field-step <?php echo $currentInstallField === 1 ? 'is-active' : ''; ?>" data-field-step="1">
                             <div class="form-field">
                                 <label class="form-label" for="database_username"><svg><use href="#i-user"/></svg> نام کاربری دیتابیس</label>
                                 <input class="form-input" type="text" id="database_username" name="database_username" placeholder="DATABASE USERNAME" value="<?php echo escapeHtml($uPOST['database_username'] ?? ''); ?>" required>
                             </div>
                         </div>
 
-                        <div class="field-step <?php echo $currentInstallField === 4 ? 'is-active' : ''; ?>" data-field-step="4">
+                        <div class="field-step <?php echo $currentInstallField === 2 ? 'is-active' : ''; ?>" data-field-step="2">
                             <div class="form-field">
                                 <label class="form-label" for="database_password"><svg><use href="#i-lock"/></svg> رمز عبور دیتابیس</label>
-                                <input class="form-input" type="text" id="database_password" name="database_password" placeholder="DATABASE PASSWORD" value="<?php echo escapeHtml($uPOST['database_password'] ?? ''); ?>" required>
+                                <input class="form-input" type="password" id="database_password" name="database_password" placeholder="DATABASE PASSWORD" value="<?php echo escapeHtml($uPOST['database_password'] ?? ''); ?>" autocomplete="new-password" required>
                             </div>
                         </div>
 
-                        <div class="field-step <?php echo $currentInstallField === 5 ? 'is-active' : ''; ?>" data-field-step="5">
+                        <div class="field-step <?php echo $currentInstallField === 3 ? 'is-active' : ''; ?>" data-field-step="3">
                             <div class="form-field">
                                 <label class="form-label" for="database_name"><svg><use href="#i-database"/></svg> نام دیتابیس</label>
                                 <input class="form-input" type="text" id="database_name" name="database_name" placeholder="DATABASE NAME" value="<?php echo escapeHtml($uPOST['database_name'] ?? ''); ?>" required>
                             </div>
                         </div>
 
-                        <div class="field-step <?php echo $currentInstallField === 6 ? 'is-active' : ''; ?>" data-field-step="6">
-                            <div class="form-field">
-                                <details>
-                                    <summary><svg><use href="#i-globe"/></svg> آدرس سورس ربات (پیشرفته)</summary>
-                                    <label for="bot_address_webhook">آدرس صفحه‌ی سورس ربات (نه installer)</label>
-                                    <input class="form-input" type="text" id="bot_address_webhook" name="bot_address_webhook" placeholder="https://yourdomain.com/path/index.php" value="<?php echo escapeHtml($uPOST['bot_address_webhook'] ?? ($webAddress . '/index.php')); ?>" required>
-                                </details>
-                            </div>
-                        </div>
-
-                        <div class="field-step <?php echo $currentInstallField === 7 ? 'is-active' : ''; ?>" data-field-step="7">
+                        <div class="field-step <?php echo $currentInstallField === 4 ? 'is-active' : ''; ?>" data-field-step="4">
                             <div class="warn-block">
                                 <svg><use href="#i-warn"/></svg>
                                 <div>
-                                    <strong>هشدار:</strong> پس از نصب موفقیت‌آمیز، پوشه‌ی <code>installer</code> به‌صورت <strong>خودکار حذف</strong> خواهد شد. این کار برای حفظ امنیت سرور انجام می‌شود.
+                                    <strong>هشدار:</strong> پس از نصب موفقیت‌آمیز، پوشه‌ی <code>installer</code> به‌صورت <strong>خودکار حذف</strong> خواهد شد.
                                 </div>
                             </div>
                         </div>
@@ -1156,7 +1114,7 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
                         <div class="install-submit" id="install-submit" style="<?php echo $currentInstallField >= $installFieldTotal ? '' : 'display:none'; ?>">
                             <button type="submit" name="submit" value="submit" class="btn btn-primary">
                                 <svg><use href="#i-rocket"/></svg>
-                                شروع نصب ربات
+                                شروع نصب پنل وب
                             </button>
                         </div>
                     </div>
@@ -1185,9 +1143,6 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
                 Faoxima Installer
                 ·
                 <a href="https://github.com/Mmd-Amir/Faoxima" target="_blank" rel="noopener">گیت‌هاب</a>
-                ·
-                <a href="https://t.me/faoxima" target="_blank" rel="noopener">تلگرام</a>
-                ·
                 &copy; <?php echo date('Y'); ?>
             </p>
         </footer>
@@ -1214,7 +1169,7 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
 
         function applyTheme(theme) {
             const validThemes = ['red', 'blue', 'purple', 'green', 'orange'];
-            if (!validThemes.includes(theme)) theme = 'red';
+            if (!validThemes.includes(theme)) theme = 'blue';
             document.documentElement.setAttribute('data-theme', theme);
             try { localStorage.setItem(THEME_STORAGE_KEY, theme); } catch (e) {  }
             $$('.theme-swatch').forEach(swatch => {
@@ -1225,8 +1180,8 @@ function ensureAdminRecord($dbInfo, $adminNumber) {
         }
 
         function initThemeSwitcher() {
-            let saved = 'red';
-            try { saved = localStorage.getItem(THEME_STORAGE_KEY) || 'red'; } catch (e) {}
+            let saved = 'blue';
+            try { saved = localStorage.getItem(THEME_STORAGE_KEY) || 'blue'; } catch (e) {}
             applyTheme(saved);
             $$('.theme-swatch').forEach(swatch => {
                 swatch.addEventListener('click', () => applyTheme(swatch.dataset.theme));

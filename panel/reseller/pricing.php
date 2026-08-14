@@ -1,13 +1,12 @@
 <?php
 
 /**
- * Reseller customer-facing sell prices (Phase 4).
+ * Reseller customer-facing sell prices.
  *
  * For each product the admin flagged sellable, the reseller can set the price
- * their own customers pay in the bot (stored in reseller_product_sell). When no
- * sell price is set, the bot falls back to the product's default price. The
- * reseller's own cost (what the admin charges) is shown for reference so they
- * can keep a margin.
+ * their own customers pay (stored in reseller_product_sell). When no sell
+ * price is set, the product's default price is used. The reseller's own cost
+ * (what the admin charges) is shown for reference so they can keep a margin.
  */
 
 require_once __DIR__ . '/layout.php';
@@ -62,7 +61,7 @@ reseller_layout_head('قیمت فروش', 'pricing', $reseller);
 <div class="page-head">
     <div>
         <div class="page-head__title"><?php echo icon('money-bill', 'svg-icon svg-lg'); ?> قیمت فروش به مشتری</div>
-        <div class="page-head__sub">قیمتی که مشتریان شما در ربات پرداخت می‌کنند را تعیین کنید</div>
+        <div class="page-head__sub">قیمت فروش به مشتری و حاشیه سود خود را تعیین کنید</div>
     </div>
 </div>
 

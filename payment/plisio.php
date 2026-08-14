@@ -2,10 +2,8 @@
 
 ini_set('error_log', 'error_log');
 require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../panels.php';
 require_once __DIR__ . '/../function.php';
-require_once __DIR__ . '/../keyboard.php';
 require_once __DIR__ . '/../jdf.php';
 require_once __DIR__ . '/../lib/PaymentConfirm.php';
 require __DIR__ . '/../vendor/autoload.php';
@@ -108,7 +106,7 @@ if ($apiKey === '' || $apiKey === '0') {
 if (!rxPlisio_verifySignature($data, $apiKey)) {
     // Unverified IPN: ACK with 200 (not 401) so Plisio stops retrying and this
     // expected, self-recovering case is not recorded as a failed request. We never
-    // process unverified data below; the polling cron (cronbot/plisio.php) confirms
+    // process unverified data below; the web callback confirms
     // the payment, so nothing is lost.
     http_response_code(200);
     echo 'ok';

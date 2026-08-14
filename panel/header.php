@@ -16,9 +16,9 @@ if (isset($_SESSION["user"])) {
     $__ip_list   = [];
     $__iplogin_unlimited = false;
     if (isset($pdo) && $pdo instanceof PDO) {
-        $__can_check   = true;
         $__stmt_ip     = $pdo->query("SELECT iplogin FROM setting LIMIT 1");
         $__raw_iplogin = $__stmt_ip ? (string)$__stmt_ip->fetchColumn() : '';
+        $__can_check   = $__raw_iplogin !== '' && $__raw_iplogin !== '0';
         if ($__raw_iplogin === '*' || $__raw_iplogin === 'all' || $__raw_iplogin === 'unlimited') {
             $__iplogin_unlimited = true;
         } elseif ($__raw_iplogin !== '' && $__raw_iplogin !== '0') {
@@ -91,13 +91,17 @@ if (is_file($__schemaLib) && is_readable($__schemaLib)) {
 }
 ?>
 
+<?php
+$__themeStylePath = basename(dirname($_SERVER['SCRIPT_NAME'] ?? '')) === 'reseller' ? '../css/aurora.css' : 'css/aurora.css';
+?>
+<link rel="stylesheet" href="<?php echo htmlspecialchars($__themeStylePath, ENT_QUOTES, 'UTF-8'); ?>">
 <script>
 (function () {
     try {
 
 
         var color = localStorage.getItem('faoxima_color') || 'blue';
-        var theme = 'dark';
+        var theme = localStorage.getItem('faoxima_theme') || 'dark';
         var html = document.documentElement;
         if (!html.getAttribute('data-color')) html.setAttribute('data-color', color);
         if (!html.getAttribute('data-theme')) html.setAttribute('data-theme', theme);
@@ -111,8 +115,8 @@ if (is_file($__schemaLib) && is_readable($__schemaLib)) {
             <?php echo icon('bars'); ?>
         </button>
         <a href="index.php" class="app-logo">
-            <span class="app-logo__mark"><?php echo icon('robot', 'svg-icon svg-sm'); ?></span>
-            ربات&nbsp;<span>فاکسیما</span>
+            <span class="app-logo__mark"><?php echo icon('server', 'svg-icon svg-sm'); ?></span>
+            پنل&nbsp;<span>فاکسیما</span>
         </a>
         <span class="app-status-pill">پنل آنلاین — اتصال برقرار</span>
     </div>
@@ -153,8 +157,13 @@ if (is_file($__schemaLib) && is_readable($__schemaLib)) {
             </div>
 
             <hr>
+            <button id="theme-toggle" type="button">
+                <span id="theme-toggle-icon"><?php echo icon('moon', 'svg-icon svg-sm'); ?></span>
+                <span id="theme-toggle-label">حالت روز</span>
+            </button>
+            <hr>
 
-            <a href="login.php" class="menu-danger">
+            <a href="login.php?logout=1" class="menu-danger">
                 <?php echo icon('arrow-right-from-bracket', 'svg-icon svg-sm'); ?>
                 <span>خروج از حساب</span>
             </a>
@@ -176,27 +185,21 @@ if (is_file($__schemaLib) && is_readable($__schemaLib)) {
 
     <div class="sidebar-section-label">مدیریت</div>
     <ul class="sidebar-menu">
-        <li><a href="sales_control.php"><span class="menu-symbol"><?php echo icon('bolt', 'svg-icon svg-sm'); ?></span><span>مرکز کنترل فروش</span></a></li>
         <li><a href="panels.php"><span class="menu-symbol"><?php echo icon('server', 'svg-icon svg-sm'); ?></span><span>مدیریت پنل‌ها</span></a></li>
         <li><a href="stock.php"><span class="menu-symbol"><?php echo icon('package', 'svg-icon svg-sm'); ?></span><span>انبار شبکه ملی</span></a></li>
         <li><a href="resellers.php"><span class="menu-symbol"><?php echo icon('user-tag', 'svg-icon svg-sm'); ?></span><span>نمایندگان</span></a></li>
         <li><a href="finance.php"><span class="menu-symbol"><?php echo icon('money-bill', 'svg-icon svg-md'); ?></span><span>تنظیمات مالی</span></a></li>
         <li><a href="discounts.php"><span class="menu-symbol"><?php echo icon('ticket', 'svg-icon svg-sm'); ?></span><span>کدهای تخفیف</span></a></li>
-        <li><a href="broadcast.php"><span class="menu-symbol"><?php echo icon('megaphone', 'svg-icon svg-sm'); ?></span><span>پیام همگانی</span></a></li>
     </ul>
 
     <div class="sidebar-section-label">پیکربندی</div>
     <ul class="sidebar-menu">
-        <li><a href="settings.php"><span class="menu-symbol"><?php echo icon('sliders', 'svg-icon svg-sm'); ?></span><span>تنظیمات ربات</span></a></li>
+        <li><a href="settings.php"><span class="menu-symbol"><?php echo icon('sliders', 'svg-icon svg-sm'); ?></span><span>تنظیمات</span></a></li>
         <li><a href="shopsettings.php"><span class="menu-symbol"><?php echo icon('package', 'svg-icon svg-sm'); ?></span><span>قابلیت‌های فروشگاه</span></a></li>
-        <li><a href="applinks.php"><span class="menu-symbol"><?php echo icon('grid', 'svg-icon svg-sm'); ?></span><span>لینک‌های نصب اپ</span></a></li>
-        <li><a href="textbot.php"><span class="menu-symbol"><?php echo icon('text', 'svg-icon svg-sm'); ?></span><span>متن‌های ربات</span></a></li>
-        <li><a href="keyboard.php"><span class="menu-symbol"><?php echo icon('keyboard', 'svg-icon svg-sm'); ?></span><span>چیدمان کیبورد</span></a></li>
-        <li><a href="service_keyboard.php"><span class="menu-symbol"><?php echo icon('palette', 'svg-icon svg-sm'); ?></span><span>رنگ‌بندی دکمه‌ها</span></a></li>
     </ul>
 
     <div class="sidebar-version" style="margin-top:auto; padding:14px 16px; border-top:1px solid var(--border-soft,#2a2a35); display:flex; align-items:center; gap:8px; color:var(--text-muted,#8a8a9a); font-size:12px;">
-        <span class="menu-symbol"><?php echo icon('robot', 'svg-icon svg-sm'); ?></span>
+        <span class="menu-symbol"><?php echo icon('server', 'svg-icon svg-sm'); ?></span>
         <span>نسخه</span>
         <span class="badge badge-info" style="direction:ltr; font-family:'JetBrains Mono',monospace;"><?php echo htmlspecialchars($__panelVersion, ENT_QUOTES, 'UTF-8'); ?></span>
     </div>

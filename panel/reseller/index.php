@@ -24,6 +24,28 @@ $recent = $pdo->prepare("SELECT * FROM reseller_ledger WHERE reseller_id = :id O
 $recent->execute([':id' => $rid]);
 $recentRows = $recent->fetchAll(PDO::FETCH_ASSOC);
 
+// Weekly purchase chart (last 7 days, Jalali day labels).
+$weekDays = [];
+for ($i = 6; $i >= 0; $i--) {
+    $dayStart = strtotime('today -' . $i . ' days');
+    $dayEnd = $dayStart + 86400;
+    $weekDays[] = ['start' => $dayStart, 'end' => $dayEnd, 'count' => 0, 'sum' => 0];
+}
+$weekStmt = $pdo->prepare("SELECT amount, created_at FROM reseller_ledger WHERE reseller_id = :id AND type = 'purchase' AND created_at >= :from");
+$weekStmt->execute([':id' => $rid, ':from' => (string) $weekDays[0]['start']]);
+while ($w = $weekStmt->fetch(PDO::FETCH_ASSOC)) {
+    $ts = (int) ($w['created_at'] ?? 0);
+    foreach ($weekDays as &$d) {
+        if ($ts >= $d['start'] && $ts < $d['end']) {
+            $d['count']++;
+            $d['sum'] += (int) $w['amount'];
+            break;
+        }
+    }
+}
+unset($d);
+$maxCount = max(1, max(array_column($weekDays, 'count')));
+
 $ledgerLabels = [
     'topup'           => 'شارژ کیف پول',
     'purchase'        => 'خرید سرویس',
@@ -47,6 +69,15 @@ reseller_layout_head('داشبورد', 'index', $reseller);
 </div>
 
 <?php reseller_flash_render(); ?>
+
+<div class="welcome-banner">
+    <div class="welcome-banner__copy">
+        <div class="welcome-banner__eyebrow"><?php echo icon('sparkles', 'svg-icon svg-xs'); ?> فضای اختصاصی نمایندگی</div>
+        <h2>فروش سرویس‌ها را با یک نگاه مدیریت کنید</h2>
+        <p>موجودی، سفارش‌ها و اشتراک‌های مشتریان شما همیشه در دسترس است.</p>
+    </div>
+    <a href="service_new.php" class="btn welcome-banner__action"><?php echo icon('arrow-left', 'svg-icon svg-sm'); ?> ساخت سرویس جدید</a>
+</div>
 
 <div class="stats-grid">
     <div class="stat-card">
@@ -75,6 +106,24 @@ reseller_layout_head('داشبورد', 'index', $reseller);
         <div class="stat-card__info">
             <span class="stat-card__value"><?php echo number_format($pendingWithdraw); ?></span>
             <span class="stat-card__label">برداشت‌های در انتظار</span>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card__head">
+        <div class="card__title"><?php echo icon('chart-bar', 'svg-icon svg-sm'); ?> فروش ۷ روز اخیر</div>
+        <span class="chip"><?php echo array_sum(array_column($weekDays, 'count')); ?> سرویس</span>
+    </div>
+    <div style="padding:16px 20px;">
+        <div style="display:flex; align-items:flex-end; gap:10px; height:150px;">
+            <?php foreach ($weekDays as $d): ?>
+                <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; height:100%; justify-content:flex-end;">
+                    <span style="font-size:11px; color:var(--text-muted,#8a8a9a);"><?php echo $d['count'] > 0 ? $d['count'] : ''; ?></span>
+                    <div style="width:100%; max-width:44px; height:<?php echo max(6, (int) round($d['count'] / $maxCount * 100)); ?>%; background:linear-gradient(180deg,var(--accent,#3b82f6),color-mix(in srgb,var(--accent,#3b82f6) 45%,transparent)); border-radius:6px 6px 2px 2px;"></div>
+                    <span style="font-size:11px; color:var(--text-muted,#8a8a9a);"><?php echo reseller_jdate($d['start'], 'd/m'); ?></span>
+                </div>
+            <?php endforeach; ?>
         </div>
     </div>
 </div>

@@ -6,9 +6,8 @@ $reseller = reseller_require_login();
 $pdo = $GLOBALS['pdo'];
 $rid = (int) $reseller['id'];
 
-// Heavy bot stack required only for actual panel provisioning.
+// Panel provisioning stack (Telegram bot removed).
 require_once __DIR__ . '/../../function.php';
-require_once __DIR__ . '/../../botapi.php';
 require_once __DIR__ . '/../../panels.php';
 $ManagePanel = new ManagePanel();
 
@@ -210,8 +209,8 @@ reseller_layout_head('ساخت سرویس', 'new', $reseller);
                     <input type="text" name="customer_name" class="form-control" placeholder="نام مشتری">
                 </div>
                 <div class="form-group" style="flex:1; min-width:200px;">
-                    <label class="form-label">آیدی عددی تلگرام مشتری (اختیاری)</label>
-                    <input type="text" name="customer_chat" class="form-control" placeholder="مثلاً 123456789">
+                    <label class="form-label">شناسه / کد مشتری (اختیاری)</label>
+                    <input type="text" name="customer_chat" class="form-control" placeholder="کد مشتری یا شماره تماس">
                 </div>
             </div>
 

@@ -228,6 +228,15 @@ $json_data    = json_encode($initialChart['data']);
                 </div>
             </div>
 
+            <div class="welcome-banner">
+                <div class="welcome-banner__copy">
+                    <div class="welcome-banner__eyebrow"><?php echo icon('sparkles', 'svg-icon svg-xs'); ?> فضای مدیریت وب‌محور فاکسیما</div>
+                    <h2>همه‌چیز برای مدیریت فروش شما آماده است</h2>
+                    <p>کاربران، سرویس‌ها، نمایندگان و اتصال به 3x-ui را از یک داشبورد ساده کنترل کنید.</p>
+                </div>
+                <a href="service.php" class="btn welcome-banner__action"><?php echo icon('arrow-left', 'svg-icon svg-sm'); ?> مشاهده سرویس‌ها</a>
+            </div>
+
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-card__icon icon-blue"><?php echo icon('users', 'svg-icon'); ?></div>

@@ -9,7 +9,6 @@ date_default_timezone_set('Asia/Tehran');
 
 require_once 'function.php';
 require_once 'config.php';
-require_once 'botapi.php';
 global $connect;
 
 
@@ -111,7 +110,6 @@ try {
             cardpayment VARCHAR(100) NOT NULL,
             codeInvitation VARCHAR(100) NULL,
             pricediscount VARCHAR(100) NULL   DEFAULT '0',
-            hide_mini_app_instruction VARCHAR(20) NULL   DEFAULT '0',
             maxbuyagent VARCHAR(100) NULL   DEFAULT '0',
             joinchannel VARCHAR(100) NULL   DEFAULT '0',
             checkstatus VARCHAR(50) NULL   DEFAULT '0',
@@ -150,9 +148,6 @@ try {
         addFieldToTable($tableName, 'pagenumber', '');
         addFieldToTable($tableName, 'codeInvitation', null);
         addFieldToTable($tableName, 'pricediscount', "0");
-        addFieldToTable($tableName, 'hide_mini_app_instruction', '0', "VARCHAR(20)");
-
-
         addFieldToTable($tableName, 'antispam_window_start', '0', "VARCHAR(20)");
         addFieldToTable($tableName, 'antispam_window_count', '0', "VARCHAR(20)");
         addFieldToTable($tableName, 'antispam_muted_until', '0', "VARCHAR(20)");
@@ -349,8 +344,6 @@ try {
         addFieldToTable("setting", "antispam_seconds", "3", "VARCHAR(20)");
         addFieldToTable("setting", "antispam_mute_seconds", "5", "VARCHAR(20)");
 
-        addFieldToTable("setting", "proxy_telegram_status", "0", "VARCHAR(20)");
-        addFieldToTable("setting", "proxy_telegram_url", "", "VARCHAR(500)");
         addFieldToTable("setting", "proxy_panel_status", "0", "VARCHAR(20)");
         addFieldToTable("setting", "proxy_panel_url", "", "VARCHAR(500)");
     }
@@ -377,7 +370,7 @@ try {
 
         $stmt = $pdo->prepare("INSERT INTO admin (id_admin, rule, username, password) VALUES (:id, :rule, :username, :password)");
         $stmt->execute([
-            ':id'       => (string) $adminnumber,
+            ':id'       => '0',
             ':rule'     => 'administrator',
             ':username' => 'admin',
             ':password' => $randomString,

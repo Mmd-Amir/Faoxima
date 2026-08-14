@@ -109,19 +109,19 @@ $testPublic = $hostOnly !== '' ? rx_diag_curl($pingUrl, null) : ['ok' => false, 
 $testLoop   = $hostOnly !== '' ? rx_diag_curl($pingUrl, '127.0.0.1') : ['ok' => false, 'code' => 0, 'err' => 'domainhosts خالی است'];
 
 // قابل‌نوشتن بودن مسیرها
-$cronbotDir = $root . '/cronbot';
+$cronDir = $root . '/cron';
 $logsDir    = $root . '/logs';
-$cronbotWritable = is_dir($cronbotDir) && is_writable($cronbotDir);
+$cronWritable = is_dir($cronDir) && is_writable($cronDir);
 $logsWritable    = is_dir($logsDir) ? is_writable($logsDir) : null;
 
 // قفل‌ها و فلگ‌ها
 $now = time();
 $locks = [];
-foreach (array_merge((array) glob($cronbotDir . '/*.lock'), (array) glob($root . '/cron/*.lock')) as $lf) {
+foreach (array_merge((array) glob($cronDir . '/*.lock'), (array) glob($root . '/cron/*.lock')) as $lf) {
     $locks[] = ['file' => basename(dirname($lf)) . '/' . basename($lf), 'age' => $now - (int) @filemtime($lf)];
 }
 $flags = [];
-foreach ((array) glob($cronbotDir . '/_*.flag') as $ff) {
+foreach ((array) glob($cronDir . '/_*.flag') as $ff) {
     $flags[] = ['file' => basename($ff), 'age' => $now - (int) @filemtime($ff)];
 }
 
@@ -215,7 +215,7 @@ header('Content-Type: text/html; charset=utf-8');
 
 <h2>مجوز نوشتن مسیرها</h2>
 <table>
-    <tr><th>cronbot/ قابل نوشتن</th><td><?php echo rx_diag_badge($cronbotWritable); ?></td></tr>
+    <tr><th>cron/ قابل نوشتن</th><td><?php echo rx_diag_badge($cronWritable); ?></td></tr>
     <tr><th>logs/ قابل نوشتن</th><td><?php echo $logsWritable === null ? '<span class="hint">وجود ندارد</span>' : rx_diag_badge($logsWritable); ?></td></tr>
 </table>
 

@@ -18,6 +18,24 @@ ini_set('error_log', 'error_log');
  * this token mode and the new endpoints. When it is empty the legacy cookie
  * behaviour is used unchanged, so existing older panels keep working.
  */
+if (!function_exists('xui_bytes_to_gb')) {
+    /**
+     * 3x-ui stores the client quota as `totalGB` in GB (model comment:
+     * "Total traffic limit in GB"), while everything else in this codebase
+     * (and the panel's own ClientTraffic.total) is bytes. Convert once at the
+     * API boundary so quotas are applied correctly on modern 3x-ui.
+     */
+    function xui_bytes_to_gb($bytes)
+    {
+        $bytes = (float) $bytes;
+        if ($bytes <= 0) {
+            return 0;
+        }
+        $gb = $bytes / 1073741824.0;
+        return $gb >= 1 ? (int) round($gb) : 1;
+    }
+}
+
 if (!function_exists('xui_panel_uses_token')) {
     function xui_panel_uses_token($panel)
     {
@@ -610,7 +628,7 @@ function addClient($namepanel, $usernameac, $Expire, $Total, $Uuid, $Flow, $subi
         $client = array(
             "id" => $Uuid,
             "email" => $usernameac,
-            "totalGB" => $Total,
+            "totalGB" => xui_bytes_to_gb($Total),
             "expiryTime" => $timeservice,
             "enable" => true,
             "tgId" => "",
@@ -643,7 +661,7 @@ function addClient($namepanel, $usernameac, $Expire, $Total, $Uuid, $Flow, $subi
                     "id" => $Uuid,
                     "flow" => $Flow,
                     "email" => $usernameac,
-                    "totalGB" => $Total,
+                    "totalGB" => xui_bytes_to_gb($Total),
                     "expiryTime" => $timeservice,
                     "enable" => true,
                     "tgId" => "",

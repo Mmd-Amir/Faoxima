@@ -49,11 +49,9 @@ $projectRoot = dirname(__DIR__, 2);
 
 require_once $projectRoot . '/config.php';
 require_once $projectRoot . '/jdf.php';
-require_once $projectRoot . '/botapi.php';
 require_once $projectRoot . '/Marzban.php';
 require_once $projectRoot . '/function.php';
 require_once $projectRoot . '/panels.php';
-require_once $projectRoot . '/keyboard.php';
 
 $ManagePanel = new ManagePanel();
 

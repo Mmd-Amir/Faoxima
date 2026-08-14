@@ -51,13 +51,8 @@ if ($dbname !== '' && $usernamedb !== '') {
     unset($rxInstallerPending);
 }
 
-$APIKEY                     = '';
-$adminnumber                = '';
-$domainhosts                = '';
-$usernamebot                = '';
-$telegramCurlTimeout        = 10;
-$telegramStrictIpValidation = true;
-$domainhosts                = rtrim(preg_replace('#^https?://#', '', $domainhosts), '/');
+$domainhosts = '';
+$domainhosts = rtrim(preg_replace('#^https?://#', '', $domainhosts), '/');
 
 
 if (!defined('APP_ORIGIN') && $domainhosts !== '') {
@@ -72,11 +67,6 @@ $GLOBALS['dsn']                        = $dsn;
 $GLOBALS['options']                    = $options;
 $GLOBALS['pdo']                        = $pdo;
 $GLOBALS['connect']                    = $connect;
-$GLOBALS['APIKEY']                     = $APIKEY;
-$GLOBALS['adminnumber']                = $adminnumber;
-$GLOBALS['domainhosts']                = $domainhosts;
-$GLOBALS['usernamebot']                = $usernamebot;
-$GLOBALS['telegramCurlTimeout']        = $telegramCurlTimeout;
-$GLOBALS['telegramStrictIpValidation'] = $telegramStrictIpValidation;
+$GLOBALS['domainhosts'] = $domainhosts;
 
 require_once __DIR__ . '/proxy.php';

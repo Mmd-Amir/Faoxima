@@ -566,7 +566,7 @@ if (!function_exists('buildCronScriptUrlByHost')) {
     function buildCronScriptUrlByHost(string $domainHost, string $script): string
     {
         $domainHost = preg_replace('#^https?://#i', '', trim($domainHost));
-        return 'https://' . rtrim($domainHost, '/') . '/cronbot/' . ltrim($script, '/');
+        return 'https://' . rtrim($domainHost, '/') . '/cron/' . ltrim($script, '/');
     }
 }
 

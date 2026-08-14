@@ -44,8 +44,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
         $password = (string) ($_POST['password'] ?? '');
         $name = trim((string) ($_POST['name'] ?? ''));
         $phone = trim((string) ($_POST['phone'] ?? ''));
-        $telegramId = preg_replace('/[^0-9]/', '', (string) ($_POST['telegram_id'] ?? ''));
-        $botToken = trim((string) ($_POST['bot_token'] ?? ''));
         $status = ($_POST['status'] ?? 'active') === 'active' ? 'active' : 'disabled';
         $limitBalance = preg_replace('/[^0-9]/', '', (string) ($_POST['limit_balance'] ?? ''));
         $limitServices = preg_replace('/[^0-9]/', '', (string) ($_POST['limit_services'] ?? ''));
@@ -68,19 +66,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
             }
             $hash = password_hash($password, PASSWORD_DEFAULT);
             $ins = $pdo->prepare(
-                "INSERT INTO reseller (username, password, name, phone, telegram_id, bot_token, status, balance, limit_balance, limit_services, allowed_products, min_withdraw, created_at)
-                 VALUES (:u, :p, :n, :ph, :tg, :bt, :st, 0, :lb, :ls, :ap, :mw, :ts)"
+                "INSERT INTO reseller (username, password, name, phone, status, balance, limit_balance, limit_services, allowed_products, min_withdraw, created_at)
+                 VALUES (:u, :p, :n, :ph, :st, 0, :lb, :ls, :ap, :mw, :ts)"
             );
-            $ins->execute([
-                ':u' => $username, ':p' => $hash, ':n' => $name, ':ph' => $phone, ':tg' => $telegramId,
-                ':bt' => $botToken, ':st' => $status, ':lb' => $limitBalance, ':ls' => $limitServices,
+            $ins->execute([                ':u' => $username, ':p' => $hash, ':n' => $name, ':ph' => $phone,
+ ':st' => $status, ':lb' => $limitBalance, ':ls' => $limitServices,
                 ':ap' => $allowedJson, ':mw' => $minWithdraw, ':ts' => (string) time(),
             ]);
             reseller_admin_redirect('نماینده با موفقیت ایجاد شد.');
         } else {
-            $sets = "username=:u, name=:n, phone=:ph, telegram_id=:tg, bot_token=:bt, status=:st, limit_balance=:lb, limit_services=:ls, allowed_products=:ap, min_withdraw=:mw";
+            if ($id <= 0) {
+                reseller_admin_redirect('شناسه نماینده نامعتبر است.', 'error');
+            }
+            $exists = $pdo->prepare("SELECT COUNT(*) FROM reseller WHERE username = :u AND id <> :id");
+            $exists->execute([':u' => $username, ':id' => $id]);
+            if ((int) $exists->fetchColumn() > 0) {
+                reseller_admin_redirect('این نام کاربری توسط نماینده دیگری استفاده شده است.', 'error');
+            }
+            $sets = "username=:u, name=:n, phone=:ph, status=:st, limit_balance=:lb, limit_services=:ls, allowed_products=:ap, min_withdraw=:mw";
             $params = [
-                ':u' => $username, ':n' => $name, ':ph' => $phone, ':tg' => $telegramId, ':bt' => $botToken,
+                ':u' => $username, ':n' => $name, ':ph' => $phone,
                 ':st' => $status, ':lb' => $limitBalance, ':ls' => $limitServices, ':ap' => $allowedJson,
                 ':mw' => $minWithdraw, ':id' => $id,
             ];
@@ -98,6 +103,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
         $id = (int) ($_POST['id'] ?? 0);
         $amount = (int) preg_replace('/[^0-9]/', '', (string) ($_POST['amount'] ?? '0'));
         $direction = ($_POST['direction'] ?? 'credit') === 'debit' ? 'debit' : 'credit';
+        if ($id <= 0) {
+            reseller_admin_redirect('شناسه نماینده نامعتبر است.', 'error');
+        }
         if ($amount <= 0) {
             reseller_admin_redirect('مبلغ نامعتبر است.', 'error');
         }
@@ -111,6 +119,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
 
     if ($action === 'delete') {
         $id = (int) ($_POST['id'] ?? 0);
+        if ($id <= 0) {
+            reseller_admin_redirect('شناسه نماینده نامعتبر است.', 'error');
+        }
         $pdo->prepare("DELETE FROM reseller WHERE id = :id")->execute([':id' => $id]);
         reseller_admin_redirect('نماینده حذف شد.');
     }
@@ -150,6 +161,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
 }
 
 $resellers = $pdo->query("SELECT * FROM reseller ORDER BY id DESC")->fetchAll(PDO::FETCH_ASSOC);
+
+// Mini-stats per reseller: active services + lifetime top-up.
+$svcStats = [];
+$svcRows = $pdo->query("SELECT reseller_id, COUNT(*) AS cnt FROM reseller_service WHERE status = 'active' GROUP BY reseller_id")->fetchAll(PDO::FETCH_ASSOC);
+foreach ($svcRows as $sr) {
+    $svcStats[(int) $sr['reseller_id']] = (int) $sr['cnt'];
+}
+$topupStats = [];
+$topupRows = $pdo->query("SELECT reseller_id, SUM(amount) AS total FROM reseller_ledger WHERE type = 'topup' GROUP BY reseller_id")->fetchAll(PDO::FETCH_ASSOC);
+foreach ($topupRows as $tr) {
+    $topupStats[(int) $tr['reseller_id']] = (int) $tr['total'];
+}
 $products = $pdo->query("SELECT code_product, name_product, reseller_status FROM product ORDER BY id DESC")->fetchAll(PDO::FETCH_ASSOC);
 $pendingWithdraws = $pdo->query(
     "SELECT w.*, r.username AS reseller_username FROM reseller_withdraw w
@@ -244,8 +267,6 @@ function res_e($s)
                         </div>
                         <div class="form-row" style="display:flex; gap:14px; flex-wrap:wrap;">
                             <div class="form-group" style="flex:1; min-width:160px;"><label class="form-label">تلفن</label><input type="text" name="phone" class="form-control"></div>
-                            <div class="form-group" style="flex:1; min-width:160px;"><label class="form-label">آیدی عددی تلگرام</label><input type="text" name="telegram_id" class="form-control" style="direction:ltr;"></div>
-                            <div class="form-group" style="flex:1; min-width:160px;"><label class="form-label">توکن ربات (اختیاری)</label><input type="text" name="bot_token" class="form-control" style="direction:ltr;"></div>
                         </div>
                         <div class="form-row" style="display:flex; gap:14px; flex-wrap:wrap;">
                             <div class="form-group" style="flex:1; min-width:150px;"><label class="form-label">سقف کیف پول (خالی=نامحدود)</label><input type="text" name="limit_balance" class="form-control" style="direction:ltr;"></div>
@@ -269,7 +290,7 @@ function res_e($s)
                 <div class="card__head"><div class="card__title"><?php echo icon('users', 'svg-icon svg-sm'); ?> لیست نمایندگان</div></div>
                 <div class="table-wrap">
                     <table class="app-table">
-                        <thead><tr><th>#</th><th>نام کاربری</th><th>نام</th><th>موجودی</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+                        <thead><tr><th>#</th><th>نام کاربری</th><th>نام</th><th>موجودی</th><th>سرویس‌های فعال</th><th>مجموع شارژ</th><th>وضعیت</th><th>عملیات</th></tr></thead>
                         <tbody>
                             <?php if (!$resellers): ?>
                                 <tr><td colspan="6" style="text-align:center; padding:24px;">هنوز نماینده‌ای ثبت نشده است.</td></tr>
@@ -281,13 +302,15 @@ function res_e($s)
                                         <td style="direction:ltr;"><?php echo res_e($r['username']); ?></td>
                                         <td><?php echo res_e($r['name'] ?? '—'); ?></td>
                                         <td style="direction:ltr;"><?php echo number_format((int) $r['balance']); ?></td>
+                                        <td><?php echo number_format((int) ($svcStats[(int) $r['id']] ?? 0)); ?></td>
+                                        <td style="direction:ltr;"><?php echo number_format((int) ($topupStats[(int) $r['id']] ?? 0)); ?></td>
                                         <td><span class="badge <?php echo $r['status'] === 'active' ? 'badge-success' : 'badge-gray'; ?>"><?php echo $r['status'] === 'active' ? 'فعال' : 'غیرفعال'; ?></span></td>
                                         <td>
                                             <button type="button" class="btn btn-sm btn-soft-info" onclick="document.getElementById('edit-<?php echo (int) $r['id']; ?>').style.display='block'"><?php echo icon('pen', 'svg-icon svg-xs'); ?> ویرایش</button>
                                         </td>
                                     </tr>
                                     <tr id="edit-<?php echo (int) $r['id']; ?>" style="display:none;">
-                                        <td colspan="6" style="background:var(--surface-2,rgba(255,255,255,0.03));">
+                                        <td colspan="8" style="background:var(--surface-2,rgba(255,255,255,0.03));">
                                             <div style="display:flex; gap:18px; flex-wrap:wrap; padding:10px 0;">
                                                 <form method="post" action="resellers.php" style="flex:2; min-width:320px;">
                                                     <input type="hidden" name="_csrf" value="<?php echo res_e($_csrf); ?>">
@@ -300,8 +323,6 @@ function res_e($s)
                                                     </div>
                                                     <div class="form-row" style="display:flex; gap:10px; flex-wrap:wrap;">
                                                         <div class="form-group" style="flex:1; min-width:120px;"><label class="form-label">تلفن</label><input type="text" name="phone" class="form-control" value="<?php echo res_e($r['phone']); ?>"></div>
-                                                        <div class="form-group" style="flex:1; min-width:120px;"><label class="form-label">آیدی تلگرام</label><input type="text" name="telegram_id" class="form-control" style="direction:ltr;" value="<?php echo res_e($r['telegram_id']); ?>"></div>
-                                                        <div class="form-group" style="flex:1; min-width:120px;"><label class="form-label">توکن ربات</label><input type="text" name="bot_token" class="form-control" style="direction:ltr;" value="<?php echo res_e($r['bot_token']); ?>"></div>
                                                     </div>
                                                     <div class="form-row" style="display:flex; gap:10px; flex-wrap:wrap;">
                                                         <div class="form-group" style="flex:1; min-width:110px;"><label class="form-label">سقف کیف پول</label><input type="text" name="limit_balance" class="form-control" style="direction:ltr;" value="<?php echo res_e($r['limit_balance']); ?>"></div>

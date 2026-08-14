@@ -19,8 +19,8 @@ if (!function_exists('reseller_nav_items')) {
             'new'      => ['icon' => 'cart-shopping', 'label' => 'ساخت سرویس',     'file' => 'service_new.php'],
             'reports'  => ['icon' => 'chart-line',    'label' => 'حسابداری',       'file' => 'reports.php'],
             'withdraw' => ['icon' => 'coins',         'label' => 'برداشت وجه',     'file' => 'withdraw.php'],
-            'bot'      => ['icon' => 'robot',          'label' => 'ربات فروش',      'file' => 'bot_settings.php'],
             'pricing'  => ['icon' => 'money-bill',     'label' => 'قیمت فروش',      'file' => 'pricing.php'],
+            'password' => ['icon' => 'lock',           'label' => 'تغییر رمز',      'file' => 'password.php'],
         ];
     }
 }
@@ -40,6 +40,7 @@ if (!function_exists('reseller_layout_head')) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title><?php echo reseller_e($title); ?> — پنل نمایندگی</title>
     <link rel="stylesheet" href="../css/theme.css">
+    <link rel="stylesheet" href="../css/aurora.css">
     <script src="../js/theme.js" defer></script>
     <script>
     (function () {

@@ -88,7 +88,7 @@ $basePath = rtrim($parts['path'] ?? '', '/');
 $buildCronUrl = static function (string $script) use ($scheme, $hostOnly, $basePath): string {
     $script = ltrim($script, '/');
     $path   = $basePath === '' ? '' : $basePath . '/';
-    return $scheme . '://' . $hostOnly . $path . 'cronbot/' . $script;
+    return $scheme . '://' . $hostOnly . $path . 'cron/' . $script;
 };
 
 if (!defined('APP_ROOT_PATH')) {
@@ -224,9 +224,9 @@ $dispatchAsync = static function (array $urls, bool $useLoopback): array {
 };
 
 
-$dueUrls = [];
+$dueUrls = []; // Web-only build: Telegram cron endpoints are removed.
 
-if ($bootstrapLoaded && function_exists('getCronJobDefinitions')) {
+if (false && $bootstrapLoaded && function_exists('getCronJobDefinitions')) {
     $definitions = getCronJobDefinitions();
     $schedules   = function_exists('loadCronSchedules') ? loadCronSchedules() : [];
 
@@ -251,7 +251,7 @@ if ($bootstrapLoaded && function_exists('getCronJobDefinitions')) {
     }
 
 
-    $extraScripts = ['index.php'];
+    $extraScripts = [];
     $definedScripts = [];
     foreach ($definitions as $definition) {
         if (isset($definition['script']) && is_string($definition['script'])) {

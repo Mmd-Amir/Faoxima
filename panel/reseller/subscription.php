@@ -23,7 +23,8 @@ if (!$svc) {
     http_response_code(404);
     ?>
     <!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="utf-8">
-    <link rel="stylesheet" href="../css/theme.css"><title>یافت نشد</title></head>
+    <link rel="stylesheet" href="../css/theme.css">
+    <link rel="stylesheet" href="../css/aurora.css"><title>یافت نشد</title></head>
     <body class="login-page"><div class="login-card"><div class="login-body" style="text-align:center;">
     <h2>اشتراک یافت نشد</h2><p class="text-muted">لینک نامعتبر است یا منقضی شده است.</p>
     </div></div></body></html>
@@ -51,6 +52,7 @@ $expireTs = (int) ($svc['expire_at'] ?? 0);
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>اشتراک سرویس</title>
     <link rel="stylesheet" href="../css/theme.css">
+    <link rel="stylesheet" href="../css/aurora.css">
     <style>
         .sub-wrap { max-width: 560px; margin: 24px auto; padding: 0 16px; }
         .sub-qr { display:flex; justify-content:center; padding:18px; }
@@ -62,8 +64,19 @@ $expireTs = (int) ($svc['expire_at'] ?? 0);
             border-radius:10px; padding:10px; margin-bottom:8px; }
     </style>
 </head>
-<body>
+<body class="public-page">
+<div class="public-brand">
+    <div class="public-brand__name"><span class="public-brand__mark"><?php echo icon('server', 'svg-icon svg-sm'); ?></span><span>فاکسیما · اشتراک امن</span></div>
+    <span class="app-status-pill">اتصال آماده</span>
+</div>
 <div class="sub-wrap">
+    <div class="welcome-banner" style="margin-bottom:18px;">
+        <div class="welcome-banner__copy">
+            <div class="welcome-banner__eyebrow"><?php echo icon('shield', 'svg-icon svg-xs'); ?> اشتراک امن فاکسیما</div>
+            <h2>اتصال شما آماده استفاده است</h2>
+            <p>لینک اشتراک را در برنامه‌ی مورد علاقه‌تان وارد کنید یا با QR اسکن کنید.</p>
+        </div>
+    </div>
     <div class="card">
         <div class="card__head"><div class="card__title"><?php echo icon('paper-plane', 'svg-icon svg-sm'); ?> اشتراک شما آماده است</div></div>
         <div style="padding:16px;">

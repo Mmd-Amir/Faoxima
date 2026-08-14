@@ -14,7 +14,7 @@ $offset = ($page - 1) * $perPage;
 $ledgerLabels = [
     'topup'           => 'شارژ کیف پول',
     'purchase'        => 'خرید سرویس',
-    'sale'            => 'فروش به مشتری (ربات)',
+    'sale'            => 'فروش به مشتری',
     'withdraw'        => 'برداشت وجه',
     'withdraw_refund' => 'بازگشت برداشت',
     'admin_credit'    => 'افزایش توسط مدیر',
@@ -37,6 +37,29 @@ $stmt = $pdo->prepare("SELECT * FROM reseller_ledger WHERE $where ORDER BY id DE
 $stmt->execute($params);
 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// CSV export of the current filtered ledger.
+if (isset($_GET['csv']) && $_GET['csv'] === '1') {
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename=ledger.csv');
+    $out = fopen('php://output', 'w');
+    fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM for Excel
+    fputcsv($out, ['نوع', 'مبلغ', 'موجودی پس از تراکنش', 'توضیحات', 'مرجع', 'تاریخ']);
+    $csvStmt = $pdo->prepare("SELECT * FROM reseller_ledger WHERE $where ORDER BY id DESC");
+    $csvStmt->execute($params);
+    while ($r = $csvStmt->fetch(PDO::FETCH_ASSOC)) {
+        fputcsv($out, [
+            $ledgerLabels[$r['type']] ?? $r['type'],
+            (string) $r['amount'],
+            (string) $r['balance_after'],
+            (string) ($r['description'] ?? ''),
+            (string) ($r['ref'] ?? ''),
+            reseller_jdate($r['created_at']),
+        ]);
+    }
+    fclose($out);
+    exit;
+}
+
 // Lifetime summaries.
 $sum = static function ($pdo, $rid, $type) {
     $s = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM reseller_ledger WHERE reseller_id = :id AND type = :t");
@@ -46,7 +69,6 @@ $sum = static function ($pdo, $rid, $type) {
 $totalTopup = $sum($pdo, $rid, 'topup');
 $totalSpent = abs($sum($pdo, $rid, 'purchase'));
 $totalWithdraw = abs($sum($pdo, $rid, 'withdraw'));
-$totalSales = $sum($pdo, $rid, 'sale');
 
 reseller_layout_head('حسابداری', 'reports', $reseller);
 ?>
@@ -71,10 +93,6 @@ reseller_layout_head('حسابداری', 'reports', $reseller);
         <div class="stat-card__info"><span class="stat-card__value"><?php echo number_format($totalWithdraw); ?></span><span class="stat-card__label">مجموع برداشت</span></div>
     </div>
     <div class="stat-card">
-        <div class="stat-card__icon icon-green"><?php echo icon('robot', 'svg-icon'); ?></div>
-        <div class="stat-card__info"><span class="stat-card__value"><?php echo number_format($totalSales); ?></span><span class="stat-card__label">مجموع فروش ربات</span></div>
-    </div>
-    <div class="stat-card">
         <div class="stat-card__icon icon-rose"><?php echo icon('wallet', 'svg-icon'); ?></div>
         <div class="stat-card__info"><span class="stat-card__value"><?php echo number_format((int) $reseller['balance']); ?></span><span class="stat-card__label">موجودی فعلی</span></div>
     </div>
@@ -83,12 +101,12 @@ reseller_layout_head('حسابداری', 'reports', $reseller);
 <div class="card mt-3">
     <div class="card__head">
         <div class="card__title"><?php echo icon('receipt', 'svg-icon svg-sm'); ?> دفتر کل</div>
+        <a href="reports.php?type=<?php echo reseller_e($typeFilter); ?>&csv=1" class="btn btn-sm btn-outline">خروجی CSV</a>
         <div class="chip-row">
-            <a href="reports.php" class="chip<?php echo $typeFilter === 'all' ? ' active' : ''; ?>"><span>همه</span></a>
-            <a href="reports.php?type=topup" class="chip<?php echo $typeFilter === 'topup' ? ' active' : ''; ?>"><span>شارژ</span></a>
-            <a href="reports.php?type=purchase" class="chip<?php echo $typeFilter === 'purchase' ? ' active' : ''; ?>"><span>خرید</span></a>
-            <a href="reports.php?type=sale" class="chip<?php echo $typeFilter === 'sale' ? ' active' : ''; ?>"><span>فروش ربات</span></a>
-            <a href="reports.php?type=withdraw" class="chip<?php echo $typeFilter === 'withdraw' ? ' active' : ''; ?>"><span>برداشت</span></a>
+            <a href="reports.php" class="chip<?php echo $typeFilter === 'all' ? ' is-active' : ''; ?>"><span>همه</span></a>
+            <a href="reports.php?type=topup" class="chip<?php echo $typeFilter === 'topup' ? ' is-active' : ''; ?>"><span>شارژ</span></a>
+            <a href="reports.php?type=purchase" class="chip<?php echo $typeFilter === 'purchase' ? ' is-active' : ''; ?>"><span>خرید</span></a>
+            <a href="reports.php?type=withdraw" class="chip<?php echo $typeFilter === 'withdraw' ? ' is-active' : ''; ?>"><span>برداشت</span></a>
         </div>
     </div>
     <div class="table-wrap">

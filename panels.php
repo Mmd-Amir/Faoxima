@@ -1677,7 +1677,7 @@ class ManagePanel
                                 "id" => $clients['uuid'],
                                 "flow" => "",
                                 "email" => $clients['email'],
-                                "totalGB" => $clients['total'],
+                                "totalGB" => xui_bytes_to_gb($clients['total']),
                                 "expiryTime" => $clients['expiryTime'],
                                 "enable" => true,
                                 "subId" => $clients['subId'],
@@ -2245,7 +2245,7 @@ class ManagePanel
                     array(
                         'clients' => array(
                             array(
-                                "totalGB" => $data_limit_new,
+                                "totalGB" => xui_bytes_to_gb($data_limit_new),
                                 "expiryTime" => $time_new * 1000,
                                 "enable" => true,
                             )
@@ -2442,7 +2442,7 @@ class ManagePanel
                     array(
                         'clients' => array(
                             array(
-                                "totalGB" => $new_limit,
+                                "totalGB" => xui_bytes_to_gb($new_limit),
                             )
                         ),
                     )

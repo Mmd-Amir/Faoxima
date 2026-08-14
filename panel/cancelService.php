@@ -105,7 +105,7 @@ try {
             'sortid'  => 2000000000 + (int)($r['id'] ?? 0),
             'idlabel' => '#' . (int)($r['id'] ?? 0),
             'type'    => fx_req_type($r['id_order'] ?? '', $method),
-            'source'  => ($src === 'miniapp') ? 'مینی‌اپ' : 'ربات',
+            'source'  => 'پنل وب',
             'user'    => (string)($r['id_user'] ?? ''),
             'details' => implode(' — ', $details),
             'amount'  => (int)($r['price'] ?? 0),

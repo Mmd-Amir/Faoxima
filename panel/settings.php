@@ -1,14 +1,6 @@
 <?php
 
 
-if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
-    define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
-}
-
-
-if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
-    define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
-}
 session_start();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/lib/icons.php';
@@ -37,17 +29,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $SETTING_GROUPS = [
     'general' => [
-        'title' => 'تنظیمات عمومی ربات',
+        'title' => 'تنظیمات عمومی پنل',
         'icon'  => 'sliders',
         'fields' => [
-            ['type' => 'toggle', 'col' => 'Bot_Status',        'label' => 'وضعیت ربات (روشن/خاموش)',         'on' => 'botstatuson',         'off' => 'botstatusoff'],
+            ['type' => 'toggle', 'col' => 'Bot_Status',        'label' => 'فعال بودن فروشگاه',                 'on' => 'botstatuson',         'off' => 'botstatusoff'],
             ['type' => 'toggle', 'col' => 'roll_Status',       'label' => 'قوانین استفاده',                  'on' => 'rolleon',             'off' => 'rolleoff'],
             ['type' => 'toggle', 'col' => 'get_number',        'label' => 'الزام احراز شماره موبایل',         'on' => 'onAuthenticationphone','off' => 'offAuthenticationphone'],
             ['type' => 'toggle', 'col' => 'iran_number',       'label' => 'فقط شماره‌های ایرانی',             'on' => 'onAuthenticationiran','off' => 'offAuthenticationiran'],
             ['type' => 'toggle', 'col' => 'NotUser',           'label' => 'مسدودسازی در صورت نقض قانون',      'on' => 'onnotuser',           'off' => 'offnotuser'],
-            ['type' => 'toggle', 'col' => 'statusnewuser',     'label' => 'گزارش کاربر جدید به کانال',        'on' => 'onnewuser',           'off' => 'offnewuser'],
-            ['type' => 'text',   'col' => 'Channel_Report',    'label' => 'آیدی کانال گزارش',                'placeholder' => '@channel یا -100…'],
-            ['type' => 'toggle', 'col' => 'verifystart',       'label' => 'تایید عضویت در کانال هنگام شروع',  'on' => 'onverify',            'off' => 'offverify'],
+
             ['type' => 'toggle', 'col' => 'verifybucodeuser',  'label' => 'تایید با کد یکبارمصرف برای خرید',  'on' => 'onverify',            'off' => 'offverify'],
             ['type' => 'toggle', 'col' => 'showcard',          'label' => 'نمایش لیست محصولات',               'on' => '1',                   'off' => '0'],
             ['type' => 'toggle', 'col' => 'statuscategory',    'label' => 'دسته‌بندی محصولات',                'on' => 'oncategory',          'off' => 'offcategory'],
@@ -115,7 +105,7 @@ $SETTING_GROUPS = [
         'fields' => [
             ['type' => 'toggle', 'col' => 'statusnoteforf',   'label' => 'الزام نوشتن یادداشت در سفارش',     'on' => '1',                   'off' => '0'],
             ['type' => 'toggle', 'col' => 'statuscopycart',   'label' => 'دکمه کپی شماره کارت',              'on' => '1',                   'off' => '0'],
-            ['type' => 'toggle', 'col' => 'linkappstatus',    'label' => 'نمایش لینک نصب اپلیکیشن‌ها',       'on' => '1',                   'off' => '0'],
+
         ],
     ],
 
@@ -126,8 +116,8 @@ $SETTING_GROUPS = [
             ['type' => 'toggle', 'col' => 'antispam_status',     'label' => 'فعال‌سازی ضد اسپم',             'on' => '1',                   'off' => '0'],
             ['type' => 'number', 'col' => 'antispam_msg_count', 'label' => 'حداکثر پیام مجاز در بازه',       'placeholder' => '5'],
             ['type' => 'number', 'col' => 'antispam_seconds',    'label' => 'بازه زمانی (ثانیه)',            'placeholder' => '10'],
-            ['type' => 'number', 'col' => 'antispam_mute_seconds','label'=>'مدت سکوت ربات (ثانیه)',          'placeholder' => '60'],
-            ['type' => 'toggle', 'col' => 'premium_emoji_status','label' => 'ایموجی پریمیوم تلگرام',        'on' => '1',                   'off' => '0'],
+            ['type' => 'number', 'col' => 'antispam_mute_seconds','label'=>'مدت سکوت درخواست‌ها (ثانیه)',          'placeholder' => '60'],
+
         ],
     ],
 
@@ -135,12 +125,10 @@ $SETTING_GROUPS = [
         'title' => 'پراکسی (برای هاست‌های ایران)',
         'icon'  => 'shield',
         'fields' => [
-            ['type' => 'toggle', 'col' => 'proxy_telegram_status', 'label' => 'استفاده از پراکسی برای اتصال به تلگرام', 'on' => '1', 'off' => '0'],
-            ['type' => 'text',   'col' => 'proxy_telegram_url',    'label' => 'آدرس پراکسی تلگرام', 'placeholder' => 'socks5h://user:pass@1.2.3.4:1080',
-             'hint'  => 'قالب: scheme://[user:pass@]host:port — پشتیبانی از http، socks4، socks5 و socks5h. اگر scheme ننویسید http در نظر گرفته می‌شود. برای رد کردن DNS از داخل ایران، socks5h توصیه می‌شود.'],
-            ['type' => 'toggle', 'col' => 'proxy_panel_status',    'label' => 'استفاده از پراکسی برای اتصال به پنل‌ها', 'on' => '1', 'off' => '0'],
+
             ['type' => 'text',   'col' => 'proxy_panel_url',       'label' => 'آدرس پراکسی پنل‌ها', 'placeholder' => 'socks5h://user:pass@1.2.3.4:1080',
-             'hint'  => 'برای اتصال ربات به پنل‌های خارج از ایران (مرزبان، 3x-ui و …) از این پراکسی استفاده می‌شود. می‌توانید همان پراکسی تلگرام را وارد کنید.'],
+             'hint'  => 'قالب: scheme://[user:pass@]host:port — پشتیبانی از http، socks4، socks5 و socks5h. اگر scheme ننویسید http در نظر گرفته می‌شود. برای رد کردن DNS از داخل ایران، socks5h توصیه می‌شود.'],
+            ['type' => 'toggle', 'col' => 'proxy_panel_status',    'label' => 'فعال‌سازی پراکسی پنل‌ها', 'on' => '1', 'off' => '0'],
         ],
     ],
 ];
@@ -231,7 +219,7 @@ function faoxima_is_toggle_on($cur, $on, $off) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>تنظیمات ربات | پنل فاکسیما</title>
+    <title>تنظیمات پنل | فاکسیما</title>
     <link rel="stylesheet" href="css/theme.css">
     <link rel="stylesheet" href="css/admin-extra.css">
     <script src="js/theme.js" defer>
@@ -250,9 +238,9 @@ function faoxima_is_toggle_on($cur, $on, $off) {
                 <div>
                     <div class="page-head__title">
                         <?php echo icon('sliders', 'svg-icon svg-lg'); ?>
-                        تنظیمات ربات
+                        تنظیمات پنل
                     </div>
-                    <div class="page-head__sub">پیکربندی‌های اصلی ربات — هر فیلد دقیقاً همان‌چیزی است که در منوی ادمین تلگرام تنظیم می‌کنید</div>
+                    <div class="page-head__sub">پیکربندی فروشگاه، امنیت و اتصال پنل‌ها</div>
                 </div>
             </div>
 

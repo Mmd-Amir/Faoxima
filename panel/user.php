@@ -2,7 +2,6 @@
 session_start();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/lib/icons.php';
-require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../function.php';
 
 
@@ -23,9 +22,6 @@ $query->execute();
 $user = $query->fetch(PDO::FETCH_ASSOC);
 
 $setting        = select("setting", "*", null, null);
-$otherservice   = select("topicid", "idreport", "report", "otherservice", "select")['idreport'];
-$paymentreports = select("topicid", "idreport", "report", "paymentreport", "select")['idreport'];
-
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['_action'])) {
     $targetUid = (string)($_GET['id'] ?? '');

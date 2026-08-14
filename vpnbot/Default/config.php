@@ -1,3 +1,0 @@
-<?php
-
-$ApiToken = "BotTokenNew";
