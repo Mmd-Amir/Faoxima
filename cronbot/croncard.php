@@ -82,7 +82,7 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $atomicCard = $pdo->prepare(
             "UPDATE Payment_report SET payment_Status = 'paid', "
             . "dec_not_confirmed = 'تایید توسط ربات بدون بررسی' "
-            . "WHERE id_order = :id AND payment_Status <> 'paid'"
+            . "WHERE id_order = :id AND payment_Status = 'waiting'"
         );
         $atomicCard->bindValue(':id', $Payment_report['id_order'], PDO::PARAM_STR);
         $atomicCard->execute();

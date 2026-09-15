@@ -794,6 +794,16 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
         sendmessage($from_id, faoxima_textbot_get('dyn_errors_data_fetch_restart', '❌ خطایی در هنگام دریافت اطلاعات رخ داده است لطفا مراحل را از اول انجام دهید'), $keyboard, 'HTML');
         return;
     }
+    $receiptReserveStmt = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'pending', dec_not_confirmed = 'receipt-uploading', at_updated = :at_updated WHERE id_order = :id_order AND id_user = :id_user AND payment_Status = 'Unpaid'");
+    $receiptReserveStmt->execute([
+        ':at_updated' => date('Y/m/d H:i:s'),
+        ':id_order' => $PaymentReport['id_order'],
+        ':id_user' => $from_id,
+    ]);
+    if ($receiptReserveStmt->rowCount() !== 1) {
+        sendmessage($from_id, faoxima_textbot_get('dyn_errors_data_fetch_restart', '❌ خطایی در هنگام دریافت اطلاعات رخ داده است لطفا مراحل را از اول انجام دهید'), $keyboard, 'HTML');
+        return;
+    }
     $Confirm_pay = json_encode([
         'inline_keyboard' => [
             [
@@ -811,6 +821,8 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     if ($split_data[0] == "getconfigafterpay") {
         $get_invoice = select("invoice", "*", "username", $split_data[1], "select");
         if ($get_invoice == false) {
+            $pdo->prepare("UPDATE Payment_report SET payment_Status = 'Unpaid', dec_not_confirmed = NULL, at_updated = NULL WHERE id_order = :id_order AND payment_Status = 'pending' AND dec_not_confirmed = 'receipt-uploading'")
+                ->execute([':id_order' => $PaymentReport['id_order']]);
             sendmessage($from_id, faoxima_textbot_get('dyn_errors_purchase_or_payment_restart', '❌ خطایی رخ داده است لطفا مراحل خرید یا پرداخت  را مجدد انجام دهید'), $keyboard, 'HTML');
             return;
         }
@@ -839,6 +851,8 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
         $stmt->execute();
         $service_other = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($service_other == false) {
+            $pdo->prepare("UPDATE Payment_report SET payment_Status = 'Unpaid', dec_not_confirmed = NULL, at_updated = NULL WHERE id_order = :id_order AND payment_Status = 'pending' AND dec_not_confirmed = 'receipt-uploading'")
+                ->execute([':id_order' => $PaymentReport['id_order']]);
             sendmessage($from_id, faoxima_textbot_get('dyn_errors_data_fetch_restart', '❌ خطایی در هنگام دریافت اطلاعات رخ داده است لطفا مراحل را از اول انجام دهید'), $keyboard, 'HTML');
             return;
         }
@@ -989,9 +1003,16 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             sendmessage($id_admin, $textsendrasid, $Confirm_pay, 'HTML');
         }
     }
-    update("Payment_report", "payment_Status", "waiting", "id_order", $PaymentReport['id_order']);
     $dateacc = date('Y/m/d H:i:s');
-    update("Payment_report", "at_updated", $dateacc, "id_order", $PaymentReport['id_order']);
+    $stmt = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'waiting', dec_not_confirmed = 'receipt-submitted', at_updated = :at_updated WHERE id_order = :id_order AND payment_Status = 'pending' AND dec_not_confirmed = 'receipt-uploading'");
+    $stmt->execute([
+        ':at_updated' => $dateacc,
+        ':id_order' => $PaymentReport['id_order'],
+    ]);
+    if ($stmt->rowCount() !== 1) {
+        sendmessage($from_id, faoxima_textbot_get('dyn_errors_data_fetch_restart', '❌ خطایی در هنگام دریافت اطلاعات رخ داده است لطفا مراحل را از اول انجام دهید'), $keyboard, 'HTML');
+        return;
+    }
 } elseif ($datain == "Discount") {
     $bakinfos = json_encode([
         'inline_keyboard' => [

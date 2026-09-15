@@ -4798,6 +4798,15 @@ $caption";
 } elseif (preg_match('/Confirm_pay_(\w+)/', $datain, $dataget) && ($adminrulecheck['rule'] == "administrator" || $adminrulecheck['rule'] == "Seller")) {
     $order_id = $dataget[1];
     $Payment_report = select("Payment_report", "*", "id_order", $order_id, "select");
+    if ($Payment_report == false) {
+        telegram('answerCallbackQuery', array(
+            'callback_query_id' => $callback_query_id,
+            'text' => "تراکنش حذف شده است",
+            'show_alert' => true,
+            'cache_time' => 5,
+        ));
+        return;
+    }
     $_receipt_chat_id = !empty($Payment_report['report_chat_id']) ? $Payment_report['report_chat_id'] : ($update['callback_query']['message']['chat']['id'] ?? $from_id);
     $_receipt_msg_id = !empty($Payment_report['report_message_id']) ? (int) $Payment_report['report_message_id'] : (int) $message_id;
     $_receipt_thread_id = !empty($Payment_report['report_thread_id']) ? (int) $Payment_report['report_thread_id'] : (int) ($update['callback_query']['message']['message_thread_id'] ?? 0);
@@ -4811,15 +4820,6 @@ $caption";
             ]
         ]
     ]);
-    if ($Payment_report == false) {
-        telegram('answerCallbackQuery', array(
-            'callback_query_id' => $callback_query_id,
-            'text' => "تراکنش حذف شده است",
-            'show_alert' => true,
-            'cache_time' => 5,
-        ));
-        return;
-    }
     $sql = "SELECT * FROM Payment_report WHERE id_user = '{$Payment_report['id_user']}' AND payment_Status != 'paid' AND payment_Status != 'Unpaid' AND payment_Status != 'expire' AND payment_Status != 'reject' AND payment_Status != 'cancelled' AND  (id_invoice  LIKE CONCAT('%','getconfigafterpay', '%') OR id_invoice  LIKE CONCAT('%','getextenduser', '%') OR id_invoice  LIKE CONCAT('%','getextravolumeuser', '%') OR id_invoice  LIKE CONCAT('%','getextratimeuser', '%'))";
     $stmt = $pdo->prepare($sql);
     $stmt->execute();
@@ -4851,7 +4851,7 @@ $caption";
 
     try {
         $atomicStmt = $pdo->prepare(
-            "UPDATE Payment_report SET payment_Status = 'paid' WHERE id_order = :id_order AND payment_Status <> 'paid' AND payment_Status <> 'reject'"
+            "UPDATE Payment_report SET payment_Status = 'paid' WHERE id_order = :id_order AND payment_Status = 'waiting'"
         );
         $atomicStmt->bindValue(':id_order', $Payment_report['id_order'], PDO::PARAM_STR);
         $atomicStmt->execute();
@@ -4936,9 +4936,6 @@ $caption";
 } elseif (preg_match('/reject_pay_(\w+)/', $datain, $datagetr) && ($adminrulecheck['rule'] == "administrator" || $adminrulecheck['rule'] == "Seller")) {
     $id_order = $datagetr[1];
     $Payment_report = select("Payment_report", "*", "id_order", $id_order, "select");
-    $_receipt_chat_id = !empty($Payment_report['report_chat_id']) ? $Payment_report['report_chat_id'] : ($update['callback_query']['message']['chat']['id'] ?? $from_id);
-    $_receipt_msg_id = !empty($Payment_report['report_message_id']) ? (int) $Payment_report['report_message_id'] : (int) $message_id;
-    $_receipt_thread_id = !empty($Payment_report['report_thread_id']) ? (int) $Payment_report['report_thread_id'] : (int) ($update['callback_query']['message']['message_thread_id'] ?? 0);
     if ($Payment_report == false) {
         telegram('answerCallbackQuery', array(
             'callback_query_id' => $callback_query_id,
@@ -4948,8 +4945,9 @@ $caption";
         ));
         return;
     }
-    update("user", "Processing_value", $Payment_report['id_user'], "id", $from_id);
-    update("user", "Processing_value_one", $id_order, "id", $from_id);
+    $_receipt_chat_id = !empty($Payment_report['report_chat_id']) ? $Payment_report['report_chat_id'] : ($update['callback_query']['message']['chat']['id'] ?? $from_id);
+    $_receipt_msg_id = !empty($Payment_report['report_message_id']) ? (int) $Payment_report['report_message_id'] : (int) $message_id;
+    $_receipt_thread_id = !empty($Payment_report['report_thread_id']) ? (int) $Payment_report['report_thread_id'] : (int) ($update['callback_query']['message']['message_thread_id'] ?? 0);
     if ($Payment_report['payment_Status'] == "reject" || $Payment_report['payment_Status'] == "paid") {
         telegram('answerCallbackQuery', array(
             'callback_query_id' => $callback_query_id,
@@ -4959,7 +4957,19 @@ $caption";
         ));
         return;
     }
-    update("Payment_report", "payment_Status", "reject", "id_order", $id_order);
+    $rejectStmt = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'reject' WHERE id_order = :id_order AND payment_Status = 'waiting'");
+    $rejectStmt->execute([':id_order' => $id_order]);
+    if ($rejectStmt->rowCount() !== 1) {
+        telegram('answerCallbackQuery', array(
+            'callback_query_id' => $callback_query_id,
+            'text' => $textbotlang['Admin']['Payment']['reviewedpayment'],
+            'show_alert' => true,
+            'cache_time' => 0,
+        ));
+        return;
+    }
+    update("user", "Processing_value", $Payment_report['id_user'], "id", $from_id);
+    update("user", "Processing_value_one", $id_order, "id", $from_id);
 
     $_reject_reason_kb = json_encode([
         'inline_keyboard' => [

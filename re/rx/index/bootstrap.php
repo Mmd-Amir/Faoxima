@@ -1066,7 +1066,7 @@ if ($text == "version") {
     update("user", "Processing_value_tow", "0", "id", $from_id);
     update("user", "Processing_value_four", "0", "id", $from_id);
     $_bk_id  = (string) $from_id;
-    $_bk_del = $connect->prepare("DELETE FROM Payment_report WHERE id_user = ? AND payment_Status IN ('Unpaid','pending','waiting') AND Payment_Method = 'cart to cart' AND (dec_not_confirmed IS NULL OR dec_not_confirmed = '')");
+    $_bk_del = $connect->prepare("DELETE FROM Payment_report WHERE id_user = ? AND payment_Status IN ('Unpaid','pending') AND Payment_Method = 'cart to cart' AND (dec_not_confirmed IS NULL OR dec_not_confirmed = '')");
     $_bk_del->bind_param("s", $_bk_id);
     $_bk_del->execute();
     $_bk_del->close();

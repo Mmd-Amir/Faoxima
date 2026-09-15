@@ -295,7 +295,7 @@ final class PaymentInitHandler extends BaseHandler
             $stmt = $pdo->prepare(
                 "DELETE FROM Payment_report
                   WHERE id_user = :u
-                    AND payment_Status IN ('Unpaid','pending','waiting')
+                    AND payment_Status IN ('Unpaid','pending')
                     AND (Payment_Method = 'cart to cart' OR Payment_Method = 'carttocart_pv')
                     AND source = 'miniapp'
                     AND (dec_not_confirmed IS NULL OR dec_not_confirmed = '')"

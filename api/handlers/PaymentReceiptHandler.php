@@ -49,6 +49,9 @@ final class PaymentReceiptHandler extends BaseHandler
         if (in_array($currentStatus, ['waiting', 'pending'], true) && $receiptMarker !== '') {
             FaoximaResponse::fail(409, faoxima_textbot_get('dyn_receipt_already_pending_review', '⏳ رسید این پرداخت قبلاً ارسال شده و در انتظار بررسی ادمین است.'));
         }
+        if ($currentStatus !== 'unpaid') {
+            FaoximaResponse::fail(409, faoxima_textbot_get('dyn_receipt_payment_not_pending', '❌ این تراکنش دیگر در وضعیت قابل ارسال رسید نیست.'));
+        }
 
 
         $admins = [];
@@ -312,7 +315,7 @@ final class PaymentReceiptHandler extends BaseHandler
                 $stmt = $pdo->prepare(
                     'UPDATE Payment_report
                         SET payment_Status = :s, dec_not_confirmed = :d, at_updated = :au
-                      WHERE id_order = :o AND id_user = :u AND source = \'miniapp\''
+                      WHERE id_order = :o AND id_user = :u AND source = \'miniapp\' AND payment_Status = \'Unpaid\''
                 );
                 $stmt->execute([
                     ':s' => 'waiting',
@@ -321,7 +324,7 @@ final class PaymentReceiptHandler extends BaseHandler
                     ':o' => $orderId,
                     ':u' => $this->user['id'],
                 ]);
-                $statusUpdated = true;
+                $statusUpdated = $stmt->rowCount() === 1;
             } catch (Throwable $e) {
                 FaoximaLogger::error('Payment_report status update failed', ['err' => $e->getMessage(), 'order' => $orderId, 'user_id' => $this->user['id']]);
             }

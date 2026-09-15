@@ -3230,7 +3230,7 @@ $textonebuy
         $_purge->execute();
         $_purge->close();
 
-        $_purge_ab = $connect->prepare("DELETE FROM Payment_report WHERE id_user = ? AND payment_Status IN ('Unpaid','pending','waiting') AND Payment_Method = 'cart to cart' AND (dec_not_confirmed IS NULL OR dec_not_confirmed = '')");
+        $_purge_ab = $connect->prepare("DELETE FROM Payment_report WHERE id_user = ? AND payment_Status IN ('Unpaid','pending') AND Payment_Method = 'cart to cart' AND (dec_not_confirmed IS NULL OR dec_not_confirmed = '')");
         $_purge_ab->bind_param("s", $from_id_sql);
         $_purge_ab->execute();
         $_purge_ab->close();
