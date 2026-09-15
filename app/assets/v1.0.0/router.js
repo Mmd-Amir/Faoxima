@@ -1,12 +1,12 @@
-import { home } from './pages/home.js?v=0.0.52';
+import { home } from './pages/home.js?v=0.0.54';
 import { services as servicesPage } from './pages/services.js?v=0.0.52';
 
-import { buy as buyPage } from './pages/buy.js?v=0.0.53';
+import { buy as buyPage } from './pages/buy.js?v=0.0.54';
 import { account as accountPage } from './pages/account.js?v=0.0.52';
 import { settings as settingsPage } from './pages/settings.js?v=0.0.52';
-import { recharge as rechargePage } from './pages/recharge.js?v=0.0.52';
+import { recharge as rechargePage } from './pages/recharge.js?v=0.0.54';
 import { icon } from './icons.js?v=0.0.52';
-import { methodLabel } from './payment-ui.js?v=0.0.52';
+import { methodLabel } from './payment-ui.js?v=0.0.54';
 
 
 let _watchModulePromise = null;
@@ -160,7 +160,7 @@ function loadServicePage() {
 
 
     const url = new URL('./pages/service.js', import.meta.url);
-    url.searchParams.set('v', ver);
+    url.searchParams.set('v', `${ver}-0.0.54`);
     _serviceModulePromise = import(url.href).catch((err) => {
 
 

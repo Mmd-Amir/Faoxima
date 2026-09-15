@@ -165,14 +165,15 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
         step('home', $from_id);
 
         $_cv_note = "<blockquote>ℹ️ کاربر <code>{$from_id}</code> از کارت تاییدشده **** **** **** {$_cv_last4} استفاده کرده است.</blockquote>\n<blockquote>🛒 کد پیگیری: {$orderId}</blockquote>\nلطفاً ۴ رقم آخر رسید را بررسی کنید.";
-        $_cv_report_group = trim((string)($setting['Channel_Report'] ?? ''));
-        if ($_cv_report_group !== '' && $_cv_report_group !== '0') {
+        $_cv_receipt_route = rxReceiptDeliveryRoute('paymentreport');
+        $_cv_report_group = trim((string)($_cv_receipt_route['chat_id'] ?? ''));
+        if (!empty($_cv_receipt_route['topic_enabled']) && $_cv_report_group !== '') {
             $_cv_topic_payload = ['chat_id' => $_cv_report_group, 'text' => $_cv_note, 'parse_mode' => 'HTML'];
-            if (!empty($paymentreports)) {
-                $_cv_topic_payload['message_thread_id'] = $paymentreports;
+            if (!empty($_cv_receipt_route['thread_id'])) {
+                $_cv_topic_payload['message_thread_id'] = (int)$_cv_receipt_route['thread_id'];
             }
             telegram('sendmessage', $_cv_topic_payload);
-        } else {
+        } elseif (empty($_cv_receipt_route['topic_enabled'])) {
             foreach ($admin_ids as $_cv_adm_id) {
                 sendmessage($_cv_adm_id, $_cv_note, null, 'HTML');
             }
@@ -946,9 +947,10 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
         sendmessage($from_id, $textbotlang['users']['Balance']['Send-receipt'], $keyboard, 'HTML');
     }
     $_card_fid = (string)($PaymentReport['card_photo_file_id'] ?? '');
-    $_receipt_report_group = trim((string)($setting['Channel_Report'] ?? ''));
-    if ($_receipt_report_group !== '' && $_receipt_report_group !== '0') {
-        $_receipt_thread = !empty($receiptreport) ? $receiptreport : null;
+    $_receipt_route = rxReceiptDeliveryRoute();
+    $_receipt_report_group = trim((string)($_receipt_route['chat_id'] ?? ''));
+    if (!empty($_receipt_route['topic_enabled']) && $_receipt_report_group !== '') {
+        $_receipt_thread = !empty($_receipt_route['thread_id']) ? (int)$_receipt_route['thread_id'] : null;
         if ($_card_fid !== '') {
             telegram('sendMediaGroup', [
                 'chat_id' => $_receipt_report_group,
@@ -979,7 +981,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             $pdo->prepare("UPDATE Payment_report SET report_chat_id = ?, report_message_id = ?, report_thread_id = ? WHERE id_order = ?")
                 ->execute([$_receipt_report_group, $_receipt_report_msg_id, $_receipt_thread, $PaymentReport['id_order']]);
         }
-    } else {
+    } elseif (empty($_receipt_route['topic_enabled'])) {
         foreach ($admin_ids as $id_admin) {
             $adminrulecheck = select("admin", "*", "id_admin", $id_admin, "select");
             if ($adminrulecheck['rule'] == "support")

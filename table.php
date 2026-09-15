@@ -542,6 +542,8 @@ try {
         card_verify_status varchar(20) NULL DEFAULT 'offcardverify',
         card_verify_scope varchar(20) NULL DEFAULT 'all',
         card_verify_min_amount varchar(20) NULL DEFAULT '0',
+        receipt_topic_reporting varchar(20) NULL DEFAULT '1',
+        subscription_link_button varchar(20) NULL DEFAULT '1',
         redis_enabled varchar(20) NULL DEFAULT '0',
         banner_start_status varchar(20) NULL DEFAULT '0',
         banner_start_file_id varchar(255) NULL DEFAULT '',
@@ -639,6 +641,8 @@ try {
         addFieldToTable("setting", "card_verify_status", "offcardverify", "VARCHAR(20)");
         addFieldToTable("setting", "card_verify_scope", "all", "VARCHAR(20)");
         addFieldToTable("setting", "card_verify_min_amount", "0", "VARCHAR(20)");
+        addFieldToTable("setting", "receipt_topic_reporting", "1", "VARCHAR(20)");
+        addFieldToTable("setting", "subscription_link_button", "1", "VARCHAR(20)");
         addFieldToTable("setting", "PublicLog_Channel", "", "VARCHAR(600)");
         addFieldToTable("setting", "PublicLog_Status", "0", "VARCHAR(20)");
         addFieldToTable("setting", "PublicLog_NewSub", "1", "VARCHAR(20)");
@@ -1500,6 +1504,7 @@ try {
         ['atlaspay', '🌐 اطلس‌پی'],
         ['tetrapay', '🔷 تتراپی'],
         ['textafterpay', $textafterpay],
+        ['dyn_purchase_subscription_link_line', '🔗 لینک اتصال: {link}'],
         ['textaftertext', $textaftertext],
         ['textmanual', $textmanual],
         ['textselectlocation', '📌 موقعیت سرویس را انتخاب نمایید.'],

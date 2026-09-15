@@ -157,6 +157,106 @@ function rxStripDeliveryContentFromCaption($caption)
     $caption = preg_replace("/\n{3,}/u", "\n\n", $caption);
     return trim($caption);
 }
+function rxSettingFlag($key, $default = true)
+{
+    global $setting;
+    $value = null;
+    if (is_array($setting ?? null) && array_key_exists($key, $setting)) {
+        $value = $setting[$key];
+    } elseif (function_exists('select')) {
+        try {
+            $row = select('setting', $key, null, null, 'select');
+            if (is_array($row) && array_key_exists($key, $row)) {
+                $value = $row[$key];
+            } elseif (is_string($row) || is_numeric($row)) {
+                $value = $row;
+            }
+        } catch (Throwable $e) {
+            $value = null;
+        }
+    }
+    if ($value === null || $value === '') {
+        return (bool)$default;
+    }
+    return !in_array(strtolower(trim((string)$value)), ['0', 'off', 'false', 'no'], true);
+}
+function rxReceiptDeliveryRoute($topicKey = 'receiptreport')
+{
+    global $pdo, $setting;
+    $row = null;
+    if ($pdo instanceof PDO) {
+        try {
+            $stmt = $pdo->query("SELECT receipt_topic_reporting, Channel_Report FROM setting ORDER BY CASE WHEN TRIM(COALESCE(Channel_Report, '')) NOT IN ('', '0') THEN 0 ELSE 1 END LIMIT 1");
+            $fresh = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : false;
+            if (is_array($fresh)) {
+                $row = $fresh;
+            }
+        } catch (Throwable $e) {
+            $row = null;
+        }
+    }
+    if (!is_array($row)) {
+        $row = is_array($setting ?? null) ? $setting : [];
+    }
+    $enabled = !array_key_exists('receipt_topic_reporting', $row)
+        || !in_array(strtolower(trim((string)$row['receipt_topic_reporting'])), ['0', 'off', 'false', 'no'], true);
+    $chatId = $enabled ? trim((string)($row['Channel_Report'] ?? '')) : '';
+    if ($chatId === '0') {
+        $chatId = '';
+    }
+    $threadId = null;
+    if ($enabled && $chatId !== '' && $pdo instanceof PDO) {
+        try {
+            $stmt = $pdo->prepare('SELECT idreport FROM topicid WHERE report = ? LIMIT 1');
+            $stmt->execute([(string)$topicKey]);
+            $candidate = (int)$stmt->fetchColumn();
+            if ($candidate > 0) {
+                $threadId = $candidate;
+            }
+        } catch (Throwable $e) {
+            $threadId = null;
+        }
+    }
+    return ['topic_enabled' => $enabled, 'chat_id' => $chatId, 'thread_id' => $threadId];
+}
+function rxSubscriptionLinkButtonEnabled($panel_info)
+{
+    if (($panel_info['type'] ?? '') === 'Manualsale') {
+        return true;
+    }
+    if (function_exists('nmPanelNationalEnabled') && nmPanelNationalEnabled($panel_info)) {
+        return true;
+    }
+    return rxSettingFlag('subscription_link_button', true);
+}
+function rxAppendSubscriptionLinkLine($caption, $sub_link, $panel_info)
+{
+    $caption = trim((string)$caption);
+    $subLink = trim((string)$sub_link);
+    if ($subLink === '' || rxSubscriptionLinkButtonEnabled($panel_info)) {
+        if (function_exists('mb_strlen') && mb_strlen($caption, 'UTF-8') > 1024) {
+            $plainCaption = trim(html_entity_decode(strip_tags($caption), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            return htmlspecialchars(mb_substr($plainCaption, 0, 1024, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+        }
+        return $caption;
+    }
+    $lineTemplate = faoxima_textbot_get('dyn_purchase_subscription_link_line', '🔗 لینک اتصال: {link}');
+    $line = trim(faoxima_render_text($lineTemplate, [
+        'link' => htmlspecialchars($subLink, ENT_QUOTES, 'UTF-8'),
+    ]));
+    if ($line === '') {
+        return $caption;
+    }
+    $combined = $caption === '' ? $line : $caption . "\n\n" . $line;
+    if (function_exists('mb_strlen') && mb_strlen($combined, 'UTF-8') > 1024) {
+        $plainCaption = trim(html_entity_decode(strip_tags($caption), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        $allowance = max(0, 1022 - mb_strlen($line, 'UTF-8'));
+        $plainCaption = mb_substr($plainCaption, 0, $allowance, 'UTF-8');
+        $safeCaption = htmlspecialchars($plainCaption, ENT_QUOTES, 'UTF-8');
+        $combined = $safeCaption === '' ? $line : $safeCaption . "\n\n" . $line;
+    }
+    return $combined;
+}
 function rxManualsaleDelivery($username_service)
 {
     $result = [
@@ -386,7 +486,7 @@ function rxBuildDeliveryOffer($panel_info, $invoice_id, $hasConfig, $hasSub, $re
     if ($hasConfig) {
         $offerRows[] = [['text' => "🔐 دریافت کانفیگ", 'callback_data' => "config_{$invoice_id}"]];
     }
-    if ($hasSub) {
+    if ($hasSub && rxSubscriptionLinkButtonEnabled($panel_info)) {
         $offerRows[] = [['text' => "🔗 دریافت لینک اشتراک", 'callback_data' => "subscriptionurl_{$invoice_id}"]];
     }
     if (empty($offerRows)) {
@@ -468,6 +568,7 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
 
     $availability = rxDeliveryAvailability($panel_info, $config, $sub_link);
     $cleanCaption = rxStripDeliveryContentFromCaption($caption);
+    $cleanCaption = rxAppendSubscriptionLinkLine($cleanCaption, $availability['sub'] ? $sub_link : '', $panel_info);
     $offerKeyboard = rxBuildDeliveryOffer($panel_info, $invoice_id, $availability['config'], $availability['sub'], $reply_markup);
     $finalKeyboard = $offerKeyboard === null ? $reply_markup : $offerKeyboard;
 
@@ -497,7 +598,9 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
                 error_log('sendMessageService info card send failed: ' . $e->getMessage());
             }
         } elseif (function_exists('nm_sendServiceQrFallback') && is_string($sub_link) && trim($sub_link) !== '') {
-            nm_sendServiceQrFallback($user_id, $sub_link, $image);
+            if (nm_sendServiceQrFallback($user_id, $sub_link, $image, $cleanCaption, $finalKeyboard)) {
+                return;
+            }
         }
     }
 

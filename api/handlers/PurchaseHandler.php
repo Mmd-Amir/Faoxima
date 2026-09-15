@@ -761,8 +761,11 @@ final class PurchaseHandler extends BaseHandler
             if (!empty($availability['config'])) {
                 $__kbPurchaseRows[] = [['text' => faoxima_textbot_get('dyn_purchase_get_config_btn', '🔐 دریافت کانفیگ'), 'callback_data' => 'config_' . $orderId]];
             }
-            if (!empty($availability['sub'])) {
+            if (!empty($availability['sub']) && (!function_exists('rxSubscriptionLinkButtonEnabled') || rxSubscriptionLinkButtonEnabled($panel))) {
                 $__kbPurchaseRows[] = [['text' => faoxima_textbot_get('dyn_purchase_get_sublink_btn', '🔗 دریافت لینک اشتراک'), 'callback_data' => 'subscriptionurl_' . $orderId]];
+            }
+            if (!empty($availability['sub']) && function_exists('rxAppendSubscriptionLinkLine')) {
+                $caption = rxAppendSubscriptionLinkLine($caption, $subLink, $panel);
             }
         }
         $__kbPurchaseRows[] = [['text' => '📚 مشاهده آموزش استفاده ', 'callback_data' => 'helpbtn']];

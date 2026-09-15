@@ -496,6 +496,7 @@ $__hdr_notif_total = $__hdr_new_orders + $__hdr_open_tickets;
                     <li><a href="keyboard.php"><span class="menu-symbol"><?php echo icon('keyboard', 'svg-icon'); ?></span><span>چیدمان کیبورد</span></a></li>
                     <li><a href="service_keyboard.php"><span class="menu-symbol"><?php echo icon('palette', 'svg-icon'); ?></span><span>رنگ‌بندی دکمه‌ها</span></a></li>
                     <li><a href="appearance.php"><span class="menu-symbol"><?php echo icon('sparkles', 'svg-icon'); ?></span><span>تنظیمات ظاهر</span></a></li>
+                    <li><a href="miscsettings.php"><span class="menu-symbol"><?php echo icon('sliders', 'svg-icon'); ?></span><span>تنظیمات متفرقه</span></a></li>
                     <li><a href="trust_channel.php"><span class="menu-symbol"><?php echo icon('shield', 'svg-icon'); ?></span><span>تنظیم کانال اعتماد</span></a></li>
                     <li><a href="banner.php"><span class="menu-symbol"><?php echo icon('image', 'svg-icon'); ?></span><span>تنظیم بنر</span></a></li>
                 </ul>
@@ -672,5 +673,4 @@ $__hdr_notif_total = $__hdr_new_orders + $__hdr_open_tickets;
     }
 })();
 </script>
-
 

@@ -75,15 +75,16 @@ final class PaymentReceiptHandler extends BaseHandler
             FaoximaResponse::fail(503, faoxima_textbot_get('dyn_receipt_no_admin_configured', '❌ هیچ ادمینی روی سرور تنظیم نشده است.'));
         }
 
-        $settingRow = FaoximaDb::fetchOne('SELECT Channel_Report FROM setting LIMIT 1');
-        $reportGroupId = is_array($settingRow) ? trim((string)($settingRow['Channel_Report'] ?? '')) : '';
-        $reportThreadId = null;
-        if ($reportGroupId !== '' && $reportGroupId !== '0') {
-            $topicRow = FaoximaDb::fetchOne("SELECT idreport FROM topicid WHERE report = 'receiptreport' LIMIT 1");
-            $threadCandidate = $topicRow ? (int)($topicRow['idreport'] ?? 0) : 0;
-            $reportThreadId = $threadCandidate > 0 ? $threadCandidate : null;
-        } else {
-            $reportGroupId = '';
+        $receiptRoute = function_exists('rxReceiptDeliveryRoute')
+            ? rxReceiptDeliveryRoute()
+            : ['topic_enabled' => true, 'chat_id' => trim((string)($this->setting['Channel_Report'] ?? '')), 'thread_id' => null];
+        $topicReportingEnabled = !empty($receiptRoute['topic_enabled']);
+        $reportGroupId = $topicReportingEnabled ? trim((string)($receiptRoute['chat_id'] ?? '')) : '';
+        $reportThreadId = isset($receiptRoute['thread_id']) && (int)$receiptRoute['thread_id'] > 0
+            ? (int)$receiptRoute['thread_id']
+            : null;
+        if ($topicReportingEnabled && $reportGroupId === '') {
+            FaoximaResponse::fail(503, '❌ گروه گزارش رسید تنظیم نشده است.');
         }
 
 

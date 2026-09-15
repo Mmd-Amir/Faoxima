@@ -312,6 +312,10 @@ export function wireCardToCard(view, d, opts = {}) {
             const fd = new FormData();
             fd.append('order_id', d.order_id);
             fd.append('photo', file);
+            const cardPhoto = typeof opts.card_photo === 'function' ? opts.card_photo() : opts.card_photo;
+            const cardLast4 = typeof opts.card_last4 === 'function' ? opts.card_last4() : opts.card_last4;
+            if (cardPhoto) fd.append('card_photo', cardPhoto);
+            if (cardLast4) fd.append('card_last4', String(cardLast4));
 
 
             const apiUrl = (window.__APP_CONFIG__ || {}).apiUrl || '';
@@ -547,6 +551,207 @@ export function startUrlGatewayFlow(rootView, methodId, obj, opts = {}) {
 }
 
 
+function renderCardSelectStep(d) {
+    const cards = d.verified_cards || [];
+    const rows = cards.map(l4 => `
+        <button type="button" class="btn btn-ghost btn-block mt-sm cv-select-btn" data-last4="${escapeHtml(l4)}"
+            style="display:flex;align-items:center;gap:10px;justify-content:flex-start;text-align:right">
+            <span class="cv-radio" style="font-size:16px;min-width:20px">◯</span>
+            <span>💳 **** **** **** ${escapeHtml(l4)}</span>
+        </button>`).join('');
+    return `
+        <div class="card-section cart-info-card" id="card-select-zone">
+            <div class="cart-banner">
+                ${icon('creditCard', 'class="ico ico-xxl ico-accent"')}
+                <h3>کارت‌به‌کارت — انتخاب کارت</h3>
+            </div>
+            <div class="callout mt-md" style="flex-direction:column;align-items:flex-start;gap:8px">
+                <p style="margin:0;font-weight:600">💳 کارت‌های تاییدشده شما</p>
+                <p style="margin:0;font-size:12px;color:var(--text-muted)">یکی از کارت‌های زیر را انتخاب کنید یا با کارت جدید پرداخت کنید.</p>
+            </div>
+            ${rows}
+            <button type="button" id="cv-continue-btn" disabled class="btn btn-primary btn-block mt-md" style="opacity:.45;transition:opacity .2s">
+                ${icon('send', 'class="ico ico-leading"')}
+                <span>ادامه با کارت انتخابی</span>
+            </button>
+            <button type="button" class="btn btn-ghost btn-block mt-sm" id="cv-new-card-btn">
+                ${icon('download', 'class="ico ico-leading"')}
+                <span>📸 احراز هویت با تصویر کارت جدید</span>
+            </button>
+            <p class="muted mono mt-md" style="font-size:11px">کد پیگیری: ${escapeHtml(d.order_id)}</p>
+        </div>`;
+}
+
+function wireCardSelectStep(view, d, opts) {
+    let selectedLast4 = null;
+    const $continueBtn = view.querySelector('#cv-continue-btn');
+
+    view.querySelectorAll('.cv-select-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            view.querySelectorAll('.cv-select-btn').forEach(b => {
+                b.querySelector('.cv-radio').textContent = '◯';
+                b.style.borderColor = '';
+                b.style.color = '';
+            });
+            btn.querySelector('.cv-radio').textContent = '✓';
+            btn.style.borderColor = 'var(--accent-color, #5b9cf6)';
+            btn.style.color = 'var(--accent-color, #5b9cf6)';
+            selectedLast4 = btn.dataset.last4;
+            if ($continueBtn) {
+                $continueBtn.disabled = false;
+                $continueBtn.style.opacity = '1';
+            }
+            hapticImpact('light');
+        });
+    });
+
+    if ($continueBtn) {
+        $continueBtn.addEventListener('click', async () => {
+            if (!selectedLast4) return;
+            $continueBtn.disabled = true;
+            $continueBtn.style.opacity = '.45';
+            const $span = $continueBtn.querySelector('span');
+            const oldLabel = $span ? $span.textContent : '';
+            if ($span) $span.textContent = 'در حال پردازش…';
+            try {
+                const apiUrl = (window.__APP_CONFIG__ || {}).apiUrl || '';
+                const fd = new FormData();
+                fd.append('order_id', d.order_id);
+                fd.append('last4', selectedLast4);
+                const res = await fetch(`${apiUrl}/miniapp.php?actions=card_select`, {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + (getToken() || '') },
+                    body: fd,
+                });
+                let envelope = null;
+                try { envelope = await res.json(); } catch (_) {}
+                if (!res.ok || !envelope || !envelope.status) {
+                    throw new Error((envelope && envelope.msg) || `خطا (${res.status})`);
+                }
+                hapticNotify('success');
+                const cardData = { ...d, ...envelope.obj, card_verify_required: false };
+                const $result = view.querySelector('#pay-result-host');
+                $result.innerHTML = renderCardToCard(cardData);
+                wireCardToCard(view, cardData, { ...opts, card_last4: selectedLast4 });
+            } catch (err) {
+                hapticNotify('error');
+                toast(err.message || 'خطا در انتخاب کارت', 'error', 5000);
+                $continueBtn.disabled = false;
+                $continueBtn.style.opacity = '1';
+                if ($span) $span.textContent = oldLabel;
+            }
+        });
+    }
+
+    const $newBtn = view.querySelector('#cv-new-card-btn');
+    if ($newBtn) {
+        $newBtn.addEventListener('click', () => {
+            const $result = view.querySelector('#pay-result-host');
+            $result.innerHTML = renderCardVerifyStep(d);
+            wireCardVerifyStep(view, d, opts);
+        });
+    }
+}
+
+function renderCardVerifyStep(d) {
+    const cardNumber = String(d.card_number || '').replace(/\s+/g, '');
+    const formatted = cardNumber.replace(/(\d{4})(?=\d)/g, '$1 ');
+    const amount = Number(d.amount || 0);
+    return `
+        <div class="card-section cart-info-card" id="card-verify-zone">
+            <div class="cart-banner">
+                ${icon('creditCard', 'class="ico ico-xxl ico-accent"')}
+                <h3>کارت‌به‌کارت — احراز هویت</h3>
+            </div>
+            <div class="callout mt-md" style="flex-direction:column;align-items:flex-start;gap:10px">
+                <p style="margin:0;font-weight:600">⚠️ احراز هویت کارت به کارت فعال است</p>
+                <p style="margin:0">📸 تصویر کارت فیزیکی که با آن واریز می‌کنید را آپلود کنید.</p>
+            </div>
+            <input type="file" id="card-photo-file" accept="image/*" style="display:none" />
+            <div id="card-photo-drop" style="border:2px dashed var(--accent-color,#5b9cf6);border-radius:12px;padding:28px 16px;text-align:center;cursor:pointer;margin-top:14px;transition:background .2s">
+                ${icon('download', 'style="width:30px;height:30px;color:var(--accent-color,#5b9cf6)"')}
+                <p style="margin:8px 0 0;font-size:13px;font-weight:600">📸 آپلود تصویر کارت بانکی (فیزیکی)</p>
+                <p style="margin:4px 0 0;font-size:11px;color:var(--text-muted)">روی این ناحیه کلیک کنید</p>
+            </div>
+            <div class="mt-md">
+                <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">🔢 چهار رقم آخر کارت:</label>
+                <input type="tel" id="card-last4-input" maxlength="4" pattern="\\d{4}" inputmode="numeric" placeholder="مثال: ۱۲۳۴" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1.5px solid var(--border-color);background:var(--surface-bg);color:var(--text-color);font-size:20px;text-align:center;letter-spacing:6px;font-weight:700" />
+            </div>
+            <div class="callout mt-sm" style="font-size:12px;color:var(--text-muted)">
+                جهت حفظ حریم خصوصی، می‌توانید به جز نام و ۴ رقم آخر کارت، مابقی اطلاعات را بپوشانید.
+            </div>
+            <div id="card-dest-section" class="hidden" style="margin-top:16px;border-top:1px solid var(--border-color);padding-top:16px">
+                <div class="callout" style="background:rgba(76,175,80,.08)">
+                    ${icon('checkCircle', 'style="width:18px;height:18px;color:#4caf50;flex-shrink:0"')}
+                    <span style="font-weight:600;font-size:13px">اطلاعات واریز:</span>
+                </div>
+                <div class="kv mt-md"><span class="kv-label">شماره کارت</span><span class="kv-value mono accent">${escapeHtml(formatted || '—')}</span></div>
+                <button type="button" class="btn btn-ghost btn-block mt-sm copy-btn-cart" data-copy="${escapeHtml(cardNumber)}">${icon('copy', 'class="ico ico-leading"')}<span>کپی شماره کارت</span></button>
+                <div class="kv mt-md"><span class="kv-label">به نام</span><span class="kv-value">${escapeHtml(d.name_card || '—')}</span></div>
+                <div class="kv mt-sm"><span class="kv-label">مبلغ دقیق</span><span class="kv-value mono accent" style="font-size:18px;font-weight:700">${fmtNum(amount)} تومان</span></div>
+                <button type="button" class="btn btn-ghost btn-block mt-sm copy-btn-cart" data-copy="${amount}">${icon('copy', 'class="ico ico-leading"')}<span>کپی مبلغ</span></button>
+                <div class="card-section mt-md receipt-upload-zone">
+                    <p class="section-title">${icon('fileText')} ارسال رسید پرداخت</p>
+                    <p class="muted" style="font-size:13px">پس از واریز، عکس رسید را آپلود کنید تا برای ادمین ارسال شود.</p>
+                    <input type="file" id="receipt-file" accept="image/*" style="display:none" />
+                    <button type="button" id="receipt-pick" class="btn btn-primary btn-block mt-sm">${icon('download', 'class="ico ico-leading"')}<span>انتخاب عکس رسید</span></button>
+                    <div id="receipt-preview" class="hidden mt-sm">
+                        <img id="receipt-preview-img" alt="پیش‌نمایش" class="receipt-preview-img" />
+                        <button type="button" id="receipt-submit" class="btn btn-primary btn-block mt-sm">${icon('send', 'class="ico ico-leading"')}<span class="receipt-submit-label">ارسال رسید برای ادمین</span></button>
+                    </div>
+                    <p class="muted mono mt-md" style="font-size:11px">کد پیگیری: ${escapeHtml(d.order_id)}</p>
+                </div>
+            </div>
+        </div>`;
+}
+
+function wireCardVerifyStep(view, d, opts) {
+    const $file = view.querySelector('#card-photo-file');
+    const $drop = view.querySelector('#card-photo-drop');
+    const $last4Input = view.querySelector('#card-last4-input');
+    const $cardDest = view.querySelector('#card-dest-section');
+    if (!$file || !$last4Input || !$cardDest) return;
+    let receiptWired = false;
+
+    function checkReveal() {
+        const last4 = $last4Input.value.trim();
+        const hasPhoto = $file.files && $file.files[0];
+        if (/^\d{4}$/.test(last4) && hasPhoto) {
+            $cardDest.classList.remove('hidden');
+            if (!receiptWired) {
+                receiptWired = true;
+                wireCardToCard(view, d, {
+                    ...opts,
+                    card_photo: () => $file.files && $file.files[0],
+                    card_last4: () => $last4Input.value.trim(),
+                });
+            }
+        }
+    }
+
+    if ($drop) $drop.addEventListener('click', () => $file.click());
+    $file.addEventListener('change', async () => {
+        const file = $file.files && $file.files[0];
+        if (!file) return;
+        if (file.size > 8 * 1024 * 1024) {
+            toast('حجم فایل نباید بیشتر از ۸ مگابایت باشد', 'error', 4000);
+            $file.value = '';
+            return;
+        }
+        try {
+            const dataUrl = await blobToDataUrl(file);
+            $drop.innerHTML = `<img src="${dataUrl}" style="width:100%;max-height:220px;border-radius:8px;object-fit:contain;display:block" /><p style="margin:8px 0 0;font-size:12px;color:#4caf50;font-weight:600">✅ عکس کارت انتخاب شد — برای تغییر کلیک کنید</p>`;
+        } catch (_) {
+            toast('نمایش پیش‌نمایش تصویر ممکن نیست', 'error', 3000);
+            return;
+        }
+        $drop.style.padding = '12px';
+        $drop.style.borderColor = '#4caf50';
+        checkReveal();
+    });
+    $last4Input.addEventListener('input', checkReveal);
+}
+
 export function handleInitResult(view, methodId, obj, opts = {}) {
     const $result = view.querySelector('#pay-result-host');
     const $form = view.querySelector('#pay-form-host');
@@ -583,6 +788,16 @@ export function handleInitResult(view, methodId, obj, opts = {}) {
 
     if (obj.kind === 'carttocart') {
         if ($form) $form.innerHTML = '';
+        if (obj.card_verify_required) {
+            if (Array.isArray(obj.verified_cards) && obj.verified_cards.length) {
+                $result.innerHTML = renderCardSelectStep(obj);
+                wireCardSelectStep(view, obj, opts);
+            } else {
+                $result.innerHTML = renderCardVerifyStep(obj);
+                wireCardVerifyStep(view, obj, opts);
+            }
+            return;
+        }
         $result.innerHTML = renderCardToCard(obj);
         wireCardToCard(view, obj, opts);
         return;

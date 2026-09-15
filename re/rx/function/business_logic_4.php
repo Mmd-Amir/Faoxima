@@ -388,7 +388,7 @@ function nm_renderInfoCardForInvoice($panel_info, $username_service, $invoice_id
     }
 }
 
-function nm_sendServiceQrFallback($user_id, string $qrPayload, string $backgroundImage = 'images.jpg'): bool
+function nm_sendServiceQrFallback($user_id, string $qrPayload, string $backgroundImage = 'images.jpg', string $caption = '', $replyMarkup = null): bool
 {
     if (function_exists('isQrDisabled') && isQrDisabled()) {
         return false;
@@ -414,8 +414,9 @@ function nm_sendServiceQrFallback($user_id, string $qrPayload, string $backgroun
         telegram('sendphoto', [
             'chat_id'    => $user_id,
             'photo'      => new CURLFile($urlimage),
-            'caption'    => '📥 کیو‌آر کد',
+            'caption'    => $caption !== '' ? $caption : '📥 کیو‌آر کد',
             'parse_mode' => 'HTML',
+            'reply_markup' => $replyMarkup,
         ]);
         @unlink($urlimage);
         return true;

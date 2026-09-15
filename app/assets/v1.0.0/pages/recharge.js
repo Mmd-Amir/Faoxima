@@ -520,7 +520,7 @@ function renderCardSelectStep(d) {
             </button>
             <button type="button" class="btn btn-ghost btn-block mt-sm" id="cv-new-card-btn">
                 ${icon('download', 'class="ico ico-leading"')}
-                <span>➕ پرداخت با کارت جدید</span>
+                <span>📸 احراز هویت با تصویر کارت جدید</span>
             </button>
             <p class="muted mono mt-md" style="font-size:11px">کد پیگیری: ${escapeHtml(d.order_id)}</p>
         </div>`;

@@ -59,16 +59,19 @@ final class CardSelectHandler extends BaseHandler
                 $uname    = (string)($this->user['username'] ?? '');
                 $uid      = (string)$this->user['id'];
                 $note     = "ℹ️ کاربر " . ($uname ? "@{$uname}" : "<code>{$uid}</code>") . " از کارت تاییدشده **** **** **** {$last4} استفاده کرده است.\n<blockquote>🛒 کد پیگیری: {$orderId}</blockquote>\nلطفاً ۴ رقم آخر رسید را بررسی کنید.";
-                $groupId  = is_array($s) ? trim((string)($s['Channel_Report'] ?? '')) : '';
-                $topicRow = FaoximaDb::fetchOne("SELECT idreport FROM topicid WHERE report = 'receiptreport' LIMIT 1");
-                $topicId  = $topicRow ? (int)($topicRow['idreport'] ?? 0) : 0;
-                if ($groupId !== '' && $groupId !== '0') {
+                $receiptRoute = function_exists('rxReceiptDeliveryRoute')
+                    ? rxReceiptDeliveryRoute()
+                    : ['topic_enabled' => true, 'chat_id' => trim((string)($s['Channel_Report'] ?? '')), 'thread_id' => null];
+                $topicReportingEnabled = !empty($receiptRoute['topic_enabled']);
+                $groupId = $topicReportingEnabled ? trim((string)($receiptRoute['chat_id'] ?? '')) : '';
+                $topicId = isset($receiptRoute['thread_id']) ? (int)$receiptRoute['thread_id'] : 0;
+                if ($topicReportingEnabled && $groupId !== '') {
                     $payload = ['chat_id' => $groupId, 'text' => $note, 'parse_mode' => 'HTML'];
                     if ($topicId > 0) {
                         $payload['message_thread_id'] = $topicId;
                     }
                     telegram('sendmessage', $payload, $apiKey);
-                } else {
+                } elseif (!$topicReportingEnabled) {
                     $adminRows = FaoximaDb::fetchAll('SELECT id_admin FROM admin');
                     $adminIds  = array_column($adminRows ?: [], 'id_admin');
                     foreach ($adminIds as $adminId) {
