@@ -16,6 +16,9 @@ final class CustomPriceHandler extends BaseHandler
             FaoximaResponse::badRequest('country_id is required');
         }
         $panel = $this->loadPanelByCode($codePanel);
+        if (panel_creation_limit_reached($panel)) {
+            FaoximaResponse::fail(409, faoxima_textbot_get('dyn_purchase_panel_limit_reached', 'ظرفیت ساخت کانفیگ در این پنل تکمیل شده است.'));
+        }
 
         $agent = $this->user['agent'] ?? 'f';
 

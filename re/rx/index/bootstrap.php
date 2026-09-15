@@ -2015,11 +2015,14 @@ $nameconfig";
         }
         $keyboardsetting['inline_keyboard'][] = [$_rx_back_btn];
         $keyboardsetting = json_encode($keyboardsetting);
+        $subLastUserAgent = trim((string)($DataUserOut['sub_last_user_agent'] ?? ''));
+        $subClientLine = $subLastUserAgent !== '' && strcasecmp($subLastUserAgent, 'Faoxima-Mini/1.0') !== 0
+            ? "\n#️⃣ کلاینت متصل شده :<code>{$subLastUserAgent}</code>"
+            : '';
         if ($DataUserOut['sub_updated_at'] !== null) {
             $textconnect = "
 📶 اخرین زمان اتصال  : $lastonline
-🔄 اخرین زمان آپدیت لینک اشتراک  : $lastupdate
-#️⃣ کلاینت متصل شده :<code>{$DataUserOut['sub_last_user_agent']}</code>";
+🔄 اخرین زمان آپدیت لینک اشتراک  : $lastupdate{$subClientLine}";
         } elseif ($marzban['type'] == "WGDashboard") {
             $textconnect = "";
         } else {

@@ -43,6 +43,10 @@ final class CountriesHandler extends BaseHandler
         $list = [];
         foreach ($rows as $row) {
 
+            if (panel_creation_limit_reached($row)) {
+                continue;
+            }
+
             $hide = $this->decodeJsonField($row['hide_user'] ?? null);
             if (!empty($hide) && in_array($this->user['id'], $hide)) {
                 continue;

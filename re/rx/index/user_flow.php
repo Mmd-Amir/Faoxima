@@ -1122,14 +1122,9 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
                 return;
             }
         }
-        $stmt = $pdo->prepare("SELECT * FROM invoice WHERE status = 'active' AND (status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold')");
-        $stmt->execute();
-        $countinovoice = $stmt->rowCount();
-        if ($locationproduct['limit_panel'] != "unlimited") {
-            if ($countinovoice >= $locationproduct['limit_panel']) {
-                sendmessage($from_id, $textbotlang['Admin']['managepanel']['limitedpanelfirst'], null, 'HTML');
-                return;
-            }
+        if (panel_creation_limit_reached($locationproduct)) {
+            sendmessage($from_id, $textbotlang['Admin']['managepanel']['limitedpanelfirst'], null, 'HTML');
+            return;
         }
         if ($user['step'] == "statusnamecustom") {
             if (!isset($update['message']) && empty($text)) { return; }
@@ -1269,17 +1264,9 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     }
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $location, "select");
     $locationproductcount = select("marzban_panel", "*", "name_panel", $location, "count");
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold') AND  Service_location = :loc");
-    $stmt->execute([':loc' => (string)($marzban_list_get['name_panel'] ?? '')]);
-    $countinovoice = $stmt->rowCount();
-    if ($marzban_list_get['limit_panel'] != "unlimited") {
-        if ($countinovoice >= $marzban_list_get['limit_panel']) {
-
-
-
-            sendmessage($from_id, $textbotlang['Admin']['managepanel']['limitedpanel'], null, 'HTML');
-            return;
-        }
+    if (panel_creation_limit_reached($marzban_list_get)) {
+        sendmessage($from_id, $textbotlang['Admin']['managepanel']['limitedpanel'], null, 'HTML');
+        return;
     }
     if ($statusnote) {
         savedata('save', "name_panel", $location);

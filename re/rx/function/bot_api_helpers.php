@@ -265,6 +265,27 @@ function panel_feature_enabled($panel, $key)
     $globalValue = panel_feature_global_value($table, $globalKey);
     return $globalValue === $onValue;
 }
+function panel_creation_limit_reached($panel)
+{
+    global $pdo;
+
+    $row = panel_feature_resolve_row($panel);
+    if (!is_array($row) || empty($row['name_panel'])) {
+        return true;
+    }
+
+    $rawLimit = strtolower(trim((string) ($row['limit_panel'] ?? '')));
+    if ($rawLimit === '' || in_array($rawLimit, ['unlimited', 'unlimted'], true)) {
+        return false;
+    }
+    if (!preg_match('/^\d+$/', $rawLimit)) {
+        return false;
+    }
+
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE Status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold') AND Service_location = :location");
+    $stmt->execute([':location' => (string) $row['name_panel']]);
+    return (int) $stmt->fetchColumn() >= (int) $rawLimit;
+}
 function outtypepanel($typepanel, $message)
 {
     global $from_id, $optionMarzban, $optionGuard, $optionX_ui_single, $optionwg, $optioneylanpanel, $option_remnawave, $optionManualsale, $optionRebecca, $optionPasarGuard;

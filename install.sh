@@ -2007,7 +2007,7 @@ install_beta_additional_bot() {
     fi
 
     local botname="${names[$UI_PICK_RESULT]}"
-    printf '  %s❯%s This will overwrite '"'"'%s'"'"'s source with the latest Beta build (config.php is preserved). Continue? (y/N): ' \
+    printf '  %s❯%s This will overwrite '"'"'%s'"'"'s source with the latest Beta build while preserving existing credentials. Continue? (y/N): ' \
         "$C_YELLOW" "$C_RESET" "$botname"
     local confirm
     read -r confirm
@@ -2091,6 +2091,51 @@ prepare_update_source_dir() {
     printf '%s' "$extracted_dir"
 }
 
+config_file_get_var() {
+    local file="$1" var="$2"
+    [ -f "$file" ] || return 1
+    sed -n -E "s|^[[:space:]]*\$${var}[[:space:]]*=[[:space:]]*(['\"])(.*)\1[[:space:]]*;.*$|\2|p" "$file" | head -1
+}
+
+config_file_set_var() {
+    local file="$1" var="$2" value="$3"
+    [ -f "$file" ] || return 1
+    local escaped
+    escaped=${value//\\/\\\\}
+    escaped=${escaped//&/\\&}
+    escaped=${escaped//|/\\|}
+    escaped=${escaped//'/\\'}
+    if grep -qE "^[[:space:]]*\$${var}[[:space:]]*=" "$file"; then
+        sed -i -E "s|^([[:space:]]*\$${var}[[:space:]]*=[[:space:]]*)['\"][^'\"]*['\"]([[:space:]]*;.*)$|\1'${escaped}'\2|" "$file" || return 1
+    fi
+}
+
+migrate_runtime_config_values() {
+    local old_config="$1" new_config="$2" db_name="$3" db_user="$4" db_pass="$5"
+    local env_file="$6" var value db_host bot_token admin_id domain
+
+    db_host=$(file_env_get "$env_file" "DB_HOST" 2>/dev/null)
+    [ -z "$db_host" ] && db_host=$(env_get DB_HOST 2>/dev/null)
+    [ -z "$db_host" ] && db_host="db"
+
+    bot_token=$(file_env_get "$env_file" "TELEGRAM_BOT_TOKEN" 2>/dev/null)
+    admin_id=$(file_env_get "$env_file" "TELEGRAM_ADMIN_ID" 2>/dev/null)
+    domain=$(file_env_get "$env_file" "DOMAIN" 2>/dev/null)
+
+    config_file_set_var "$new_config" "dbname" "$db_name" || return 1
+    config_file_set_var "$new_config" "usernamedb" "$db_user" || return 1
+    config_file_set_var "$new_config" "passworddb" "$db_pass" || return 1
+    config_file_set_var "$new_config" "dbhost" "$db_host" || return 1
+    [ -n "$bot_token" ] && config_file_set_var "$new_config" "APIKEY" "$bot_token" || true
+    [ -n "$admin_id" ] && config_file_set_var "$new_config" "adminnumber" "$admin_id" || true
+    [ -n "$domain" ] && config_file_set_var "$new_config" "domainhosts" "$(normalize_domain "$domain")" || true
+
+    for var in usernamebot redis_host redis_port redis_password redis_database; do
+        value=$(config_file_get_var "$old_config" "$var" 2>/dev/null)
+        [ -n "$value" ] && config_file_set_var "$new_config" "$var" "$value" || true
+    done
+}
+
 update_bot_source() {
     local code_dir="$1" app_service="$2" label="$3" \
         mode="$4" version_arg1="$5" version_arg2="$6" zip_path="$7" \
@@ -2106,26 +2151,49 @@ update_bot_source() {
         return 1
     fi
 
-    local safe_label
+    local safe_label config_path env_path temp_config temp_env
     safe_label=$(printf '%s' "$label" | tr -c 'a-zA-Z0-9_' '_')
-    local config_path="${code_dir}/config.php"
-    local temp_config
-    temp_config=$(mktemp "/root/${safe_label}_config_backup.XXXXXX.php") || { ui_err "Failed to create a config.php backup file."; rm -rf "$work_dir"; return 1; }
+    config_path="${code_dir}/config.php"
+    env_path="${code_dir}/.env"
+    temp_config=$(mktemp "/root/${safe_label}_config_backup.XXXXXX.php") || { rm -rf "$work_dir"; ui_err "Failed to create a config.php backup file."; return 1; }
+    temp_env=$(mktemp "/root/${safe_label}_env_backup.XXXXXX") || { rm -rf "$work_dir" "$temp_config"; ui_err "Failed to create a .env backup file."; return 1; }
+
     if [ -f "$config_path" ]; then
-        cp "$config_path" "$temp_config" || { ui_err "Config file backup failed for '${label}'!"; rm -rf "$work_dir"; return 1; }
+        cp "$config_path" "$temp_config" || { rm -rf "$work_dir" "$temp_config" "$temp_env"; ui_err "Config backup failed for '${label}'."; return 1; }
+    else
+        : > "$temp_config"
+    fi
+    if [ -f "$env_path" ]; then
+        cp "$env_path" "$temp_env" || { rm -rf "$work_dir" "$temp_config" "$temp_env"; ui_err ".env backup failed for '${label}'."; return 1; }
+    else
+        : > "$temp_env"
     fi
 
     ui_action "Extracting update onto ${code_dir}..."
     if ! cp -a "${extracted_dir}/." "${code_dir}/"; then
-        ui_err "File transfer failed for '${label}'!"
-        rm -rf "$work_dir" "$temp_config"
+        rm -rf "$work_dir" "$temp_config" "$temp_env"
+        ui_err "File transfer failed for '${label}'."
         return 1
     fi
 
-    if [ -f "$temp_config" ]; then
-        mv "$temp_config" "$config_path" || { ui_err "Config file restore failed for '${label}'!"; rm -rf "$work_dir"; return 1; }
+    if [ -s "$temp_env" ]; then
+        cp "$temp_env" "$env_path" || { rm -rf "$work_dir" "$temp_config" "$temp_env"; ui_err ".env restore failed for '${label}'."; return 1; }
     fi
-    rm -rf "$work_dir"
+
+    if [ ! -f "$config_path" ]; then
+        rm -rf "$work_dir" "$temp_config" "$temp_env"
+        ui_err "The update package does not contain config.php for '${label}'."
+        return 1
+    fi
+
+    if ! migrate_runtime_config_values "$temp_config" "$config_path" "$db_name" "$db_user" "$db_pass" "$env_path"; then
+        [ -s "$temp_config" ] && cp "$temp_config" "$config_path" >/dev/null 2>&1 || true
+        rm -rf "$work_dir" "$temp_config" "$temp_env"
+        ui_err "Failed to migrate runtime credentials into the new config.php for '${label}'."
+        return 1
+    fi
+
+    rm -rf "$work_dir" "$temp_config" "$temp_env"
 
     if [ "$should_build" = "1" ]; then
         ui_action "Rebuilding the app image for '${label}'..."
@@ -2173,7 +2241,7 @@ update_bot() {
     show_logo
     ui_panel "UPDATE FAOXIMA BOT" "$C_BOLD$C_BLUE" "$C_BLUE" \
         "${C_WHITE}Update from the latest GitHub release, or from a manually-provided ZIP.${C_RESET}" \
-        "${C_DIM}config.php and .env are always preserved.${C_RESET}"
+        "${C_DIM}Latest config.php code is installed while existing credentials and .env values are preserved.${C_RESET}"
 
     if [ ! -f "$ENV_FILE" ] || [ ! -f "$COMPOSE_FILE" ]; then
         ui_err "Faoxima Bot is not installed (no .env/docker-compose.yml at ${PROJECT_DIR})."
@@ -2238,7 +2306,7 @@ install_beta_bot() {
         return 1
     fi
 
-    printf '  %s❯%s This will overwrite the current source with the latest Beta build (config.php is preserved). Continue? (y/N): ' "$C_YELLOW" "$C_RESET"
+    printf '  %s❯%s This will overwrite the current source with the latest Beta build while preserving existing credentials. Continue? (y/N): ' "$C_YELLOW" "$C_RESET"
     local confirm
     read -r confirm
     if [[ "${confirm,,}" != "y" ]]; then

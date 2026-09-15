@@ -32,6 +32,9 @@ final class PurchaseHandler extends BaseHandler
         if (($panel['status'] ?? '') === 'disable') {
             FaoximaResponse::fail(409, faoxima_textbot_get('dyn_purchase_panel_disabled', 'پنل انتخابی درحال حاضر فعال نیست'));
         }
+        if (panel_creation_limit_reached($panel)) {
+            FaoximaResponse::fail(409, faoxima_textbot_get('dyn_purchase_panel_limit_reached', 'ظرفیت ساخت کانفیگ در این پنل تکمیل شده است.'));
+        }
 
 
         $customService = FaoximaInput::array($this->data, 'custom_service');

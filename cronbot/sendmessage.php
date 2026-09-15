@@ -382,7 +382,16 @@ try {
 
         $resp = null;
         if ($info['type'] === 'unpinmessage') {
-            $resp = unpinmessage($userId);
+            $unpinResult = runRateLimitedUnpin($userId, $baseDir, $batchStart, $softTimeLimit, $rxBcLog);
+            if (!empty($unpinResult['deferred'])) {
+                $idx--;
+                $processed--;
+                if ($usingJsonMode) {
+                    prependEntriesToJson($usersFileJson, array_slice($batch, $idx));
+                }
+                break;
+            }
+            $resp = $unpinResult['response'];
             handleResponse($resp, $userId, $info, $orphanCheckStmt, $deleteStmt,
                 $bSuccess, $bBlocked, $bDeleted, $bFailed, $bChatNotFound, $rxBcLog);
         } elseif ($info['type'] === 'sendmessage' || $info['type'] === 'xdaynotmessage') {
@@ -506,6 +515,72 @@ function handleResponse(
             }
         }
     }
+}
+
+function runRateLimitedUnpin(
+    string $userId,
+    string $baseDir,
+    float $batchStart,
+    int $softTimeLimit,
+    ?callable $rxBcLog = null
+): array {
+    $resolvedBaseDir = realpath($baseDir);
+    $rateKey = md5($resolvedBaseDir !== false ? $resolvedBaseDir : $baseDir);
+    $ratePath = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'faoxima_unpin_' . $rateKey;
+    $lockFh = @fopen($ratePath . '.lock', 'c');
+
+    if ($lockFh !== false) {
+        while (!@flock($lockFh, LOCK_EX | LOCK_NB)) {
+            if ((microtime(true) - $batchStart) >= $softTimeLimit) {
+                @fclose($lockFh);
+                return ['deferred' => true, 'response' => null];
+            }
+            usleep(50000);
+        }
+    }
+
+    $response = null;
+    $isRateLimited = false;
+
+    for ($attempt = 1; $attempt <= 2; $attempt++) {
+        $nextAllowedAt = is_file($ratePath) ? (float) @file_get_contents($ratePath) : 0.0;
+        $waitMicros = (int) max(0, ceil(($nextAllowedAt - microtime(true)) * 1000000));
+        $remainingMicros = (int) max(0, floor(($softTimeLimit - (microtime(true) - $batchStart)) * 1000000));
+
+        if ($waitMicros >= $remainingMicros) {
+            $isRateLimited = true;
+            break;
+        }
+
+        if ($waitMicros > 0) {
+            usleep($waitMicros);
+        }
+
+        $response = unpinmessage($userId);
+        $isRateLimited = isset($response['error_code']) && (int) $response['error_code'] === 429;
+
+        if (!$isRateLimited) {
+            @file_put_contents($ratePath, sprintf('%.6F', microtime(true) + 0.1), LOCK_EX);
+            break;
+        }
+
+        $retryAfter = max(1, (int) ($response['parameters']['retry_after'] ?? 1));
+        @file_put_contents($ratePath, sprintf('%.6F', microtime(true) + $retryAfter + 0.25), LOCK_EX);
+        if ($rxBcLog) {
+            $rxBcLog('RATE-LIMIT — unpin userId=' . $userId . ' retry_after=' . $retryAfter . 's attempt=' . $attempt);
+        }
+    }
+
+    if ($lockFh !== false) {
+        @flock($lockFh, LOCK_UN);
+        @fclose($lockFh);
+    }
+
+    if ($isRateLimited) {
+        return ['deferred' => true, 'response' => $response];
+    }
+
+    return ['deferred' => false, 'response' => $response];
 }
 
 function savePinnedMessageRecord(string $chatId, int $messageId, string $duration): void
