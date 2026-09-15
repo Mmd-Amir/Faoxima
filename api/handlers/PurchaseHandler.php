@@ -43,7 +43,18 @@ final class PurchaseHandler extends BaseHandler
             if ($serviceId === '') {
                 FaoximaResponse::badRequest('service_id is required');
             }
-            $product = select('product', '*', 'code_product', $serviceId, 'select');
+            $product = FaoximaDb::fetchOne(
+                "SELECT * FROM product
+                  WHERE code_product = :code
+                    AND (FIND_IN_SET(:location, Location) > 0 OR Location = '/all')
+                    AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))
+                  LIMIT 1",
+                [
+                    ':code' => $serviceId,
+                    ':location' => (string)($panel['name_panel'] ?? ''),
+                    ':agent' => (string)($this->user['agent'] ?? 'f'),
+                ]
+            );
         } else {
             $product = $this->buildCustomProduct($panel, $customService);
         }
@@ -825,6 +836,7 @@ final class PurchaseHandler extends BaseHandler
             'Volume_constraint' => $volume,
             'Service_time'      => $time,
             'Location'          => $panel['name_panel'],
+            'agent'             => $agent,
             'price_product'     => $price,
         ];
     }

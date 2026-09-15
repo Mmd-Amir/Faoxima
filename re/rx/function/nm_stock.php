@@ -7,7 +7,7 @@ function nmStockProductsForExtend(array $panel, $agent = 'all', $onlyAvailable =
     $params = [':loc' => $panel['name_panel'] ?? ''];
     $sql = "SELECT * FROM product WHERE (FIND_IN_SET(:loc, Location)>0 OR Location='/all')";
     $agent = trim((string)$agent);
-    if ($agent !== '' && $agent !== 'all') { $sql .= " AND (agent=:agent OR agent='all' OR agent='' OR agent IS NULL)"; $params[':agent'] = $agent; }
+    if ($agent !== '' && $agent !== 'all') { $sql .= " AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))"; $params[':agent'] = $agent; }
     $sql .= " ORDER BY CAST(price_product AS UNSIGNED) ASC, id ASC";
     try {
         $stmt = $pdo->prepare($sql);
@@ -28,7 +28,7 @@ function nmStockResolveProductToken($token, array $panel, $agent = 'all')
     if (preg_match('/^pid_([0-9]+)$/', $token, $m)) { $sql = "SELECT * FROM product WHERE id=:id AND (FIND_IN_SET(:loc, Location)>0 OR Location='/all') LIMIT 1"; $params[':id'] = (int)$m[1]; }
     else { $sql = "SELECT * FROM product WHERE code_product=:code AND (FIND_IN_SET(:loc, Location)>0 OR Location='/all') LIMIT 1"; $params[':code'] = $token; }
     $agent = trim((string)$agent);
-    if ($agent !== '' && $agent !== 'all') { $sql = str_replace(' LIMIT 1', " AND (agent=:agent OR agent='all' OR agent='' OR agent IS NULL) LIMIT 1", $sql); $params[':agent'] = $agent; }
+    if ($agent !== '' && $agent !== 'all') { $sql = str_replace(' LIMIT 1', " AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers')) LIMIT 1", $sql); $params[':agent'] = $agent; }
     try { $stmt = $pdo->prepare($sql); $stmt->execute($params); $row = $stmt->fetch(PDO::FETCH_ASSOC); return $row ?: false; }
     catch (Throwable $e) { error_log('nmStockResolveProductToken failed: ' . $e->getMessage()); return false; }
 }

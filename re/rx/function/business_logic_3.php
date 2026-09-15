@@ -16,7 +16,7 @@ function nmSellableCategoryRows($location, $agent)
         $stmt = $pdo->prepare(
             "SELECT category FROM product "
             . "WHERE (FIND_IN_SET(:loc, Location) > 0 OR Location = '/all') "
-            . "AND (agent = :agent OR agent = 'all' OR agent = '' OR agent IS NULL) "
+            . "AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers')) "
             . "AND category IS NOT NULL AND TRIM(category) <> ''"
         );
         $stmt->execute([':loc' => $location, ':agent' => $agent]);

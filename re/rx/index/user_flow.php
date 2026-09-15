@@ -1146,7 +1146,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
                 ':location' => $location,
                 ':agent' => $user['agent']
             ];
-            $productCountStmt = $pdo->prepare("SELECT COUNT(*) FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (agent = :agent OR agent = 'all')");
+            $productCountStmt = $pdo->prepare("SELECT COUNT(*) FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))");
             $productCountStmt->execute($productCountParams);
             $nullproduct = (int)$productCountStmt->fetchColumn();
             if ($nullproduct == 0) {
@@ -1175,7 +1175,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
                     sendmessage($from_id, "📌 دسته بندی خود را انتخاب نمایید!", KeyboardCategory($location, $user['agent'], $backuser), 'HTML');
                 }
             } else {
-                $query = "SELECT * FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (agent = :agent OR agent = 'all')";
+                $query = "SELECT * FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))";
                 $queryParams = [
                     ':location' => $location,
                     ':agent' => $user['agent']
@@ -1206,7 +1206,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
                 ':location' => $location,
                 ':agent' => $user['agent']
             ];
-            $productCountStmt = $pdo->prepare("SELECT COUNT(*) FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (agent = :agent OR agent = 'all')");
+            $productCountStmt = $pdo->prepare("SELECT COUNT(*) FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))");
             $productCountStmt->execute($productCountParams);
             $nullproduct = (int)$productCountStmt->fetchColumn();
             if ($nullproduct == 0) {
@@ -1277,7 +1277,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         ':location' => $location,
         ':agent' => $user['agent']
     ];
-    $productCountStmt = $pdo->prepare("SELECT COUNT(*) FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (agent = :agent OR agent = 'all')");
+    $productCountStmt = $pdo->prepare("SELECT COUNT(*) FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))");
     $productCountStmt->execute($productCountParams);
     $nullproduct = (int)$productCountStmt->fetchColumn();
     if ($nullproduct == 0) {
@@ -1304,7 +1304,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
             $marzban_list_get = select("marzban_panel", "*", "name_panel", $location, "select");
             Editmessagetext($from_id, $message_id, "📌 دسته بندی خود را انتخاب نمایید!", KeyboardCategory($location, $user['agent'], "buybacktow"));
         } else {
-            $query = "SELECT * FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (agent = :agent OR agent = 'all')";
+            $query = "SELECT * FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))";
             $queryParams = [
                 ':location' => $location,
                 ':agent' => $user['agent']
@@ -1331,7 +1331,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
             Editmessagetext($from_id, $message_id, $textproduct, KeyboardProduct($marzban_list_get['name_panel'], $query, $user['pricediscount'], $datakeyboard, $statuscustom, $back, null, "customsellvolume", $user['agent'], $queryParams));
         }
     } else {
-        $productCountStmt = $pdo->prepare("SELECT COUNT(*) FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (agent = :agent OR agent = 'all')");
+        $productCountStmt = $pdo->prepare("SELECT COUNT(*) FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))");
         $productCountStmt->execute($productCountParams);
         $nullproduct = (int)$productCountStmt->fetchColumn();
         if ($nullproduct == 0) {
@@ -1361,14 +1361,14 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     [$catClause, $catParams] = nmBuildFindInSetClause('category', $catValues, 'catv');
     if ($catClause === '') $catClause = '1=0';
     if (isset($userdate['monthproduct'])) {
-        $query = "SELECT * FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND {$catClause} AND Service_time = :service_time AND (agent = :agent OR agent = 'all')";
+        $query = "SELECT * FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND {$catClause} AND Service_time = :service_time AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))";
         $queryParams = array_merge([
             ':location' => $userdate['name_panel'],
             ':service_time' => $userdate['monthproduct'],
             ':agent' => $user['agent']
         ], $catParams);
     } else {
-        $query = "SELECT * FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND {$catClause} AND (agent = :agent OR agent = 'all')";
+        $query = "SELECT * FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND {$catClause} AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))";
         $queryParams = array_merge([
             ':location' => $userdate['name_panel'],
             ':agent' => $user['agent']
@@ -1407,7 +1407,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         }
         Editmessagetext($from_id, $message_id, "📌 دسته بندی خود را انتخاب نمایید!", KeyboardCategory($marzban_list_get['name_panel'], $user['agent'], $back));
     } else {
-        $query = "SELECT * FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND Service_time = :service_time AND (agent = :agent OR agent = 'all')";
+        $query = "SELECT * FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND Service_time = :service_time AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))";
         $queryParams = [
             ':location' => $userdate['name_panel'],
             ':service_time' => $monthenumber,
@@ -1580,7 +1580,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         } elseif (function_exists('nmProductByCodeForPanel')) {
             $info_product = nmProductByCodeForPanel($loc, $userdate['name_panel'], $user['agent']);
         } else {
-            $stmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (agent = :agent OR agent = 'all') LIMIT 1");
+            $stmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers')) LIMIT 1");
             $stmt->execute([
                 ':code_product' => $loc,
                 ':location' => $userdate['name_panel'],
@@ -1697,7 +1697,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         } elseif (function_exists('nmProductByCodeForPanel')) {
             $info_product = nmProductByCodeForPanel($user['Processing_value_one'], $userdate['name_panel'], $user['agent']);
         } else {
-            $stmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (agent = :agent OR agent = 'all') LIMIT 1");
+            $stmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers')) LIMIT 1");
             $stmt->execute([
                 ':code_product' => $user['Processing_value_one'],
                 ':location' => $userdate['name_panel'],
@@ -2087,10 +2087,12 @@ $textonebuy
     } elseif (function_exists('rxResolveProductForPanel')) {
         $info_product = rxResolveProductForPanel($user['Processing_value_one'], $userdate['name_panel'], $user['agent'], $userdate['category'] ?? null, $userdate['monthproduct'] ?? null);
     } else {
-        $stmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (FIND_IN_SET(:Location, Location) > 0 or Location = '/all') LIMIT 1");
-        $stmt->bindParam(':code_product', $user['Processing_value_one'], PDO::PARAM_STR);
-        $stmt->bindParam(':Location', $userdate['name_panel'], PDO::PARAM_STR);
-        $stmt->execute();
+        $stmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (FIND_IN_SET(:Location, Location) > 0 or Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers')) LIMIT 1");
+        $stmt->execute([
+            ':code_product' => $user['Processing_value_one'],
+            ':Location' => $userdate['name_panel'],
+            ':agent' => $user['agent'],
+        ]);
         $info_product = $stmt->fetch(PDO::FETCH_ASSOC);
     }
     if (!is_array($info_product) || !isset($info_product['code_product'])) {
@@ -2129,7 +2131,7 @@ $textonebuy
         if (function_exists('rxResolveProductForPanel')) {
             $info_product = rxResolveProductForPanel($user['Processing_value_one'], $userdate['name_panel'], $user['agent'], $userdate['category'] ?? null, $userdate['monthproduct'] ?? null);
         } else {
-            $stmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (agent = :agent OR agent = 'all') LIMIT 1");
+            $stmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers')) LIMIT 1");
             $stmt->execute([
                 ':code_product' => $user['Processing_value_one'],
                 ':location' => $userdate['name_panel'],
@@ -2226,7 +2228,7 @@ $textonebuy
         ':location' => $location,
         ':agent' => $user['agent']
     ];
-    $productCountStmt = $pdo->prepare("SELECT COUNT(*) FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND agent = :agent");
+    $productCountStmt = $pdo->prepare("SELECT COUNT(*) FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))");
     $productCountStmt->execute($productCountParams);
     $nullproduct = (int)$productCountStmt->fetchColumn();
     if ($nullproduct == 0) {
@@ -2245,7 +2247,7 @@ $textonebuy
     } else {
         $statuscustom = false;
     }
-    $query = "SELECT * FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND agent = :agent";
+    $query = "SELECT * FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))";
     $textproduct = faoxima_render_text($textbotlang['users']['sell']['Service-select-no-category'], [
         'panel' => $marzban_list_get['name_panel'],
     ]);
@@ -2374,7 +2376,7 @@ $textonebuy
         if (function_exists('rxResolveProductForPanel')) {
             $info_product = rxResolveProductForPanel($loc, $user['Processing_value'], $user['agent']);
         } else {
-            $stmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (agent = :agent OR agent = 'all') LIMIT 1");
+            $stmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers')) LIMIT 1");
             $stmt->execute([
                 ':code_product' => $loc,
                 ':location' => $user['Processing_value'],
@@ -2432,7 +2434,7 @@ $textonebuy
         if (function_exists('rxResolveProductForPanel')) {
             $info_product = rxResolveProductForPanel($user['Processing_value_one'], $user['Processing_value'], $user['agent']);
         } else {
-            $stmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (agent = :agent OR agent = 'all') LIMIT 1");
+            $stmt = $pdo->prepare("SELECT * FROM product WHERE code_product = :code_product AND (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers')) LIMIT 1");
             $stmt->execute([
                 ':code_product' => $user['Processing_value_one'],
                 ':location' => $user['Processing_value'],

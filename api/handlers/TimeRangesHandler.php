@@ -38,7 +38,7 @@ final class TimeRangesHandler extends BaseHandler
 
         $userAgent = $this->user['agent'] ?? 'f';
         $rawTimes = array_map('strval', array_column(FaoximaDb::fetchAll(
-            "SELECT Service_time FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (agent = :agent OR agent = 'all')",
+            "SELECT Service_time FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))",
             [':location' => $panel['name_panel'], ':agent' => $userAgent]
         ), 'Service_time'));
         $rawTimes = array_values(array_unique($rawTimes));

@@ -76,8 +76,8 @@ final class ServiceExtraHandler extends BaseHandler
         $discPriceBefore = null;
         if ($discountCode !== '') {
             $sourceProduct = FaoximaDb::fetchOne(
-                "SELECT category FROM product WHERE name_product = :n AND (FIND_IN_SET(:loc, Location) > 0 OR Location = '/all') LIMIT 1",
-                [':n' => (string)($invoice['name_product'] ?? ''), ':loc' => (string)($invoice['Service_location'] ?? '')]
+                "SELECT category FROM product WHERE name_product = :n AND (FIND_IN_SET(:loc, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers')) LIMIT 1",
+                [':n' => (string)($invoice['name_product'] ?? ''), ':loc' => (string)($invoice['Service_location'] ?? ''), ':agent' => (string)($this->user['agent'] ?? 'f')]
             );
             $categoryList = is_array($sourceProduct) ? nmProductCategoryList($sourceProduct) : [];
 

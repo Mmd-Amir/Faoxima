@@ -165,7 +165,7 @@ function nmProductsForPanelCategory(array $panel, $agent = 'all', $category = nu
     ];
     $sql = "SELECT * FROM product WHERE (FIND_IN_SET(:loc_where, Location) > 0 OR Location = '/all')";
     if ($filterAgent) {
-        $sql .= " AND (agent = :agent OR agent = 'all' OR agent = '' OR agent IS NULL)";
+        $sql .= " AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))";
         $params[':agent'] = $agent;
     }
 
@@ -199,7 +199,7 @@ function nmProductsForPanelCategory(array $panel, $agent = 'all', $category = nu
             ];
             $fallbackSql = "SELECT * FROM product WHERE (FIND_IN_SET(:fallback_loc_where, Location) > 0 OR Location = '/all')";
             if ($filterAgent) {
-                $fallbackSql .= " AND (agent = :agent OR agent = 'all' OR agent = '' OR agent IS NULL)";
+                $fallbackSql .= " AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))";
                 $fallbackParams[':agent'] = $agent;
             }
             $fallbackSql .= " ORDER BY CASE WHEN FIND_IN_SET(:fallback_loc_order, Location) > 0 THEN 0 ELSE 1 END, CAST(price_product AS UNSIGNED) ASC, id DESC";
@@ -237,7 +237,7 @@ function nmProductByCodeForPanel($codeProduct, $panelName, $agent = null)
         ];
 
         if ($agent !== null && $agent !== '') {
-            $sql .= " AND (agent = :agent_where OR agent = 'all' OR agent = '' OR agent IS NULL)";
+            $sql .= " AND (FIND_IN_SET(:agent_where, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))";
             $params[':agent_where'] = $agent;
             $params[':agent_order'] = $agent;
             $sql .= " ORDER BY
@@ -291,7 +291,7 @@ function nmProductByNameForPanel($productName, $panelName, $agent = null, $categ
         }
         $agent = trim((string)($agent ?? ''));
         if (!in_array($agent, ['', 'all', '*', 'any'], true)) {
-            $sql .= " AND (agent = :agent OR agent = 'all' OR agent = '' OR agent IS NULL)";
+            $sql .= " AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))";
             $params[':agent'] = $agent;
         }
         $sql .= " ORDER BY CASE WHEN FIND_IN_SET(:location_order, Location) > 0 THEN 0 ELSE 1 END LIMIT 1";

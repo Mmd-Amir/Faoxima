@@ -54,7 +54,7 @@ final class ServiceRenewConfirmHandler extends BaseHandler
             $row = FaoximaDb::fetchOne(
                 "SELECT * FROM product
                   WHERE (FIND_IN_SET(:loc, Location) > 0 OR Location = '/all') AND code_product = :code
-                    AND (agent = :agent OR agent = 'all')
+                    AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))
                   LIMIT 1",
                 [':loc' => $invoice['Service_location'], ':code' => $code, ':agent' => $agent]
             );
@@ -546,6 +546,7 @@ final class ServiceRenewConfirmHandler extends BaseHandler
             'Volume_constraint' => $volume,
             'Service_time'      => $time,
             'Location'          => $panel['name_panel'],
+            'agent'             => $agent,
             'price_product'     => ($volume * $priceV) + ($time * $priceT),
         ];
     }
@@ -622,4 +623,3 @@ final class ServiceRenewConfirmHandler extends BaseHandler
         }
     }
 }
-

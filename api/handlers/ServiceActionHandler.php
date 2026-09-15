@@ -357,7 +357,7 @@ final class ServiceActionHandler extends BaseHandler
             $product = ['inbounds' => null];
         } else {
             $product = FaoximaDb::fetchOne(
-                "SELECT * FROM product WHERE (FIND_IN_SET(:loc, Location) > 0 OR Location = '/all') AND name_product = :name AND (agent = :agent OR agent = 'all')",
+                "SELECT * FROM product WHERE (FIND_IN_SET(:loc, Location) > 0 OR Location = '/all') AND name_product = :name AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))",
                 [':loc' => $invoice['Service_location'], ':name' => $invoice['name_product'], ':agent' => $agent]
             );
         }

@@ -56,7 +56,7 @@ function rxResolveProductForPanel($productToken, $panelName, $agent = null, $cat
         ];
 
         if ($agent !== null && $agent !== '') {
-            $sql .= " AND (agent = :rx_agent_where OR agent = 'all')";
+            $sql .= " AND (FIND_IN_SET(:rx_agent_where, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))";
             $params[':rx_agent_where'] = $agent;
             $params[':rx_agent_order'] = $agent;
         }
@@ -130,7 +130,7 @@ function rxResolveProductForPanel($productToken, $panelName, $agent = null, $cat
         $sql = "SELECT * FROM product WHERE (FIND_IN_SET(:rx_location_where, Location) > 0 OR Location = '/all')";
         $params = [':rx_location_where' => $panelName];
         if ($agent !== null && $agent !== '') {
-            $sql .= " AND (agent = :rx_agent_where OR agent = 'all')";
+            $sql .= " AND (FIND_IN_SET(:rx_agent_where, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))";
             $params[':rx_agent_where'] = $agent;
         }
         if ($category !== null && $category !== '') {
@@ -187,11 +187,8 @@ function KeyboardProduct($location,$query,$pricediscount,$datakeyboard,$statuscu
         ];
     }
     foreach ($productRows as $result) {
-        if ($agentFilter !== null) {
-            $productAgent = (string) ($result['agent'] ?? '');
-            if ($productAgent !== (string) $agentFilter && $productAgent !== 'all') {
-                continue;
-            }
+        if ($agentFilter !== null && (!function_exists('rx_product_allows_agent') || !rx_product_allows_agent($result, $agentFilter))) {
+            continue;
         }
         if ($nmPanelRow !== null && !nmStockHasAvailableForProduct($nmPanelRow, $result)) {
             continue;
@@ -252,7 +249,7 @@ function KeyboardCategory($location,$agent,$backuser = "backuser"){
         $stmt = $pdo->prepare("SELECT * FROM category");
         $stmt->execute();
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $stmts = $pdo->prepare("SELECT * FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND FIND_IN_SET(:category, category) > 0 AND (agent = :agent OR agent = 'all')");
+            $stmts = $pdo->prepare("SELECT * FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND FIND_IN_SET(:category, category) > 0 AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))");
             $stmts->bindParam(':location', $location, PDO::PARAM_STR);
             $stmts->bindParam(':category', $row['remark'], PDO::PARAM_STR);
             $stmts->bindParam(':agent', $agent, PDO::PARAM_STR);
@@ -269,7 +266,7 @@ function KeyboardCategory($location,$agent,$backuser = "backuser"){
 
 function keyboardTimeCategory($name_panel,$agent,$callback_data = "producttime_",$callback_data_back = "backuser",$statuscustomvolume = false,$statusbtnextend = false){
     global $pdo,$textbotlang;
-    $stmt = $pdo->prepare("SELECT Service_time FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (agent = :agent OR agent = 'all')");
+    $stmt = $pdo->prepare("SELECT Service_time FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))");
     $stmt->execute([
         ':location' => $name_panel,
         ':agent' => $agent

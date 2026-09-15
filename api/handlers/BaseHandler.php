@@ -143,57 +143,8 @@ abstract class BaseHandler
 
     protected function productIsAllowedForAgent(array $product, $agent): bool
     {
-        if (!is_string($agent) || $agent === '') return true;
-
-        $fields = [
-            'agent', 'agents', 'agent_list', 'agent_lists',
-            'agent_access', 'agent_type', 'allowed_agents',
-            'allowed_agent', 'user_type', 'user_types',
-            'type_user', 'typeuser', 'group_user', 'group_users',
-            'audience', 'audiences',
-        ];
-
-        foreach ($fields as $field) {
-            if (!isset($product[$field]) || $product[$field] === null || $product[$field] === '') continue;
-
-            $raw = $product[$field];
-            $values = [];
-
-            if (is_array($raw)) {
-                $values = $raw;
-            } else {
-                $rawStr = trim((string)$raw);
-                if ($rawStr === '') continue;
-
-                $decoded = json_decode($rawStr, true);
-                if (json_last_error() === JSON_ERROR_NONE) {
-                    if (is_array($decoded)) $values = $decoded;
-                    elseif (is_scalar($decoded)) $values = [(string)$decoded];
-                }
-                if (empty($values)) {
-                    $values = preg_split('/[,|]/', $rawStr);
-                }
-            }
-
-            $normalised = [];
-            foreach ((array)$values as $v) {
-                if (is_array($v)) continue;
-                $token = strtolower(trim((string)$v));
-                if ($token !== '') $normalised[] = $token;
-            }
-
-            if (!empty($normalised)) {
-                $agent = strtolower(trim($agent));
-                $wildcards = ['all', '*', 'any', 'everyone'];
-                foreach ($normalised as $allowed) {
-                    if (in_array($allowed, $wildcards, true)) return true;
-                    if ($allowed === $agent) return true;
-                }
-                return false;
-            }
-        }
-
-        return true;
+        return function_exists('rx_product_allows_agent')
+            && rx_product_allows_agent($product, $agent);
     }
 
 

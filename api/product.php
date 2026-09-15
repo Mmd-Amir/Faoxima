@@ -225,6 +225,10 @@ switch ($data['actions'] ?? '') {
         $panel = select("marzban_panel", "*", "code_panel", $data['location'], "select");
         if (!$panel & $data['location'] != "/all")
             sendJsonResponse(false, "location not found", [], 200);
+        $agent = strtolower(trim((string)($data['agent'] ?? 'f')));
+        if (!in_array($agent, ['f', 'n', 'n2', 'all'], true)) {
+            sendJsonResponse(false, "agent invalid", [], 422);
+        }
         try {
             $randomString = bin2hex(random_bytes(3));
 
@@ -235,7 +239,7 @@ switch ($data['actions'] ?? '') {
                 'Volume_constraint' => $data['data_limit'],
                 'Service_time' => $data['time'],
                 'Location' => $panel['name_panel'],
-                'agent' => empty($data['agent']) ? "f" : $data['agent'],
+                'agent' => $agent,
                 'note' => empty($data['note']) ? "" : $data['note'],
                 'data_limit_reset' => empty($data['data_limit_reset']) ? "no_reset" : $data['data_limit_reset'],
                 'inbounds' => empty($data['note']) ? null : $data['inbounds'],
@@ -277,6 +281,12 @@ switch ($data['actions'] ?? '') {
         $product = select("product", "*", "id", $data['id'], "select");
         if (!$product) {
             sendJsonResponse(false, "product not found", [], 200);
+        }
+        if (isset($data['agent'])) {
+            $data['agent'] = strtolower(trim((string)$data['agent']));
+            if (!in_array($data['agent'], ['f', 'n', 'n2', 'all'], true)) {
+                sendJsonResponse(false, "agent invalid", [], 422);
+            }
         }
         if (isset($data['name']) && $product['name_product'] != $data['name']) {
             $product_check = select("product", "*", "name_product", $data['name'], "count");

@@ -29,7 +29,7 @@ final class CategoriesHandler extends BaseHandler
                 "SELECT COUNT(*) FROM product
                   WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all')
                     AND FIND_IN_SET(:category, category) > 0
-                    AND (agent = :agent OR agent = 'all')",
+                    AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))",
                 [
                     ':location' => $panel['name_panel'],
                     ':category' => $cat['remark'],

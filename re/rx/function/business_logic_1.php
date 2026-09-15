@@ -728,6 +728,44 @@ if (!function_exists('rx_resolveAgentGroupFromReplyButton')) {
     }
 }
 
+if (!function_exists('rx_product_allows_agent')) {
+    function rx_product_allows_agent(array $product, $agent)
+    {
+        $agent = strtolower(trim((string) $agent));
+        if (!in_array($agent, ['f', 'n', 'n2'], true)) {
+            return false;
+        }
+
+        if (!array_key_exists('agent', $product) || $product['agent'] === null) {
+            return false;
+        }
+
+        $raw = $product['agent'];
+        if (is_array($raw)) {
+            $values = $raw;
+        } else {
+            $raw = trim((string) $raw);
+            if ($raw === '') {
+                return false;
+            }
+            $decoded = json_decode($raw, true);
+            $values = is_array($decoded) ? $decoded : preg_split('/[,|]/', $raw);
+        }
+
+        foreach ($values as $value) {
+            if (is_array($value) || is_object($value)) {
+                continue;
+            }
+            $value = strtolower(trim((string) $value));
+            if ($value === $agent || in_array($value, ['all', 'allusers'], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
 if (!function_exists('rx_resolveAgentGroupFromCallbackData')) {
     function rx_resolveAgentGroupFromCallbackData($callbackData, array $allowed)
     {

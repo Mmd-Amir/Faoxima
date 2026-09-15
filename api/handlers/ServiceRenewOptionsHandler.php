@@ -38,7 +38,7 @@ final class ServiceRenewOptionsHandler extends BaseHandler
 
 
         $products = FaoximaDb::fetchAll(
-            "SELECT * FROM product WHERE (FIND_IN_SET(:loc, Location) > 0 OR Location = '/all') AND (agent = :agent OR agent = 'all') ORDER BY (position = 0) ASC, position ASC, id ASC",
+            "SELECT * FROM product WHERE (FIND_IN_SET(:loc, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers')) ORDER BY (position = 0) ASC, position ASC, id ASC",
             [':loc' => $invoice['Service_location'], ':agent' => $agent]
         );
 
@@ -180,4 +180,3 @@ final class ServiceRenewOptionsHandler extends BaseHandler
         return $default;
     }
 }
-

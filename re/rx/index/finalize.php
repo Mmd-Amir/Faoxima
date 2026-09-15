@@ -98,7 +98,7 @@ if (isset($update['pre_checkout_query'])) {
         return;
     }
 
-    $query = "SELECT * FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (agent = :agent OR agent = 'all' OR agent = '' OR agent IS NULL)";
+    $query = "SELECT * FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))";
     $queryParams = [
         ':location' => $location,
         ':agent' => $user['agent']
@@ -123,7 +123,7 @@ if (isset($update['pre_checkout_query'])) {
     if (function_exists('rxResolveProductForPanel')) {
         $prodcut = rxResolveProductForPanel($codeproduct, $user['Processing_value'], $user['agent']);
     } else {
-        $stmt = $pdo->prepare("SELECT * FROM product WHERE (FIND_IN_SET(:processing_value, Location) > 0 OR Location = '/all') AND code_product = :code_product AND agent = :agent");
+        $stmt = $pdo->prepare("SELECT * FROM product WHERE (FIND_IN_SET(:processing_value, Location) > 0 OR Location = '/all') AND code_product = :code_product AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))");
         $stmt->execute([
             ':processing_value' => $user['Processing_value'],
             ':code_product' => $codeproduct,
@@ -152,7 +152,7 @@ if (isset($update['pre_checkout_query'])) {
     if (function_exists('rxResolveProductForPanel')) {
         $prodcut = rxResolveProductForPanel($codeproduct, $user['Processing_value'], $user['agent']);
     } else {
-        $stmt = $pdo->prepare("SELECT * FROM product WHERE (FIND_IN_SET(:processing_value, Location) > 0 OR Location = '/all') AND code_product = :code_product AND agent = :agent");
+        $stmt = $pdo->prepare("SELECT * FROM product WHERE (FIND_IN_SET(:processing_value, Location) > 0 OR Location = '/all') AND code_product = :code_product AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))");
         $stmt->execute([
             ':processing_value' => $user['Processing_value'],
             ':code_product' => $codeproduct,

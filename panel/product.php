@@ -103,6 +103,11 @@ alert('محصول از قبل وجود دارد'); window.location.href='product
     $volumeProduct   = $_POST['volume_product']   ?? '';
     $serviceTime     = $_POST['time_product']     ?? '';
     $agentProduct    = $_POST['agent_product']    ?? '';
+    $agentProduct    = strtolower(trim((string)$agentProduct));
+    if (!in_array($agentProduct, ['f', 'n', 'n2', 'all'], true)) {
+        echo "<script>alert('گروه کاربری نامعتبر است'); window.location.href='product.php';</script>";
+        return;
+    }
 
     $locationArr = explode(',', (string)($_POST['namepanel_csv'] ?? ''));
     $locationArr = array_values(array_unique(array_filter(array_map('trim', $locationArr), function ($v) { return $v !== ''; })));
@@ -720,5 +725,3 @@ if (isset($_GET['removeid']) && $_GET['removeid'] !== '') {
 </script>
 </body>
 </html>
-
-

@@ -48,8 +48,8 @@ final class DiscountValidateHandler extends BaseHandler
                 }
                 if ($codeCategory === '') {
                     $sourceProduct = FaoximaDb::fetchOne(
-                        "SELECT category FROM product WHERE name_product = :n AND (FIND_IN_SET(:loc, Location) > 0 OR Location = '/all') LIMIT 1",
-                        [':n' => (string)($invoice['name_product'] ?? ''), ':loc' => (string)($invoice['Service_location'] ?? '')]
+                        "SELECT category FROM product WHERE name_product = :n AND (FIND_IN_SET(:loc, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers')) LIMIT 1",
+                        [':n' => (string)($invoice['name_product'] ?? ''), ':loc' => (string)($invoice['Service_location'] ?? ''), ':agent' => (string)($this->user['agent'] ?? 'f')]
                     );
                     if (is_array($sourceProduct)) {
                         $codeCategory = (string)($sourceProduct['category'] ?? '');
@@ -60,8 +60,8 @@ final class DiscountValidateHandler extends BaseHandler
 
         if ($codeCategory === '' && $codeProduct !== '') {
             $productRow = FaoximaDb::fetchOne(
-                "SELECT category FROM product WHERE code_product = :cp AND (FIND_IN_SET(:loc, Location) > 0 OR Location = '/all') LIMIT 1",
-                [':cp' => $codeProduct, ':loc' => $namePanel]
+                "SELECT category FROM product WHERE code_product = :cp AND (FIND_IN_SET(:loc, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers')) LIMIT 1",
+                [':cp' => $codeProduct, ':loc' => $namePanel, ':agent' => (string)($this->user['agent'] ?? 'f')]
             );
             if (is_array($productRow)) {
                 $codeCategory = (string)($productRow['category'] ?? '');

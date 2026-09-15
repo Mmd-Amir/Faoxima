@@ -32,7 +32,7 @@ final class ServicesHandler extends BaseHandler
         $params = [':location' => $panel['name_panel']];
 
         $userAgent = $this->user['agent'] ?? 'f';
-        $sql .= " AND (agent = :agent OR agent = 'all')";
+        $sql .= " AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))";
         $params[':agent'] = $userAgent;
 
         if ($categoryRow !== null) {
