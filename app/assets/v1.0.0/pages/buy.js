@@ -525,10 +525,10 @@ export async function buy(view) {
             const tgUser = getInitDataUnsafe()?.user || {};
             if (tgUser.username) {
                 const suffix = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
-                $input.value = tgUser.username.toLowerCase().slice(0, 28) + '_' + suffix;
+                $input.value = tgUser.username.toLowerCase().replace(/_/g, '-').slice(0, 28) + '-' + suffix;
             } else {
                 const letters = Array.from({ length: 3 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join('');
-                $input.value = 'u' + (tgUser.id || '0') + '_' + letters;
+                $input.value = 'u' + (tgUser.id || '0') + '-' + letters;
             }
         });
 
@@ -818,4 +818,3 @@ function computeStep(d) {
     if (!d.product) return 3;
     return 4;
 }
-

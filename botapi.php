@@ -2481,7 +2481,36 @@ if (!function_exists('rx_cron_btn')) {
         return $btn;
     }
 }
-function prepareTelegramInputFile($input)
+function normalizeConfigFilename($filename, $prefix = '', $wireguard = false)
+{
+    $filename = basename(str_replace('\\', '/', (string) $filename));
+    $extension = strtolower((string) pathinfo($filename, PATHINFO_EXTENSION));
+    $stem = (string) pathinfo($filename, PATHINFO_FILENAME);
+    $stem = preg_replace('/[^A-Za-z0-9.-]+/', '-', str_replace('_', '-', $stem));
+    $stem = trim((string) preg_replace('/-+/', '-', $stem), '-.');
+    $prefix = preg_replace('/[^A-Za-z0-9.-]+/', '-', str_replace('_', '-', (string) $prefix));
+    $prefix = trim((string) preg_replace('/-+/', '-', $prefix), '-.');
+    if (strtolower($prefix) === 'none') {
+        $prefix = '';
+    }
+    if ($stem === '') {
+        $stem = $wireguard ? 'wireguard' : 'config';
+    }
+    if ($prefix !== '' && stripos($stem, $prefix . '-') !== 0 && strcasecmp($stem, $prefix) !== 0) {
+        $stem = $prefix . '-' . $stem;
+    }
+    if ($wireguard) {
+        $stem = substr($stem, 0, 15);
+        $stem = rtrim($stem, '-.');
+        $extension = 'conf';
+    }
+    if ($extension === '') {
+        $extension = $wireguard ? 'conf' : 'bin';
+    }
+    return $stem . '.' . $extension;
+}
+
+function prepareTelegramInputFile($input, $postFilename = null)
 {
     if ($input instanceof CURLFile) {
         return $input;
@@ -2494,6 +2523,9 @@ function prepareTelegramInputFile($input)
 
         $realPath = realpath($input);
         if ($realPath !== false && is_file($realPath) && is_readable($realPath)) {
+            if (is_string($postFilename) && $postFilename !== '') {
+                return new CURLFile($realPath, 'application/octet-stream', $postFilename);
+            }
             return new CURLFile($realPath);
         }
 
@@ -2505,9 +2537,9 @@ function prepareTelegramInputFile($input)
     return null;
 }
 
-function sendDocument($chat_id, $documentPath, $caption)
+function sendDocument($chat_id, $documentPath, $caption, $filename = null)
 {
-    $document = prepareTelegramInputFile($documentPath);
+    $document = prepareTelegramInputFile($documentPath, $filename);
     if ($document === null) {
         return [
             'ok' => false,

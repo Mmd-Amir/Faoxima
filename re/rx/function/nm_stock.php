@@ -77,8 +77,8 @@ function nmStockExtendProductKeyboard(array $invoice, array $userRow, array $pan
 
 function nmStockSafeUsername($userId, $current = '')
 {
-    $base = preg_replace('/[^A-Za-z0-9_]/', '', (string)$current);
-    if ($base === '' || strlen($base) < 3) $base = preg_replace('/[^A-Za-z0-9_]/', '', (string)$userId) . '_' . substr(bin2hex(random_bytes(3)), 0, 6);
+    $base = preg_replace('/[^A-Za-z0-9-]/', '', str_replace('_', '-', (string)$current));
+    if ($base === '' || strlen($base) < 3) $base = preg_replace('/[^A-Za-z0-9-]/', '', str_replace('_', '-', (string)$userId)) . '-' . substr(bin2hex(random_bytes(3)), 0, 6);
     if (strlen($base) > 28) $base = substr($base, 0, 28);
     if (strlen($base) < 3) $base = 'u' . substr(bin2hex(random_bytes(6)), 0, 10);
     return $base;
@@ -90,7 +90,7 @@ function nmStockConvertInvoiceToPanelService($chatId, array $userRow, array $inv
     $price = (float)($product['price_product'] ?? 0);
     if ((float)($userRow['Balance'] ?? 0) < $price && ($userRow['agent'] ?? '') !== 'n2') { sendmessage($chatId, '❌ موجودی کیف پول برای تمدید کافی نیست.', null, 'HTML'); return false; }
     $username = nmStockSafeUsername($chatId, $invoice['username'] ?? '');
-    try { $check = $ManagePanel->DataUser($panel['name_panel'], $username); if (is_array($check) && isset($check['username'])) $username = nmStockSafeUsername($chatId, $chatId . '_' . substr(bin2hex(random_bytes(4)), 0, 8)); } catch (Throwable $e) { }
+    try { $check = $ManagePanel->DataUser($panel['name_panel'], $username); if (is_array($check) && isset($check['username'])) $username = nmStockSafeUsername($chatId, $chatId . '-' . substr(bin2hex(random_bytes(4)), 0, 8)); } catch (Throwable $e) { }
     $days = (int)($product['Service_time'] ?? 0);
     $expire = $days > 0 ? strtotime('+' . $days . ' days') : 0;
     $datac = ['expire' => $expire, 'data_limit' => (float)($product['Volume_constraint'] ?? 0) * pow(1024, 3), 'from_id' => $chatId, 'username' => '', 'type' => 'buy'];

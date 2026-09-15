@@ -262,12 +262,39 @@ function wgConfFilename(link, protocol, index) {
             if (m) remark = m[1].trim();
         }
     }
-    let base = remark.replace(/[\/:*?"<>|\s]+/g, '_').replace(/^_+|_+$/g, '');
+    let base = remark.replace(/_/g, '-').replace(/[\/:*?"<>|\s]+/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '');
     const prefix = protocol === 'amneziawg' ? 'amneziawg' : 'wireguard';
-    if (!base || /^[0-9_]+$/.test(base)) {
-        base = base ? `${prefix}_${base}` : `${prefix}_${(index || 0) + 1}`;
+    if (!base || /^[0-9-]+$/.test(base)) {
+        base = base ? `${prefix}-${base}` : `${prefix}-${(index || 0) + 1}`;
     }
+    if (__cfgFilePrefix && base.toLowerCase() !== __cfgFilePrefix.toLowerCase() && !base.toLowerCase().startsWith(`${__cfgFilePrefix.toLowerCase()}-`)) {
+        base = `${__cfgFilePrefix}-${base}`;
+    }
+    base = base.slice(0, 15).replace(/[-.]+$/g, '');
     return base + '.conf';
+}
+
+function configDownloadFilename(value, fallback, wireguard) {
+    let name = String(fallback || 'config.conf');
+    if (String(value || '')) {
+        try {
+            const parsed = new URL(String(value), window.location.href);
+            const fromPath = decodeURIComponent(parsed.pathname.split('/').filter(Boolean).pop() || '');
+            if (fromPath) name = fromPath;
+        } catch (_) {}
+    }
+    const dot = name.lastIndexOf('.');
+    let ext = dot > 0 ? name.slice(dot + 1).toLowerCase() : (wireguard ? 'conf' : 'bin');
+    let stem = dot > 0 ? name.slice(0, dot) : name;
+    stem = stem.replace(/_/g, '-').replace(/[^A-Za-z0-9.-]+/g, '-').replace(/-+/g, '-').replace(/^[-.]+|[-.]+$/g, '') || (wireguard ? 'wireguard' : 'config');
+    if (__cfgFilePrefix && stem.toLowerCase() !== __cfgFilePrefix.toLowerCase() && !stem.toLowerCase().startsWith(`${__cfgFilePrefix.toLowerCase()}-`)) {
+        stem = `${__cfgFilePrefix}-${stem}`;
+    }
+    if (wireguard) {
+        stem = stem.slice(0, 15).replace(/[-.]+$/g, '');
+        ext = 'conf';
+    }
+    return `${stem}.${ext}`;
 }
 
 function wgConfDataUri(conf) {
@@ -391,9 +418,13 @@ function structuredInfoCardHtml(c, i) {
 }
 
 let __cfgUsername = '';
+let __cfgFilePrefix = '';
 
-export function setConfigUsername(u) {
+export function setConfigUsername(u, prefix) {
     __cfgUsername = String(u || '');
+    if (prefix !== undefined) {
+        __cfgFilePrefix = String(prefix || '').replace(/_/g, '-').replace(/[^A-Za-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-+|-+$/g, '');
+    }
 }
 
 function configListHtml(configs, isManual, offset = 0) {
@@ -405,6 +436,7 @@ function configListHtml(configs, isManual, offset = 0) {
         const protocolLabel = configProtocolLabel(c);
         const isFileDownload = !!wgInfo || isDownloadableFileLink(protocolLabel);
         const wgFileName = wgInfo ? wgConfFilename(c, wgInfo.protocol, i) : '';
+        const remoteFileName = !wgInfo ? configDownloadFilename(payload, 'config.conf', false) : '';
         const downloadId = isFileDownload && !wgInfo ? storeDownloadSource(payload) : '';
         return `
         <div class="cfg-item">
@@ -421,7 +453,7 @@ function configListHtml(configs, isManual, offset = 0) {
                     ? (wgInfo
                         ? `<button type="button" class="btn btn-ghost btn-block" data-wg-download data-wg-name="${escapeHtml(wgFileName)}" data-wg-user="${escapeHtml(__cfgUsername)}" data-wg-index="${i}" data-wg-conf="${escapeHtml(wgInfo.conf)}">${icon('download', 'class="ico ico-sm"')} دانلود فایل کانفیگ (${escapeHtml(wgFileName)})</button>
                        <button type="button" class="btn btn-ghost btn-block copy-btn" data-copy="${escapeHtml(wgInfo.conf)}" style="margin-top:6px">${icon('copy', 'class="ico ico-sm"')} کپی متن کانفیگ</button>`
-                        : `<button type="button" class="btn btn-ghost btn-block" data-url-download data-url-name="config.conf" data-download-id="${downloadId}">${icon('download', 'class="ico ico-sm"')} دانلود فایل کانفیگ</button>`)
+                        : `<button type="button" class="btn btn-ghost btn-block" data-url-download data-url-name="${escapeHtml(remoteFileName)}" data-download-id="${downloadId}">${icon('download', 'class="ico ico-sm"')} دانلود فایل کانفیگ</button>`)
                     : structured
                     ? `
                 <div class="rx-info-card-wrap" style="position:relative">
@@ -709,7 +741,7 @@ export async function service(view, encodedUsername) {
 }
 
 function renderBody($body, info, username, reload) {
-    setConfigUsername(info && info.username ? info.username : username);
+    setConfigUsername(info && info.username ? info.username : username, info && info.file_prefix);
 
 
     const isStock = info.is_stock === true
@@ -968,7 +1000,7 @@ function scrollToSubscription($body, info) {
 
 
 async function showConfigSection($body, info, username) {
-    setConfigUsername(username);
+    setConfigUsername(username, info && info.file_prefix);
     const $cfg = $body.querySelector('#service-config-host');
     if (!$cfg) return;
 
@@ -2204,7 +2236,7 @@ export function bindOutputCopy($scope) {
 }
 
 export function renderServiceOutputs($host, outputs, opts) {
-    if (opts && opts.username) setConfigUsername(opts.username);
+    if (opts && opts.username) setConfigUsername(opts.username, opts.filePrefix || '');
     if (!$host) return false;
     const list = Array.isArray(outputs) ? outputs : [];
     const isManual = !!(opts && opts.isManual);
@@ -2277,7 +2309,7 @@ export function renderOutput(o) {
 
     if (type === 'file') {
         const fileValue = String(o.value || '');
-        const fileName = String(o.filename || 'config.conf');
+        const fileName = configDownloadFilename('', String(o.filename || 'config.conf'), /\.conf$/i.test(String(o.filename || '')));
         if (fileValue === '') return '';
         const isDataUri = /^data:/i.test(fileValue);
         const isRemoteUrl = /^(https?|blob):/i.test(fileValue);

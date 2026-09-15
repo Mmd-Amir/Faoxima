@@ -266,7 +266,7 @@ function rxManualsaleSendFileItems($user_id, $username_service, $fileItems, $cap
     if (!is_array($fileItems) || empty($fileItems)) {
         return false;
     }
-    $cleanUser = preg_replace('/[^a-zA-Z0-9_\-]/', '', (string) $username_service);
+    $cleanUser = preg_replace('/[^a-zA-Z0-9\-]/', '', str_replace('_', '-', (string) $username_service));
     if ($cleanUser === '') {
         $cleanUser = 'config';
     }
@@ -282,7 +282,8 @@ function rxManualsaleSendFileItems($user_id, $username_service, $fileItems, $cap
         $namingIndex = (int) $startIndex + $index;
         $ext = (trim((string) ($fi['ext'] ?? '')) !== '') ? $fi['ext'] : 'bin';
         $baseName = $namingTotal > 1 ? ($cleanUser . '-' . $namingIndex) : $cleanUser;
-        $manualFile = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $baseName . '.' . $ext;
+        $publicName = normalizeConfigFilename($baseName . '.' . $ext, '', strtolower($ext) === 'conf');
+        $manualFile = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $publicName;
         file_put_contents($manualFile, (string) ($fi['content'] ?? ''));
         $isLastFile = ($index === $fileCount);
         $thisCaption = ($index === 1) ? (string) $caption : '';
@@ -290,7 +291,7 @@ function rxManualsaleSendFileItems($user_id, $username_service, $fileItems, $cap
         if (is_file($manualFile) && is_readable($manualFile)) {
             telegram('sendDocument', [
                 'chat_id' => $user_id,
-                'document' => new CURLFile($manualFile),
+                'document' => new CURLFile($manualFile, 'application/octet-stream', $publicName),
                 'caption' => $thisCaption,
                 'reply_markup' => $thisMarkup,
                 'parse_mode' => 'HTML',
@@ -422,7 +423,7 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
         $hasConfigOffer = !empty($textItems);
 
         if (!empty($fileItems)) {
-            $cleanUser = preg_replace('/[^a-zA-Z0-9_\-]/', '', (string) $username_service);
+            $cleanUser = preg_replace('/[^a-zA-Z0-9\-]/', '', str_replace('_', '-', (string) $username_service));
             if ($cleanUser === '') $cleanUser = 'config';
             $fileCount = count($fileItems);
             $index = 0;
@@ -430,7 +431,8 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
                 $index++;
                 $ext = (trim((string) ($fi['ext'] ?? '')) !== "") ? $fi['ext'] : "bin";
                 $baseName = $fileCount > 1 ? ($cleanUser . '-' . $index) : $cleanUser;
-                $manualFile = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $baseName . "." . $ext;
+                $publicName = normalizeConfigFilename($baseName . "." . $ext, '', strtolower($ext) === 'conf');
+                $manualFile = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $publicName;
                 file_put_contents($manualFile, (string) ($fi['content'] ?? ''));
                 $isLastFile = ($index === $fileCount);
                 $thisCaption = ($index === 1) ? $cleanCaption : '';
@@ -441,7 +443,7 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
                 if (is_file($manualFile) && is_readable($manualFile)) {
                     telegram('sendDocument', [
                         'chat_id' => $user_id,
-                        'document' => new CURLFile($manualFile),
+                        'document' => new CURLFile($manualFile, 'application/octet-stream', $publicName),
                         'caption' => $thisCaption,
                         'reply_markup' => $fileReplyMarkup,
                         'parse_mode' => 'HTML',

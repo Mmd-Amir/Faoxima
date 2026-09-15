@@ -163,7 +163,8 @@ final class TestAccountHandler extends BaseHandler
             if ($trimmedCustom === '') {
                 FaoximaResponse::fail(422, faoxima_textbot_get('dyn_testaccount_username_required', 'لطفاً یک نام کاربری وارد کنید.'));
             }
-            if (!preg_match('~(?!_)^[a-z][a-z\d_]{2,32}(?<!_)$~i', $trimmedCustom)) {
+            $trimmedCustom = str_replace('_', '-', $trimmedCustom);
+            if (!preg_match('~(?![_-])^[a-z][a-z\d_-]{2,32}(?<![_-])$~i', $trimmedCustom)) {
                 FaoximaResponse::fail(422, faoxima_textbot_get('dyn_testaccount_username_invalid', 'نام کاربری معتبر نیست.'));
             }
             $customUsername = $trimmedCustom;
@@ -200,7 +201,7 @@ final class TestAccountHandler extends BaseHandler
         );
         $remoteCheck = $managePanel->DataUser($panel['name_panel'], $usernameAc);
         if ($existsLocal || (is_array($remoteCheck) && isset($remoteCheck['username']))) {
-            $usernameAc = rand(1000000, 9999999) . '_' . $usernameAc;
+            $usernameAc = rand(1000000, 9999999) . '-' . $usernameAc;
         }
 
         if (!$isAdmin) {
@@ -388,7 +389,7 @@ final class TestAccountHandler extends BaseHandler
             $isManualText = ($manualExt === 'text');
             if ($manualContent !== '' && !$isManualLink && !$isManualText) {
                 $ext = ($manualExt !== '') ? $manualExt : 'bin';
-                $cleanUser = preg_replace('/[^a-zA-Z0-9_\-]/', '', $usernameAc);
+                $cleanUser = preg_replace('/[^a-zA-Z0-9\-]/', '', str_replace('_', '-', $usernameAc));
                 if ($cleanUser === '') $cleanUser = 'config';
                 $manualDelivered = true;
                 $manualFileName = $cleanUser . '.' . $ext;

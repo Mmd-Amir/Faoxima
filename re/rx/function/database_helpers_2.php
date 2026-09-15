@@ -1679,18 +1679,22 @@ function rx_build_smart_random_username($telegramUsername, $telegramId)
     $hasUsername = is_string($telegramUsername) && $telegramUsername !== '' && !in_array(strtolower($telegramUsername), ['not_username', 'none'], true);
     if ($hasUsername) {
         $suffix = str_pad((string) rand(0, 999), 3, '0', STR_PAD_LEFT);
-        $base = substr(strtolower($telegramUsername), 0, 28);
-        return $base . '_' . $suffix;
+        $base = substr(str_replace('_', '-', strtolower($telegramUsername)), 0, 28);
+        return $base . '-' . $suffix;
     }
     $letters = '';
     for ($i = 0; $i < 3; $i++) {
         $letters .= chr(rand(97, 122));
     }
-    return 'u' . $telegramId . '_' . $letters;
+    return 'u' . $telegramId . '-' . $letters;
 }
 
 function generateUsername($from_id, $Metode, $username, $randomString, $text, $namecustome, $usernamecustom)
 {
+    $username = str_replace('_', '-', (string) $username);
+    $text = str_replace('_', '-', (string) $text);
+    $namecustome = str_replace('_', '-', (string) $namecustome);
+    $usernamecustom = str_replace('_', '-', (string) $usernamecustom);
     $setting = select("setting", "*", null, null, "select");
     $user = select("user", "*", "id", $from_id, "select");
     if ($user == false) {
@@ -1699,36 +1703,41 @@ function generateUsername($from_id, $Metode, $username, $randomString, $text, $n
             'number_username' => '',
         );
     }
+    $telegramUsernameMissing = trim($username) === '' || in_array(strtolower($username), ['not_username', 'not-username', 'none'], true);
+    $telegramUsernameBase = $telegramUsernameMissing ? $namecustome : $username;
+    if ($telegramUsernameBase === '' || strtolower($telegramUsernameBase) === 'none') {
+        $telegramUsernameBase = 'u' . $from_id;
+    }
+    $panelCustomBase = trim($namecustome) !== '' && strtolower($namecustome) !== 'none' ? $namecustome : 'u' . $from_id;
+    $requestedBase = trim($text) !== '' ? $text : $telegramUsernameBase;
     if ($Metode == "آیدی عددی + حروف و عدد رندوم") {
-        return $from_id . "_" . $randomString;
+        return $from_id . "-" . $randomString;
+    } elseif ($Metode == "نام کاربری + حروف و عدد رندوم") {
+        return $telegramUsernameBase . "-" . $randomString;
     } elseif ($Metode == "نام کاربری + عدد به ترتیب") {
-        if ($username == "NOT_USERNAME") {
-            if (preg_match('/^\w{3,32}$/', $namecustome)) {
-                $username = $namecustome;
-            }
-        }
-        return $username . "_" . $user['number_username'];
+        return $telegramUsernameBase . "-" . $user['number_username'];
     } elseif ($Metode == "نام کاربری دلخواه")
-        return $text;
+        return $requestedBase;
     elseif ($Metode == "نام کاربری دلخواه + عدد رندوم") {
         $random_number = rand(1000000, 9999999);
-        return $text . "_" . $random_number;
+        return $requestedBase . "-" . $random_number;
     } elseif ($Metode == "متن دلخواه کاربر + رندوم") {
-        return $text;
+        return $requestedBase;
     } elseif ($Metode == "متن دلخواه + عدد رندوم") {
-        return $namecustome . "_" . $randomString;
+        return $panelCustomBase . "-" . $randomString;
     } elseif ($Metode == "متن دلخواه + عدد ترتیبی") {
-        return $namecustome . "_" . $setting['numbercount'];
+        return $panelCustomBase . "-" . $setting['numbercount'];
     } elseif ($Metode == "آیدی عددی+عدد ترتیبی") {
-        return $from_id . "_" . $user['number_username'];
+        return $from_id . "-" . $user['number_username'];
     } elseif ($Metode == "آیدی عددی") {
         return (string) $from_id;
     } elseif ($Metode == "متن دلخواه نماینده + عدد ترتیبی") {
-        if ($usernamecustom == "none") {
-            return $namecustome . "_" . $setting['numbercount'];
+        if (trim($usernamecustom) === '' || strtolower($usernamecustom) === "none") {
+            return $panelCustomBase . "-" . $setting['numbercount'];
         }
-        return $usernamecustom . "_" . $user['number_username'];
+        return $usernamecustom . "-" . $user['number_username'];
     }
+    return $from_id . "-" . $randomString;
 }
 function outputlunk($text)
 {
@@ -1990,7 +1999,7 @@ function DirectPayment($order_id, $image = 'images.jpg')
         // [username normalize] اگر یوزرنیم فاکتور خالی/کوتاه‌تر از 3 کاراکتر بود، یکی معتبر بساز.
         // این از خطای پنل "Username must be at least 3 characters long" جلوگیری می‌کنه.
         if (!is_string($username_ac) || trim($username_ac) === '' || strlen(trim($username_ac)) < 3) {
-            $username_ac = preg_replace('/[^A-Za-z0-9_]/', '', (string)$Balance_id['id']) . '_' . bin2hex(random_bytes(4));
+            $username_ac = preg_replace('/[^A-Za-z0-9-]/', '', str_replace('_', '-', (string)$Balance_id['id'])) . '-' . bin2hex(random_bytes(4));
             if (strlen($username_ac) < 3) $username_ac = 'u' . bin2hex(random_bytes(4));
             // فقط وقتی id_invoice معتبره update کن (جلوی خطای "Column id_invoice cannot be null" گرفته میشه)
             if (!empty($get_invoice['id_invoice'])) {
@@ -2070,7 +2079,7 @@ function DirectPayment($order_id, $image = 'images.jpg')
                 $__msgRaw = is_array($dataoutput) ? ($dataoutput['msg'] ?? '') : '';
                 $__msgStr = is_string($__msgRaw) ? $__msgRaw : json_encode($__msgRaw);
                 if (stripos($__msgStr, 'duplicate') !== false || stripos($__msgStr, 'already exist') !== false || stripos($__msgStr, 'exists') !== false) {
-                    $username_ac = preg_replace('/[^A-Za-z0-9_]/', '', (string)$Balance_id['id']) . '_' . bin2hex(random_bytes(4));
+                    $username_ac = preg_replace('/[^A-Za-z0-9-]/', '', str_replace('_', '-', (string)$Balance_id['id'])) . '-' . bin2hex(random_bytes(4));
                     if (strlen($username_ac) < 3) $username_ac = 'u' . bin2hex(random_bytes(4));
                     if (!empty($get_invoice['id_invoice'])) {
                         try { update("invoice", "username", $username_ac, "id_invoice", $get_invoice['id_invoice']); } catch (Throwable $__e2) { /* fail-open */ }

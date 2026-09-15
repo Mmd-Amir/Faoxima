@@ -1460,7 +1460,8 @@ $text_porsant
     step('selectusernamecustom', $from_id);
 } elseif ($user['step'] == "selectusernamecustom") {
     if (!isset($update['message']) && empty($text)) { return; }
-    if (!preg_match('~(?!_)^[a-z][a-z\d_]{2,32}(?<!_)$~i', $text)) {
+    $text = str_replace('_', '-', $text);
+    if (!preg_match('~(?![_-])^[a-z][a-z\d_-]{2,32}(?<![_-])$~i', $text)) {
         sendmessage($from_id, $textbotlang['users']['invalidusername'], $backuser, 'HTML');
         return;
     }

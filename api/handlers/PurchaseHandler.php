@@ -130,7 +130,7 @@ final class PurchaseHandler extends BaseHandler
         $remoteCheck = $managePanel->DataUser($panel['name_panel'], $usernameAc);
         $usernameWasRenamed = $existsLocal || (is_array($remoteCheck) && isset($remoteCheck['username']));
         if ($usernameWasRenamed) {
-            $usernameAc = rand(1000000, 9999999) . '_' . $usernameAc;
+            $usernameAc = rand(1000000, 9999999) . '-' . $usernameAc;
         }
 
 
@@ -370,7 +370,7 @@ final class PurchaseHandler extends BaseHandler
                     $stockFormat = strtolower((string)nmStockDetectFormat($stockContent));
                 }
                 if ($stockFormat === 'wireguard') {
-                    $stockOutput[] = ['type' => 'file', 'value' => $stockContent, 'filename' => 'wg_' . $orderId . '.conf'];
+                    $stockOutput[] = ['type' => 'file', 'value' => $stockContent, 'filename' => 'wg-' . $orderId . '.conf'];
                 } else {
                     $stockOutput[] = ['type' => 'config', 'value' => $stockContent];
                 }

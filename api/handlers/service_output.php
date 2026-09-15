@@ -23,7 +23,10 @@ if (!function_exists('faoxima_build_service_output')) {
         $content   = (string)($opts['content'] ?? '');
         $subLink   = trim((string)($opts['sub_link'] ?? ''));
         $fileExt   = strtolower(ltrim(trim((string)($opts['file_ext'] ?? '')), '.'));
-        $username  = (string)($opts['username'] ?? 'config');
+        $username  = preg_replace('/[^A-Za-z0-9-]/', '', str_replace('_', '-', (string)($opts['username'] ?? 'config')));
+        if ($username === '') {
+            $username = 'config';
+        }
 
         $configs = [];
         if (isset($opts['configs']) && is_array($opts['configs'])) {
@@ -85,7 +88,7 @@ if (!function_exists('faoxima_build_service_output')) {
                         $output[] = [
                             'type'     => 'file',
                             'value'    => 'data:application/octet-stream;base64,' . base64_encode($itContent),
-                            'filename' => $username . '-' . $index . '.' . $ext,
+                            'filename' => function_exists('normalizeConfigFilename') ? normalizeConfigFilename($username . '-' . $index . '.' . $ext, '', $ext === 'conf') : $username . '-' . $index . '.' . $ext,
                         ];
                     } else {
                         $output[] = ['type' => 'text', 'value' => $itContent];
@@ -115,7 +118,7 @@ if (!function_exists('faoxima_build_service_output')) {
                     $output[] = [
                         'type'     => 'file',
                         'value'    => 'data:application/octet-stream;base64,' . base64_encode($content),
-                        'filename' => $username . '.' . $ext,
+                        'filename' => function_exists('normalizeConfigFilename') ? normalizeConfigFilename($username . '.' . $ext, '', $ext === 'conf') : $username . '.' . $ext,
                     ];
                 } else {
                     $output[] = ['type' => 'text', 'value' => $content];

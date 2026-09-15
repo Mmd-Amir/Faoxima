@@ -118,7 +118,12 @@ final class ConfigFileHandler extends BaseHandler
             FaoximaResponse::notFound('Config file not available');
         }
 
-        $filename = $this->sanitizeFilename((string)$filename);
+        $wireguard = strtolower((string)pathinfo((string)$filename, PATHINFO_EXTENSION)) === 'conf'
+            && stripos((string)$content, '[Interface]') !== false;
+        $prefix = (string)($payload['file_prefix'] ?? '');
+        $filename = function_exists('normalizeConfigFilename')
+            ? normalizeConfigFilename((string)$filename, $prefix, $wireguard)
+            : $this->sanitizeFilename(($prefix !== '' ? $prefix . '-' : '') . (string)$filename);
 
         while (ob_get_level() > 0) {
             @ob_end_clean();
@@ -152,8 +157,8 @@ final class ConfigFileHandler extends BaseHandler
 
     private function sanitizeFilename(string $name): string
     {
-        $name = preg_replace('#[\\/:*?"<>|\r\n]+#u', '_', $name);
-        $name = trim((string)$name, "_ \t.");
+        $name = preg_replace('#[\\/:*?"<>|\r\n_]+#u', '-', $name);
+        $name = trim((string)preg_replace('/-+/', '-', $name), "- \t.");
         if ($name === '') {
             $name = 'config.conf';
         }
@@ -165,8 +170,8 @@ final class ConfigFileHandler extends BaseHandler
 
     private function asciiFallback(string $name): string
     {
-        $ascii = preg_replace('/[^A-Za-z0-9._-]+/', '_', $name);
-        $ascii = trim((string)$ascii, '_');
+        $ascii = preg_replace('/[^A-Za-z0-9.-]+/', '-', str_replace('_', '-', $name));
+        $ascii = trim((string)preg_replace('/-+/', '-', $ascii), '-');
         return $ascii === '' ? 'config.conf' : $ascii;
     }
 }

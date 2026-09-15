@@ -109,7 +109,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
                 @telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'cache_time' => 0]);
             }
         }
-        if (!preg_match('~(?!_)^[a-z][a-z\d_]{2,32}(?<!_)$~i', $text)) {
+        if (!preg_match('~(?![_-])^[a-z][a-z\d_-]{2,32}(?<![_-])$~i', $text)) {
             sendmessage($from_id, $textbotlang['users']['invalidusername'], $_rx_usernameKb, 'HTML');
             return;
         }
@@ -139,7 +139,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     $DataUserOut = $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_ac);
     $random_number = rand(1000000, 9999999);
     if (isset($DataUserOut['username']) || rxTableValueExists('invoice', 'username', $username_ac)) {
-        $username_ac = $random_number . "_" . $username_ac;
+        $username_ac = $random_number . "-" . $username_ac;
     }
     $datac = array(
         'expire' => strtotime(date("Y-m-d H:i:s", strtotime("+" . $marzban_list_get['time_usertest'] . "hours"))),
@@ -1554,7 +1554,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
                 @telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'cache_time' => 0]);
             }
         }
-        if (!preg_match('~(?!_)^[a-z][a-z\d_]{2,32}(?<!_)$~i', $text)) {
+        if (!preg_match('~(?![_-])^[a-z][a-z\d_-]{2,32}(?<![_-])$~i', $text)) {
             sendmessage($from_id, $textbotlang['users']['invalidusername'], $_rx_usernameKb, 'HTML');
             return;
         }
@@ -1608,7 +1608,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     $random_number = rand(1000000, 9999999);
     $usernameWasRenamed = isset($DataUserOut['username']) || rxTableValueExists('invoice', 'username', $username_ac);
     if ($usernameWasRenamed) {
-        $username_ac = $random_number . "_" . $username_ac;
+        $username_ac = $random_number . "-" . $username_ac;
     }
     if (isset($username_ac))
         update("user", "Processing_value_tow", $username_ac, "id", $from_id);
@@ -2350,7 +2350,7 @@ $textonebuy
                 @telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'cache_time' => 0]);
             }
         }
-        if (!preg_match('~(?!_)^[a-z][a-z\d_]{2,32}(?<!_)$~i', $text)) {
+        if (!preg_match('~(?![_-])^[a-z][a-z\d_-]{2,32}(?<![_-])$~i', $text)) {
             sendmessage($from_id, $textbotlang['users']['invalidusername'], $_rx_usernameKb, 'HTML');
             return;
         }
@@ -2535,9 +2535,9 @@ $textonebuy
     for ($i = 0; $i < $user['Processing_value_four']; $i++) {
         $__bulkItemCharge = $__bulkUnitCharge + (($i == $__bulkQty - 1) ? $__bulkUnitChargeRemainder : 0);
         $random_number = rand(1000000, 9999999);
-        $username_acc = $username_ac . "_" . $i;
+        $username_acc = $username_ac . "-" . $i;
         if (rxTableValueExists('invoice', 'username', $username_acc)) {
-            $username_acc = $random_number . "_" . $username_acc;
+            $username_acc = $random_number . "-" . $username_acc;
         }
         $randomString = bin2hex(random_bytes(4));
         if (rxTableValueExists('invoice', 'id_invoice', $randomString)) {
@@ -2588,7 +2588,7 @@ $textonebuy
         }
         $get_username_Check = $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_acc);
         if (isset($get_username_Check['username']) || rxTableValueExists('invoice', 'username', $username_acc)) {
-            $username_acc = $random_number . "_" . $username_acc;
+            $username_acc = $random_number . "-" . $username_acc;
         }
         $dataoutput = $ManagePanel->createUser($marzban_list_get['name_panel'], $info_product['code_product'], $username_acc, $datac);
         if ($dataoutput['username'] == null) {

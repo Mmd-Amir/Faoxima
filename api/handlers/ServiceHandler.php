@@ -144,6 +144,10 @@ final class ServiceHandler extends BaseHandler
 
         $config = [];
         $type = $panel['type'] ?? '';
+        $filePrefix = trim((string)($panel['namecustom'] ?? ''));
+        if (strtolower($filePrefix) === 'none') {
+            $filePrefix = '';
+        }
         if (in_array($type, ['marzban', 'x-ui_single', 'eylanpanel', 'pasarguard'], true)) {
             if (($panel['sublink'] ?? '') === 'onsublink' && !empty($remote['subscription_url'])) {
                 $config[] = [
@@ -173,7 +177,7 @@ final class ServiceHandler extends BaseHandler
             $config[] = [
                 'type'     => 'file',
                 'value'    => $remote['subscription_url'] ?? '',
-                'filename' => ($panel['inboundid'] ?? 'cfg') . '_' . $invoice['id_user'] . '_' . $invoice['id_invoice'] . '.config',
+                'filename' => ($panel['inboundid'] ?? 'cfg') . '-' . $invoice['id_user'] . '-' . $invoice['id_invoice'] . '.conf',
             ];
         } elseif ($type === 'guard') {
             $guardSubUrl = $remote['subscription_url'] ?? '';
@@ -210,6 +214,20 @@ final class ServiceHandler extends BaseHandler
                 'items'      => $manualItemsOut,
             ]));
         }
+
+        foreach ($config as &$configEntry) {
+            if (($configEntry['type'] ?? '') !== 'file') {
+                continue;
+            }
+            $configFilename = (string)($configEntry['filename'] ?? 'config.conf');
+            $isWireGuardFile = strtolower((string)pathinfo($configFilename, PATHINFO_EXTENSION)) === 'conf';
+            if (function_exists('normalizeConfigFilename')) {
+                $configEntry['filename'] = normalizeConfigFilename($configFilename, $filePrefix, $isWireGuardFile);
+            } else {
+                $configEntry['filename'] = str_replace('_', '-', $configFilename);
+            }
+        }
+        unset($configEntry);
 
         $lastUpdate = null;
         if (!empty($remote['sub_updated_at'])) {
@@ -416,6 +434,7 @@ final class ServiceHandler extends BaseHandler
             'is_stock'                 => false,
             'invoice_status'           => $invoice['Status'] ?? '',
             'panel_type'               => $type,
+            'file_prefix'              => preg_replace('/[^A-Za-z0-9-]/', '', str_replace('_', '-', $filePrefix)),
             'volume_value'             => is_numeric($invoice['Volume'] ?? null) ? (float)$invoice['Volume'] : 0,
             'volume_unit'              => function_exists('rxInvoiceVolumeUnit') ? rxInvoiceVolumeUnit($invoice) : (($isTest) ? 'MB' : 'GB'),
             'total_traffic_bytes'      => $dataLimitBytes,
@@ -532,7 +551,7 @@ final class ServiceHandler extends BaseHandler
             if ($format === 'wireguard') {
 
 
-                $filename = 'wg_' . ($invoice['id_invoice'] ?? 'config') . '.conf';
+                $filename = 'wg-' . ($invoice['id_invoice'] ?? 'config') . '.conf';
                 $output[] = ['type' => 'file', 'value' => $content, 'filename' => $filename];
             } else {
 

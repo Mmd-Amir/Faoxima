@@ -2,7 +2,7 @@ window.__FAOXIMA_APP_STARTED__ = true;
 
 import * as Telegram from './telegram.js?v=0.0.52';
 import { verify, submitPhone } from './api.js?v=0.0.52';
-import { start as startRouter } from './router.js?v=0.0.52';
+import { start as startRouter } from './router.js?v=0.0.53';
 import { getToken, clearToken } from './state.js?v=0.0.52';
 import { loadSavedTheme } from './pages/settings.js?v=0.0.52';
 import { loadBrandFromServer } from './brand.js?v=0.0.52';

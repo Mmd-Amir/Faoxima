@@ -1506,7 +1506,8 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
 - برای اضافه کردن کانفیگ ابتدا نام کاربری را ارسال نمایید.", $backadmin, 'HTML');
     step('getusernameconfigcr', $from_id);
 } elseif ($user['step'] == "getusernameconfigcr") {
-    if (!preg_match('~(?!_)^[a-z][a-z\d_]{2,32}(?<!_)$~i', $text)) {
+    $text = str_replace('_', '-', $text);
+    if (!preg_match('~(?![_-])^[a-z][a-z\d_-]{2,32}(?<![_-])$~i', $text)) {
         nm_adminInstantReply($from_id, $textbotlang['users']['invalidusername'], $backadmin, 'HTML');
         return;
     }
@@ -1554,7 +1555,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     );
     $panel = select("marzban_panel", "*", "name_panel", $userdata['idpanel'], "select");
     for ($i = 0; $i < $userdata['count']; $i++) {
-        $usernameconfig = $user['Processing_value_one'] . "_" . $i;
+        $usernameconfig = str_replace('_', '-', $user['Processing_value_one']) . "-" . $i;
         $dataoutput = $ManagePanel->createUser($userdata['idpanel'], "usertest", $usernameconfig, $datac);
         if ($dataoutput['username'] == null) {
             $dataoutput['msg'] = json_encode($dataoutput['msg']);

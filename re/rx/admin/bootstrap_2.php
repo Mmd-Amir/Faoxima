@@ -1650,8 +1650,8 @@ $paycount
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $affiliates, 'HTML');
 } elseif ($text == $textbotlang['Admin']['btnkeyboardadmin']['addpanel'] && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['Inbound']['gettypepanel'], $keyboardtypepanel, 'HTML');
-} elseif (preg_match('/typepanel#(.*)/', $datain, $dataget)) {
-    $typepanel = $dataget[1];
+} elseif (preg_match('/^typepanel#(marzban|rebecca|pasarguard|pasargard|remnawave|guard|x-ui_single|Manualsale)$/', (string) $datain, $dataget)) {
+    $typepanel = $dataget[1] === 'pasargard' ? 'pasarguard' : $dataget[1];
     $rx_inline_mode = (isset($setting['inlinebtnmain']) && $setting['inlinebtnmain'] === 'oninline');
     if ($rx_inline_mode) {
         $rx_addpanel_back_kb = json_encode([
@@ -1667,12 +1667,23 @@ $paycount
     savedata("clear", "type", $typepanel);
 } elseif ($user['step'] == "add_name_panel") {
     if (!isset($update['message']) && empty($text)) { return; }
-    if (in_array($text, $marzban_list)) {
+    $panelNameInput = trim((string) $text);
+    if ($panelNameInput === '') {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['addpanelname'], $backadmin, 'HTML');
+        return;
+    }
+    $existingPanel = select("marzban_panel", "*", "name_panel", $panelNameInput, "select", ['cache' => false]);
+    if (is_array($existingPanel) && !empty($existingPanel)) {
         nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['Repeatpanel'], $backadmin, 'HTML');
         return;
     }
     $userdata = json_decode($user['Processing_value'], true);
-    savedata("save", "namepanel", $text);
+    if (!is_array($userdata) || !in_array((string) ($userdata['type'] ?? ''), ['marzban', 'rebecca', 'pasarguard', 'remnawave', 'guard', 'x-ui_single', 'Manualsale'], true)) {
+        nm_adminInstantReply($from_id, "❌ اطلاعات افزودن پنل منقضی شده است. لطفاً نوع پنل را دوباره انتخاب کنید.", $keyboardtypepanel, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+    savedata("save", "namepanel", $panelNameInput);
     if ($userdata['type'] == "Manualsale") {
         nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
         step('getlimitedpanel', $from_id);
@@ -1692,6 +1703,11 @@ $paycount
     $normalizedPanelUrl = rtrim($text, '/');
     savedata("save", "url_panel", $normalizedPanelUrl);
     $userdata = json_decode($user['Processing_value'], true);
+    if (!is_array($userdata) || empty($userdata['type']) || empty($userdata['namepanel'])) {
+        nm_adminInstantReply($from_id, "❌ اطلاعات افزودن پنل ناقص یا منقضی شده است. لطفاً افزودن پنل را از ابتدا انجام دهید.", $keyboardtypepanel, 'HTML');
+        step('home', $from_id);
+        return;
+    }
     if ($userdata['type'] == "guard") {
         savedata("save", "username", "null");
         savedata("save", "password", "null");
@@ -1722,8 +1738,7 @@ $paycount
         savedata("save", "username", "null");
         savedata("save", "password", "null");
         return;
-    } elseif ($userdata['type'] == "pasarguard" || $userdata['type'] == "pasargard") {
-        savedata("save", "type", "pasarguard");
+    } elseif ($userdata['type'] == "pasarguard") {
         nm_adminInstantReply($from_id, "🔑 لطفاً API Key پنل PasarGuard را ارسال کنید.", $backadmin, 'HTML');
         step('add_pasarguard_api_key', $from_id);
         savedata("save", "username", "null");
@@ -1782,7 +1797,13 @@ $paycount
     nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
     step('getlimitedpanel', $from_id);
 } elseif ($user['step'] == "add_remna_token_setup") {
-    savedata("save", "remna_api_token", trim($text));
+    if (!isset($update['message']) && empty($text)) { return; }
+    $remnaApiToken = trim((string) $text);
+    if ($remnaApiToken === '') {
+        nm_adminInstantReply($from_id, "❌ توکن API نمی‌تواند خالی باشد.", $backadmin, 'HTML');
+        return;
+    }
+    savedata("save", "remna_api_token", $remnaApiToken);
     nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
     step('getlimitedpanel', $from_id);
 } elseif ($user['step'] == "add_rebecca_api_key") {
@@ -1794,9 +1815,13 @@ $paycount
     }
     $userdata = json_decode($user['Processing_value'], true);
     $rebeccaBaseUrl = rebeccaGetBaseUrl(isset($userdata['url_panel']) ? $userdata['url_panel'] : '');
-    $connectionResult = rebeccaTestConnection($rebeccaBaseUrl, $apiKey);
-    if ($connectionResult['status'] === false) {
-        $errorMessage = $connectionResult['msg'] ?? $textbotlang['Admin']['managepanel']['invalidapikey'];
+    try {
+        $connectionResult = rebeccaTestConnection($rebeccaBaseUrl, $apiKey);
+    } catch (Throwable $rebeccaConnectionError) {
+        $connectionResult = ['status' => false, 'msg' => $rebeccaConnectionError->getMessage()];
+    }
+    if (!is_array($connectionResult) || empty($connectionResult['status'])) {
+        $errorMessage = is_array($connectionResult) ? ($connectionResult['msg'] ?? $textbotlang['Admin']['managepanel']['invalidapikey']) : $textbotlang['Admin']['managepanel']['invalidapikey'];
         $feedback = "❌ اتصال به Rebecca ناموفق بود:\n{$errorMessage}\n\n📌 لطفاً API Key را بررسی کرده و مجدداً ارسال کنید.";
         nm_adminInstantReply($from_id, $feedback, $backadmin, 'HTML');
         step('add_rebecca_api_key', $from_id);
@@ -1817,9 +1842,14 @@ $paycount
     nm_adminInstantReply($from_id, "✅ اتصال به Rebecca برقرار شد.\n" . $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
     step('getlimitedpanel', $from_id);
 } elseif ($user['step'] == "add_username_panel") {
+    if (!isset($update['message']) && empty($text)) { return; }
+    if (trim((string) $text) === '') {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['usernameset'], $backadmin, 'HTML');
+        return;
+    }
     nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getpassword'], $backadmin, 'HTML');
     step('add_password_panel', $from_id);
-    savedata("save", "username", $text);
+    savedata("save", "username", trim((string) $text));
 } elseif ($user['step'] == "add_guard_api_key") {
     if (!isset($update['message']) && empty($text)) { return; }
     $apiKey = trim($text);
@@ -1830,9 +1860,13 @@ $paycount
     $userdata = json_decode($user['Processing_value'], true);
     $guardBaseUrl = guardGetBaseUrl(isset($userdata['url_panel']) ? $userdata['url_panel'] : '');
     $guardVersionForTest = isset($userdata['guard_version']) && $userdata['guard_version'] === 'v2' ? 'v2' : 'v1';
-    $connectionResult = guardTestConnection($guardBaseUrl, $apiKey, $guardVersionForTest);
-    if ($connectionResult['status'] === false) {
-        $errorMessage = $connectionResult['msg'] ?? $textbotlang['Admin']['managepanel']['invalidapikey'];
+    try {
+        $connectionResult = guardTestConnection($guardBaseUrl, $apiKey, $guardVersionForTest);
+    } catch (Throwable $guardConnectionError) {
+        $connectionResult = ['status' => false, 'msg' => $guardConnectionError->getMessage()];
+    }
+    if (!is_array($connectionResult) || empty($connectionResult['status'])) {
+        $errorMessage = is_array($connectionResult) ? ($connectionResult['msg'] ?? $textbotlang['Admin']['managepanel']['invalidapikey']) : $textbotlang['Admin']['managepanel']['invalidapikey'];
         $feedback = "❌ اتصال به گارد ناموفق بود:\n{$errorMessage}\n\n📌 لطفاً API Key را بررسی کرده و مجدداً ارسال کنید.";
         nm_adminInstantReply($from_id, $feedback, $backadmin, 'HTML');
         step('add_guard_api_key', $from_id);
@@ -1857,9 +1891,13 @@ $paycount
     }
     $userdata = json_decode($user['Processing_value'], true);
     $pasarguardBaseUrl = rtrim((string) ($userdata['url_panel'] ?? ''), '/');
-    $connectionResult = pasarguardTestConnection($pasarguardBaseUrl, $apiKey);
-    if ($connectionResult['status'] === false) {
-        $errorMessage = $connectionResult['msg'] ?? $textbotlang['Admin']['managepanel']['invalidapikey'];
+    try {
+        $connectionResult = pasarguardTestConnection($pasarguardBaseUrl, $apiKey);
+    } catch (Throwable $pasarguardConnectionError) {
+        $connectionResult = ['status' => false, 'msg' => $pasarguardConnectionError->getMessage()];
+    }
+    if (!is_array($connectionResult) || empty($connectionResult['status'])) {
+        $errorMessage = is_array($connectionResult) ? ($connectionResult['msg'] ?? $textbotlang['Admin']['managepanel']['invalidapikey']) : $textbotlang['Admin']['managepanel']['invalidapikey'];
         $feedback = "❌ اتصال به پاسارگارد ناموفق بود:\n{$errorMessage}\n\n📌 لطفاً API Key را بررسی کرده و مجدداً ارسال کنید.";
         nm_adminInstantReply($from_id, $feedback, $backadmin, 'HTML');
         step('add_pasarguard_api_key', $from_id);
@@ -1962,13 +2000,39 @@ $paycount
     ]);
     return;
 } elseif ($user['step'] == "add_password_panel") {
+    if (!isset($update['message']) && empty($text)) { return; }
+    if (trim((string) $text) === '') {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getpassword'], $backadmin, 'HTML');
+        return;
+    }
     nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
     step('getlimitedpanel', $from_id);
-    savedata("save", "password", $text);
+    savedata("save", "password", trim((string) $text));
 } elseif ($user['step'] == "getlimitedpanel") {
     if (!isset($update['message']) && empty($text)) { return; }
-    savedata("save", "limitpanel", $text);
     $userdata = json_decode($user['Processing_value'], true);
+    $supportedPanelTypes = ['marzban', 'rebecca', 'pasarguard', 'remnawave', 'guard', 'x-ui_single', 'Manualsale'];
+    $panelDraftValid = is_array($userdata)
+        && in_array((string) ($userdata['type'] ?? ''), $supportedPanelTypes, true)
+        && trim((string) ($userdata['namepanel'] ?? '')) !== ''
+        && trim((string) ($userdata['url_panel'] ?? '')) !== ''
+        && array_key_exists('username', $userdata)
+        && array_key_exists('password', $userdata);
+    if ($panelDraftValid && in_array($userdata['type'], ['rebecca', 'pasarguard', 'guard'], true)) {
+        $panelDraftValid = trim((string) ($userdata['api_key'] ?? '')) !== '';
+    }
+    if ($panelDraftValid && $userdata['type'] === 'remnawave') {
+        $panelDraftValid = trim((string) ($userdata['remna_api_token'] ?? '')) !== '';
+    }
+    if ($panelDraftValid && $userdata['type'] === 'x-ui_single' && ($userdata['xui_api_mode'] ?? 'legacy') === 'token') {
+        $panelDraftValid = trim((string) ($userdata['xui_api_token'] ?? '')) !== '';
+    }
+    if (!$panelDraftValid) {
+        nm_adminInstantReply($from_id, "❌ اطلاعات افزودن پنل ناقص یا منقضی شده است. لطفاً افزودن پنل را از ابتدا انجام دهید.", $keyboardtypepanel, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+    savedata("save", "limitpanel", $text);
     $randomString = bin2hex(random_bytes(2));
 
     $rx_panel_version_flag = '0';
@@ -2092,7 +2156,13 @@ $paycount
     $stmt->bindParam(':guard_version', $guardVersionSetting);
     $stmt->bindParam(':shop_features', $shopFeaturesDefault);
     $stmt->bindParam(':rebecca_service_id', $rebeccaServiceIdSetting);
-    $stmt->execute();
+    try {
+        $stmt->execute();
+    } catch (Throwable $panelInsertError) {
+        error_log('ADD_PANEL_INSERT_FAILED type=' . (string) $userdata['type'] . ' name=' . (string) $userdata['namepanel'] . ' error=' . $panelInsertError->getMessage());
+        nm_adminInstantReply($from_id, "❌ ثبت پنل انجام نشد. نام پنل و اطلاعات اتصال را بررسی کنید و دوباره تلاش نمایید.", $backadmin, 'HTML');
+        return;
+    }
     if (($userdata['type'] ?? '') == "remnawave" && isset($userdata['remna_api_token'])) {
         $stmt_remna = $pdo->prepare("UPDATE marzban_panel SET remna_api_token = :t WHERE name_panel = :n");
         $stmt_remna->execute([':t' => (string) $userdata['remna_api_token'], ':n' => $userdata['namepanel']]);
@@ -3360,7 +3430,6 @@ elseif ($text == "📝 تنظیم متن ربات" && $adminrulecheck['rule'] ==
     step('home', $from_id);
 } elseif ($text == "📚 بخش آموزش" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $keyboardhelpadmin, 'HTML');
-error_log('RXDBG-HIT datain=' . var_export($datain ?? null, true) . ' text=' . var_export(mb_substr((string)($text ?? ''), 0, 40), true) . ' step=' . var_export($user['step'] ?? null, true));
 } elseif (($text == "📥 دریافت پیش‌فرض‌ها" || $datain == "help_load_default") && $adminrulecheck['rule'] == "administrator") {
     // Issue #27: load the bundled default bot-usage tutorials into the help table.
     // Idempotent: entries whose name_os already exist are left untouched, so an
@@ -5974,7 +6043,7 @@ $text_expie_agent
         nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['customnamesend'], $getNameCustomKb, 'HTML');
         return;
     }
-    if ($text == "نام کاربری + عدد به ترتیب") {
+    if ($text == "نام کاربری + حروف و عدد رندوم" || $text == "نام کاربری + عدد به ترتیب") {
         step('getnamecustom', $from_id);
         nm_adminInstantReply($from_id, "📌 در صورتی که کاربر نام کاربری نداشت چه اسمی ثبت شود؟", $getNameCustomKb, 'HTML');
         return;
@@ -5986,7 +6055,8 @@ $text_expie_agent
     if ($text === '🎲 ساخت رندوم خودکار') {
         $text = strtolower('usr' . bin2hex(random_bytes(2)));
     }
-    if (!preg_match('/^\w{3,32}$/', $text)) {
+    $text = str_replace('_', '-', $text);
+    if (!preg_match('/^[A-Za-z0-9-]{2,32}$/', $text)) {
         nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['invalidname'], $getNameCustomKb, 'html');
         return;
     }

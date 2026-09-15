@@ -5,7 +5,6 @@ if (is_file($guardHelperPath)) {
     require_once $guardHelperPath;
 }
 
-error_log('RXDBG-ADMIN-MODULE datain=' . var_export($datain ?? null, true) . ' text=' . var_export(mb_substr((string)($text ?? ''), 0, 40), true));
 $textadmin = ["panel", "/panel", $textbotlang['Admin']['textpaneladmin']];
 if (isset($datain) && $datain != "" && $text == "" && in_array($from_id, $admin_ids)) {
     $text = $datain;

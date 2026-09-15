@@ -1310,7 +1310,8 @@ if ($text == "version") {
         }
         $usernameconfig = $date['username'];
     } else {
-        if (!preg_match('/^\w{3,32}$/', $text)) {
+        $text = str_replace('_', '-', $text);
+        if (!preg_match('/^[A-Za-z0-9-]{3,32}$/', $text)) {
             sendmessage($from_id, $textbotlang['users']['stateus']['Invalidusername'], $backuser, 'html');
             return;
         }
@@ -2347,7 +2348,7 @@ $nameconfig";
 
     if ($marzban_list_get['type'] == "WGDashboard") {
         sendmessage($from_id, $textsub, $bakinfos, 'HTML');
-        $urlimage = "{$marzban_list_get['inboundid']}_{$nameloc['username']}.conf";
+        $urlimage = normalizeConfigFilename("{$marzban_list_get['inboundid']}-{$nameloc['username']}.conf", $marzban_list_get['namecustom'] ?? '', true);
         file_put_contents($urlimage, $DataUserOut['subscription_url']);
         sendDocument($from_id, $urlimage, "⚙️ کانفیگ شما");
         unlink($urlimage);
@@ -2589,13 +2590,13 @@ $nameconfig";
             if (function_exists('xui_wg_conf_from_link')) {
                 $allWgConf = xui_wg_conf_from_link($allConfigItem);
                 if (is_array($allWgConf)) {
-                    $allWgName = xui_wg_conf_filename($allConfigItem, $allWgConf['protocol'], $i);
-                    $allWgDest = "{$from_id}_" . bin2hex(random_bytes(3)) . '_' . $allWgName;
+                    $allWgName = normalizeConfigFilename(xui_wg_conf_filename($allConfigItem, $allWgConf['protocol'], $i), $_configgetPanelChk['namecustom'] ?? '', true);
+                    $allWgDest = "{$from_id}-" . bin2hex(random_bytes(3)) . '-' . $allWgName;
                     file_put_contents($allWgDest, $allWgConf['conf']);
                     $allWgLabel = $allWgConf['protocol'] === 'amneziawg' ? 'AmneziaWG' : 'WireGuard';
                     telegram('sendDocument', [
                         'chat_id' => $from_id,
-                        'document' => new CURLFile($allWgDest),
+                        'document' => new CURLFile($allWgDest, 'application/octet-stream', $allWgName),
                         'caption' => "⚙️ کانفیگ شما ({$allWgLabel})",
                         'parse_mode' => 'HTML',
                     ]);
@@ -2613,11 +2614,12 @@ $nameconfig";
     $selectedConfig = (string) $DataUserOut['links'][$dataget[2]];
     if ((int) $dataget[2] === 0 && !empty($DataUserOut['single_config_file']) && is_array($DataUserOut['single_config_file'])) {
         $singleConfigFile = $DataUserOut['single_config_file'];
-        $xuiFileDest = "{$from_id}_" . bin2hex(random_bytes(3)) . '_' . $singleConfigFile['filename'];
+        $xuiFileName = normalizeConfigFilename($singleConfigFile['filename'], $_configgetPanelChk['namecustom'] ?? '', true);
+        $xuiFileDest = "{$from_id}-" . bin2hex(random_bytes(3)) . '-' . $xuiFileName;
         file_put_contents($xuiFileDest, $singleConfigFile['value']);
         telegram('sendDocument', [
             'chat_id' => $from_id,
-            'document' => new CURLFile($xuiFileDest),
+            'document' => new CURLFile($xuiFileDest, 'application/octet-stream', $xuiFileName),
             'caption' => "⚙️ کانفیگ شما",
             'parse_mode' => 'HTML',
         ]);
@@ -2627,13 +2629,13 @@ $nameconfig";
     if (function_exists('xui_wg_conf_from_link')) {
         $xuiWgConf = xui_wg_conf_from_link($selectedConfig);
         if (is_array($xuiWgConf)) {
-            $xuiWgName = xui_wg_conf_filename($selectedConfig, $xuiWgConf['protocol'], (int) $dataget[2]);
-            $xuiWgDest = "{$from_id}_" . bin2hex(random_bytes(3)) . '_' . $xuiWgName;
+            $xuiWgName = normalizeConfigFilename(xui_wg_conf_filename($selectedConfig, $xuiWgConf['protocol'], (int) $dataget[2]), $_configgetPanelChk['namecustom'] ?? '', true);
+            $xuiWgDest = "{$from_id}-" . bin2hex(random_bytes(3)) . '-' . $xuiWgName;
             file_put_contents($xuiWgDest, $xuiWgConf['conf']);
             $xuiWgLabel = $xuiWgConf['protocol'] === 'amneziawg' ? 'AmneziaWG' : 'WireGuard';
             telegram('sendDocument', [
                 'chat_id' => $from_id,
-                'document' => new CURLFile($xuiWgDest),
+                'document' => new CURLFile($xuiWgDest, 'application/octet-stream', $xuiWgName),
                 'caption' => "⚙️ کانفیگ شما ({$xuiWgLabel})",
                 'parse_mode' => 'HTML',
             ]);
@@ -2644,9 +2646,10 @@ $nameconfig";
     if (function_exists('rebeccaConfigDownloadInfo')) {
         $rebeccaDownloadInfo = rebeccaConfigDownloadInfo($selectedConfig);
         if ($rebeccaDownloadInfo !== null) {
-            $rebeccaDownloadDest = "{$from_id}_" . bin2hex(random_bytes(3)) . '_' . $rebeccaDownloadInfo['filename'];
+            $rebeccaPublicName = normalizeConfigFilename($rebeccaDownloadInfo['filename'], $_configgetPanelChk['namecustom'] ?? '', $rebeccaDownloadInfo['kind'] === 'wireguard');
+            $rebeccaDownloadDest = "{$from_id}-" . bin2hex(random_bytes(3)) . '-' . $rebeccaPublicName;
             if (rebeccaDownloadConfigFile($rebeccaDownloadInfo['url'], $rebeccaDownloadDest)) {
-                sendDocument($from_id, $rebeccaDownloadDest, "⚙️ کانفیگ شما");
+                sendDocument($from_id, $rebeccaDownloadDest, "⚙️ کانفیگ شما", $rebeccaPublicName);
                 unlink($rebeccaDownloadDest);
             } else {
                 sendmessage($from_id, $datatextbot['dyn_errors_config_read_from_panel_error'] ?? "❌ خطا در خواندن کانفیگ از پنل.", null, 'html');
