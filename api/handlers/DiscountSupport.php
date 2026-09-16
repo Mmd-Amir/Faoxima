@@ -13,6 +13,17 @@ final class MiniDiscount
 {
     const SECTIONS = ['buy', 'extend', 'volume', 'time', 'charge', 'all'];
 
+    public static function completedPurchaseCount(string $userId): int
+    {
+        return (int) FaoximaDb::fetchScalar(
+            "SELECT COUNT(*) FROM invoice
+              WHERE id_user = :u
+                AND COALESCE(name_product, '') <> :trial
+                AND LOWER(TRIM(COALESCE(Status, ''))) NOT IN ('', 'unpaid', 'unsuccessful')",
+            [':u' => $userId, ':trial' => 'سرویس تست']
+        );
+    }
+
     public static function valueType(array $row): string
     {
         $vt = strtolower(trim((string)($row['value_type'] ?? '')));
@@ -187,10 +198,7 @@ final class MiniDiscount
         }
 
         if ((string)($row['usefirst'] ?? '') === '1') {
-            $invoiceCount = (int) FaoximaDb::fetchScalar(
-                'SELECT COUNT(*) FROM invoice WHERE id_user = :u',
-                [':u' => (string)$user['id']]
-            );
+            $invoiceCount = self::completedPurchaseCount((string)$user['id']);
             if ($invoiceCount != 0) {
                 return ['ok' => false, 'reason' => '❌ این کد تخفیف فقط برای اولین خرید قابل استفاده است.'];
             }

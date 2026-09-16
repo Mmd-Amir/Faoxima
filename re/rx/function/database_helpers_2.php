@@ -375,7 +375,7 @@ if (!function_exists('nm_validateSellDiscount')) {
         }
 
         if ((string)($row['usefirst'] ?? '') === '1') {
-            $invoiceCount = select("invoice", "*", "id_user", $from_id, "count");
+            $invoiceCount = MiniDiscount::completedPurchaseCount((string)$from_id);
             if (intval($invoiceCount) != 0) {
                 $res['reason'] = '❌ این کد تخفیف فقط برای اولین خرید قابل استفاده است.';
                 return $res;
