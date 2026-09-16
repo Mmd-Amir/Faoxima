@@ -1422,6 +1422,8 @@ install_bot() {
     env_set "BOTS_DIR" "$BOTS_DIR"
     env_set "INSTALL_SOURCE" "$install_source"
     env_set "FAOXIMA_INSTALLED_VERSION" "$(resolve_source_version "$install_source" "$version_arg1" "$version_arg2" "$PROJECT_DIR")"
+    env_set "FAOXIMA_SOURCE_VERSION" "$(resolve_source_version "$install_source" "$version_arg1" "$version_arg2" "$PROJECT_DIR")"
+    env_set "FAOXIMA_UPDATE_STATE" "complete"
     ui_ok "Wrote ${ENV_FILE}"
 
     mkdir -p "$NGINX_CONF_DIR" "$NGINX_BOTS_CONF_DIR" "$BOTS_DIR" || { ui_err "Failed to create ${NGINX_CONF_DIR}, ${NGINX_BOTS_CONF_DIR}, or ${BOTS_DIR}."; exit 1; }
@@ -1660,6 +1662,8 @@ TELEGRAM_ADMIN_ID=${YOUR_CHAT_ID}
 PUID=$(env_get PUID)
 PGID=$(env_get PGID)
 FAOXIMA_INSTALLED_VERSION=$(resolve_source_version "$main_install_source" "$version_arg1" "$version_arg2" "$bot_dir")
+FAOXIMA_SOURCE_VERSION=$(resolve_source_version "$main_install_source" "$version_arg1" "$version_arg2" "$bot_dir")
+FAOXIMA_UPDATE_STATE=complete
 EOF
 
     cat > "${BOT_COMPOSE_PREFIX}${botname}.yml" <<EOF
@@ -1962,7 +1966,8 @@ detect_legacy_additional_bot_version() {
 get_additional_bot_version() {
     local botname="$1" bot_dir="${BOTS_DIR}/${botname}" version="" recovered="0"
     if [ -f "${bot_dir}/.env" ]; then
-        version=$(file_env_get "${bot_dir}/.env" "FAOXIMA_INSTALLED_VERSION" 2>/dev/null)
+        version=$(file_env_get "${bot_dir}/.env" "FAOXIMA_SOURCE_VERSION" 2>/dev/null)
+        [ -z "$version" ] && version=$(file_env_get "${bot_dir}/.env" "FAOXIMA_INSTALLED_VERSION" 2>/dev/null)
     fi
     if [ -z "$version" ] && [ -f "${bot_dir}/version" ]; then
         version=$(tr -d '[:space:]' < "${bot_dir}/version")
@@ -1982,6 +1987,7 @@ get_additional_bot_version() {
     fi
     if [[ "$version" =~ ^v?[0-9]+([.][0-9]+)*([.-][A-Za-z0-9._-]+)?$ ]]; then
         if [ "$recovered" = "1" ] && [ -f "${bot_dir}/.env" ]; then
+            file_env_set "${bot_dir}/.env" "FAOXIMA_SOURCE_VERSION" "$version" >/dev/null 2>&1 || true
             file_env_set "${bot_dir}/.env" "FAOXIMA_INSTALLED_VERSION" "$version" >/dev/null 2>&1 || true
         fi
         printf '%s' "$version"
@@ -2382,6 +2388,19 @@ update_bot_source() {
         return 1
     fi
 
+    local source_version
+    source_version=$(resolve_source_version "$mode" "$version_arg1" "$version_arg2" "$code_dir")
+    file_env_set "$env_path" "FAOXIMA_SOURCE_VERSION" "$source_version" || {
+        rm -rf "$work_dir" "$temp_config" "$temp_env"
+        ui_err "Failed to save the source version for '${label}'."
+        return 1
+    }
+    file_env_set "$env_path" "FAOXIMA_UPDATE_STATE" "pending" || {
+        rm -rf "$work_dir" "$temp_config" "$temp_env"
+        ui_err "Failed to save the update state for '${label}'."
+        return 1
+    }
+
     rm -rf "$work_dir" "$temp_config" "$temp_env"
 
     if [ "$should_build" = "1" ]; then
@@ -2410,8 +2429,16 @@ update_bot_source() {
 
     local installed_version
     installed_version=$(resolve_source_version "$mode" "$version_arg1" "$version_arg2" "$code_dir")
+    file_env_set "${code_dir}/.env" "FAOXIMA_SOURCE_VERSION" "$installed_version" || {
+        ui_err "Failed to save the source version for '${label}'."
+        return 1
+    }
     file_env_set "${code_dir}/.env" "FAOXIMA_INSTALLED_VERSION" "$installed_version" || {
         ui_err "Failed to save the installed version for '${label}'."
+        return 1
+    }
+    file_env_set "${code_dir}/.env" "FAOXIMA_UPDATE_STATE" "complete" || {
+        ui_err "Failed to save the update state for '${label}'."
         return 1
     }
 
