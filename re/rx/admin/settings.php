@@ -30,8 +30,8 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $helpedit, 'HTML');
     update("user", "Processing_value", $text, "id", $from_id);
     step("help_edit", $from_id);
-} elseif ($text == "ویرایش نام" && $adminrulecheck['rule'] == "administrator") {
-    nm_adminInstantReply($from_id, "نام جدید را ارسال کنید", $backadmin, 'HTML');
+} elseif ($text == "ویرایش نام آموزش" && $adminrulecheck['rule'] == "administrator") {
+    nm_adminInstantReply($from_id, "نام جدید آموزش را ارسال کنید", $backadmin, 'HTML');
     step('changenamehelp', $from_id);
 } elseif ($user['step'] == "changenamehelp") {
     if (!isset($update['message']) && empty($text)) { return; }

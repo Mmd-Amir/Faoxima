@@ -534,6 +534,7 @@ if (!function_exists('rxNavMenuSignatures')) {
                     'apn:🔧 کانفیگ دستی'      => 'PanelMenu',
                 ],
                 'labels' => [
+                    '📚 افزودن آموزش'          => 'help',
                     '🖼 مشاهده بنر فعال'        => 'featnav_affiliates',
                     '📅 سقف روزانه معرفی'       => 'affiliates_antifraud_menu',
                     'ویرایش رسانه'             => 'help_edit',

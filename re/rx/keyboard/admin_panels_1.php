@@ -209,7 +209,7 @@ $keyboardexportdata =  json_encode([
 ]);
 $helpedit =  json_encode([
     'keyboard' => [
-        [['text' =>"ویرایش نام"],['text' =>"ویرایش توضیحات"]],
+        [['text' =>"ویرایش نام آموزش"],['text' =>"ویرایش توضیحات"]],
         [['text' => "ویرایش رسانه"],['text' => "ویرایش دسته بندی"]],
         [['text' => "ویرایش لینک برنامه"]],
         [['text' => $textbotlang['Admin']['backadmin']],['text' => $textbotlang['Admin']['backmenu']]]
