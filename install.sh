@@ -889,9 +889,84 @@ verify_tables_created() {
     [ -z "$db_name" ] && db_name=$(env_get MYSQL_DATABASE)
     [ -z "$db_user" ] && db_user=$(env_get MYSQL_USER)
     [ -z "$db_pass" ] && db_pass=$(env_get MYSQL_PASSWORD)
-    local verify_sql
-    verify_sql="SELECT IF((SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE' AND TABLE_NAME IN ('user','setting','admin','channels','marzban_panel','product','invoice','Payment_report','textbot','shopSetting','support_message','crypto_wallets','processed_updates','cron_runtime_state'))=14 AND (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND ((TABLE_NAME='user' AND COLUMN_NAME='nav_state') OR (TABLE_NAME='user' AND COLUMN_NAME='card_verify_bypass') OR (TABLE_NAME='setting' AND COLUMN_NAME='redis_enabled') OR (TABLE_NAME='setting' AND COLUMN_NAME='banner_start_status') OR (TABLE_NAME='invoice' AND COLUMN_NAME='invalidated_at') OR (TABLE_NAME='Payment_report' AND COLUMN_NAME='tetrapay_token') OR (TABLE_NAME='marzban_panel' AND COLUMN_NAME='xui_api_mode') OR (TABLE_NAME='marzban_panel' AND COLUMN_NAME='ip_limit_guard') OR (TABLE_NAME='product' AND COLUMN_NAME='ip_limit') OR (TABLE_NAME='support_message' AND COLUMN_NAME='seen_by_admin') OR (TABLE_NAME='crypto_wallets' AND COLUMN_NAME='verification_mode')))=11 AND (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND CHARACTER_SET_NAME IS NOT NULL AND CHARACTER_SET_NAME<>'utf8mb4')=0,'READY','NOT_READY');"
-    dc exec -T db mysql -u"$db_user" -p"$db_pass" "$db_name" -Nse "$verify_sql" 2>/dev/null | grep -qx "READY"
+
+    local required_tables=(
+        user setting admin channels marzban_panel product invoice Payment_report
+        textbot shopSetting support_message crypto_wallets processed_updates cron_runtime_state
+    )
+    local required_columns=(
+        "user:nav_state"
+        "user:card_verify_bypass"
+        "setting:redis_enabled"
+        "setting:banner_start_status"
+        "invoice:invalidated_at"
+        "Payment_report:tetrapay_token"
+        "marzban_panel:xui_api_mode"
+        "marzban_panel:ip_limit_guard"
+        "product:ip_limit"
+        "support_message:seen_by_admin"
+        "crypto_wallets:verification_mode"
+    )
+
+    local failed=0 table item column exists charset_issues mysql_error
+
+    for table in "${required_tables[@]}"; do
+        mysql_error=$(mktemp)
+        exists=$(dc exec -T db mysql -u"$db_user" -p"$db_pass" "$db_name" -Nse             "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE' AND TABLE_NAME='${table}';"             2>"$mysql_error")
+        if [ $? -ne 0 ]; then
+            ui_err "Database schema verification query failed."
+            cat "$mysql_error"
+            rm -f "$mysql_error"
+            return 1
+        fi
+        rm -f "$mysql_error"
+        if [ "$exists" != "1" ]; then
+            ui_err "Missing database table: ${table}"
+            failed=1
+        fi
+    done
+
+    for item in "${required_columns[@]}"; do
+        table="${item%%:*}"
+        column="${item#*:}"
+        mysql_error=$(mktemp)
+        exists=$(dc exec -T db mysql -u"$db_user" -p"$db_pass" "$db_name" -Nse             "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='${table}' AND COLUMN_NAME='${column}';"             2>"$mysql_error")
+        if [ $? -ne 0 ]; then
+            ui_err "Database column verification query failed for ${table}.${column}."
+            cat "$mysql_error"
+            rm -f "$mysql_error"
+            return 1
+        fi
+        rm -f "$mysql_error"
+        if [ "$exists" != "1" ]; then
+            ui_err "Missing database column: ${table}.${column}"
+            failed=1
+        fi
+    done
+
+    mysql_error=$(mktemp)
+    charset_issues=$(dc exec -T db mysql -u"$db_user" -p"$db_pass" "$db_name" -Nse         "SELECT CONCAT(TABLE_NAME,'.',COLUMN_NAME,' = ',CHARACTER_SET_NAME) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND CHARACTER_SET_NAME IS NOT NULL AND CHARACTER_SET_NAME<>'utf8mb4' ORDER BY TABLE_NAME,ORDINAL_POSITION;"         2>"$mysql_error")
+    if [ $? -ne 0 ]; then
+        ui_err "Database utf8mb4 verification query failed."
+        cat "$mysql_error"
+        rm -f "$mysql_error"
+        return 1
+    fi
+    rm -f "$mysql_error"
+
+    if [ -n "$charset_issues" ]; then
+        ui_err "Database columns still not using utf8mb4:"
+        while IFS= read -r item; do
+            [ -n "$item" ] && printf '    %s\n' "$item"
+        done <<< "$charset_issues"
+        failed=1
+    fi
+
+    if [ "$failed" -ne 0 ]; then
+        return 1
+    fi
+
+    return 0
 }
 
 diagnose_table_failure() {
