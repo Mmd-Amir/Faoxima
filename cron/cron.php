@@ -26,6 +26,18 @@ if ($lockHandle === false || !@flock($lockHandle, LOCK_EX | LOCK_NB)) {
 @ftruncate($lockHandle, 0);
 @fwrite($lockHandle, getmypid() . '|' . date('Y-m-d H:i:s'));
 @fflush($lockHandle);
+$rxInternalAuthFile = __DIR__ . '/.cron_internal_auth';
+try {
+    $rxInternalAuthToken = bin2hex(random_bytes(32));
+} catch (Throwable $e) {
+    $rxInternalAuthToken = hash('sha256', uniqid('', true) . microtime(true) . getmypid());
+}
+$rxInternalAuthPayload = hash('sha256', $rxInternalAuthToken) . '|' . time();
+@file_put_contents($rxInternalAuthFile, $rxInternalAuthPayload, LOCK_EX);
+@chmod($rxInternalAuthFile, 0600);
+register_shutdown_function(static function () use ($rxInternalAuthFile): void {
+    @unlink($rxInternalAuthFile);
+});
 register_shutdown_function(static function () use ($lockHandle) {
     @flock($lockHandle, LOCK_UN);
     @fclose($lockHandle);
@@ -138,7 +150,11 @@ if (!($pdo instanceof PDO)) {
 
 $runtimeState = [];
 if (function_exists('loadCronRuntimeState')) {
-    try { $runtimeState = loadCronRuntimeState($pdo); } catch (Throwable $e) { $runtimeState = []; }
+    try {
+        $runtimeState = loadCronRuntimeState($pdo);
+    } catch (Throwable $e) {
+        $runtimeState = [];
+    }
 }
 
 
@@ -230,7 +246,7 @@ $shouldRun = static function (string $jobKey, array $schedule, int $minute, int 
 };
 
 
-$dispatchAsync = static function (array $urls, bool $useLoopback): array {
+$dispatchAsync = static function (array $urls, bool $useLoopback) use ($rxInternalAuthToken): array {
     if (empty($urls)) return [];
     $multi = curl_multi_init();
     if ($multi === false) return $urls;
@@ -256,6 +272,7 @@ $dispatchAsync = static function (array $urls, bool $useLoopback): array {
                 'Pragma: no-cache',
                 'Expires: 0',
                 'X-Cron-Source: cron-orchestrator',
+                'X-Cron-Token: ' . $rxInternalAuthToken,
                 'Connection: close',
             ],
             CURLOPT_USERAGENT       => 'CronOrchestrator/2.0 (+internal)',
@@ -291,6 +308,7 @@ $dispatchAsync = static function (array $urls, bool $useLoopback): array {
         $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $err  = curl_error($ch);
         $url = $handleUrls[(int) $ch] ?? null;
+        $body = (string) curl_multi_getcontent($ch);
         $isFail = ($err !== '' || $code < 200 || $code >= 400);
         if ($isFail) {
             if ($url !== null) {
@@ -304,7 +322,19 @@ $dispatchAsync = static function (array $urls, bool $useLoopback): array {
     return $failed;
 };
 
-$rxResolveCliPhp = static function (): ?string {
+$rxCanExec = static function (): bool {
+    if (!function_exists('exec')) {
+        return false;
+    }
+
+    $disabled = array_filter(array_map('trim', explode(',', (string) ini_get('disable_functions'))));
+    return !in_array('exec', $disabled, true);
+};
+
+$rxResolveCliPhp = static function () use ($rxCanExec): ?string {
+    if (!$rxCanExec()) {
+        return null;
+    }
     static $resolved = false;
     static $cliPhp = null;
 
@@ -355,7 +385,10 @@ $rxResolveCliPhp = static function (): ?string {
     return null;
 };
 
-$rxDispatchCli = static function (string $script, int $worker, int $workers, bool $background) use ($rxResolveCliPhp): bool {
+$rxDispatchCli = static function (string $script, int $worker, int $workers, bool $background) use ($rxResolveCliPhp, $rxCanExec): bool {
+    if (!$rxCanExec()) {
+        return false;
+    }
     $file = realpath(__DIR__ . '/../cronbot/' . ltrim($script, '/'));
     if ($file === false || !is_file($file)) {
         return false;
@@ -409,9 +442,12 @@ if (is_file($rxLegacyLoopbackFlag)) {
 $dueTasks = [];
 $rxSuccessfulDispatches = 0;
 
-$rxMarkJobRun = static function (PDO $pdo, string $key, int $now, array &$runtimeState): void {
+$rxMarkJobRun = static function (PDO $pdo, string $key, int $now, array &$runtimeState) : void {
     if (function_exists('setCronJobLastRun')) {
-        try { setCronJobLastRun($pdo, $key, $now); } catch (Throwable $e) {}
+        try {
+            setCronJobLastRun($pdo, $key, $now);
+        } catch (Throwable $e) {
+        }
     }
     $runtimeState[$key] = $now;
 };
@@ -477,7 +513,8 @@ if ($bootstrapLoaded && function_exists('getCronJobDefinitions')) {
         $defaultConfig = $definition['default'] ?? ['unit' => 'minute', 'value' => 1];
         $schedule      = $schedules[$key] ?? $defaultConfig;
 
-        if (!$shouldRun($key, $schedule, $minute, $hour, $dayOfYear, $now, $runtimeState, $jobHours[$key] ?? 0)) {
+        $rxDue = $shouldRun($key, $schedule, $minute, $hour, $dayOfYear, $now, $runtimeState, $jobHours[$key] ?? 0);
+        if (!$rxDue) {
             continue;
         }
 
@@ -526,6 +563,7 @@ if ($bootstrapLoaded && function_exists('getCronJobDefinitions')) {
 
             if ($jobDispatched) {
                 $rxMarkJobRun($pdo, $key, $now, $runtimeState);
+            } else {
             }
             continue;
         }
@@ -536,10 +574,31 @@ if ($bootstrapLoaded && function_exists('getCronJobDefinitions')) {
                 $rxCliDispatched++;
                 $rxSuccessfulDispatches++;
                 $jobDispatched = true;
+            } else {
+                $rxBase = $buildCronUrl($definition['script']);
+                $backupTask = [[
+                    'key' => $key,
+                    'script' => $definition['script'],
+                    'worker' => 0,
+                    'workers' => 1,
+                    'url' => $rxBase,
+                ]];
+
+                $fallbackResult = $rxDispatchHttpTasks($backupTask, false);
+
+                if (!empty($fallbackResult['failed'])) {
+                    $fallbackResult = $rxDispatchHttpTasks($fallbackResult['failed'], true);
+                }
+
+                if (!empty($fallbackResult['success'])) {
+                    $rxSuccessfulDispatches += count($fallbackResult['success']);
+                    $jobDispatched = true;
+                }
             }
 
             if ($jobDispatched) {
                 $rxMarkJobRun($pdo, $key, $now, $runtimeState);
+            } else {
             }
             continue;
         }
@@ -557,6 +616,44 @@ if ($bootstrapLoaded && function_exists('getCronJobDefinitions')) {
                     ? $rxBase . $rxSep . 'worker=' . $rxI . '&workers=' . $rxN
                     : $rxBase,
             ];
+        }
+    }
+
+    $definedScripts = [];
+    foreach ($definitions as $definition) {
+        if (isset($definition['script']) && is_string($definition['script'])) {
+            $definedScripts[] = ltrim($definition['script'], '/');
+        }
+    }
+
+    if (!in_array('index.php', $definedScripts, true)) {
+        $indexDispatched = false;
+
+        if ($rxIsCli) {
+            $indexDispatched = $rxDispatchCli('index.php', 0, 1, true);
+            if ($indexDispatched) {
+                $rxCliDispatched++;
+                $rxSuccessfulDispatches++;
+            }
+        }
+
+        if (!$indexDispatched) {
+            $indexTask = [[
+                'key' => '__index__',
+                'script' => 'index.php',
+                'worker' => 0,
+                'workers' => 1,
+                'url' => $buildCronUrl('index.php'),
+            ]];
+
+            $indexResult = $rxDispatchHttpTasks($indexTask, false);
+            if (!empty($indexResult['failed'])) {
+                $indexResult = $rxDispatchHttpTasks($indexResult['failed'], true);
+            }
+
+            if (!empty($indexResult['success'])) {
+                $rxSuccessfulDispatches += count($indexResult['success']);
+            }
         }
     }
 }

@@ -1,7 +1,24 @@
 <?php
 if (PHP_SAPI !== 'cli') {
-    http_response_code(403);
-    exit('Backup must run from the command line');
+    $rxCronAuthFile = dirname(__DIR__) . '/cron/.cron_internal_auth';
+    $rxCronToken = isset($_SERVER['HTTP_X_CRON_TOKEN']) ? trim((string) $_SERVER['HTTP_X_CRON_TOKEN']) : '';
+    $rxCronSource = isset($_SERVER['HTTP_X_CRON_SOURCE']) ? trim((string) $_SERVER['HTTP_X_CRON_SOURCE']) : '';
+    $rxCronAuthValid = false;
+    if ($rxCronToken !== '' && $rxCronSource === 'cron-orchestrator' && is_readable($rxCronAuthFile)) {
+        $rxCronAuthData = trim((string) @file_get_contents($rxCronAuthFile));
+        $rxCronAuthParts = explode('|', $rxCronAuthData, 2);
+        if (count($rxCronAuthParts) === 2) {
+            $rxCronExpectedHash = trim((string) $rxCronAuthParts[0]);
+            $rxCronIssuedAt = (int) $rxCronAuthParts[1];
+            if ($rxCronExpectedHash !== '' && $rxCronIssuedAt > 0 && abs(time() - $rxCronIssuedAt) <= 120) {
+                $rxCronAuthValid = hash_equals($rxCronExpectedHash, hash('sha256', $rxCronToken));
+            }
+        }
+    }
+    if (!$rxCronAuthValid) {
+        http_response_code(403);
+        exit('Backup request is not authorized');
+    }
 }
 date_default_timezone_set('Asia/Tehran');
 if (function_exists('putenv') && !preg_match('/(^|,)\s*putenv\s*(,|$)/', strtolower((string) ini_get('disable_functions')))) {
