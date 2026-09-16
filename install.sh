@@ -969,6 +969,32 @@ verify_tables_created() {
     return 0
 }
 
+run_table_migrations_until_ready() {
+    local service="${1:-app}" db_name="$2" db_user="$3" db_pass="$4" code_dir="${5:-$PROJECT_DIR}" label="${6:-database}"
+    local attempt max_attempts=3
+
+    for attempt in $(seq 1 "$max_attempts"); do
+        if ! dc exec -T "$service" php table.php >/dev/null 2>&1; then
+            ui_err "table.php failed while creating or updating the schema for ${label}."
+            diagnose_table_failure "$service" "$code_dir"
+            return 1
+        fi
+
+        if verify_tables_created "$db_name" "$db_user" "$db_pass"; then
+            return 0
+        fi
+
+        if [ "$attempt" -lt "$max_attempts" ]; then
+            ui_warn "Database schema is not complete after migration pass ${attempt}/${max_attempts}; retrying table.php to finish dependent migrations..."
+            sleep 2
+        fi
+    done
+
+    ui_err "table.php completed ${max_attempts} migration passes but the database schema is still incomplete for ${label}."
+    diagnose_table_failure "$service" "$code_dir"
+    return 1
+}
+
 diagnose_table_failure() {
     local service="${1:-app}" code_dir="${2:-$PROJECT_DIR}"
     ui_warn "Diagnosing why table.php did not create the database schema..."
@@ -1452,14 +1478,7 @@ install_bot() {
     fi
 
     ui_action "Initialising database tables via table.php..."
-    if ! dc exec -T app php table.php >/dev/null 2>&1; then
-        ui_err "table.php failed while creating the database schema."
-        diagnose_table_failure app "$PROJECT_DIR"
-        exit 1
-    fi
-    if ! verify_tables_created; then
-        ui_err "table.php ran but the database schema or utf8mb4 migration is incomplete."
-        diagnose_table_failure app "$PROJECT_DIR"
+    if ! run_table_migrations_until_ready app "" "" "" "$PROJECT_DIR" "Faoxima Bot"; then
         ui_err "Fix the issue above, then re-run install."
         exit 1
     fi
@@ -1691,14 +1710,7 @@ EOF
     dc exec nginx nginx -s reload || { ui_err "Failed to reload nginx with the new bot's location block."; return 1; }
 
     ui_action "Initialising database tables via table.php..."
-    if ! dc exec -T "app_${botname}" php table.php >/dev/null 2>&1; then
-        ui_err "table.php failed while creating the database schema for '${botname}'."
-        diagnose_table_failure "app_${botname}" "$bot_dir"
-        return 1
-    fi
-    if ! verify_tables_created "$db_name" "$db_user" "$db_pass"; then
-        ui_err "table.php ran but the database schema or utf8mb4 migration is incomplete for '${botname}'."
-        diagnose_table_failure "app_${botname}" "$bot_dir"
+    if ! run_table_migrations_until_ready "app_${botname}" "$db_name" "$db_user" "$db_pass" "$bot_dir" "${botname}"; then
         return 1
     fi
     ui_ok "Database tables initialised for '${botname}'."
@@ -2284,14 +2296,7 @@ update_bot_source() {
         return 1
     fi
 
-    if ! dc exec -T "$app_service" php table.php >/dev/null 2>&1; then
-        ui_err "table.php failed while updating the database schema for '${label}'."
-        diagnose_table_failure "$app_service" "$code_dir"
-        return 1
-    fi
-    if ! verify_tables_created "$db_name" "$db_user" "$db_pass"; then
-        ui_err "table.php ran but the database schema or utf8mb4 migration is incomplete for '${label}'."
-        diagnose_table_failure "$app_service" "$code_dir"
+    if ! run_table_migrations_until_ready "$app_service" "$db_name" "$db_user" "$db_pass" "$code_dir" "${label}"; then
         return 1
     fi
 
