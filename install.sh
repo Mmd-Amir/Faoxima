@@ -423,6 +423,39 @@ version_is_newer() {
     [ "$candidate" != "$installed" ] && [ "$(printf '%s\n%s\n' "$candidate" "$installed" | sort -V | tail -1)" = "$candidate" ]
 }
 
+normalize_version_value() {
+    local version="$1"
+    version=$(printf '%s' "$version" | tr -d '[:space:]')
+    if [ "$version" = "beta" ]; then
+        printf '%s' "$version"
+        return 0
+    fi
+    if [[ "$version" =~ ^v?[0-9]+([.][0-9]+)*([.-][A-Za-z0-9._-]+)?$ ]]; then
+        [[ "$version" == v* ]] || version="v${version}"
+        printf '%s' "$version"
+        return 0
+    fi
+    return 1
+}
+
+write_source_version_marker() {
+    local code_dir="$1" version="$2" marker tmp
+    version=$(normalize_version_value "$version" 2>/dev/null) || return 1
+    marker="${code_dir}/.faoxima-version"
+    tmp="${marker}.tmp.$$"
+    umask 022
+    printf '%s\n' "$version" > "$tmp" || { rm -f "$tmp"; return 1; }
+    chmod 0644 "$tmp" 2>/dev/null || true
+    mv -f "$tmp" "$marker" || { rm -f "$tmp"; return 1; }
+}
+
+read_source_version_marker() {
+    local code_dir="$1" version=""
+    [ -f "${code_dir}/.faoxima-version" ] || return 1
+    version=$(head -n 1 "${code_dir}/.faoxima-version" 2>/dev/null | tr -d '[:space:]')
+    normalize_version_value "$version"
+}
+
 show_animated_logo() {
     local latest_line="$1"
     clear
@@ -1666,6 +1699,13 @@ FAOXIMA_SOURCE_VERSION=$(resolve_source_version "$main_install_source" "$version
 FAOXIMA_UPDATE_STATE=complete
 EOF
 
+    local initial_bot_version
+    initial_bot_version=$(resolve_source_version "$main_install_source" "$version_arg1" "$version_arg2" "$bot_dir")
+    initial_bot_version=$(normalize_version_value "$initial_bot_version" 2>/dev/null || printf '%s' "$initial_bot_version")
+    write_source_version_marker "$bot_dir" "$initial_bot_version" || { ui_err "Failed to save version metadata for '${botname}'."; return 1; }
+    file_env_set "${bot_dir}/.env" "FAOXIMA_SOURCE_VERSION" "$initial_bot_version" || return 1
+    file_env_set "${bot_dir}/.env" "FAOXIMA_INSTALLED_VERSION" "$initial_bot_version" || return 1
+
     cat > "${BOT_COMPOSE_PREFIX}${botname}.yml" <<EOF
 services:
   app_${botname}:
@@ -1964,8 +2004,9 @@ detect_legacy_additional_bot_version() {
 }
 
 get_additional_bot_version() {
-    local botname="$1" bot_dir="${BOTS_DIR}/${botname}" version="" recovered="0"
-    if [ -f "${bot_dir}/.env" ]; then
+    local botname="$1" bot_dir="${BOTS_DIR}/${botname}" version="" recovered="0" current_installed=""
+    version=$(read_source_version_marker "$bot_dir" 2>/dev/null || true)
+    if [ -z "$version" ] && [ -f "${bot_dir}/.env" ]; then
         version=$(file_env_get "${bot_dir}/.env" "FAOXIMA_SOURCE_VERSION" 2>/dev/null)
         [ -z "$version" ] && version=$(file_env_get "${bot_dir}/.env" "FAOXIMA_INSTALLED_VERSION" 2>/dev/null)
     fi
@@ -1985,10 +2026,17 @@ get_additional_bot_version() {
         version=$(detect_legacy_additional_bot_version "$bot_dir" 2>/dev/null || true)
         [ -n "$version" ] && recovered="1"
     fi
-    if [[ "$version" =~ ^v?[0-9]+([.][0-9]+)*([.-][A-Za-z0-9._-]+)?$ ]]; then
-        if [ "$recovered" = "1" ] && [ -f "${bot_dir}/.env" ]; then
+    version=$(normalize_version_value "$version" 2>/dev/null || true)
+    if [ -n "$version" ]; then
+        if [ "$recovered" = "1" ] || [ ! -f "${bot_dir}/.faoxima-version" ]; then
+            write_source_version_marker "$bot_dir" "$version" >/dev/null 2>&1 || true
+        fi
+        if [ -f "${bot_dir}/.env" ]; then
             file_env_set "${bot_dir}/.env" "FAOXIMA_SOURCE_VERSION" "$version" >/dev/null 2>&1 || true
-            file_env_set "${bot_dir}/.env" "FAOXIMA_INSTALLED_VERSION" "$version" >/dev/null 2>&1 || true
+            current_installed=$(file_env_get "${bot_dir}/.env" "FAOXIMA_INSTALLED_VERSION" 2>/dev/null)
+            if [ -z "$current_installed" ] && [ "$recovered" = "1" ]; then
+                file_env_set "${bot_dir}/.env" "FAOXIMA_INSTALLED_VERSION" "$version" >/dev/null 2>&1 || true
+            fi
         fi
         printf '%s' "$version"
         return 0
@@ -2390,6 +2438,12 @@ update_bot_source() {
 
     local source_version
     source_version=$(resolve_source_version "$mode" "$version_arg1" "$version_arg2" "$code_dir")
+    source_version=$(normalize_version_value "$source_version" 2>/dev/null || printf '%s' "$source_version")
+    write_source_version_marker "$code_dir" "$source_version" || {
+        rm -rf "$work_dir" "$temp_config" "$temp_env"
+        ui_err "Failed to save the source version marker for '${label}'."
+        return 1
+    }
     file_env_set "$env_path" "FAOXIMA_SOURCE_VERSION" "$source_version" || {
         rm -rf "$work_dir" "$temp_config" "$temp_env"
         ui_err "Failed to save the source version for '${label}'."
@@ -2429,6 +2483,11 @@ update_bot_source() {
 
     local installed_version
     installed_version=$(resolve_source_version "$mode" "$version_arg1" "$version_arg2" "$code_dir")
+    installed_version=$(normalize_version_value "$installed_version" 2>/dev/null || printf '%s' "$installed_version")
+    write_source_version_marker "$code_dir" "$installed_version" || {
+        ui_err "Failed to save the source version marker for '${label}'."
+        return 1
+    }
     file_env_set "${code_dir}/.env" "FAOXIMA_SOURCE_VERSION" "$installed_version" || {
         ui_err "Failed to save the source version for '${label}'."
         return 1
