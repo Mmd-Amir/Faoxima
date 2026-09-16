@@ -19,15 +19,55 @@ require_once 'config.php';
 require_once 'botapi.php';
 global $connect, $pdo;
 
-if (!(isset($pdo) && $pdo instanceof PDO)) {
-    $rxDbHost = getenv('DB_HOST') ?: 'db';
-    $rxDbName = getenv('DB_NAME') ?: getenv('MYSQL_DATABASE');
-    $rxDbUser = getenv('DB_USER') ?: getenv('MYSQL_USER');
-    $rxDbPass = getenv('DB_PASS');
-    if ($rxDbPass === false || $rxDbPass === '') {
-        $rxDbPass = getenv('MYSQL_PASSWORD');
+$rxDbHost = isset($dbhost) && $dbhost !== '' ? (string) $dbhost : '';
+$rxDbName = isset($dbname) && $dbname !== '' ? (string) $dbname : '';
+$rxDbUser = isset($usernamedb) && $usernamedb !== '' ? (string) $usernamedb : '';
+$rxDbPass = isset($passworddb) ? (string) $passworddb : '';
+
+if ($rxDbHost === '') {
+    $rxEnvHost = getenv('DB_HOST');
+    $rxDbHost = ($rxEnvHost !== false && $rxEnvHost !== '') ? $rxEnvHost : 'db';
+}
+if ($rxDbName === '') {
+    $rxEnvName = getenv('DB_NAME');
+    if ($rxEnvName === false || $rxEnvName === '') {
+        $rxEnvName = getenv('MYSQL_DATABASE');
     }
-    if ($rxDbName && $rxDbUser && $rxDbPass !== false) {
+    $rxDbName = ($rxEnvName !== false) ? (string) $rxEnvName : '';
+}
+if ($rxDbUser === '') {
+    $rxEnvUser = getenv('DB_USER');
+    if ($rxEnvUser === false || $rxEnvUser === '') {
+        $rxEnvUser = getenv('MYSQL_USER');
+    }
+    $rxDbUser = ($rxEnvUser !== false) ? (string) $rxEnvUser : '';
+}
+if ($rxDbPass === '') {
+    $rxEnvPass = getenv('DB_PASS');
+    if ($rxEnvPass === false || $rxEnvPass === '') {
+        $rxEnvPass = getenv('MYSQL_PASSWORD');
+    }
+    $rxDbPass = ($rxEnvPass !== false) ? (string) $rxEnvPass : '';
+}
+
+if (!(isset($connect) && $connect instanceof mysqli)) {
+    if ($rxDbName !== '' && $rxDbUser !== '') {
+        try {
+            $rxMysqli = @new mysqli($rxDbHost, $rxDbUser, $rxDbPass, $rxDbName);
+            if ($rxMysqli->connect_errno === 0) {
+                $rxMysqli->set_charset('utf8mb4');
+                $connect = $rxMysqli;
+            } else {
+                $rxMysqli->close();
+            }
+        } catch (Throwable $e) {
+            error_log('[table.php] MySQLi fallback connection failed');
+        }
+    }
+}
+
+if (!(isset($pdo) && $pdo instanceof PDO)) {
+    if ($rxDbName !== '' && $rxDbUser !== '') {
         try {
             $pdo = new PDO(
                 "mysql:host={$rxDbHost};dbname={$rxDbName};charset=utf8mb4",
@@ -40,9 +80,13 @@ if (!(isset($pdo) && $pdo instanceof PDO)) {
                 ]
             );
         } catch (Throwable $e) {
-            error_log('[table.php] PDO fallback connection: ' . $e->getMessage());
+            error_log('[table.php] PDO fallback connection failed');
         }
     }
+}
+
+if (!(isset($connect) && $connect instanceof mysqli) || !(isset($pdo) && $pdo instanceof PDO)) {
+    throw new RuntimeException('Database connection is unavailable for table migrations.');
 }
 
 if (!function_exists('rxEnsureUtf8mb4Schema')) {
