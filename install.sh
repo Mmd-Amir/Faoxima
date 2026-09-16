@@ -1878,14 +1878,26 @@ remove_additional_bot() {
 }
 
 get_additional_bot_version() {
-    local botname="$1" bot_dir="${BOTS_DIR}/${botname}" version=""
+    local botname="$1" bot_dir="${BOTS_DIR}/${botname}" version="" recovered="0"
     if [ -f "${bot_dir}/.env" ]; then
         version=$(file_env_get "${bot_dir}/.env" "FAOXIMA_INSTALLED_VERSION" 2>/dev/null)
     fi
     if [ -z "$version" ] && [ -f "${bot_dir}/version" ]; then
         version=$(tr -d '[:space:]' < "${bot_dir}/version")
+        [ -n "$version" ] && recovered="1"
     fi
-    [ -n "$version" ] && printf '%s' "$version" || printf 'unknown'
+    if [ -z "$version" ] && [ -f "${bot_dir}/install.sh" ]; then
+        version=$(awk -F'"' '/^[[:space:]]*readonly[[:space:]]+FAOXIMA_VERSION="/{print $2; exit}' "${bot_dir}/install.sh" | tr -d '[:space:]')
+        [ -n "$version" ] && recovered="1"
+    fi
+    if [[ "$version" =~ ^v?[0-9]+([.][0-9]+)*([.-][A-Za-z0-9._-]+)?$ ]]; then
+        if [ "$recovered" = "1" ] && [ -f "${bot_dir}/.env" ]; then
+            file_env_set "${bot_dir}/.env" "FAOXIMA_INSTALLED_VERSION" "$version" >/dev/null 2>&1 || true
+        fi
+        printf '%s' "$version"
+        return 0
+    fi
+    printf 'unknown'
 }
 
 confirm_additional_bot_downgrade() {
