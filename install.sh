@@ -1877,6 +1877,63 @@ remove_additional_bot() {
     ui_ok "Additional bot '${botname}' removed."
 }
 
+detect_legacy_additional_bot_version() {
+    local bot_dir="$1"
+    [ -f "${bot_dir}/table.php" ] || return 1
+    [ -f "${bot_dir}/index.php" ] || return 1
+    command -v curl >/dev/null 2>&1 || return 1
+    command -v sha256sum >/dev/null 2>&1 || return 1
+
+    local local_table_hash local_index_hash cache_dir tags_file tag remote_table remote_index remote_table_hash remote_index_hash checked=0
+    local_table_hash=$(sha256sum "${bot_dir}/table.php" 2>/dev/null | awk '{print $1}')
+    local_index_hash=$(sha256sum "${bot_dir}/index.php" 2>/dev/null | awk '{print $1}')
+    [ -n "$local_table_hash" ] || return 1
+    [ -n "$local_index_hash" ] || return 1
+
+    cache_dir="/tmp/faoxima_version_detect_${UID:-0}"
+    mkdir -p "$cache_dir" 2>/dev/null || return 1
+    tags_file="${cache_dir}/tags"
+
+    if [ ! -s "$tags_file" ]; then
+        curl -fsSL --max-time 8 "https://api.github.com/repos/${FAOXIMA_REPO}/releases?per_page=20" 2>/dev/null             | grep '"tag_name"'             | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/'             | head -20 > "${tags_file}.tmp" 2>/dev/null || true
+        if [ -s "${tags_file}.tmp" ]; then
+            mv "${tags_file}.tmp" "$tags_file"
+        else
+            rm -f "${tags_file}.tmp"
+            return 1
+        fi
+    fi
+
+    while IFS= read -r tag; do
+        [ -n "$tag" ] || continue
+        [[ "$tag" =~ ^v?[0-9]+([.][0-9]+)*([.-][A-Za-z0-9._-]+)?$ ]] || continue
+        checked=$((checked + 1))
+        [ "$checked" -le 20 ] || break
+
+        remote_table="${cache_dir}/${tag//\//_}.table.php"
+        remote_index="${cache_dir}/${tag//\//_}.index.php"
+
+        if [ ! -f "$remote_table" ]; then
+            curl -fsSL --max-time 8 "https://raw.githubusercontent.com/${FAOXIMA_REPO}/${tag}/table.php" -o "${remote_table}.tmp" 2>/dev/null                 && mv "${remote_table}.tmp" "$remote_table"                 || rm -f "${remote_table}.tmp"
+        fi
+        if [ ! -f "$remote_index" ]; then
+            curl -fsSL --max-time 8 "https://raw.githubusercontent.com/${FAOXIMA_REPO}/${tag}/index.php" -o "${remote_index}.tmp" 2>/dev/null                 && mv "${remote_index}.tmp" "$remote_index"                 || rm -f "${remote_index}.tmp"
+        fi
+
+        [ -f "$remote_table" ] || continue
+        [ -f "$remote_index" ] || continue
+        remote_table_hash=$(sha256sum "$remote_table" 2>/dev/null | awk '{print $1}')
+        remote_index_hash=$(sha256sum "$remote_index" 2>/dev/null | awk '{print $1}')
+
+        if [ "$local_table_hash" = "$remote_table_hash" ] && [ "$local_index_hash" = "$remote_index_hash" ]; then
+            printf '%s' "$tag"
+            return 0
+        fi
+    done < "$tags_file"
+
+    return 1
+}
+
 get_additional_bot_version() {
     local botname="$1" bot_dir="${BOTS_DIR}/${botname}" version="" recovered="0"
     if [ -f "${bot_dir}/.env" ]; then
@@ -1888,6 +1945,10 @@ get_additional_bot_version() {
     fi
     if [ -z "$version" ] && [ -f "${bot_dir}/install.sh" ]; then
         version=$(awk -F'"' '/^[[:space:]]*readonly[[:space:]]+FAOXIMA_VERSION="/{print $2; exit}' "${bot_dir}/install.sh" | tr -d '[:space:]')
+        [ -n "$version" ] && recovered="1"
+    fi
+    if [ -z "$version" ]; then
+        version=$(detect_legacy_additional_bot_version "$bot_dir" 2>/dev/null || true)
         [ -n "$version" ] && recovered="1"
     fi
     if [[ "$version" =~ ^v?[0-9]+([.][0-9]+)*([.-][A-Za-z0-9._-]+)?$ ]]; then
