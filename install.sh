@@ -1877,6 +1877,31 @@ remove_additional_bot() {
     ui_ok "Additional bot '${botname}' removed."
 }
 
+detect_additional_bot_version_from_main_source() {
+    local bot_dir="$1" main_version="" matched=0 rel main_file bot_file main_hash bot_hash
+    command -v sha256sum >/dev/null 2>&1 || return 1
+
+    main_version=$(get_installed_version 2>/dev/null || true)
+    [[ "$main_version" =~ ^v?[0-9]+([.][0-9]+)*([.-][A-Za-z0-9._-]+)?$ ]] || return 1
+    [ -d "$PROJECT_DIR" ] || return 1
+
+    for rel in index.php table.php function.php botapi.php panels.php; do
+        main_file="${PROJECT_DIR}/${rel}"
+        bot_file="${bot_dir}/${rel}"
+        [ -f "$main_file" ] || continue
+        [ -f "$bot_file" ] || continue
+        main_hash=$(sha256sum "$main_file" 2>/dev/null | awk '{print $1}')
+        bot_hash=$(sha256sum "$bot_file" 2>/dev/null | awk '{print $1}')
+        [ -n "$main_hash" ] || return 1
+        [ -n "$bot_hash" ] || return 1
+        [ "$main_hash" = "$bot_hash" ] || return 1
+        matched=$((matched + 1))
+    done
+
+    [ "$matched" -ge 3 ] || return 1
+    printf '%s' "$main_version"
+}
+
 detect_legacy_additional_bot_version() {
     local bot_dir="$1"
     [ -f "${bot_dir}/table.php" ] || return 1
@@ -1945,6 +1970,10 @@ get_additional_bot_version() {
     fi
     if [ -z "$version" ] && [ -f "${bot_dir}/install.sh" ]; then
         version=$(awk -F'"' '/^[[:space:]]*readonly[[:space:]]+FAOXIMA_VERSION="/{print $2; exit}' "${bot_dir}/install.sh" | tr -d '[:space:]')
+        [ -n "$version" ] && recovered="1"
+    fi
+    if [ -z "$version" ]; then
+        version=$(detect_additional_bot_version_from_main_source "$bot_dir" 2>/dev/null || true)
         [ -n "$version" ] && recovered="1"
     fi
     if [ -z "$version" ]; then
