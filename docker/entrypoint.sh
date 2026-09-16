@@ -6,9 +6,6 @@ cd "$APP_DIR"
 
 export FAOXIMA_DOCKER_ENV=1
 
-mkdir -p "$APP_DIR/logs"
-touch "$APP_DIR/logs/php-error.log" "$APP_DIR/logs/php-fpm.log" "$APP_DIR/logs/php-fpm-slow.log" "$APP_DIR/logs/php-fpm-error.log"
-
 CURRENT_DBNAME=$(grep '^\$dbname' config.php | awk -F"'" '{print $2}')
 if [ -z "$CURRENT_DBNAME" ]; then
     echo "[entrypoint] config.php has no database configured — templating from environment..."

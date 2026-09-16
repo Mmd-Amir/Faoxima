@@ -13,7 +13,6 @@ services:
       - .:/var/www/faoxima:ro
       - ${BOTS_DIR}:/var/www/bots:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./logs:/var/log/faoxima
       - certs:/etc/letsencrypt:ro
       - certbot_webroot:/var/www/certbot:ro
     restart: unless-stopped

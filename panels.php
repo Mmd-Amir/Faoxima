@@ -74,8 +74,6 @@ class ManagePanel
     {
         $Output = [];
         global $pdo, $domainhosts;
-        $rxPanelStarted = hrtime(true);
-        try {
         if (strlen($usernameC) < 3) {
             return array(
                 "status" => "Unsuccessful",
@@ -519,14 +517,6 @@ class ManagePanel
             }
         }
         return $Output;
-        } finally {
-            if (function_exists('rx_perf_span_end')) {
-                rx_perf_span_end('performance', 'handler.panel_create_user', $rxPanelStarted, [
-                    'product_type' => (string) $code_product,
-                    'result' => (string) ($Output['status'] ?? 'returned'),
-                ]);
-            }
-        }
     }
     function DataUser($name_panel, $username)
     {

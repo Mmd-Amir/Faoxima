@@ -53,24 +53,14 @@ function getDatabaseConnection()
         return null;
     }
 
-    $rxDbConnectStarted = hrtime(true);
     try {
         $newPdo = function_exists('rx_connect_pdo')
             ? rx_connect_pdo($dsn, (string) $username, (string) $password, is_array($options) ? $options : [])
             : new PDO($dsn, (string) $username, (string) $password, is_array($options) ? $options : []);
-        if (function_exists('rx_perf_span_end')) {
-            rx_perf_span_end('database', 'database.connect', $rxDbConnectStarted, ['result' => 'ok']);
-        }
         $GLOBALS['pdo'] = $newPdo;
         $cachedPdo = $newPdo;
         return $cachedPdo;
     } catch (PDOException $e) {
-        if (function_exists('rx_perf_span_end')) {
-            rx_perf_span_end('database', 'database.connect', $rxDbConnectStarted, [
-                'result' => 'error',
-                'sqlstate' => (string) $e->getCode(),
-            ]);
-        }
         error_log('getDatabaseConnection: Unable to create PDO instance. ' . $e->getMessage());
         return null;
     }
@@ -728,7 +718,6 @@ function ensureColumnExistsForUpdate($tableName, $fieldName, $valueSample = null
 function update($table, $field, $newValue, $whereField = null, $whereValue = null)
 {
     global $pdo, $user;
-    $rxDbStarted = hrtime(true);
 
     $valueToStore = normaliseUpdateValue($newValue);
     $whereValueToStore = $whereField !== null ? normaliseUpdateValue($whereValue) : null;
@@ -854,14 +843,6 @@ function update($table, $field, $newValue, $whereField = null, $whereValue = nul
         clearSelectCacheRow($table, $whereField, $whereValueToStore);
     } else {
         clearSelectCache($table);
-    }
-    if (function_exists('rx_perf_span_end')) {
-        rx_perf_span_end('database', 'database.query', $rxDbStarted, [
-            'operation' => 'UPDATE',
-            'table' => (string) $table,
-            'field' => (string) $field,
-            'affected_rows' => (int) $affectedRows,
-        ]);
     }
 }
 function &getSelectCacheStore()
@@ -1045,7 +1026,6 @@ function select($table, $field, $whereField = null, $whereValue = null, $type = 
         $query .= " WHERE $whereField = :whereValue";
     }
 
-    $rxDbStarted = hrtime(true);
     try {
         $stmt = $pdo->prepare($query);
         if ($whereField !== null) {
@@ -1079,14 +1059,8 @@ function select($table, $field, $whereField = null, $whereValue = null, $type = 
             $result = $fetched === false ? null : $fetched;
         }
     } catch (PDOException $e) {
-        if (function_exists('rx_perf_span_end')) {
-            rx_perf_span_end('database', 'database.query', $rxDbStarted, [
-                'operation' => 'SELECT',
-                'table' => (string) $table,
-                'result' => 'error',
-                'sqlstate' => (string) $e->getCode(),
-            ]);
-        }
+
+
         error_log('select() PDOException on table=' . $table . ': ' . $e->getMessage());
         switch ($type) {
             case 'count':
@@ -1097,15 +1071,6 @@ function select($table, $field, $whereField = null, $whereValue = null, $type = 
             default:
                 return null;
         }
-    }
-
-    if (function_exists('rx_perf_span_end')) {
-        rx_perf_span_end('database', 'database.query', $rxDbStarted, [
-            'operation' => 'SELECT',
-            'table' => (string) $table,
-            'result' => 'ok',
-            'rows' => is_array($result) ? count($result) : ($result === null ? 0 : 1),
-        ]);
     }
 
     if ($useCache && $cacheKey !== null) {

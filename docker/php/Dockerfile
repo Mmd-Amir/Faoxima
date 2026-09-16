@@ -18,7 +18,6 @@ RUN apt-get update \
         unzip \
         default-mysql-client \
         cron \
-        logrotate \
     && docker-php-ext-configure gd --with-jpeg --with-freetype \
     && docker-php-ext-install -j"$(nproc)" mysqli pdo_mysql mbstring zip gd curl soap \
     && (pecl install ssh2-1.3.1 && docker-php-ext-enable ssh2 || echo "ssh2 extension build failed or unsupported; continuing without it") \
@@ -29,8 +28,6 @@ RUN groupmod -o -g "${PGID}" www-data \
     && usermod -o -u "${PUID}" -g "${PGID}" www-data
 
 COPY docker/php/conf.d/faoxima.ini /usr/local/etc/php/conf.d/faoxima.ini
-COPY docker/php/zz-faoxima.conf /usr/local/etc/php-fpm.d/zz-faoxima.conf
-COPY docker/logrotate/faoxima /etc/logrotate.d/faoxima
 
 WORKDIR /var/www/faoxima
 

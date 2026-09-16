@@ -425,7 +425,7 @@ function addBackgroundImage($urlimage, $qrCodeResult, $backgroundPath)
 
         imagecopy($glass, $backgroundImage, 0, 0, $boxClipX, $boxClipY, $boxClipW, $boxClipH);
 
-        for ($i = 0; $i < 22; $i++) {
+        for ($i = 0; $i < 6; $i++) {
             @imagefilter($glass, IMG_FILTER_GAUSSIAN_BLUR);
         }
 

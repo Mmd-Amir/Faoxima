@@ -2549,20 +2549,6 @@ update_bot() {
         exit 1
     fi
 
-    local runtime_domain runtime_url_path
-    runtime_domain=$(normalize_domain "$(env_get DOMAIN)")
-    runtime_url_path=$(env_get URL_PATH)
-    [ -n "$runtime_url_path" ] || runtime_url_path="faoxima"
-    if render_vhost "$runtime_domain" "${NGINX_CONF_DIR}/00-main.conf" \
-        && render_bot_location "/var/www" "app:9000" "${NGINX_BOTS_CONF_DIR}/faoxima.conf" "$runtime_url_path" \
-        && dc up -d --no-deps nginx \
-        && dc exec -T nginx nginx -t \
-        && dc exec -T nginx nginx -s reload; then
-        ui_ok "Nginx diagnostics configuration refreshed."
-    else
-        ui_warn "The bot update completed, but Nginx diagnostics could not be refreshed."
-    fi
-
     if [ -f "$INSTALL_SCRIPT_PATH" ]; then
         if chmod +x "$INSTALL_SCRIPT_PATH" 2>/dev/null && ln -sf "$INSTALL_SCRIPT_PATH" "$INSTALL_SCRIPT_LINK" >/dev/null 2>&1; then
             ui_ok "Ensured ${INSTALL_SCRIPT_PATH} is executable and 'faoxima' command is linked."

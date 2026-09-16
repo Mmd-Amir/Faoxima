@@ -1,9 +1,5 @@
 <?php
 
-if (function_exists('rx_perf_log')) {
-    rx_perf_log('performance', 'handler.enter', ['handler' => 'user_flow']);
-}
-
 if (!defined('RX_MIN_TRANSFER_AMOUNT')) {
     define('RX_MIN_TRANSFER_AMOUNT', 1000);
 }

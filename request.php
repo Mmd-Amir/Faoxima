@@ -70,6 +70,7 @@ class CurlRequest {
         $lastError = '';
         $response = false;
         $httpCode  = 0;
+
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $this->url);
@@ -111,27 +112,9 @@ class CurlRequest {
             curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
         }
 
-        $attemptStartedAt = microtime(true);
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlErrno = curl_errno($ch);
-        $curlError = curl_error($ch);
-        $curlInfo = curl_getinfo($ch);
-        if (function_exists('rx_perf_log')) {
-            rx_perf_log('http', 'http.request', [
-                'method' => strtoupper((string) $method),
-                'url' => function_exists('rx_perf_safe_url') ? rx_perf_safe_url($this->url) : (string) parse_url($this->url, PHP_URL_HOST),
-                'attempt' => $attempt,
-                'duration_ms' => round((microtime(true) - $attemptStartedAt) * 1000, 3),
-                'http_code' => (int) $httpCode,
-                'curl_errno' => (int) $curlErrno,
-                'curl_error' => (string) $curlError,
-                'connect_ms' => round(((float) ($curlInfo['connect_time'] ?? 0)) * 1000, 3),
-                'tls_ready_ms' => round(((float) ($curlInfo['appconnect_time'] ?? 0)) * 1000, 3),
-                'namelookup_ms' => round(((float) ($curlInfo['namelookup_time'] ?? 0)) * 1000, 3),
-                'starttransfer_ms' => round(((float) ($curlInfo['starttransfer_time'] ?? 0)) * 1000, 3),
-            ]);
-        }
         if ($curlErrno) {
             $lastError = curl_error($ch);
             curl_close($ch);
