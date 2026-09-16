@@ -51,14 +51,28 @@ if (!function_exists('rx_callback_lock_acquire')) {
 
         $prefix = defined('_FX_SHARD') ? substr(_FX_SHARD, 0, 8) : 'fx';
         $name = substr($prefix . ':' . preg_replace('/[^a-z0-9_]/i', '', $scope) . ':' . $ownerId, 0, 64);
+        $rxLockStarted = hrtime(true);
 
         try {
             $stmt = $pdo->prepare('SELECT GET_LOCK(?, ?)');
             $stmt->execute([$name, $timeout]);
             $got = $stmt->fetchColumn();
         } catch (Throwable $e) {
+            if (function_exists('rx_perf_span_end')) {
+                rx_perf_span_end('database', 'database.lock_wait', $rxLockStarted, [
+                    'scope' => (string) $scope,
+                    'result' => 'error',
+                ]);
+            }
             @error_log('[rx_callback_lock] acquire failed: ' . $e->getMessage());
             return true;
+        }
+
+        if (function_exists('rx_perf_span_end')) {
+            rx_perf_span_end('database', 'database.lock_wait', $rxLockStarted, [
+                'scope' => (string) $scope,
+                'result' => ((string) $got === '1') ? 'acquired' : 'timeout',
+            ]);
         }
 
         return ((string) $got === '1') ? $name : false;
@@ -235,6 +249,22 @@ function telegram($method, $datas = [], $token = null)
         $rawResponse = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $duration = microtime(true) - $requestStartedAt;
+        $rxTelegramInfo = curl_getinfo($ch);
+        $rxTelegramError = curl_error($ch);
+        if (function_exists('rx_perf_log')) {
+            rx_perf_log('http', 'telegram.request', [
+                'method' => (string) $method,
+                'attempt' => $attemptedTimes,
+                'duration_ms' => round($duration * 1000, 3),
+                'http_code' => (int) $httpCode,
+                'curl_errno' => (int) curl_errno($ch),
+                'curl_error' => (string) $rxTelegramError,
+                'connect_ms' => round(((float) ($rxTelegramInfo['connect_time'] ?? 0)) * 1000, 3),
+                'tls_ready_ms' => round(((float) ($rxTelegramInfo['appconnect_time'] ?? 0)) * 1000, 3),
+                'namelookup_ms' => round(((float) ($rxTelegramInfo['namelookup_time'] ?? 0)) * 1000, 3),
+                'starttransfer_ms' => round(((float) ($rxTelegramInfo['starttransfer_time'] ?? 0)) * 1000, 3),
+            ]);
+        }
 
         if ($rawResponse !== false) {
             curl_close($ch);

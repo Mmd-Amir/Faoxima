@@ -1,5 +1,56 @@
 <?php
 
+if (!defined('REFACTORED_LEGACY_ROOT')) {
+    define('REFACTORED_LEGACY_ROOT', dirname(__DIR__));
+}
+require_once REFACTORED_LEGACY_ROOT . '/re/_error_log.php';
+if (!function_exists('rx_cron_process_metrics')) {
+    function rx_cron_process_metrics(): array
+    {
+        $usage = function_exists('getrusage') ? getrusage() : [];
+        $metrics = [
+            'cpu_user_ms' => ((float) ($usage['ru_utime.tv_sec'] ?? 0) * 1000) + ((float) ($usage['ru_utime.tv_usec'] ?? 0) / 1000),
+            'cpu_system_ms' => ((float) ($usage['ru_stime.tv_sec'] ?? 0) * 1000) + ((float) ($usage['ru_stime.tv_usec'] ?? 0) / 1000),
+            'io_read_bytes' => 0,
+            'io_write_bytes' => 0,
+        ];
+        $io = @file('/proc/self/io', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if (is_array($io)) {
+            foreach ($io as $line) {
+                if (preg_match('/^(read_bytes|write_bytes):\s*(\d+)$/', $line, $match)) {
+                    $metrics['io_' . $match[1]] = (int) $match[2];
+                }
+            }
+        }
+        return $metrics;
+    }
+}
+$GLOBALS['rx_perf_update_type'] = 'cron_worker';
+$GLOBALS['rx_perf_action'] = 'cron.' . pathinfo((string) ($_SERVER['SCRIPT_FILENAME'] ?? 'worker'), PATHINFO_FILENAME);
+$GLOBALS['rx_cron_perf_started'] = hrtime(true);
+$GLOBALS['rx_cron_perf_metrics'] = rx_cron_process_metrics();
+if (function_exists('rx_perf_log')) {
+    rx_perf_log('cron', 'cron.worker.start', [
+        'job' => $GLOBALS['rx_perf_action'],
+        'worker' => (int) ($_GET['worker'] ?? $_SERVER['BROADCAST_WORKER_ID'] ?? 0),
+    ]);
+    register_shutdown_function(static function (): void {
+        $before = (array) ($GLOBALS['rx_cron_perf_metrics'] ?? []);
+        $after = rx_cron_process_metrics();
+        $load = function_exists('sys_getloadavg') ? sys_getloadavg() : false;
+        rx_perf_span_end('cron', 'cron.worker.end', $GLOBALS['rx_cron_perf_started'], [
+            'job' => (string) ($GLOBALS['rx_perf_action'] ?? 'cron.worker'),
+            'worker' => (int) ($_GET['worker'] ?? $_SERVER['BROADCAST_WORKER_ID'] ?? 0),
+            'result' => (($e = error_get_last()) && in_array($e['type'] ?? 0, [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) ? 'fatal' : 'completed',
+            'cpu_user_ms' => round(($after['cpu_user_ms'] ?? 0) - ($before['cpu_user_ms'] ?? 0), 3),
+            'cpu_system_ms' => round(($after['cpu_system_ms'] ?? 0) - ($before['cpu_system_ms'] ?? 0), 3),
+            'io_read_bytes' => max(0, (int) ($after['io_read_bytes'] ?? 0) - (int) ($before['io_read_bytes'] ?? 0)),
+            'io_write_bytes' => max(0, (int) ($after['io_write_bytes'] ?? 0) - (int) ($before['io_write_bytes'] ?? 0)),
+            'load_1m' => is_array($load) ? (float) ($load[0] ?? 0) : null,
+        ]);
+    });
+}
+
 
 if (!defined('RX_CRON_INIT_LOADED')) {
     define('RX_CRON_INIT_LOADED', true);
@@ -128,6 +179,7 @@ if (!function_exists('rx_cron_boot')) {
         $rxW = (int) ($_GET['worker'] ?? $_SERVER['BROADCAST_WORKER_ID'] ?? 0);
         $rxW = max(0, min(15, $rxW));
         $rxLockName = $jobName . ($rxW > 0 ? "_w{$rxW}" : '');
+        $GLOBALS['rx_perf_action'] = 'cron.' . $rxLockName;
         $lockFile = rx_cron_runtime_dir() . DIRECTORY_SEPARATOR . $rxLockName . '.lock';
 
         static $heldHandles = [];
@@ -143,6 +195,9 @@ if (!function_exists('rx_cron_boot')) {
             });
         } else {
             if (!@flock($fh, LOCK_EX | LOCK_NB)) {
+                if (function_exists('rx_perf_log')) {
+                    rx_perf_log('cron', 'cron.worker.skipped', ['job' => $rxLockName, 'reason' => 'file_lock']);
+                }
                 @fclose($fh);
                 exit;
             }
@@ -159,6 +214,9 @@ if (!function_exists('rx_cron_boot')) {
         }
 
         if ($useDbSlot && function_exists('rx_cron_db_slot') && !rx_cron_db_slot()) {
+            if (function_exists('rx_perf_log')) {
+                rx_perf_log('cron', 'cron.worker.skipped', ['job' => $rxLockName, 'reason' => 'db_slot']);
+            }
             exit;
         }
 
@@ -167,6 +225,9 @@ if (!function_exists('rx_cron_boot')) {
             $rxRedisLockToken = uniqid('', true);
             $rxRedisLockResult = rx_redis_set_nx($rxRedisLockKey, $rxRedisLockToken, $maxAgeSeconds * 1000);
             if ($rxRedisLockResult === false) {
+                if (function_exists('rx_perf_log')) {
+                    rx_perf_log('cron', 'cron.worker.skipped', ['job' => $rxLockName, 'reason' => 'redis_lock']);
+                }
                 exit;
             }
             if ($rxRedisLockResult === true) {

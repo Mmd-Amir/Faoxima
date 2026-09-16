@@ -384,9 +384,26 @@ class RemnawaveManager
         }
         curl_setopt_array($curl, $opts);
 
+        $rxHttpStarted = microtime(true);
         $raw = curl_exec($curl);
         $code = (int)curl_getinfo($curl, CURLINFO_HTTP_CODE);
         $curlErr = curl_error($curl);
+        $rxHttpInfo = curl_getinfo($curl);
+        if (function_exists('rx_perf_log')) {
+            rx_perf_log('http', 'http.request', [
+                'method' => (string) $method,
+                'url' => function_exists('rx_perf_safe_url') ? rx_perf_safe_url($url) : '',
+                'attempt' => 1,
+                'duration_ms' => round((microtime(true) - $rxHttpStarted) * 1000, 3),
+                'http_code' => $code,
+                'curl_errno' => (int) curl_errno($curl),
+                'curl_error' => (string) $curlErr,
+                'connect_ms' => round(((float) ($rxHttpInfo['connect_time'] ?? 0)) * 1000, 3),
+                'tls_ready_ms' => round(((float) ($rxHttpInfo['appconnect_time'] ?? 0)) * 1000, 3),
+                'namelookup_ms' => round(((float) ($rxHttpInfo['namelookup_time'] ?? 0)) * 1000, 3),
+                'starttransfer_ms' => round(((float) ($rxHttpInfo['starttransfer_time'] ?? 0)) * 1000, 3),
+            ]);
+        }
         curl_close($curl);
 
         if ($raw === false) {

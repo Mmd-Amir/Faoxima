@@ -279,6 +279,7 @@ if (!function_exists('getRedisConnection')) {
         }
 
         $config = rx_redis_config();
+        $rxRedisStarted = hrtime(true);
 
         $autoDetect = ($config['host'] === '');
         $hostCandidates = $autoDetect ? ['127.0.0.1', 'localhost'] : [$config['host']];
@@ -286,6 +287,12 @@ if (!function_exists('getRedisConnection')) {
         foreach ($hostCandidates as $candidateHost) {
             $client = rx_redis_try_connect($candidateHost, $config['port'], $config['password'], $config['database']);
             if ($client !== null) {
+                if (function_exists('rx_perf_span_end')) {
+                    rx_perf_span_end('database', 'cache.redis_connect', $rxRedisStarted, [
+                        'result' => 'ok',
+                        'attempted_hosts' => count($hostCandidates),
+                    ]);
+                }
                 rx_redis_clear_unavailable();
                 if ($autoDetect) {
                     rx_redis_persist_discovered_host($candidateHost);
@@ -298,6 +305,12 @@ if (!function_exists('getRedisConnection')) {
         }
 
         rx_redis_mark_unavailable('connect_refused');
+        if (function_exists('rx_perf_span_end')) {
+            rx_perf_span_end('database', 'cache.redis_connect', $rxRedisStarted, [
+                'result' => 'unavailable',
+                'attempted_hosts' => count($hostCandidates),
+            ]);
+        }
         $state['resolved'] = true;
         $state['client'] = null;
         $inProgress = false;

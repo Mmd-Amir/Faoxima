@@ -19,6 +19,50 @@ require_once 'keyboard.php';
 require_once 'vendor/autoload.php';
 require_once 'panels.php';
 require_once 'infocard.php';
+$rxUpdateType = 'unknown';
+$rxAction = 'unknown';
+if (isset($update['callback_query']) && is_array($update['callback_query'])) {
+    $rxUpdateType = 'callback_query';
+    $rxCallbackData = (string) ($update['callback_query']['data'] ?? '');
+    $rxAction = 'callback';
+    foreach (['confirmandgetserviceDiscount', 'confirmandgetservice', 'locationtest', 'usertestbtn', 'product', 'sell', 'extend', 'account'] as $rxKnownCallback) {
+        if (strpos($rxCallbackData, $rxKnownCallback) === 0) {
+            $rxAction = $rxKnownCallback;
+            break;
+        }
+    }
+} elseif (isset($update['message']) && is_array($update['message'])) {
+    $rxUpdateType = 'message';
+    $rxMessageText = (string) ($update['message']['text'] ?? '');
+    $rxAction = strpos($rxMessageText, '/') === 0 ? strtok($rxMessageText, " \r\n\t") : 'message';
+    $rxKnownMessageActions = [
+        'sell' => (string) ($datatextbot['text_sell'] ?? ''),
+        'extend' => (string) ($datatextbot['text_extend'] ?? ''),
+        'usertest' => (string) ($datatextbot['text_usertest'] ?? ''),
+        'purchased_services' => (string) ($datatextbot['text_Purchased_services'] ?? ''),
+    ];
+    foreach ($rxKnownMessageActions as $rxKnownAction => $rxKnownText) {
+        if ($rxKnownText !== '' && hash_equals($rxKnownText, $rxMessageText)) {
+            $rxAction = $rxKnownAction;
+            break;
+        }
+    }
+} elseif (isset($update['pre_checkout_query'])) {
+    $rxUpdateType = 'pre_checkout_query';
+    $rxAction = 'pre_checkout';
+} elseif (isset($update['chat_member'])) {
+    $rxUpdateType = 'chat_member';
+    $rxAction = 'chat_member';
+}
+$GLOBALS['rx_perf_update_type'] = $rxUpdateType;
+$GLOBALS['rx_perf_action'] = substr((string) $rxAction, 0, 80);
+if (function_exists('rx_perf_log')) {
+    rx_perf_log('performance', 'update.received', [
+        'update_type' => $rxUpdateType,
+        'action' => $GLOBALS['rx_perf_action'],
+        'update_id' => isset($update['update_id']) ? (int) $update['update_id'] : 0,
+    ]);
+}
 $setting = select("setting", "*");
 $textbotlang = languagechange('text.json');
 if ($is_bot)

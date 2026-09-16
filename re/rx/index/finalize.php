@@ -1,5 +1,9 @@
 <?php
 
+if (function_exists('rx_perf_log')) {
+    rx_perf_log('performance', 'handler.enter', ['handler' => 'finalize']);
+}
+
 if (isset($update['pre_checkout_query'])) {
     $userid = $update['pre_checkout_query']['from']['id'];
     $id_order = $update['pre_checkout_query']['invoice_payload'];

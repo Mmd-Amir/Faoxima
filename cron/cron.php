@@ -77,6 +77,13 @@ if (!$bootstrapLoaded) {
     exit;
 }
 
+$GLOBALS['rx_perf_update_type'] = 'cron_orchestrator';
+$GLOBALS['rx_perf_action'] = 'cron.orchestrator';
+$rxCronPerfStarted = hrtime(true);
+if (function_exists('rx_perf_log')) {
+    rx_perf_log('cron', 'cron.orchestrator.start', ['mode' => PHP_SAPI]);
+}
+
 
 
 if (isset($conn) && $conn instanceof mysqli) {
@@ -273,6 +280,7 @@ $dispatchAsync = static function (array $urls, bool $useLoopback) use ($rxIntern
                 'Expires: 0',
                 'X-Cron-Source: cron-orchestrator',
                 'X-Cron-Token: ' . $rxInternalAuthToken,
+                'X-Request-ID: ' . (function_exists('rx_perf_request_id') ? rx_perf_request_id() : ''),
                 'Connection: close',
             ],
             CURLOPT_USERAGENT       => 'CronOrchestrator/2.0 (+internal)',
@@ -307,9 +315,21 @@ $dispatchAsync = static function (array $urls, bool $useLoopback) use ($rxIntern
     foreach ($handles as $ch) {
         $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $err  = curl_error($ch);
+        $rxDispatchInfo = curl_getinfo($ch);
         $url = $handleUrls[(int) $ch] ?? null;
         $body = (string) curl_multi_getcontent($ch);
         $isFail = ($err !== '' || $code < 200 || $code >= 400);
+        if (function_exists('rx_perf_log')) {
+            rx_perf_log('cron', 'cron.dispatch', [
+                'mode' => $useLoopback ? 'loopback' : 'http',
+                'url' => function_exists('rx_perf_safe_url') ? rx_perf_safe_url((string) $url) : '',
+                'duration_ms' => round(((float) ($rxDispatchInfo['total_time'] ?? 0)) * 1000, 3),
+                'http_code' => $code,
+                'curl_errno' => (int) curl_errno($ch),
+                'curl_error' => (string) $err,
+                'result' => $isFail ? 'failed' : 'dispatched',
+            ]);
+        }
         if ($isFail) {
             if ($url !== null) {
                 $failed[] = $url;
@@ -416,7 +436,8 @@ $rxDispatchCli = static function (string $script, int $worker, int $workers, boo
         return $exitCode === 0;
     }
 
-    $cmd = 'BROADCAST_WORKER_ID=' . $worker . ' BROADCAST_WORKERS=' . $workers . ' '
+    $rxCliRequestId = function_exists('rx_perf_request_id') ? rx_perf_request_id() : '';
+    $cmd = 'FAOXIMA_REQUEST_ID=' . escapeshellarg($rxCliRequestId) . ' BROADCAST_WORKER_ID=' . $worker . ' BROADCAST_WORKERS=' . $workers . ' '
         . escapeshellarg($phpBin) . ' ' . escapeshellarg($file);
 
     if ($background) {
@@ -710,5 +731,12 @@ if (!$rxIsCli && !empty($dueTasks)) {
 }
 
 $rxDispatchedTotal = $rxSuccessfulDispatches;
+if (function_exists('rx_perf_span_end')) {
+    rx_perf_span_end('cron', 'cron.orchestrator.end', $rxCronPerfStarted, [
+        'dispatched' => (int) $rxDispatchedTotal,
+        'cli_dispatched' => (int) $rxCliDispatched,
+        'result' => 'completed',
+    ]);
+}
 echo "OK " . date('Y-m-d H:i:s') . " (Asia/Tehran) | dispatched=" . $rxDispatchedTotal . "\n";
 

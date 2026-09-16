@@ -76,14 +76,31 @@ if (!function_exists('rx_connect_pdo')) {
     {
         $retries = rx_db_connect_retries();
         $attempt = 0;
+        $rxConnectStarted = hrtime(true);
         while (true) {
             try {
-                return new \PDO($dsn, (string) $username, (string) $password, is_array($options) ? $options : []);
+                $connection = new \PDO($dsn, (string) $username, (string) $password, is_array($options) ? $options : []);
+                if (function_exists('rx_perf_span_end')) {
+                    rx_perf_span_end('database', 'database.connect', $rxConnectStarted, [
+                        'driver' => 'pdo_mysql',
+                        'attempts' => $attempt + 1,
+                        'result' => 'ok',
+                    ]);
+                }
+                return $connection;
             } catch (\PDOException $e) {
                 if ($attempt < $retries && rx_db_is_saturation_error($e)) {
                     rx_db_backoff_sleep($attempt);
                     $attempt++;
                     continue;
+                }
+                if (function_exists('rx_perf_span_end')) {
+                    rx_perf_span_end('database', 'database.connect', $rxConnectStarted, [
+                        'driver' => 'pdo_mysql',
+                        'attempts' => $attempt + 1,
+                        'result' => 'error',
+                        'sqlstate' => (string) $e->getCode(),
+                    ]);
                 }
                 throw $e;
             }
@@ -99,9 +116,17 @@ if (!function_exists('rx_connect_mysqli')) {
         }
         $retries = rx_db_connect_retries();
         $attempt = 0;
+        $rxConnectStarted = hrtime(true);
         while (true) {
             $conn = @mysqli_connect($host, $username, $password, $database);
             if ($conn instanceof mysqli) {
+                if (function_exists('rx_perf_span_end')) {
+                    rx_perf_span_end('database', 'database.connect', $rxConnectStarted, [
+                        'driver' => 'mysqli',
+                        'attempts' => $attempt + 1,
+                        'result' => 'ok',
+                    ]);
+                }
                 return $conn;
             }
             $errno     = function_exists('mysqli_connect_errno') ? (int) mysqli_connect_errno() : 0;
@@ -111,6 +136,14 @@ if (!function_exists('rx_connect_mysqli')) {
                 rx_db_backoff_sleep($attempt);
                 $attempt++;
                 continue;
+            }
+            if (function_exists('rx_perf_span_end')) {
+                rx_perf_span_end('database', 'database.connect', $rxConnectStarted, [
+                    'driver' => 'mysqli',
+                    'attempts' => $attempt + 1,
+                    'result' => 'error',
+                    'errno' => $errno,
+                ]);
             }
             return null;
         }

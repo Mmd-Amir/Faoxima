@@ -15,6 +15,16 @@ location ^~ /${URL_PATH}/storage/      { deny all; return 403; }
 location ^~ /${URL_PATH}/logs/         { deny all; return 403; }
 location ^~ /${URL_PATH}/api/handlers/ { deny all; return 403; }
 
+location = /${URL_PATH}/__fpm_status {
+    allow 127.0.0.1;
+    allow ::1;
+    deny all;
+    include fastcgi_params;
+    fastcgi_pass ${APP_UPSTREAM};
+    fastcgi_param SCRIPT_FILENAME /fpm-status;
+    fastcgi_param SCRIPT_NAME /fpm-status;
+}
+
 location ~* ^/${URL_PATH}/app/.*\.(?:js|mjs)$ {
     root ${DOC_ROOT};
     add_header Cache-Control "no-store, no-cache, must-revalidate";
@@ -38,6 +48,7 @@ location ~ ^/${URL_PATH}/(.*\.php)$ {
     fastcgi_param SCRIPT_FILENAME /var/www/faoxima/$1;
     fastcgi_param REQUEST_URI $request_uri;
     fastcgi_param HTTP_AUTHORIZATION $http_authorization;
+    fastcgi_param HTTP_X_REQUEST_ID $faoxima_request_id;
     fastcgi_buffers 16 16k;
     fastcgi_buffer_size 32k;
 }

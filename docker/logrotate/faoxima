@@ -1,0 +1,9 @@
+/var/www/faoxima/logs/nginx-performance.log /var/www/faoxima/logs/php-fpm.log /var/www/faoxima/logs/php-fpm-slow.log /var/www/faoxima/logs/php-fpm-error.log /var/www/faoxima/logs/php-error.log {
+    size 20M
+    rotate 3
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

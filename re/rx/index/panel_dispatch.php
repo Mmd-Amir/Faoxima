@@ -1,5 +1,9 @@
 <?php
 
+if (function_exists('rx_perf_log')) {
+    rx_perf_log('performance', 'handler.enter', ['handler' => 'panel_dispatch']);
+}
+
 if (preg_match('/Confirmpay_user_(\w+)_(\w+)/', $datain, $dataget)) {
     $id_payment = $dataget[1];
     $id_order = $dataget[2];

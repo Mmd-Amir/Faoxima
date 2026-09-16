@@ -1,3 +1,10 @@
+map $http_x_request_id $faoxima_request_id {
+    ~^[A-Za-z0-9._-]{8,80}$ $http_x_request_id;
+    default $request_id;
+}
+
+log_format faoxima_timing escape=json '{"ts":"$time_iso8601","request_id":"$faoxima_request_id","method":"$request_method","uri":"$uri","status":$status,"bytes":$body_bytes_sent,"request_time":$request_time,"upstream_connect_time":"$upstream_connect_time","upstream_header_time":"$upstream_header_time","upstream_response_time":"$upstream_response_time","upstream_status":"$upstream_status"}';
+
 server {
     listen 80;
     server_name ${DOMAIN};
@@ -18,6 +25,7 @@ server {
     server_name ${DOMAIN};
     server_tokens off;
     index index.php;
+    access_log /var/log/faoxima/nginx-performance.log faoxima_timing;
 
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
@@ -26,6 +34,7 @@ server {
     keepalive_timeout 65s;
     gzip on;
     gzip_types application/json text/plain;
+    add_header X-Request-ID $faoxima_request_id always;
 
     location ~ /\.(?!well-known).* {
         deny all;

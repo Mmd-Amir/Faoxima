@@ -161,7 +161,24 @@ function panel_login_cookie($code_panel)
         CURLOPT_POSTFIELDS => "username={$panel['username_panel']}&password=" . urlencode($panel['password_panel']),
         CURLOPT_COOKIEJAR => xuisingle_cookie_path(),
     ));
+    $rxLoginStarted = microtime(true);
     $response = curl_exec($curl);
+    $rxLoginInfo = curl_getinfo($curl);
+    if (function_exists('rx_perf_log')) {
+        rx_perf_log('http', 'http.request', [
+            'method' => 'POST',
+            'url' => function_exists('rx_perf_safe_url') ? rx_perf_safe_url(($panel['url_panel'] ?? '') . '/login') : '',
+            'attempt' => 1,
+            'duration_ms' => round((microtime(true) - $rxLoginStarted) * 1000, 3),
+            'http_code' => (int) ($rxLoginInfo['http_code'] ?? 0),
+            'curl_errno' => (int) curl_errno($curl),
+            'curl_error' => (string) curl_error($curl),
+            'connect_ms' => round(((float) ($rxLoginInfo['connect_time'] ?? 0)) * 1000, 3),
+            'tls_ready_ms' => round(((float) ($rxLoginInfo['appconnect_time'] ?? 0)) * 1000, 3),
+            'namelookup_ms' => round(((float) ($rxLoginInfo['namelookup_time'] ?? 0)) * 1000, 3),
+            'starttransfer_ms' => round(((float) ($rxLoginInfo['starttransfer_time'] ?? 0)) * 1000, 3),
+        ]);
+    }
     if (curl_error($curl)) {
         $token = [];
         $token['errror'] = curl_error($curl);
@@ -289,6 +306,7 @@ function pick_single_link_text($raw)
 
 function fetch_subscription_links_with_retry($subscriptionUrl, $attempts = 1, $delayMicroseconds = 500000)
 {
+    $rxSubscriptionStarted = hrtime(true);
     $attempts = max(1, (int)$attempts);
     $links = [];
     $lastBody = null;
@@ -301,12 +319,27 @@ function fetch_subscription_links_with_retry($subscriptionUrl, $attempts = 1, $d
             $lastBody = $res['body'];
             $links = extract_links_from_raw_subscription($res['body']);
             if (!empty($links)) {
+                if (function_exists('rx_perf_span_end')) {
+                    rx_perf_span_end('performance', 'handler.subscription_fetch', $rxSubscriptionStarted, [
+                        'url' => function_exists('rx_perf_safe_url') ? rx_perf_safe_url($subscriptionUrl) : '',
+                        'outer_attempts' => $i + 1,
+                        'result' => 'ok',
+                    ]);
+                }
                 return ['links' => $links, 'body' => $res['body']];
             }
         }
         if ($i < $attempts - 1) {
             usleep($delayMicroseconds);
         }
+    }
+    if (function_exists('rx_perf_span_end')) {
+        rx_perf_span_end('performance', 'handler.subscription_fetch', $rxSubscriptionStarted, [
+            'url' => function_exists('rx_perf_safe_url') ? rx_perf_safe_url($subscriptionUrl) : '',
+            'outer_attempts' => $attempts,
+            'retry_delay_ms' => round(max(0, (int) $delayMicroseconds) / 1000, 3),
+            'result' => 'empty',
+        ]);
     }
     return ['links' => $links, 'body' => $lastBody];
 }
