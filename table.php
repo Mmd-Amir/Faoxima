@@ -17,7 +17,33 @@ if (!defined('REFACTORED_LEGACY_ROOT')) {
 require_once 'function.php';
 require_once 'config.php';
 require_once 'botapi.php';
-global $connect;
+global $connect, $pdo;
+
+if (!(isset($pdo) && $pdo instanceof PDO)) {
+    $rxDbHost = getenv('DB_HOST') ?: 'db';
+    $rxDbName = getenv('DB_NAME') ?: getenv('MYSQL_DATABASE');
+    $rxDbUser = getenv('DB_USER') ?: getenv('MYSQL_USER');
+    $rxDbPass = getenv('DB_PASS');
+    if ($rxDbPass === false || $rxDbPass === '') {
+        $rxDbPass = getenv('MYSQL_PASSWORD');
+    }
+    if ($rxDbName && $rxDbUser && $rxDbPass !== false) {
+        try {
+            $pdo = new PDO(
+                "mysql:host={$rxDbHost};dbname={$rxDbName};charset=utf8mb4",
+                $rxDbUser,
+                $rxDbPass,
+                [
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                    PDO::ATTR_EMULATE_PREPARES => false,
+                ]
+            );
+        } catch (Throwable $e) {
+            error_log('[table.php] PDO fallback connection: ' . $e->getMessage());
+        }
+    }
+}
 
 if (!function_exists('rxEnsureUtf8mb4Schema')) {
     function rxEnsureUtf8mb4Schema($connection, $pdoConnection = null)
