@@ -582,7 +582,7 @@ if (!function_exists('rxBuildMiniAppInstructionText')) {
 فقط <b>یک کرون</b> کافی است — بقیه فرآیندها به‌صورت خودکار از همین کرون اجرا می‌شوند:
 
 <b>⏱ هر ۱ دقیقه یک بار</b>
-<code>curl -s &quot;https://{$domainhostsEscaped}/cron/cron.php?_cron=$(date +%s)&quot; &gt; /dev/null 2&gt;&amp;1</code>
+<code>curl -s https://{$domainhostsEscaped}/cron/cron.php &gt;/dev/null 2&gt;&amp;1</code>
 HTML;
         }
 

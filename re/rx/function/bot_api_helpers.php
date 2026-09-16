@@ -1009,7 +1009,7 @@ function activecronStatus()
     }
 
     $cronCommands = [
-        "*/1 * * * * curl -s \"https://$domainhosts/cron/cron.php?_cron=$(date +%s)\" > /dev/null 2>&1",
+        "*/1 * * * * curl -s https://$domainhosts/cron/cron.php >/dev/null 2>&1",
     ];
 
     return replaceCronJobsMatchingStatus(rxActivecronPattern($domainhosts), $cronCommands);
