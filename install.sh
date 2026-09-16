@@ -2004,7 +2004,9 @@ detect_legacy_additional_bot_version() {
 }
 
 get_additional_bot_version() {
-    local botname="$1" bot_dir="${BOTS_DIR}/${botname}" version="" recovered="0" current_installed=""
+    local botname="$1"
+    local bot_dir="${BOTS_DIR}/${botname}"
+    local version="" recovered="0" current_installed=""
     version=$(read_source_version_marker "$bot_dir" 2>/dev/null || true)
     if [ -z "$version" ] && [ -f "${bot_dir}/.env" ]; then
         version=$(file_env_get "${bot_dir}/.env" "FAOXIMA_SOURCE_VERSION" 2>/dev/null)
