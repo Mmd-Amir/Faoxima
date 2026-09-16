@@ -363,33 +363,42 @@ function rx_run_table_migrations(string $rootDirectory, array $dbInfo): array
     if (!file_exists($tableFile)) {
         return ['ok' => false, 'message' => 'فایل table.php یافت نشد.'];
     }
-    $obLevelBefore = ob_get_level();
     $prevCwd = getcwd();
-    $included = false;
-    $error = null;
+    $lastError = null;
     try {
         chdir(rtrim($rootDirectory, '/'));
-        ob_start();
-        include $tableFile;
-        ob_end_clean();
-        $included = true;
-    } catch (\Throwable $e) {
-        while (ob_get_level() > $obLevelBefore) {
-            ob_end_clean();
+        for ($pass = 1; $pass <= 3; $pass++) {
+            $obLevelBefore = ob_get_level();
+            try {
+                ob_start();
+                include $tableFile;
+                while (ob_get_level() > $obLevelBefore) {
+                    ob_end_clean();
+                }
+            } catch (\Throwable $e) {
+                while (ob_get_level() > $obLevelBefore) {
+                    ob_end_clean();
+                }
+                $lastError = $e->getMessage();
+                if ($pass >= 3) {
+                    return ['ok' => false, 'message' => $lastError ?: 'اجرای table.php امکان‌پذیر نبود.'];
+                }
+                usleep(500000);
+                continue;
+            }
+            if (rx_table_migrations_verify_ready($dbInfo, 1, 0)) {
+                return ['ok' => true, 'message' => ''];
+            }
+            if ($pass < 3) {
+                sleep(1);
+            }
         }
-        $error = $e->getMessage();
     } finally {
         if ($prevCwd !== false) {
             chdir($prevCwd);
         }
     }
-    if (!$included) {
-        return ['ok' => false, 'message' => $error ?: 'اجرای table.php امکان‌پذیر نبود.'];
-    }
-    if (!rx_table_migrations_verify_ready($dbInfo)) {
-        return ['ok' => false, 'message' => 'اسکریپت table.php اجرا شد اما جدول setting در دیتابیس ایجاد نشد. اتصال دیتابیس یا دسترسی‌های کاربر را بررسی کنید.'];
-    }
-    return ['ok' => true, 'message' => ''];
+    return ['ok' => false, 'message' => $lastError ?: 'اسکریپت table.php اجرا شد اما ساختار دیتابیس پس از 3 مرحله migration هنوز کامل نیست. اتصال دیتابیس و سطح دسترسی کاربر را بررسی کنید.'];
 }
 
 function rx_ensure_admin_record(array $dbInfo, string $adminNumber): bool
