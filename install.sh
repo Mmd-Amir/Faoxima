@@ -3645,6 +3645,22 @@ delete_error_logs() {
         return 0
     fi
 
+    printf '\n  %s❯%s Delete ALL %d on-disk log file(s)? (y/N): ' "$C_YELLOW" "$C_RESET" "${#file_idx[@]}"
+    local confirm_all; read -r confirm_all
+    if [[ "${confirm_all,,}" == "y" ]]; then
+        local i deleted=0 failed=0
+        for i in "${file_idx[@]}"; do
+            if rm -f "${paths_ref[$i]}" 2>/dev/null; then
+                deleted=$((deleted + 1))
+            else
+                failed=$((failed + 1))
+            fi
+        done
+        ui_ok "Deleted ${deleted} log file(s)."
+        [ "$failed" -gt 0 ] && ui_warn "Failed to delete ${failed} log file(s)."
+        return 0
+    fi
+
     local total="${#file_idx[@]}"
     local page_size=20
     local page=0
