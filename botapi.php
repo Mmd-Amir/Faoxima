@@ -268,6 +268,9 @@ function telegram($method, $datas = [], $token = null)
     if ($duration >= 5.0) {
         error_log(sprintf('Slow Telegram response detected (method: %s, http_code: %d, duration: %.3fs)', $method, $httpCode, $duration));
     }
+    if (function_exists('rx_perf_note_external_call')) {
+        rx_perf_note_external_call('telegram:' . $method, $duration * 1000);
+    }
 
     return rx_parse_telegram_response($rawResponse, $httpCode);
 }
@@ -2910,10 +2913,13 @@ if (function_exists('rx_perf_mark')) {
 }
 if ($rxUpdateLock === false) {
     if (function_exists('rx_perf_mark')) rx_perf_mark('lock_timeout_exit');
+    if (function_exists('rx_perf_note_lock_timeout')) rx_perf_note_lock_timeout($from_id, $update ?? []);
     exit;
 }
 if (is_string($rxUpdateLock) && $rxUpdateLock !== '') {
-    register_shutdown_function(static function () use ($rxUpdateLock) {
+    if (function_exists('rx_perf_note_lock_held')) rx_perf_note_lock_held($from_id, $update ?? []);
+    register_shutdown_function(static function () use ($rxUpdateLock, $from_id, $update) {
+        if (function_exists('rx_perf_note_lock_released')) rx_perf_note_lock_released($from_id, $update ?? []);
         rx_callback_lock_release($rxUpdateLock);
     });
 }

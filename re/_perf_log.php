@@ -71,6 +71,88 @@ if (!function_exists('rx_perf_note_query')) {
     }
 }
 
+if (!function_exists('rx_perf_note_external_call')) {
+    function rx_perf_note_external_call(string $target, float $durationMs): void
+    {
+        if (!rx_perf_enabled()) {
+            return;
+        }
+        if (isset($GLOBALS['__rx_perf'])) {
+            $GLOBALS['__rx_perf']['marks'][] = [
+                'label' => 'ext[' . $target . ']',
+                't'     => round((microtime(true) - $GLOBALS['__rx_perf']['start']) * 1000, 1),
+                'own'   => round($durationMs, 1),
+            ];
+        }
+        if ($durationMs >= 300.0) {
+            $reqId = $GLOBALS['__rx_perf']['id'] ?? '--------';
+            $line = '[' . date('Y-m-d H:i:s') . '] [' . $reqId . '] SLOW_EXTERNAL_CALL '
+                . round($durationMs, 1) . 'ms | ' . $target . PHP_EOL;
+            @file_put_contents(REFACTORED_LOG_DIR . DIRECTORY_SEPARATOR . 'perf_slow_external.log', $line, FILE_APPEND | LOCK_EX);
+        }
+    }
+}
+
+if (!function_exists('rx_perf_lock_detail')) {
+    function rx_perf_lock_detail($update): string
+    {
+        if (!is_array($update)) {
+            return '';
+        }
+        if (isset($update['callback_query']['data'])) {
+            return 'cb:' . substr((string) $update['callback_query']['data'], 0, 60);
+        }
+        if (isset($update['message']['text'])) {
+            return 'msg:' . substr((string) $update['message']['text'], 0, 60);
+        }
+        return '';
+    }
+}
+
+if (!function_exists('rx_perf_note_lock_timeout')) {
+    function rx_perf_note_lock_timeout($fromId, $update): void
+    {
+        if (!rx_perf_enabled()) {
+            return;
+        }
+        $reqId = $GLOBALS['__rx_perf']['id'] ?? '--------';
+        $line = '[' . date('Y-m-d H:i:s') . '] [' . $reqId . '] TIMEOUT from_id=' . $fromId
+            . ' detail=' . rx_perf_lock_detail($update) . ' (could not acquire lock within 5s — another request is holding it)' . PHP_EOL;
+        @file_put_contents(REFACTORED_LOG_DIR . DIRECTORY_SEPARATOR . 'perf_lock.log', $line, FILE_APPEND | LOCK_EX);
+    }
+}
+
+if (!function_exists('rx_perf_note_lock_held')) {
+    function rx_perf_note_lock_held($fromId, $update): void
+    {
+        if (!rx_perf_enabled()) {
+            return;
+        }
+        $reqId = $GLOBALS['__rx_perf']['id'] ?? '--------';
+        $GLOBALS['__rx_perf_lock_acquired_at'] = microtime(true);
+        $line = '[' . date('Y-m-d H:i:s') . '] [' . $reqId . '] ACQUIRED from_id=' . $fromId
+            . ' detail=' . rx_perf_lock_detail($update) . PHP_EOL;
+        @file_put_contents(REFACTORED_LOG_DIR . DIRECTORY_SEPARATOR . 'perf_lock.log', $line, FILE_APPEND | LOCK_EX);
+    }
+}
+
+if (!function_exists('rx_perf_note_lock_released')) {
+    function rx_perf_note_lock_released($fromId, $update): void
+    {
+        if (!rx_perf_enabled()) {
+            return;
+        }
+        $reqId = $GLOBALS['__rx_perf']['id'] ?? '--------';
+        $heldMs = isset($GLOBALS['__rx_perf_lock_acquired_at'])
+            ? round((microtime(true) - $GLOBALS['__rx_perf_lock_acquired_at']) * 1000, 1)
+            : -1;
+        $line = '[' . date('Y-m-d H:i:s') . '] [' . $reqId . '] RELEASED from_id=' . $fromId
+            . ' held_for=' . $heldMs . 'ms'
+            . ' detail=' . rx_perf_lock_detail($update) . PHP_EOL;
+        @file_put_contents(REFACTORED_LOG_DIR . DIRECTORY_SEPARATOR . 'perf_lock.log', $line, FILE_APPEND | LOCK_EX);
+    }
+}
+
 if (!function_exists('rx_perf_flush')) {
     function rx_perf_flush(): void
     {
@@ -96,7 +178,8 @@ if (!function_exists('rx_perf_flush')) {
         $prevT = 0.0;
         foreach ($p['marks'] as $m) {
             $step = round($m['t'] - $prevT, 1);
-            $marksStr .= $m['label'] . '=+' . $step . 'ms(' . $m['t'] . 'ms) ';
+            $ownSuffix = isset($m['own']) ? '[own=' . $m['own'] . 'ms]' : '';
+            $marksStr .= $m['label'] . $ownSuffix . '=+' . $step . 'ms(' . $m['t'] . 'ms) ';
             $prevT = $m['t'];
         }
 
