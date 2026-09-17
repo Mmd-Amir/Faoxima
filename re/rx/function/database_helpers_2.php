@@ -2756,8 +2756,13 @@ $textonebuy
         $__paidAmount = intval($Payment_report['price']);
         $__creditAmount = $__paidAmount + $__chargeBonus;
         $Balance_confrim = intval($Balance_id['Balance']) + $__creditAmount;
+        $rxClaimCharge = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'paid' WHERE id_order = :o AND payment_Status <> 'paid'");
+        $rxClaimCharge->execute([':o' => $Payment_report['id_order']]);
+        if ($rxClaimCharge->rowCount() < 1) {
+            return;
+        }
+        if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
         balance_atomic_credit($Payment_report['id_user'], $__creditAmount);
-        update("Payment_report", "payment_Status", "paid", "id_order", $Payment_report['id_order']);
         update("Payment_report", "at_updated", date('Y/m/d H:i:s'), "id_order", $Payment_report['id_order']);
         update("user", "Processing_value_four", "", "id", $Payment_report['id_user']);
 

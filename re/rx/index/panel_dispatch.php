@@ -28,13 +28,24 @@ if (preg_match('/Confirmpay_user_(\w+)_(\w+)/', $datain, $dataget)) {
     }
     $StatusPayment = StatusPayment($id_payment);
     if ($StatusPayment['payment_status'] == "finished") {
+        $rxClaimPaid = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'paid' WHERE id_order = :o AND payment_Status <> 'paid'");
+        $rxClaimPaid->execute([':o' => $Payment_report['id_order']]);
+        if ($rxClaimPaid->rowCount() < 1) {
+            telegram('answerCallbackQuery', array(
+                'callback_query_id' => $callback_query_id,
+                'text' => $textbotlang['Admin']['Payment']['reviewedpayment'] ?? 'این پرداخت قبلاً بررسی شده است',
+                'show_alert' => true,
+                'cache_time' => 5,
+            ));
+            return;
+        }
+        if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
         telegram('answerCallbackQuery', array(
             'callback_query_id' => $callback_query_id,
             'text' => $textbotlang['users']['Balance']['finished'],
             'show_alert' => true,
             'cache_time' => 5,
         ));
-        update("Payment_report", "payment_Status", "paid", "id_order", $Payment_report['id_order']);
         DirectPayment($Payment_report['id_order']);
         $_uid = $Payment_report['id_user'];
         $_stmt = $connect->prepare("SELECT * FROM user WHERE id = ? LIMIT 1");
@@ -65,10 +76,9 @@ if (preg_match('/Confirmpay_user_(\w+)_(\w+)/', $datain, $dataget)) {
                 'parse_mode' => "HTML"
             ]);
         }
-        update("Payment_report", "payment_Status", "paid", "id_order", $Payment_report['id_order']);
-        update("user", "Processing_value_one", "none", "id", $Payment_report['id_order']);
-        update("user", "Processing_value_tow", "none", "id", $Payment_report['id_order']);
-        update("user", "Processing_value_four", "none", "id", $Payment_report['id_order']);
+        update("user", "Processing_value_one", "none", "id", $Payment_report['id_user']);
+        update("user", "Processing_value_tow", "none", "id", $Payment_report['id_user']);
+        update("user", "Processing_value_four", "none", "id", $Payment_report['id_user']);
     } elseif ($StatusPayment['payment_status'] == "expired") {
         telegram('answerCallbackQuery', array(
             'callback_query_id' => $callback_query_id,

@@ -53,8 +53,19 @@ if (!function_exists('rx_callback_lock_acquire')) {
         $name = substr($prefix . ':' . preg_replace('/[^a-z0-9_]/i', '', $scope) . ':' . $ownerId, 0, 64);
 
         try {
+            $stmt = $pdo->prepare('SELECT IS_USED_LOCK(?)');
+            $stmt->execute([$name]);
+            $heldBy = $stmt->fetchColumn();
+            if ($heldBy !== null && $heldBy !== false) {
+                $stmt = $pdo->prepare('SELECT CONNECTION_ID()');
+                $stmt->execute();
+                if ((string) $stmt->fetchColumn() === (string) $heldBy) {
+                    $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$name]);
+                }
+            }
+
             $stmt = $pdo->prepare('SELECT GET_LOCK(?, ?)');
-            $stmt->execute([$name, $timeout]);
+            $stmt->execute([$name, max(0.1, (float) $timeout)]);
             $got = $stmt->fetchColumn();
         } catch (Throwable $e) {
             @error_log('[rx_callback_lock] acquire failed: ' . $e->getMessage());
@@ -2899,19 +2910,6 @@ if (!is_numeric($from_id) || (string)(int) $from_id !== (string) $from_id) {
 }
 $from_id = (int) $from_id;
 rx_releaseWebhookConnection();
-$rxUpdateLock = rx_callback_lock_acquire($from_id, 'update', 1.5);
-if ($rxUpdateLock === false) {
-    $rxBusyCbId = $update['callback_query']['id'] ?? '';
-    if ($rxBusyCbId !== '' && preg_match('/^\d{1,32}$/', (string) $rxBusyCbId)) {
-        rx_callback_busy_reply($rxBusyCbId);
-    }
-    exit;
-}
-if (is_string($rxUpdateLock) && $rxUpdateLock !== '') {
-    register_shutdown_function(static function () use ($rxUpdateLock) {
-        rx_callback_lock_release($rxUpdateLock);
-    });
-}
 $text =convertPersianNumbersToEnglish($text);
 
 $text_inline = $update["callback_query"]["message"]['text'] ?? '';

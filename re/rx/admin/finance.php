@@ -1827,7 +1827,18 @@ $iduser  در ربات  رفع مسدود گردید
         ));
         return;
     }
-    update("Payment_report", "payment_Status", "paid", "id_order", $id_order);
+    $rxClaimAddBal = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'paid' WHERE id_order = :o AND payment_Status <> 'paid'");
+    $rxClaimAddBal->execute([':o' => $id_order]);
+    if ($rxClaimAddBal->rowCount() < 1) {
+        telegram('answerCallbackQuery', array(
+            'callback_query_id' => $callback_query_id,
+            'text' => $textbotlang['Admin']['Payment']['reviewedpayment'],
+            'show_alert' => true,
+            'cache_time' => 5,
+        ));
+        return;
+    }
+    if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
 
     update("user", "Processing_value_four", $_addbal_chat_id . ':' . $_addbal_msg_id . ':' . $_addbal_thread_id, "id", $from_id);
     nm_adminInstantReply($from_id, $textbotlang['Admin']['ManageUser']['addbalanceuserdec'], $backadmin, 'html');

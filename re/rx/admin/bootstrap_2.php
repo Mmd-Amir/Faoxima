@@ -5131,7 +5131,6 @@ $caption";
             'parse_mode' => "HTML"
         ]);
     }
-    update("Payment_report", "payment_Status", "paid", "id_order", $Payment_report['id_order']);
     update("Payment_report", "at_updated", date('Y/m/d H:i:s'), "id_order", $Payment_report['id_order']);
     update("user", "Processing_value_one", "none", "id", $Balance_id['id']);
     update("user", "Processing_value_tow", "none", "id", $Balance_id['id']);
