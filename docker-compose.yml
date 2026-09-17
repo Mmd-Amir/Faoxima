@@ -37,6 +37,7 @@ services:
       FAOXIMA_DOCKER_ENV: "1"
     volumes:
       - .:/var/www/faoxima
+      - ./docker/php/pool.d/www.conf:/usr/local/etc/php-fpm.d/zz-pool.conf:ro
     depends_on:
       db:
         condition: service_healthy

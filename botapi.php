@@ -71,15 +71,17 @@ if (!function_exists('rx_callback_lock_release')) {
         global $pdo;
 
         if (!is_string($name) || $name === '' || !($pdo instanceof PDO)) {
-            return;
+            return null;
         }
 
         try {
             $stmt = $pdo->prepare('SELECT RELEASE_LOCK(?)');
             $stmt->execute([$name]);
-            $stmt->fetchColumn();
+            $result = $stmt->fetchColumn();
+            return $result === null ? null : (string) $result;
         } catch (Throwable $e) {
             @error_log('[rx_callback_lock] release failed: ' . $e->getMessage());
+            return 'error:' . $e->getMessage();
         }
     }
 }
@@ -267,9 +269,6 @@ function telegram($method, $datas = [], $token = null)
 
     if ($duration >= 5.0) {
         error_log(sprintf('Slow Telegram response detected (method: %s, http_code: %d, duration: %.3fs)', $method, $httpCode, $duration));
-    }
-    if (function_exists('rx_perf_note_external_call')) {
-        rx_perf_note_external_call('telegram:' . $method, $duration * 1000);
     }
 
     return rx_parse_telegram_response($rawResponse, $httpCode);
@@ -2859,10 +2858,8 @@ if (!isset($rx_update_probe['update_id'])) {
 
 
 FaoximaWebhookAuth::enforce((string) ($APIKEY ?? ''));
-if (function_exists('rx_perf_mark')) rx_perf_mark('webhook_auth_ok');
 
 $update = $rx_update_probe;
-$GLOBALS['update'] = $update;
 $update_id = $update['update_id'] ?? 0;
 if (isDuplicateUpdate($update_id)) {
     if (!headers_sent()) {
@@ -2870,7 +2867,6 @@ if (isDuplicateUpdate($update_id)) {
     }
     exit;
 }
-if (function_exists('rx_perf_mark')) rx_perf_mark('dedup_check_ok');
 
 $from_id = $update['message']['from']['id'] ?? $update['callback_query']['from']['id'] ?? $update["inline_query"]['from']['id'] ?? 0;
 $time_message = $update['message']['date'] ?? $update['callback_query']['date'] ?? $update["inline_query"]['date'] ?? 0;
@@ -2902,24 +2898,17 @@ if (!is_numeric($from_id) || (string)(int) $from_id !== (string) $from_id) {
     exit;
 }
 $from_id = (int) $from_id;
-if (function_exists('rx_perf_mark')) rx_perf_mark('pre_connection_release');
 rx_releaseWebhookConnection();
-if (function_exists('rx_perf_mark')) rx_perf_mark('connection_released_to_telegram');
-$rxLockWaitStart = microtime(true);
-$rxUpdateLock = rx_callback_lock_acquire($from_id, 'update', 5);
-if (function_exists('rx_perf_mark')) {
-    $rxLockWaitMs = round((microtime(true) - $rxLockWaitStart) * 1000, 1);
-    rx_perf_mark('lock_acquired_waited_' . $rxLockWaitMs . 'ms');
-}
+$rxUpdateLock = rx_callback_lock_acquire($from_id, 'update', 1.5);
 if ($rxUpdateLock === false) {
-    if (function_exists('rx_perf_mark')) rx_perf_mark('lock_timeout_exit');
-    if (function_exists('rx_perf_note_lock_timeout')) rx_perf_note_lock_timeout($from_id, $update ?? []);
+    $rxBusyCbId = $update['callback_query']['id'] ?? '';
+    if ($rxBusyCbId !== '' && preg_match('/^\d{1,32}$/', (string) $rxBusyCbId)) {
+        rx_callback_busy_reply($rxBusyCbId);
+    }
     exit;
 }
 if (is_string($rxUpdateLock) && $rxUpdateLock !== '') {
-    if (function_exists('rx_perf_note_lock_held')) rx_perf_note_lock_held($from_id, $update ?? []);
-    register_shutdown_function(static function () use ($rxUpdateLock, $from_id, $update) {
-        if (function_exists('rx_perf_note_lock_released')) rx_perf_note_lock_released($from_id, $update ?? []);
+    register_shutdown_function(static function () use ($rxUpdateLock) {
         rx_callback_lock_release($rxUpdateLock);
     });
 }

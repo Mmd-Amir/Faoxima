@@ -2946,6 +2946,46 @@ interactive_timeout = 180
 EOF
 }
 
+compute_pm_max_children() {
+    local ram_mb="$1" cores="$2"
+    local per_worker_mb=40
+    local ram_reserved_mb=512
+    local ram_budget=$(((ram_mb - ram_reserved_mb) / per_worker_mb))
+    [ "$ram_budget" -lt 5 ] && ram_budget=5
+
+    local cpu_cap=$((cores * 10))
+    [ "$cpu_cap" -lt 10 ] && cpu_cap=10
+
+    local result="$ram_budget"
+    [ "$cpu_cap" -lt "$result" ] && result="$cpu_cap"
+    [ "$result" -lt 5 ] && result=5
+    [ "$result" -gt 100 ] && result=100
+
+    printf '%d' "$result"
+}
+
+write_fpm_pool_conf() {
+    local max_children="$1"
+    local dir="${PROJECT_DIR}/docker/php/pool.d"
+    local file="${dir}/www.conf"
+    mkdir -p "$dir" || return 1
+
+    local start_servers=$((max_children / 5))
+    [ "$start_servers" -lt 2 ] && start_servers=2
+    local min_spare=$((start_servers / 2))
+    [ "$min_spare" -lt 1 ] && min_spare=1
+    local max_spare=$((start_servers * 2))
+    [ "$max_spare" -gt "$max_children" ] && max_spare="$max_children"
+
+    cat > "$file" <<EOF
+[www]
+pm.max_children = ${max_children}
+pm.start_servers = ${start_servers}
+pm.min_spare_servers = ${min_spare}
+pm.max_spare_servers = ${max_spare}
+EOF
+}
+
 current_max_connections() {
     local mysql_root_pass
     mysql_root_pass=$(env_get MYSQL_ROOT_PASSWORD)
@@ -3201,7 +3241,25 @@ optimize_database() {
         fi
     fi
 
-    ui_warn "PHP-FPM pool tuning (pm.max_children) was intentionally skipped — no pool configuration file exists in this deployment yet."
+    if grep -qF "docker/php/pool.d/www.conf:/usr/local/etc/php-fpm.d/" "$COMPOSE_FILE" 2>/dev/null; then
+        local pm_max_children
+        pm_max_children=$(compute_pm_max_children "$ram_mb" "$cores")
+        ui_info "Computed PHP-FPM pm.max_children = ${pm_max_children} (heuristic: ~40MB/worker within available RAM, capped at 10x CPU cores)."
+
+        ui_action "Writing PHP-FPM pool tuning to docker/php/pool.d/www.conf..."
+        if write_fpm_pool_conf "$pm_max_children"; then
+            ui_action "Applying PHP-FPM pool configuration (this restarts the app container)..."
+            if dc up -d --force-recreate app; then
+                ui_ok "PHP-FPM pm.max_children set to ${pm_max_children}."
+            else
+                ui_err "Failed to restart the app container — PHP-FPM pool tuning was written but not yet applied."
+            fi
+        else
+            ui_err "Failed to write the PHP-FPM pool configuration file."
+        fi
+    else
+        ui_warn "PHP-FPM pool tuning (pm.max_children) was skipped — docker-compose.yml does not mount docker/php/pool.d/www.conf yet. Re-run the installer's compose setup or add '- ./docker/php/pool.d/www.conf:/usr/local/etc/php-fpm.d/zz-pool.conf:ro' under the app service's volumes."
+    fi
 
     if redis_service_exists; then
         local redis_mem_mb=$((ram_mb / 8))

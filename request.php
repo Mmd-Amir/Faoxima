@@ -61,18 +61,6 @@ class CurlRequest {
     }
 
     private function execute($method, $data = null) {
-        $rxPerfStart = microtime(true);
-        try {
-            return $this->executeInner($method, $data);
-        } finally {
-            if (function_exists('rx_perf_note_external_call')) {
-                $rxPerfHost = parse_url($this->url, PHP_URL_HOST) ?: $this->url;
-                rx_perf_note_external_call('panel:' . $rxPerfHost . ':' . $method, (microtime(true) - $rxPerfStart) * 1000);
-            }
-        }
-    }
-
-    private function executeInner($method, $data = null) {
         if (!$this->timeout) {
             $cfgTimeout = isset($GLOBALS['setting']['panel_curl_timeout']) ? (int)$GLOBALS['setting']['panel_curl_timeout'] : 0;
             $this->timeout = $cfgTimeout > 0 ? $cfgTimeout : 20;
