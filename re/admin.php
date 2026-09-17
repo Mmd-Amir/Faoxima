@@ -5,5 +5,8 @@ if (!defined('REFACTORED_LEGACY_ROOT')) {
 }
 @chdir(REFACTORED_LEGACY_ROOT);
 require __DIR__ . '/_error_log.php';
+require __DIR__ . '/_perf_log.php';
+rx_perf_mark('admin_entry');
 require __DIR__ . '/rx/admin/index.php';
+rx_perf_mark('admin_compiled_done');
 

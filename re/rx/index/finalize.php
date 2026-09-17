@@ -365,8 +365,10 @@ if (isset($update['pre_checkout_query'])) {
         ]);
     }
 }
+if (function_exists('rx_perf_mark')) rx_perf_mark('finalize_before_admin_check');
 if (in_array($from_id, $admin_ids))
     require_once 'admin.php';
+if (function_exists('rx_perf_mark')) rx_perf_mark('finalize_done');
 
 $pdo = null;
 $connect->close();

@@ -299,6 +299,9 @@ if ($dbname !== '' && $usernamedb !== '') {
     $dsn = 'mysql:host=' . $dbhostResolved . ';dbname=' . $dbname . ';charset=utf8mb4';
     try {
         $pdo = rx_connect_pdo($dsn, $usernamedb, $passworddb, $options);
+        if ($pdo instanceof PDO && function_exists('rx_perf_wrap_pdo')) {
+            rx_perf_wrap_pdo($pdo);
+        }
     } catch (\PDOException $rxPdoError) {
         $pdo = null;
         error_log('config.php PDO connection failed: ' . $rxPdoError->getMessage());

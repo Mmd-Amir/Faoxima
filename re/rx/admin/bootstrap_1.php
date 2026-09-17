@@ -14,6 +14,7 @@ require_once dirname(__DIR__,2).'/_guard.php';
 require_once dirname(__DIR__,2).'/_meta.php';
 require_once dirname(__DIR__,2).'/_vx.php';
 require_once dirname(__DIR__,2).'/_render.php';
+if (function_exists('rx_perf_mark')) rx_perf_mark('admin_internal_requires_done');
 $text_panel_admin_login_template=_fx_about();
 
 if (!function_exists('normalizeXuiSingleSubscriptionBaseUrl')) {

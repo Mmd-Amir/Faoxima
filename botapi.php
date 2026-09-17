@@ -2856,8 +2856,10 @@ if (!isset($rx_update_probe['update_id'])) {
 
 
 FaoximaWebhookAuth::enforce((string) ($APIKEY ?? ''));
+if (function_exists('rx_perf_mark')) rx_perf_mark('webhook_auth_ok');
 
 $update = $rx_update_probe;
+$GLOBALS['update'] = $update;
 $update_id = $update['update_id'] ?? 0;
 if (isDuplicateUpdate($update_id)) {
     if (!headers_sent()) {
@@ -2865,6 +2867,7 @@ if (isDuplicateUpdate($update_id)) {
     }
     exit;
 }
+if (function_exists('rx_perf_mark')) rx_perf_mark('dedup_check_ok');
 
 $from_id = $update['message']['from']['id'] ?? $update['callback_query']['from']['id'] ?? $update["inline_query"]['from']['id'] ?? 0;
 $time_message = $update['message']['date'] ?? $update['callback_query']['date'] ?? $update["inline_query"]['date'] ?? 0;
@@ -2896,9 +2899,17 @@ if (!is_numeric($from_id) || (string)(int) $from_id !== (string) $from_id) {
     exit;
 }
 $from_id = (int) $from_id;
+if (function_exists('rx_perf_mark')) rx_perf_mark('pre_connection_release');
 rx_releaseWebhookConnection();
+if (function_exists('rx_perf_mark')) rx_perf_mark('connection_released_to_telegram');
+$rxLockWaitStart = microtime(true);
 $rxUpdateLock = rx_callback_lock_acquire($from_id, 'update', 5);
+if (function_exists('rx_perf_mark')) {
+    $rxLockWaitMs = round((microtime(true) - $rxLockWaitStart) * 1000, 1);
+    rx_perf_mark('lock_acquired_waited_' . $rxLockWaitMs . 'ms');
+}
 if ($rxUpdateLock === false) {
+    if (function_exists('rx_perf_mark')) rx_perf_mark('lock_timeout_exit');
     exit;
 }
 if (is_string($rxUpdateLock) && $rxUpdateLock !== '') {
