@@ -165,7 +165,7 @@ if (!function_exists('rx_redis_try_connect')) {
             try {
                 if (class_exists('Redis')) {
                     $client = new \Redis();
-                    $connected = @$client->connect($host, $port, 1.5);
+                    $connected = @$client->pconnect($host, $port, 1.5);
                     if (!$connected) {
                         throw new \RuntimeException('connect_refused');
                     }
