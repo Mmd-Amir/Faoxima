@@ -36,6 +36,8 @@ register_shutdown_function(static function () {
        . '</body></html>';
 });
 
+ini_set('session.cookie_samesite', 'Lax');
+ini_set('session.cookie_httponly', '1');
 session_start();
 
 if (empty($_SESSION['_session_regenerated'])) {

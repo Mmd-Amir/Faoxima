@@ -9,6 +9,8 @@ if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
 if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
     define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
 }
+ini_set('session.cookie_samesite', 'Lax');
+ini_set('session.cookie_httponly', '1');
 session_start();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../jdf.php';
@@ -18,6 +20,7 @@ require_once __DIR__ . '/lib/bulk_delete.php';
 require_once __DIR__ . '/lib/date_filter.php';
 require_once __DIR__ . '/lib/search_filter.php';
 require_once __DIR__ . '/lib/compact_badges.php';
+require_once __DIR__ . '/lib/csrf.php';
 
 $query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
 $query->bindValue(":username", $_SESSION["user"] ?? '', PDO::PARAM_STR);
@@ -27,6 +30,9 @@ if (!isset($_SESSION["user"]) || !$adminRow) {
     header('Location: login.php');
     exit;
 }
+
+fx_csrf_guard();
+$_csrf = fx_csrf_token();
 
 $flash = ['ok' => '', 'err' => ''];
 
@@ -731,6 +737,7 @@ function faoxima_d_label_section($s) {
                                             <?php echo icon('pen-to-square', 'svg-icon'); ?>
                                         </button>
                                         <form method="POST" style="display:inline" onsubmit="return confirm('شمارنده استفاده این کد صفر شود؟');">
+                                            <?php echo fx_csrf_field(); ?>
                                             <input type="hidden" name="_action" value="reset_usage">
                                             <input type="hidden" name="id" value="<?php echo (int)$d['id']; ?>">
                                             <button type="submit" class="btn btn-sm btn-soft-warning" title="بازنشانی شمارنده استفاده">
@@ -738,6 +745,7 @@ function faoxima_d_label_section($s) {
                                             </button>
                                         </form>
                                         <form method="POST" style="display:inline" onsubmit="return confirm('کد <?php echo htmlspecialchars($d['codeDiscount'], ENT_QUOTES); ?> حذف شود؟');">
+                                            <?php echo fx_csrf_field(); ?>
                                             <input type="hidden" name="_action" value="delete">
                                             <input type="hidden" name="id" value="<?php echo (int)$d['id']; ?>">
                                             <button type="submit" class="btn btn-sm btn-soft-danger">
@@ -818,6 +826,7 @@ function faoxima_d_label_section($s) {
                                             <?php echo icon('pen-to-square', 'svg-icon'); ?>
                                         </button>
                                         <form method="POST" style="display:inline" onsubmit="return confirm('کد هدیه حذف شود؟');">
+                                            <?php echo fx_csrf_field(); ?>
                                             <input type="hidden" name="_action" value="gift_delete">
                                             <input type="hidden" name="id" value="<?php echo (int)$g['id']; ?>">
                                             <button type="submit" class="btn btn-sm btn-soft-danger"><?php echo icon('trash', 'svg-icon'); ?></button>
@@ -852,6 +861,7 @@ function faoxima_d_label_section($s) {
             <button type="button" class="modal-close" onclick="closeModal('modal-add-discount')">&times;</button>
         </div>
         <form method="POST" action="discounts.php">
+            <?php echo fx_csrf_field(); ?>
             <input type="hidden" name="_action" value="add">
 
             <div class="form-row">
@@ -974,6 +984,7 @@ function faoxima_d_label_section($s) {
             <button type="button" class="modal-close" onclick="closeModal('modal-add-gift')">&times;</button>
         </div>
         <form method="POST" action="discounts.php">
+            <?php echo fx_csrf_field(); ?>
             <input type="hidden" name="_action" value="gift_add">
             <div class="form-row">
                 <div class="form-group">
@@ -1014,6 +1025,7 @@ function faoxima_d_label_section($s) {
             <button type="button" class="modal-close" onclick="closeModal('modal-edit-discount')">&times;</button>
         </div>
         <form method="POST" action="discounts.php">
+            <?php echo fx_csrf_field(); ?>
             <input type="hidden" name="_action" value="edit">
             <input type="hidden" name="id" id="ed_id">
             <div class="form-row">
@@ -1128,6 +1140,7 @@ function faoxima_d_label_section($s) {
             <button type="button" class="modal-close" onclick="closeModal('modal-edit-gift')">&times;</button>
         </div>
         <form method="POST" action="discounts.php">
+            <?php echo fx_csrf_field(); ?>
             <input type="hidden" name="_action" value="gift_edit">
             <input type="hidden" name="id" id="ed_g_id">
             <div class="form-row">

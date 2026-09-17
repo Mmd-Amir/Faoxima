@@ -1,10 +1,13 @@
 <?php
+ini_set('session.cookie_samesite', 'Lax');
+ini_set('session.cookie_httponly', '1');
 session_start();
 require_once __DIR__ . '/../config.php';
 
 require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/lib/pagination.php';
 require_once __DIR__ . '/lib/search_filter.php';
+require_once __DIR__ . '/lib/csrf.php';
 
 $query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
 $query->bindParam("username", $_SESSION["user"], PDO::PARAM_STR);
@@ -15,6 +18,8 @@ if (!isset($_SESSION["user"]) || !$result) {
     header('Location: login.php');
     return;
 }
+
+fx_csrf_guard();
 
 $statsQ = $pdo->query("SELECT COUNT(*) AS total, SUM(CASE WHEN LOWER(User_Status)='block' THEN 1 ELSE 0 END) AS blocked, SUM(Balance) AS balance FROM user");
 $statsRow = $statsQ ? $statsQ->fetch(PDO::FETCH_ASSOC) : ['total' => 0, 'blocked' => 0, 'balance' => 0];

@@ -10,10 +10,13 @@ if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
     define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
 }
 
+ini_set('session.cookie_samesite', 'Lax');
+ini_set('session.cookie_httponly', '1');
 session_start();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/lib/icons.php';
+require_once __DIR__ . '/lib/csrf.php';
 
 $query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
 $query->bindValue(":username", $_SESSION["user"] ?? '', PDO::PARAM_STR);
@@ -23,6 +26,9 @@ if (!isset($_SESSION["user"]) || !$adminRow) {
     header('Location: login.php');
     exit;
 }
+
+fx_csrf_guard();
+$_csrf = fx_csrf_token();
 
 
 function faoxima_target_sql(string $target): array {
@@ -304,6 +310,7 @@ try {
 </section>
 
 <script>
+var CSRF_TOKEN = <?php echo json_encode($_csrf, JSON_UNESCAPED_SLASHES); ?>;
 (function () {
     var elTarget   = document.getElementById('bc-target');
     var elCount    = document.getElementById('bc-count');
@@ -372,6 +379,7 @@ try {
             var fd = new FormData();
             fd.append('message', elMessage.value);
             fd.append('parse', elParse.value);
+            fd.append('_csrf', CSRF_TOKEN);
             var url = 'broadcast.php?ajax=send_batch&target=' + encodeURIComponent(elTarget.value)
                     + '&offset=' + offset + '&batch=15';
             fetch(url, { method: 'POST', body: fd, credentials: 'same-origin' })

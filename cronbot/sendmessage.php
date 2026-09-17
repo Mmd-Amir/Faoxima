@@ -31,6 +31,7 @@ if (function_exists('fastcgi_finish_request') && !$isCLI) {
 
 $baseDir = dirname(__FILE__);
 require_once $baseDir . '/_init.php';
+rx_cron_verify_web_access();
 
 $__required_files = [
     $baseDir . '/../config.php',

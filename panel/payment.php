@@ -1,4 +1,6 @@
 <?php
+ini_set('session.cookie_samesite', 'Lax');
+ini_set('session.cookie_httponly', '1');
 session_start();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../jdf.php';
@@ -8,6 +10,7 @@ require_once __DIR__ . '/lib/bulk_delete.php';
 require_once __DIR__ . '/lib/date_filter.php';
 require_once __DIR__ . '/lib/status_filter.php';
 require_once __DIR__ . '/lib/search_filter.php';
+require_once __DIR__ . '/lib/csrf.php';
 
 $query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
 $query->bindParam("username", $_SESSION["user"], PDO::PARAM_STR);
@@ -18,6 +21,8 @@ if (!isset($_SESSION["user"]) || !$result) {
     header('Location: login.php');
     return;
 }
+
+fx_csrf_guard();
 
 if (!empty($_POST['action']) && $_POST['action'] === 'bulk_delete') {
     $requestedIds = $_POST['ids'] ?? [];
@@ -95,6 +100,7 @@ $listpayment = $query->fetchAll();
 
             <div class="card">
                 <form method="POST" action="payment.php" id="bulk-form">
+                <?php echo fx_csrf_field(); ?>
                 <input type="hidden" name="action" value="bulk_delete">
                 <div class="table-wrap">
                     <table id="paymentTable" class="display app-table app-table--summary" style="width:100%">

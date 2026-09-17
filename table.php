@@ -737,23 +737,28 @@ try {
         id_admin varchar(500) PRIMARY KEY NOT NULL,
         username varchar(1000) NOT NULL,
         password varchar(1000) NOT NULL,
+        password_hash varchar(255) NULL,
+        iplogin varchar(1000) NULL,
         rule varchar(500) NOT NULL,
         last_ticket_seen INT(11) NULL DEFAULT 0)");
         $stmt->execute();
         $randomString = bin2hex(random_bytes(5));
 
 
-        $stmt = $pdo->prepare("INSERT INTO admin (id_admin, rule, username, password) VALUES (:id, :rule, :username, :password)");
+        $stmt = $pdo->prepare("INSERT INTO admin (id_admin, rule, username, password, password_hash) VALUES (:id, :rule, :username, :password, :password_hash)");
         $stmt->execute([
-            ':id'       => (string) $adminnumber,
-            ':rule'     => 'administrator',
-            ':username' => 'admin',
-            ':password' => $randomString,
+            ':id'            => (string) $adminnumber,
+            ':rule'          => 'administrator',
+            ':username'      => 'admin',
+            ':password'      => $randomString,
+            ':password_hash' => password_hash($randomString, PASSWORD_DEFAULT),
         ]);
     } else {
         addFieldToTable("admin", "rule", "administrator", "VARCHAR(200)");
         addFieldToTable("admin", "username", null, "VARCHAR(200)");
         addFieldToTable("admin", "password", null, "VARCHAR(200)");
+        addFieldToTable("admin", "password_hash", null, "VARCHAR(255)");
+        addFieldToTable("admin", "iplogin", null, "VARCHAR(1000)");
         addFieldToTable("admin", "last_ticket_seen", "0", "INT(11)");
     }
 } catch (Exception $e) {

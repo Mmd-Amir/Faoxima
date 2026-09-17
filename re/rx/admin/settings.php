@@ -174,6 +174,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     update("admin", "username", $from_id, "id_admin", $from_id);
     if ($admin_select['password'] == null) {
         update("admin", "password", $randomString, "id_admin", $from_id);
+        update("admin", "password_hash", password_hash($randomString, PASSWORD_DEFAULT), "id_admin", $from_id);
     } else {
         $randomString = $admin_select['password'];
     }
@@ -4500,7 +4501,8 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         nm_adminInstantReply($from_id, "⚠️ ادمینی با این شناسه یافت نشد.", null, 'HTML');
         return;
     }
-    nm_adminInstantReply($from_id, "✅ ادمین با موفقیت حذف گردید", null, 'HTML');
+    $removeAdminBackKb = json_encode(['inline_keyboard' => [[['text' => "◀️ بازگشت به لیست ادمین‌ها", 'callback_data' => "admin_mgr"]]]]);
+    nm_adminInstantReply($from_id, "✅ ادمین با موفقیت حذف گردید", $removeAdminBackKb, 'HTML');
 }
 
 elseif ($text == "🫣 مخفی پنل برای کاربر" && $adminrulecheck['rule'] == "administrator") {

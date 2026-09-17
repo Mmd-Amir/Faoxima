@@ -9,12 +9,15 @@ if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
 if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
     define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
 }
+ini_set('session.cookie_samesite', 'Lax');
+ini_set('session.cookie_httponly', '1');
 session_start();
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('Expires: 0');
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/lib/icons.php';
+require_once __DIR__ . '/lib/csrf.php';
 require_once __DIR__ . '/../re/rx/function/database_helpers_1.php';
 
 $query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
@@ -25,6 +28,8 @@ if (!isset($_SESSION["user"]) || !$adminRow) {
     header('Location: login.php');
     exit;
 }
+
+fx_csrf_guard();
 
 
 function faoxima_text_categories(): array {
@@ -617,6 +622,7 @@ $delKey   = isset($_GET['deleted']) ? (string)$_GET['deleted'] : '';
             </div>
 
             <form method="POST" action="textbot.php" id="textForm" autocomplete="off">
+                <?php echo fx_csrf_field(); ?>
                 <input type="hidden" name="_action" value="save">
 
                 <div class="cat-select" id="catSelect">
@@ -697,6 +703,7 @@ $delKey   = isset($_GET['deleted']) ? (string)$_GET['deleted'] : '';
             <button type="button" class="modal-close" onclick="closeModal('modal-add-text')">&times;</button>
         </div>
         <form method="POST" action="textbot.php">
+            <?php echo fx_csrf_field(); ?>
             <input type="hidden" name="_action" value="add">
             <div class="form-group">
                 <label class="form-label">کلید (انگلیسی، بدون فاصله)</label>
@@ -752,6 +759,7 @@ $delKey   = isset($_GET['deleted']) ? (string)$_GET['deleted'] : '';
 
 
 <form method="POST" action="textbot.php" id="deleteForm" style="display:none;">
+    <?php echo fx_csrf_field(); ?>
     <input type="hidden" name="_action" value="delete">
     <input type="hidden" name="key" id="deleteKey">
 </form>

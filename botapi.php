@@ -256,8 +256,9 @@ function telegram($method, $datas = [], $token = null)
 
     if ($rawResponse === false) {
         $logError = $curlError !== '' ? $curlError : 'Unknown cURL error';
+        $redactedUrl = preg_replace('#(/bot)[^/]+(/)#', '$1***$2', $url);
         error_log(sprintf('Telegram request failed (errno: %d, url: %s, attempts: %d): %s',
-            $curlErrorNumber, $url, $attemptedTimes, $logError));
+            $curlErrorNumber, $redactedUrl, $attemptedTimes, $logError));
         return [
             'ok' => false,
             'description' => ($curlError !== '' ? $curlError : 'Telegram request failed.') . ' اتصال به تلگرام در مهلت مقرر برقرار نشد؛ فایروال یا پراکسی خروجی را بررسی کنید.'

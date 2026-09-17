@@ -73,6 +73,8 @@ if (!function_exists('rxNavParent')) {
                 'GetusernameconfigAndOrdedrs' => 'usershub',
                 'addadmin'                  => 'usershub',
                 'getrule'                   => 'usershub',
+                'admin_mgr_get_uname'       => 'usershub',
+                'admin_mgr_get_ip'          => 'usershub',
                 'getmeesagestatus'          => 'usershub',
                 'antispam_get_count'        => 'featcat_antispam',
                 'antispam_get_mute'         => 'featcat_antispam',

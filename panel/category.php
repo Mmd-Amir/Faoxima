@@ -1,10 +1,13 @@
 <?php
+ini_set('session.cookie_samesite', 'Lax');
+ini_set('session.cookie_httponly', '1');
 session_start();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/lib/pagination.php';
 require_once __DIR__ . '/lib/bulk_delete.php';
 require_once __DIR__ . '/lib/search_filter.php';
+require_once __DIR__ . '/lib/csrf.php';
 require_once __DIR__ . '/../function.php';
 
 $query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
@@ -16,6 +19,8 @@ if (!isset($_SESSION["user"]) || !$result) {
     header('Location: login.php');
     return;
 }
+
+fx_csrf_guard();
 
 if (!empty($_POST['action']) && $_POST['action'] === 'add') {
     $remark = trim((string)($_POST['remark'] ?? ''));
@@ -117,6 +122,7 @@ $categories = $query->fetchAll();
 
             <div class="card">
                 <form method="POST" action="category.php" id="bulk-form">
+                    <?php echo fx_csrf_field(); ?>
                     <input type="hidden" name="action" value="bulk_delete">
                     <div class="table-wrap">
                         <table id="categoriesTable" class="display app-table app-table--summary" style="width:100%">
@@ -168,6 +174,7 @@ $categories = $query->fetchAll();
 </section>
 
 <form method="POST" action="category.php" id="delete-form">
+    <?php echo fx_csrf_field(); ?>
     <input type="hidden" name="action" value="delete">
     <input type="hidden" name="id" id="del-id" value="">
 </form>
@@ -179,6 +186,7 @@ $categories = $query->fetchAll();
             <button class="modal-close" onclick="closeModal('modal-add-category')">&times;</button>
         </div>
         <form action="category.php" method="POST">
+            <?php echo fx_csrf_field(); ?>
             <input type="hidden" name="action" value="add">
             <div class="form-group">
                 <label class="form-label">نام دسته‌بندی</label>
@@ -196,6 +204,7 @@ $categories = $query->fetchAll();
             <button class="modal-close" onclick="closeModal('modal-edit-category')">&times;</button>
         </div>
         <form action="category.php" method="POST">
+            <?php echo fx_csrf_field(); ?>
             <input type="hidden" name="action" value="edit">
             <input type="hidden" name="id" id="edit-cat-id" value="">
             <div class="form-group">

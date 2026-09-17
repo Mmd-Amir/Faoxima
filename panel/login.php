@@ -27,6 +27,7 @@ register_shutdown_function(static function () {
        . '</body></html>';
 });
 
+ini_set('session.cookie_samesite', 'Lax');
 ini_set('session.cookie_httponly', '1');
 session_start();
 require_once __DIR__ . '/../config.php';
@@ -74,10 +75,48 @@ if (isset($_POST['login'])) {
         $query->execute();
         $result = $query->fetch(PDO::FETCH_ASSOC);
 
+        $passwordOk = false;
+        if ($result) {
+            $storedHash = (string)($result["password_hash"] ?? '');
+            if ($storedHash !== '' && password_verify($password, $storedHash)) {
+                $passwordOk = true;
+                if (password_needs_rehash($storedHash, PASSWORD_DEFAULT)) {
+                    $rehash = $pdo->prepare("UPDATE admin SET password_hash = :h WHERE id_admin = :id");
+                    $rehash->execute([':h' => password_hash($password, PASSWORD_DEFAULT), ':id' => $result['id_admin']]);
+                }
+            } elseif ($storedHash === '' && (string)$password === (string)($result["password"] ?? '') && $password !== '') {
+                $passwordOk = true;
+                $migrate = $pdo->prepare("UPDATE admin SET password_hash = :h WHERE id_admin = :id");
+                $migrate->execute([':h' => password_hash($password, PASSWORD_DEFAULT), ':id' => $result['id_admin']]);
+            }
+        }
+
+        $adminIpOk = true;
+        if ($result) {
+            $rawAdminIp = $result['iplogin'] ?? null;
+            if ($rawAdminIp !== null && $rawAdminIp !== '') {
+                $adminIpDecoded = json_decode((string)$rawAdminIp, true);
+                if (is_array($adminIpDecoded)) {
+                    if (in_array('*', $adminIpDecoded, true) || in_array('all', $adminIpDecoded, true) || in_array('unlimited', $adminIpDecoded, true)) {
+                        $adminIpOk = true;
+                    } else {
+                        $adminIpOk = in_array($user_ip, $adminIpDecoded, true);
+                    }
+                } elseif ($rawAdminIp === '*' || $rawAdminIp === 'all' || $rawAdminIp === 'unlimited') {
+                    $adminIpOk = true;
+                } elseif (filter_var($rawAdminIp, FILTER_VALIDATE_IP)) {
+                    $adminIpOk = ($rawAdminIp === $user_ip);
+                }
+            }
+        }
+
         if (!$result) {
             $texterrr = 'نام کاربری یا رمزعبور وارد شده اشتباه است!';
-        } elseif ((string)$password !== (string)($result["password"] ?? '')) {
+        } elseif (!$passwordOk) {
             $texterrr = 'رمز صحیح نمی باشد';
+        } elseif (!$adminIpOk) {
+            http_response_code(403);
+            exit('Access denied');
         } else {
 
 

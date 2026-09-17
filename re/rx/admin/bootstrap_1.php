@@ -550,6 +550,66 @@ function buildIpLoginKeyboard(array $ip_list, $iplogin_unlimited)
 }
 }
 
+if (!function_exists('parseIpLoginRaw')) {
+function parseIpLoginRaw($raw)
+{
+    $ip_list = [];
+    $iplogin_unlimited = false;
+    if ($raw === null || $raw === '' || $raw === '0') {
+        $iplogin_unlimited = true;
+        return [$ip_list, $iplogin_unlimited];
+    }
+    if ($raw === '*' || $raw === 'all' || $raw === 'unlimited') {
+        $iplogin_unlimited = true;
+    } else {
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            if (in_array('*', $decoded, true) || in_array('all', $decoded, true) || in_array('unlimited', $decoded, true)) {
+                $iplogin_unlimited = true;
+            } else {
+                $ip_list = $decoded;
+            }
+        } elseif (filter_var($raw, FILTER_VALIDATE_IP)) {
+            $ip_list = [$raw];
+        } else {
+            $iplogin_unlimited = true;
+        }
+    }
+    return [$ip_list, $iplogin_unlimited];
+}
+}
+
+if (!function_exists('getAdminIpLoginState')) {
+function getAdminIpLoginState($idAdmin)
+{
+    $row = select("admin", "iplogin", "id_admin", $idAdmin, "select");
+    $raw = is_array($row) ? ($row['iplogin'] ?? null) : null;
+    return parseIpLoginRaw($raw);
+}
+}
+
+if (!function_exists('buildAdminIpLoginKeyboard')) {
+function buildAdminIpLoginKeyboard($idAdmin, array $ip_list, $iplogin_unlimited)
+{
+    $idAdmin = (string) $idAdmin;
+    $ip_keyboard = ['inline_keyboard' => []];
+    foreach ($ip_list as $i => $ip) {
+        $ip_keyboard['inline_keyboard'][] = [
+            ['text' => "🔸 " . $ip, 'callback_data' => "noop"],
+            ['text' => "🗑 حذف",     'callback_data' => "admin_mgr_ipdel_{$idAdmin}_{$i}"],
+        ];
+    }
+    $ip_keyboard['inline_keyboard'][] = [['text' => "➕ افزودن آیپی", 'callback_data' => "admin_mgr_ipadd_{$idAdmin}"]];
+    if ($iplogin_unlimited) {
+        $ip_keyboard['inline_keyboard'][] = [['text' => "🔒 محدود به آیپی(های) بالا", 'callback_data' => "admin_mgr_ipunlim_off_{$idAdmin}"]];
+    } else {
+        $ip_keyboard['inline_keyboard'][] = [['text' => "♾️ فعال‌سازی حالت نامحدود", 'callback_data' => "admin_mgr_ipunlim_on_{$idAdmin}"]];
+    }
+    $ip_keyboard['inline_keyboard'][] = [['text' => "◀️ بازگشت", 'callback_data' => "admin_mgr_view_{$idAdmin}"]];
+    return json_encode($ip_keyboard);
+}
+}
+
 if (!in_array($from_id, $admin_ids))
     return;
 
