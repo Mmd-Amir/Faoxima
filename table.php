@@ -473,6 +473,8 @@ try {
         addFieldToTable($tableName, 'antispam_muted_until', '0', "VARCHAR(20)");
         addFieldToTable($tableName, 'step_stack', '[]', "TEXT");
         addFieldToTable($tableName, 'nav_state', 'home', "VARCHAR(64)");
+        addFieldToTable($tableName, 'reply_kb_cleared', '0', "VARCHAR(1)");
+        addFieldToTable($tableName, 'reply_kb_cleanup_msg_id', '0', "VARCHAR(20)");
     }
 } catch (PDOException $e) {
     error_log('[panels] ' . $e->getMessage());
@@ -678,6 +680,7 @@ try {
         addFieldToTable("setting", "statussupportpv", "offpvsupport", "VARCHAR(100)");
         addFieldToTable("setting", "affiliatespercentage", "0", "VARCHAR(600)");
         addFieldToTable("setting", "inlinebtnmain", "offinline", "VARCHAR(200)");
+        addFieldToTable("setting", "auto_remove_reply_keyboard", "on", "VARCHAR(20)");
         addFieldToTable("setting", "volumewarn", "2", "VARCHAR(200)");
         addFieldToTable("setting", "statusagentrequest", "onrequestagent", "VARCHAR(600)");
         addFieldToTable("setting", "statusnewuser", "onnewuser", "VARCHAR(600)");

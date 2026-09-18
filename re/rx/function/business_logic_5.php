@@ -395,6 +395,26 @@ function rxRenderFeatureStatus($rxFeatView, $from_id) {
             $rxFeatTitle .= "• ⏳ در حالت استراحت پس از خطای اتصال — {$rxRedisCooldown} ثانیه دیگر دوباره تلاش می‌شود.\n";
         }
         $rxFeatTitle .= "\n💡 Redis فقط برای کش، Session موقت، Rate Limit و صف استفاده می‌شود؛ جایگزین دیتابیس اصلی نیست.";
+    } elseif ($rxFeatView === 'glass_mode') {
+        $rxGlassOn = (string)($setting['inlinebtnmain'] ?? 'offinline') === 'oninline';
+        $rxAutoRemoveOn = (string)($setting['auto_remove_reply_keyboard'] ?? 'on') !== 'off';
+
+        $rxFeatKb = [
+            [['text' => $rxGlassOn ? $textbotlang['Admin']['Status']['statuson'] : $textbotlang['Admin']['Status']['statusoff'],
+              'callback_data' => "editstsuts-inlinebtnmain-" . ($setting['inlinebtnmain'] ?? 'offinline')],
+             ['text' => "🛡 شیشه‌ای بودن دکمه ربات", 'callback_data' => "none"]],
+            [['text' => $rxAutoRemoveOn ? $textbotlang['Admin']['Status']['statuson'] : $textbotlang['Admin']['Status']['statusoff'],
+              'callback_data' => "editstsuts-auto_remove_kb-" . ($rxAutoRemoveOn ? 'on' : 'off')],
+             ['text' => "🧹 حذف خودکار Reply Keyboard", 'callback_data' => "none"]],
+            $rxBackRow,
+        ];
+
+        $rxFeatTitle = "🛡 <b>تنظیمات دکمه شیشه‌ای</b>\n\n"
+            . "📌 <b>وضعیت فعلی:</b>\n"
+            . "• شیشه‌ای بودن دکمه ربات: " . ($rxGlassOn ? "✅ روشن" : "❌ خاموش") . "\n"
+            . "• حذف خودکار Reply Keyboard: " . ($rxAutoRemoveOn ? "✅ روشن" : "❌ خاموش") . "\n\n"
+            . "💡 اگر «شیشه‌ای بودن» خاموش باشد، منوها به‌صورت Reply Keyboard عادی نمایش داده می‌شوند.\n"
+            . "اگر «شیشه‌ای بودن» روشن باشد، منوها Inline نمایش داده می‌شوند و «حذف خودکار Reply Keyboard» مشخص می‌کند که کیبورد قبلی به‌طور خودکار پاک شود یا نه.";
     } else {
         return false;
     }

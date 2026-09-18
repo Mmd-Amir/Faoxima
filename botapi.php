@@ -785,6 +785,105 @@ if (!function_exists('rx_isAdminChat')) {
     }
 }
 
+if (!function_exists('rx_glassModeOn')) {
+    function rx_glassModeOn(): bool {
+        return isset($GLOBALS['setting']['inlinebtnmain']) && $GLOBALS['setting']['inlinebtnmain'] === 'oninline';
+    }
+}
+
+if (!function_exists('rx_autoRemoveReplyKeyboardOn')) {
+    function rx_autoRemoveReplyKeyboardOn(): bool {
+        $value = $GLOBALS['setting']['auto_remove_reply_keyboard'] ?? 'on';
+        return (string) $value !== 'off';
+    }
+}
+
+if (!function_exists('rx_flushPendingReplyKeyboardCleanup')) {
+    function rx_flushPendingReplyKeyboardCleanup($chatId): void {
+        $chatId = trim((string) $chatId);
+        if ($chatId === '' || !ctype_digit($chatId)) return;
+        if (!function_exists('select') || !function_exists('update')) return;
+
+        try {
+            $pendingId = select('user', 'reply_kb_cleanup_msg_id', 'id', $chatId, 'select', ['cache' => false]);
+            $pendingId = is_scalar($pendingId) ? (int) $pendingId : 0;
+            if ($pendingId <= 0) return;
+
+            if (function_exists('deletemessage')) {
+                deletemessage($chatId, $pendingId);
+            }
+            update('user', 'reply_kb_cleanup_msg_id', '0', 'id', $chatId);
+        } catch (Throwable $e) {
+            error_log('[rx_flushPendingReplyKeyboardCleanup] ' . $e->getMessage());
+        }
+    }
+}
+
+if (!function_exists('removeReplyKeyboardOnStartIfNeeded')) {
+    function removeReplyKeyboardOnStartIfNeeded($chatId): void {
+        $chatId = trim((string) $chatId);
+        if ($chatId === '' || !ctype_digit($chatId)) return;
+        if (!function_exists('select') || !function_exists('update')) return;
+
+        try {
+            rx_flushPendingReplyKeyboardCleanup($chatId);
+
+            if (!rx_glassModeOn()) {
+                $flag = select('user', 'reply_kb_cleared', 'id', $chatId, 'select', ['cache' => false]);
+                $flag = is_scalar($flag) ? (string) $flag : '0';
+                if ($flag === '1') {
+                    update('user', 'reply_kb_cleared', '0', 'id', $chatId);
+                }
+                return;
+            }
+
+            if (!rx_autoRemoveReplyKeyboardOn()) {
+                return;
+            }
+
+            $flag = select('user', 'reply_kb_cleared', 'id', $chatId, 'select', ['cache' => false]);
+            $flag = is_scalar($flag) ? (string) $flag : '0';
+            if ($flag === '1') {
+                return;
+            }
+
+            $rxRkrResult = telegram('sendmessage', [
+                'chat_id' => $chatId,
+                'text' => '.',
+                'reply_markup' => json_encode(['remove_keyboard' => true], JSON_UNESCAPED_UNICODE),
+                '_rx_already_transformed' => true,
+            ]);
+
+            $rxRkrOk = is_array($rxRkrResult) && !empty($rxRkrResult['ok']);
+            $rxRkrMessageId = $rxRkrOk ? (int) ($rxRkrResult['result']['message_id'] ?? 0) : 0;
+
+            if (!$rxRkrOk || $rxRkrMessageId <= 0) {
+                return;
+            }
+
+            update('user', 'reply_kb_cleared', '1', 'id', $chatId);
+
+            usleep(500000);
+
+            $rxRkrDeleteOk = false;
+            if (function_exists('deletemessage')) {
+                $rxRkrDeleteResult = deletemessage($chatId, $rxRkrMessageId);
+                $rxRkrDeleteOk = is_array($rxRkrDeleteResult) && !empty($rxRkrDeleteResult['ok']);
+            }
+
+            update('user', 'reply_kb_cleanup_msg_id', $rxRkrDeleteOk ? '0' : (string) $rxRkrMessageId, 'id', $chatId);
+        } catch (Throwable $e) {
+            error_log('[removeReplyKeyboardOnStartIfNeeded] ' . $e->getMessage());
+        }
+    }
+}
+
+if (!function_exists('removeReplyKeyboardIfNeeded')) {
+    function removeReplyKeyboardIfNeeded($chatId): void {
+        removeReplyKeyboardOnStartIfNeeded($chatId);
+    }
+}
+
 function processKeyboardStyles($keyboard, $rxPlainAdmin = false) {
     $styleMap = unserialize(REPLY_STYLE_EMOJI_MAP);
     $wasString = is_string($keyboard);

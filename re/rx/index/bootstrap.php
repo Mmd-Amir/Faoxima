@@ -79,6 +79,10 @@ if (!checktelegramip())
 if (intval($from_id) == 0)
     return;
 
+if (!empty($callback_query_id) && function_exists('rx_flushPendingReplyKeyboardCleanup')) {
+    rx_flushPendingReplyKeyboardCleanup($from_id);
+}
+
 $user = select("user", "*", "id", $from_id, "select", ['cache' => false]);
 $isNewUser = !is_array($user);
 $otherreport = select("topicid", "idreport", "report", "otherreport", "select")['idreport'];
@@ -1063,6 +1067,9 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     update("user", "Processing_value_tow", "0", "id", $from_id);
     update("user", "Processing_value_four", "0", "id", $from_id);
     step('home', $from_id);
+    if (function_exists('removeReplyKeyboardOnStartIfNeeded')) {
+        removeReplyKeyboardOnStartIfNeeded($from_id);
+    }
     rx_send_banner_message($from_id, 'start', $datatextbot['text_start'], $keyboard, "html");
     return;
 }

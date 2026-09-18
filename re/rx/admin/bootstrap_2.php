@@ -34,8 +34,7 @@ if (!function_exists('rx_featCategoryRows')) {
                 [['text' => $statusverifybyuser, 'callback_data' => "editstsuts-verifybyuser-{$setting['verifybucodeuser']}"],
                  ['text' => "🔑 احراز با لینک", 'callback_data' => "verifybyuser"]],
                 [['text' => $authScopeBtn, 'callback_data' => "editstsuts-authscope-{$authScopeVal}"]],
-                [['text' => $statusinline, 'callback_data' => "editstsuts-inlinebtnmain-{$setting['inlinebtnmain']}"],
-                 ['text' => $textbotlang['Admin']['Status']['inlinebtns'], 'callback_data' => "inlinebtnmain"]],
+                [['text' => "🛡 تنظیمات دکمه شیشه‌ای", 'callback_data' => "glass_mode_settings"]],
                 [['text' => $forced_miniapp_status, 'callback_data' => "editstsuts-forced_miniapp-{$setting['forced_miniapp_mode']}"],
                  ['text' => "📱 حالت اجباری مینی‌اپ", 'callback_data' => "forced_miniapp_info"]],
                 [['text' => (((string)($setting['miniapp_ticket_mode'] ?? '0')) === '1')
@@ -151,6 +150,9 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     }
     step('home', $from_id);
     if (isset($user) && is_array($user)) { $user['step'] = 'home'; }
+    if (function_exists('removeReplyKeyboardOnStartIfNeeded')) {
+        removeReplyKeyboardOnStartIfNeeded($from_id);
+    }
     $version_mini_app = file_get_contents('app/version');
     $rxCronAutoStatus = function_exists('activecronStatus') ? activecronStatus() : ['status' => 'error', 'user' => null];
     if (function_exists('rxBuildMiniAppInstructionText')) {
@@ -3854,6 +3856,10 @@ $caption";
     ]]);
     nm_adminInstantReply($from_id, $rxOptResultText, $rxOptKb, 'HTML');
     return;
+} elseif ($datain === 'glass_mode_settings' && $adminrulecheck['rule'] === 'administrator') {
+
+    rxRenderFeatureStatus('glass_mode', $from_id);
+    return;
 } elseif ($datain === 'run_redis_status' && $adminrulecheck['rule'] === 'administrator') {
 
     rxRenderFeatureStatus('redis', $from_id);
@@ -4138,6 +4144,15 @@ $caption";
             $valuenew = "oninline";
         }
         update("setting", "inlinebtnmain", $valuenew);
+        $setting['inlinebtnmain'] = $valuenew;
+        rxRenderFeatureStatus('glass_mode', $from_id);
+        return;
+    } elseif ($type == "auto_remove_kb") {
+        $valuenew = ($value === "on") ? "off" : "on";
+        update("setting", "auto_remove_reply_keyboard", $valuenew);
+        $setting['auto_remove_reply_keyboard'] = $valuenew;
+        rxRenderFeatureStatus('glass_mode', $from_id);
+        return;
     } elseif ($type == "verifystart") {
         $current = $setting['verifystart'] ?? 'offverify';
         $valuenew = ($current === "onverify") ? "offverify" : "onverify";

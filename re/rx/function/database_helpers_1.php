@@ -232,7 +232,7 @@ if (!function_exists('select')) {
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($row === false) $result = false;
             elseif ($field === '*' || strpos((string) $field, ',') !== false) $result = $row;
-            else $result = $row[(string) $field] ?? $row;
+            else $result = array_key_exists((string) $field, $row) ? $row[(string) $field] : null;
         }
         if ($useCache) $GLOBALS['rx_select_cache'][$cacheKey] = $result;
         return $result;
