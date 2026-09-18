@@ -141,9 +141,48 @@ if (!function_exists('rx_featCategoryRows')) {
     }
 }
 
+if (!function_exists('rxAdminPanelEntryRequiresChannelReport')) {
+    function rxAdminPanelEntryRequiresChannelReport($setting, $adminrulecheck)
+    {
+        return ($adminrulecheck['rule'] ?? '') == "administrator" && empty($setting['Channel_Report']);
+    }
+}
+
+if (!function_exists('rxAdminPanelEntryForceChannelReportSetup')) {
+    function rxAdminPanelEntryForceChannelReportSetup($from_id, $setting, $textbotlang, $backadmin)
+    {
+        $textreports = "📣 تنظیم گروه گزارشات ربات
+
+در این بخش می‌توانید آیدی عددی گروه موردنظر را برای ارسال اعلان‌ها و گزارشات ربات ثبت نمایید.
+
+آموزش تنظیم گروه:
+1 ـ ابتدا یک گروه جدید ایجاد کنید یا گروه موردنظر خود را انتخاب نمایید.
+2 ـ از تنظیمات گروه، قابلیت تاپیک را فعال کنید.
+3 ـ ربات خود را به گروه اضافه کرده و دسترسی مدیریت موردنیاز را به آن بدهید.
+4 ـ سپس داخل همان گروه، یکی از عبارت‌های «آیدی» یا «ایدی» را ارسال کنید.
+5 ـ ربات، آیدی عددی گروه را برای شما نمایش می‌دهد. آیدی نمایش‌داده‌شده را کپی کرده و در این بخش برای ربات ارسال نمایید.
+
+⚠️ توجه داشته باشید که قبل از درخواست آیدی، تاپیک گروه باید فعال شده باشد.
+
+⛔️ برای ورود به پنل مدیریت، ابتدا باید گروه گزارشات ربات را تنظیم نمایید.
+
+آیدی عددی فعلی شما: {$setting['Channel_Report']}";
+        step('addchannelid', $from_id);
+        if (function_exists('rxNavSetState')) {
+            rxNavSetState($from_id, 'addchannelid');
+        }
+        nm_adminInstantReply($from_id, $textreports, $backadmin, 'HTML');
+    }
+}
+
 if (in_array($text, $textadmin) || $datain == "admin") {
     if ($datain == "admin")
         deletemessage($from_id, $message_id);
+    if (rxAdminPanelEntryRequiresChannelReport($setting, $adminrulecheck)) {
+        rxAdminPanelEntryForceChannelReportSetup($from_id, $setting, $textbotlang, $backadmin);
+        if (isset($user) && is_array($user)) { $user['step'] = 'addchannelid'; }
+        return;
+    }
     step('home', $from_id);
     if (isset($user) && is_array($user)) { $user['step'] = 'home'; }
     $version_mini_app = file_get_contents('app/version');
@@ -166,6 +205,11 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     }
     return;
 } elseif ($text == $textbotlang['Admin']['backadmin'] || $text == "🏠 منوی مدیریت" || $text == "منوی مدیریت 🏠" || $text == "منوی مدیریت" || $text == "بازگشت به منوی مدیریت 🏠" || $text == "بازگشت به منوی مدیریت" || $datain == "adm_hub_main") {
+    if (rxAdminPanelEntryRequiresChannelReport($setting, $adminrulecheck)) {
+        rxAdminPanelEntryForceChannelReportSetup($from_id, $setting, $textbotlang, $backadmin);
+        if (isset($user) && is_array($user)) { $user['step'] = 'addchannelid'; }
+        return;
+    }
     if (function_exists('nmResolvePanelNameForUser')) {
         $rawProcessing = (string)($user['Processing_value'] ?? '');
         if ($rawProcessing !== '' && ($rawProcessing[0] === '{' || $rawProcessing[0] === '[')) {
