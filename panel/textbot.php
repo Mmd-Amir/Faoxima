@@ -917,8 +917,7 @@ function confirmTextEditor() {
     rows.forEach(function (r) {
         r._searchFields = [
             normalizeSearchText(r.dataset.searchKey),
-            normalizeSearchText(r.dataset.searchText),
-            normalizeSearchText(r.dataset.searchCategory)
+            normalizeSearchText(r.dataset.searchText)
         ];
     });
     function applySearch() {
