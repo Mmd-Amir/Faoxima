@@ -409,16 +409,9 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     nm_adminInstantReply($from_id, $textbotlang['Admin']['addorder']['towstep'], $backadmin, 'HTML');
     step('getusernameconfig', $from_id);
 } elseif ($user['step'] == "getusernameconfig") {
-    $text = strtolower($text);
-    if (!preg_match('/^[\w-]{3,32}$/', $text)) {
+    $text = trim($text);
+    if ($text === '' || preg_match('/\s/', $text)) {
         nm_adminInstantReply($from_id, $textbotlang['users']['stateus']['Invalidusername'], $backuser, 'html');
-        return;
-    }
-    $stmt = $pdo->prepare("SELECT 1 FROM invoice WHERE LOWER(username) = LOWER(:username) LIMIT 1");
-    $stmt->bindParam(':username', $text, PDO::PARAM_STR);
-    $stmt->execute();
-    if ($stmt->fetch(PDO::FETCH_ASSOC) !== false) {
-        nm_adminInstantReply($from_id, "❌ این نام کاربری از قبل داخل ربات وجود دارد.", null, 'HTML');
         return;
     }
     update("user", "Processing_value_one", $text, "id", $from_id);
@@ -441,6 +434,15 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     $DataUserOut = $ManagePanel->DataUser($user['Processing_value_tow'], $user['Processing_value_one']);
     if ($DataUserOut['status'] == "Unsuccessful") {
         nm_adminInstantReply($from_id, "❌ این نام کاربری روی پنل انتخابی وجود ندارد. لطفا نام کاربری را بررسی و دوباره ارسال کنید یا ابتدا آن را روی پنل بسازید.", $keyboardadmin, 'HTML');
+        step("home", $from_id);
+        return;
+    }
+    $dupStmt = $pdo->prepare("SELECT 1 FROM invoice WHERE Service_location = :location AND username = CONVERT(:username USING utf8mb4) COLLATE utf8mb4_bin LIMIT 1");
+    $dupStmt->bindParam(':location', $user['Processing_value_tow'], PDO::PARAM_STR);
+    $dupStmt->bindParam(':username', $user['Processing_value_one'], PDO::PARAM_STR);
+    $dupStmt->execute();
+    if ($dupStmt->fetch(PDO::FETCH_ASSOC) !== false) {
+        nm_adminInstantReply($from_id, "❌ این سرویس از قبل داخل ربات ثبت شده است.", $keyboardadmin, 'HTML');
         step("home", $from_id);
         return;
     }
@@ -468,8 +470,8 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     $stmt->bindParam(':notifctions', $notifctions, PDO::PARAM_STR);
     $stmt->execute();
     if ($stmt->rowCount() === 0) {
-        nm_adminInstantReply($from_id, "❌ اشتراک روی پنل ساخته شد اما ثبت سفارش داخلی ناموفق بود (احتمالا نام کاربری تکراری است). لطفا با پشتیبانی فنی تماس بگیرید.", null, 'HTML');
-        $texterros = "خطا در ثبت سفارش محلی پس از ساخت موفق اشتراک روی پنل (احتمالا تداخل نام کاربری)
+        nm_adminInstantReply($from_id, "❌ سرویس روی پنل پیدا شد، اما ثبت آن در ربات ناموفق بود؛ احتمالا این سرویس قبلا در ربات ثبت شده است.", null, 'HTML');
+        $texterros = "خطا در ثبت سفارش محلی برای سرویس موجود روی پنل (احتمالا تداخل نام کاربری)
 <blockquote>نام کاربری: {$user['Processing_value_one']}</blockquote>
 <blockquote>آیدی ادمین: $from_id</blockquote>
 <blockquote>نام پنل: {$marzban_list_get['name_panel']}</blockquote>";
