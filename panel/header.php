@@ -14,40 +14,41 @@ if ($__panelVersionRaw === '') $__panelVersionRaw = '1.0.0';
 $__panelVersion = (stripos($__panelVersionRaw, 'v') === 0) ? $__panelVersionRaw : ('v' . $__panelVersionRaw);
 
 if (isset($_SESSION["user"])) {
-    $__can_check = false;
-    $__ip_list   = [];
-    $__iplogin_unlimited = false;
     if (isset($pdo) && $pdo instanceof PDO) {
-        $__can_check   = true;
-        $__stmt_ip     = $pdo->query("SELECT iplogin FROM setting LIMIT 1");
-        $__raw_iplogin = $__stmt_ip ? (string)$__stmt_ip->fetchColumn() : '';
-        if ($__raw_iplogin === '*' || $__raw_iplogin === 'all' || $__raw_iplogin === 'unlimited') {
-            $__iplogin_unlimited = true;
-        } elseif ($__raw_iplogin !== '' && $__raw_iplogin !== '0') {
-            $__decoded = json_decode($__raw_iplogin, true);
-            if (is_array($__decoded)) {
-                if (in_array('*', $__decoded, true) || in_array('all', $__decoded, true) || in_array('unlimited', $__decoded, true)) {
-                    $__iplogin_unlimited = true;
+        $__stmt_admin_ip = $pdo->prepare("SELECT iplogin FROM admin WHERE username = :username LIMIT 1");
+        $__stmt_admin_ip->bindValue(':username', $_SESSION["user"], PDO::PARAM_STR);
+        $__stmt_admin_ip->execute();
+        $__raw_admin_ip = $__stmt_admin_ip->fetchColumn();
+
+        $__admin_ip_list = [];
+        $__admin_ip_unlimited = false;
+        if ($__raw_admin_ip !== false && $__raw_admin_ip !== null && $__raw_admin_ip !== '') {
+            $__admin_ip_decoded = json_decode((string)$__raw_admin_ip, true);
+            if (is_array($__admin_ip_decoded)) {
+                if (in_array('*', $__admin_ip_decoded, true) || in_array('all', $__admin_ip_decoded, true) || in_array('unlimited', $__admin_ip_decoded, true)) {
+                    $__admin_ip_unlimited = true;
                 } else {
-                    $__ip_list = $__decoded;
+                    $__admin_ip_list = $__admin_ip_decoded;
                 }
-            } elseif (filter_var($__raw_iplogin, FILTER_VALIDATE_IP)) {
-                $__ip_list = [$__raw_iplogin];
+            } elseif ($__raw_admin_ip === '*' || $__raw_admin_ip === 'all' || $__raw_admin_ip === 'unlimited') {
+                $__admin_ip_unlimited = true;
+            } elseif (filter_var($__raw_admin_ip, FILTER_VALIDATE_IP)) {
+                $__admin_ip_list = [$__raw_admin_ip];
             }
+        } else {
+            $__admin_ip_unlimited = true;
         }
-    }
-    if ($__can_check) {
+
         $__current_ip = $_SERVER['REMOTE_ADDR'] ?? '';
-        $__allowed    = $__iplogin_unlimited || (!empty($__ip_list) && in_array($__current_ip, $__ip_list, true));
+        $__allowed = $__admin_ip_unlimited || (!empty($__admin_ip_list) && in_array($__current_ip, $__admin_ip_list, true));
         if (!$__allowed) {
             session_unset();
             session_destroy();
             header('Location: login.php', true, 302);
             exit;
         }
-        unset($__current_ip, $__allowed);
+        unset($__stmt_admin_ip, $__raw_admin_ip, $__admin_ip_decoded, $__admin_ip_list, $__admin_ip_unlimited, $__current_ip, $__allowed);
     }
-    unset($__can_check, $__ip_list, $__raw_iplogin, $__decoded, $__stmt_ip, $__iplogin_unlimited);
 }
 
 

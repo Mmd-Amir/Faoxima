@@ -35,37 +35,13 @@ require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/../botapi.php';
 
-$allowed_ips = select("setting","*",null,null,"select");
 $user_ip = $_SERVER['REMOTE_ADDR'] ?? '';
 $admin_ids = select("admin", "id_admin", null, null, "FETCH_COLUMN");
 
-$_raw_iplogin = $allowed_ips['iplogin'] ?? '';
-$_ip_list = [];
-$_iplogin_unlimited = false;
-if ($_raw_iplogin === '*' || $_raw_iplogin === 'all' || $_raw_iplogin === 'unlimited') {
-    $_iplogin_unlimited = true;
-} elseif (!empty($_raw_iplogin) && $_raw_iplogin !== '0') {
-    $_decoded = json_decode($_raw_iplogin, true);
-    if (is_array($_decoded)) {
-        if (in_array('*', $_decoded, true) || in_array('all', $_decoded, true) || in_array('unlimited', $_decoded, true)) {
-            $_iplogin_unlimited = true;
-        } else {
-            $_ip_list = $_decoded;
-        }
-    } elseif (filter_var($_raw_iplogin, FILTER_VALIDATE_IP)) {
-        $_ip_list = [$_raw_iplogin];
-    }
-}
-$check_ip = $_iplogin_unlimited || (!empty($_ip_list) && in_array($user_ip, $_ip_list, true));
 $texterrr = "";
+$ip_denied = false;
 
 if (isset($_POST['login'])) {
-    if (!$check_ip) {
-        http_response_code(403);
-        exit('Access denied');
-    }
-
-
     $username = isset($_POST['username']) ? trim((string)$_POST['username']) : '';
     $password = isset($_POST['password']) ? (string)$_POST['password'] : '';
 
@@ -116,7 +92,7 @@ if (isset($_POST['login'])) {
             $texterrr = 'رمز صحیح نمی باشد';
         } elseif (!$adminIpOk) {
             http_response_code(403);
-            exit('Access denied');
+            $ip_denied = true;
         } else {
 
 
@@ -180,11 +156,11 @@ if (isset($_POST['login'])) {
 </head>
 <body class="login-page">
 
-<?php if (!$check_ip): ?>
+<?php if ($ip_denied): ?>
     <div class="ip-card">
         <span style="font-size:48px; color: var(--accent);"><?php echo icon('shield-halved', 'svg-icon'); ?></span>
-        <h2>دسترسی محدود شده</h2>
-        <p>برای ورود به سیستم، آی‌پی زیر را در تنظیمات ربات ثبت کنید.</p>
+        <h2>دسترسی غیرمجاز</h2>
+        <p>IP فعلی شما در لیست IPهای مجاز این حساب قرار ندارد.<br>برای ورود، از IP مجاز استفاده کنید یا تنظیمات IP این حساب را از طریق ربات مدیریت کنید.</p>
         <div class="ip-box"><?php echo htmlspecialchars($user_ip, ENT_QUOTES, 'UTF-8'); ?></div>
     </div>
 <?php else: ?>
