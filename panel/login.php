@@ -34,9 +34,9 @@ require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/../botapi.php';
+require_once __DIR__ . '/../jdf.php';
 
 $user_ip = $_SERVER['REMOTE_ADDR'] ?? '';
-$admin_ids = select("admin", "id_admin", null, null, "FETCH_COLUMN");
 
 $texterrr = "";
 $ip_denied = false;
@@ -120,11 +120,20 @@ if (isset($_POST['login'])) {
 
 
             try {
-                if (is_array($admin_ids)) {
-                    foreach ($admin_ids as $admin) {
-                        $texts = "کاربر با نام کاربری " . $username . " وارد پنل تحت وب شد";
-                        @sendmessage($admin, $texts, null, 'html');
-                    }
+                $setting = select("setting", "*", null, null);
+                $otherreport = select("topicid", "idreport", "report", "otherreport", "select")['idreport'] ?? null;
+                if (!empty($setting['Channel_Report']) && !empty($otherreport)) {
+                    $loginText = "🔐 ورود موفق به پنل تحت وب\n\n"
+                        . "👤 نام کاربری:\n" . $username . "\n\n"
+                        . "🪪 شناسه ادمین:\n" . $result['id_admin'] . "\n\n"
+                        . "🌐 IP ورود:\n" . $user_ip . "\n\n"
+                        . "🕐 زمان ورود:\n" . (function_exists('jdate') ? jdate('Y/m/d H:i:s', time(), '', 'Asia/Tehran', 'en') : date('Y/m/d H:i:s'));
+                    telegram('sendmessage', [
+                        'chat_id'           => $setting['Channel_Report'],
+                        'message_thread_id' => $otherreport,
+                        'text'              => $loginText,
+                        'parse_mode'        => "HTML"
+                    ]);
                 }
             } catch (\Throwable $e) {
                 @error_log('Login notify failed: ' . $e->getMessage());
