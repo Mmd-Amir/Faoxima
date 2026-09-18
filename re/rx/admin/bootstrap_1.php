@@ -610,6 +610,28 @@ function buildAdminIpLoginKeyboard($idAdmin, array $ip_list, $iplogin_unlimited)
 }
 }
 
+if (!function_exists('buildWebpanelIpLoginKeyboard')) {
+function buildWebpanelIpLoginKeyboard($idAdmin, array $ip_list, $iplogin_unlimited)
+{
+    $idAdmin = (string) $idAdmin;
+    $ip_keyboard = ['inline_keyboard' => []];
+    foreach ($ip_list as $i => $ip) {
+        $ip_keyboard['inline_keyboard'][] = [
+            ['text' => "🔸 " . $ip, 'callback_data' => "noop"],
+            ['text' => "🗑 حذف",     'callback_data' => "webpanel_mgr_ipdel_{$idAdmin}_{$i}"],
+        ];
+    }
+    $ip_keyboard['inline_keyboard'][] = [['text' => "➕ افزودن آیپی", 'callback_data' => "webpanel_mgr_ipadd_{$idAdmin}"]];
+    if ($iplogin_unlimited) {
+        $ip_keyboard['inline_keyboard'][] = [['text' => "🔒 محدود به آیپی(های) بالا", 'callback_data' => "webpanel_mgr_ipunlim_off_{$idAdmin}"]];
+    } else {
+        $ip_keyboard['inline_keyboard'][] = [['text' => "♾️ فعال‌سازی حالت نامحدود", 'callback_data' => "webpanel_mgr_ipunlim_on_{$idAdmin}"]];
+    }
+    $ip_keyboard['inline_keyboard'][] = [['text' => "◀️ بازگشت", 'callback_data' => "webpanel_mgr_view_{$idAdmin}"]];
+    return json_encode($ip_keyboard);
+}
+}
+
 if (!in_array($from_id, $admin_ids))
     return;
 
