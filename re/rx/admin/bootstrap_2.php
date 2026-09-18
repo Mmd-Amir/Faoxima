@@ -832,7 +832,7 @@ if (in_array($text, $textadmin) || $datain == "admin") {
                 . "🆔 <b>آیدی کانال:</b> <code>" . htmlspecialchars($matchedChan['link'] ?? '') . "</code>\n\n"
                 . "یک گزینه را انتخاب کنید:";
             $kb = function_exists('rx_get_channel_manage_keyboard')
-                ? rx_get_channel_manage_keyboard($chanId)
+                ? rx_get_channel_manage_keyboard($chanId, true)
                 : $channelkeyboard;
             nm_adminInstantReply($from_id, $msg, $kb, 'HTML');
         }

@@ -898,7 +898,7 @@ if (!function_exists('rx_render_channel_manage')) {
                 $msg = $prefixMsg . "\n\n" . $msg;
             }
             $kb = function_exists('rx_get_channel_manage_keyboard')
-                ? rx_get_channel_manage_keyboard($chan['id'])
+                ? rx_get_channel_manage_keyboard($chan['id'], true)
                 : (function_exists('rx_get_channel_keyboard') ? rx_get_channel_keyboard() : $channelkeyboard);
             if (function_exists('nm_adminInstantReply')) {
                 nm_adminInstantReply($from_id, $msg, $kb, 'HTML');

@@ -1006,9 +1006,9 @@ if (!empty($datain) && in_array($from_id, $admin_ids ?? [])) {
         'shopitem_pricedec' => "⬇️ کاهش گروهی قیمت",
         'shopitem_back'     => "⬅️ بازگشت به منوی فروشگاه",
 
-        'feat_info'     => "قابلیت مشاهده اطلاعات اکانت",
-        'feat_test'     => "قابلیت اکانت تست",
-        'feat_help'     => "قابلیت آموزش",
+        'feat_info'     => "⚙️ مشاهده اطلاعات اکانت",
+        'feat_test'     => "🧪 اکانت تست",
+        'feat_help'     => "📚 قابلیت آموزش",
         'feat_back'     => $textbotlang['Admin']['backadmin'],
         'feat_backmenu' => $textbotlang['Admin']['backmenu'],
 

@@ -203,7 +203,19 @@ if (
 
     $rx_nav_targets = array_values(array_unique($rx_nav_targets));
 
-    if (!empty($rx_nav_targets) && in_array((string) $text, $rx_nav_targets, true) && empty($rx_nav_is_backmenu)) {
+    $rx_nav_is_dynamic_selection = false;
+    if (in_array((string) $user['step'], ['channel', 'channel_manage'], true)
+        && function_exists('rx_find_channel_from_input')
+        && isset($pdo)
+        && ($pdo instanceof PDO)) {
+        $rx_nav_dynamic_match = rx_find_channel_from_input((string) $text, isset($datain) ? (string) $datain : '', $pdo);
+        if (is_array($rx_nav_dynamic_match) && !empty($rx_nav_dynamic_match['id'])) {
+            $rx_nav_is_dynamic_selection = true;
+        }
+        unset($rx_nav_dynamic_match);
+    }
+
+    if (!empty($rx_nav_targets) && in_array((string) $text, $rx_nav_targets, true) && empty($rx_nav_is_backmenu) && !$rx_nav_is_dynamic_selection) {
         if (function_exists('step')) {
             try {
                 step('home', $from_id);
@@ -219,7 +231,7 @@ if (
         $user['step'] = 'home';
     }
 
-    unset($rx_nav_targets, $rx_nav_key, $rx_hardcoded_nav, $rx_step_err, $rx_entry_matches, $rx_entry_label);
+    unset($rx_nav_targets, $rx_nav_key, $rx_hardcoded_nav, $rx_step_err, $rx_entry_matches, $rx_entry_label, $rx_nav_is_dynamic_selection);
 }
 
 unset($rx_nav_is_backmenu);
