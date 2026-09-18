@@ -49,32 +49,152 @@ function pasarguardApiKey(array $panel)
     return $panel['api_key'] ?? null;
 }
 
+function pasarguardAuthMode(array $panel)
+{
+    $mode = $panel['pasarguard_auth_mode'] ?? null;
+    if ($mode === 'password') {
+        return 'password';
+    }
+    if ($mode === 'api_key') {
+        return 'api_key';
+    }
+    return !empty($panel['api_key']) ? 'api_key' : 'password';
+}
+
+function pasarguardTokenCacheKey($baseUrl, $username)
+{
+    return 'pasarguard_token:' . md5($baseUrl . '|' . $username);
+}
+
+function pasarguardCachedToken($baseUrl, $username)
+{
+    static $localCache = [];
+    $key = pasarguardTokenCacheKey($baseUrl, $username);
+    if (function_exists('rx_redis_get')) {
+        $token = rx_redis_get($key);
+        if ($token !== null && $token !== false && $token !== '') {
+            return (string) $token;
+        }
+    }
+    return $localCache[$key] ?? null;
+}
+
+function pasarguardStoreToken($baseUrl, $username, $token, $ttlSeconds = 3000)
+{
+    static $localCache = [];
+    $key = pasarguardTokenCacheKey($baseUrl, $username);
+    if (function_exists('rx_redis_set')) {
+        rx_redis_set($key, $token, $ttlSeconds);
+    }
+    $localCache[$key] = $token;
+}
+
+function pasarguardClearToken($baseUrl, $username)
+{
+    static $localCache = [];
+    $key = pasarguardTokenCacheKey($baseUrl, $username);
+    if (function_exists('rx_redis_del')) {
+        rx_redis_del($key);
+    }
+    unset($localCache[$key]);
+}
+
+function pasarguardLogin($baseUrl, $username, $password)
+{
+    $normalizedUrl = rtrim((string) $baseUrl, '/');
+    $req = new CurlRequest($normalizedUrl . '/api/admin/token');
+    $req->setHeaders(['accept: application/json', 'Content-Type: application/x-www-form-urlencoded']);
+    $response = $req->post([
+        'username' => (string) $username,
+        'password' => (string) $password,
+        'grant_type' => 'password',
+    ]);
+    if (!empty($response['error'])) {
+        return ['status' => false, 'msg' => $response['error']];
+    }
+    $httpStatus = $response['status'] ?? null;
+    if ($httpStatus === null || $httpStatus >= 400) {
+        $decoded = json_decode((string) ($response['body'] ?? ''), true);
+        $message = is_array($decoded) && isset($decoded['detail']) ? $decoded['detail'] : "HTTP {$httpStatus}";
+        return ['status' => false, 'msg' => is_array($message) ? json_encode($message, JSON_UNESCAPED_UNICODE) : $message];
+    }
+    $decoded = json_decode((string) ($response['body'] ?? ''), true);
+    if (!is_array($decoded) || empty($decoded['access_token'])) {
+        return ['status' => false, 'msg' => 'Login response did not include an access token.'];
+    }
+    return ['status' => true, 'access_token' => (string) $decoded['access_token']];
+}
+
+function pasarguardGetToken($panel, $forceRefresh = false)
+{
+    $baseUrl = rtrim((string) ($panel['url_panel'] ?? ''), '/');
+    $username = (string) ($panel['username_panel'] ?? '');
+    $password = (string) ($panel['password_panel'] ?? '');
+    if (!$forceRefresh) {
+        $cached = pasarguardCachedToken($baseUrl, $username);
+        if ($cached !== null) {
+            return ['status' => true, 'access_token' => $cached];
+        }
+    }
+    $loginResult = pasarguardLogin($baseUrl, $username, $password);
+    if (empty($loginResult['status'])) {
+        return $loginResult;
+    }
+    pasarguardStoreToken($baseUrl, $username, $loginResult['access_token']);
+    return $loginResult;
+}
+
 function pasarguardRequest($panel, $method, $path, $data = null)
 {
-    $apiKey = pasarguardApiKey($panel);
+    $authMode = pasarguardAuthMode($panel);
     $url = rtrim($panel['url_panel'], '/') . $path;
     $headers = ['accept: application/json'];
     if ($data !== null) {
         $headers[] = 'Content-Type: application/json';
     }
-    $req = new CurlRequest($url);
-    $req->setHeaders($headers);
-    $req->api_key($apiKey);
-    switch (strtoupper($method)) {
-        case 'POST':
-            $response = $req->post($data !== null ? json_encode($data) : []);
-            break;
-        case 'PUT':
-            $response = $req->put($data !== null ? json_encode($data) : null);
-            break;
-        case 'DELETE':
-            $response = $req->delete($data !== null ? json_encode($data) : null);
-            break;
-        default:
-            $response = $req->get();
-            break;
+
+    $doRequest = function ($bearerToken, $apiKey) use ($url, $headers, $method, $data) {
+        $req = new CurlRequest($url);
+        $req->setHeaders($headers);
+        if ($bearerToken !== null) {
+            $req->setBearerToken($bearerToken);
+        }
+        if ($apiKey !== null) {
+            $req->api_key($apiKey);
+        }
+        switch (strtoupper($method)) {
+            case 'POST':
+                return $req->post($data !== null ? json_encode($data) : []);
+            case 'PUT':
+                return $req->put($data !== null ? json_encode($data) : null);
+            case 'DELETE':
+                return $req->delete($data !== null ? json_encode($data) : null);
+            default:
+                return $req->get();
+        }
+    };
+
+    if ($authMode === 'password') {
+        $baseUrl = rtrim((string) ($panel['url_panel'] ?? ''), '/');
+        $username = (string) ($panel['username_panel'] ?? '');
+        $tokenResult = pasarguardGetToken($panel);
+        if (empty($tokenResult['status'])) {
+            return ['status' => false, 'error' => $tokenResult['msg'] ?? 'PasarGuard login failed'];
+        }
+        $response = $doRequest($tokenResult['access_token'], null);
+        if (($response['status'] ?? 0) == 401) {
+            pasarguardClearToken($baseUrl, $username);
+            $retryToken = pasarguardGetToken($panel, true);
+            if (empty($retryToken['status'])) {
+                return ['status' => false, 'error' => $retryToken['msg'] ?? 'PasarGuard login failed'];
+            }
+            $response = $doRequest($retryToken['access_token'], null);
+        }
+        return $response;
     }
-    return $response;
+
+    $apiKey = pasarguardApiKey($panel);
+    return $doRequest(null, $apiKey);
 }
 
 function pasarguardGetUser($username_account, $location)
@@ -313,6 +433,54 @@ function pasarguardTestConnection($baseUrl, $apiKey)
         'url_panel' => $normalizedUrl,
         'api_key' => $apiKey,
     ];
+    $response = pasarguardRequest($panel, 'GET', '/api/admin');
+    if (!empty($response['error'])) {
+        return [
+            'status' => false,
+            'msg' => $response['error']
+        ];
+    }
+    $httpStatus = $response['status'] ?? null;
+    if ($httpStatus === null || $httpStatus >= 400) {
+        $decoded = json_decode((string) ($response['body'] ?? ''), true);
+        $message = is_array($decoded) && isset($decoded['detail']) ? $decoded['detail'] : "HTTP {$httpStatus}";
+        return [
+            'status' => false,
+            'msg' => is_array($message) ? json_encode($message, JSON_UNESCAPED_UNICODE) : $message
+        ];
+    }
+    return [
+        'status' => true,
+        'msg' => 'PasarGuard connection succeeded',
+        'data' => json_decode((string) ($response['body'] ?? ''), true)
+    ];
+}
+
+function pasarguardTestConnectionUserPass($baseUrl, $username, $password)
+{
+    $username = trim((string) $username);
+    $password = trim((string) $password);
+    $normalizedUrl = rtrim((string) $baseUrl, '/');
+    if ($username === '' || $password === '') {
+        return [
+            'status' => false,
+            'msg' => 'PasarGuard username or password is missing'
+        ];
+    }
+    $loginResult = pasarguardLogin($normalizedUrl, $username, $password);
+    if (empty($loginResult['status'])) {
+        return [
+            'status' => false,
+            'msg' => $loginResult['msg'] ?? 'PasarGuard login failed'
+        ];
+    }
+    $panel = [
+        'url_panel' => $normalizedUrl,
+        'username_panel' => $username,
+        'password_panel' => $password,
+        'pasarguard_auth_mode' => 'password',
+    ];
+    pasarguardStoreToken($normalizedUrl, $username, $loginResult['access_token']);
     $response = pasarguardRequest($panel, 'GET', '/api/admin');
     if (!empty($response['error'])) {
         return [

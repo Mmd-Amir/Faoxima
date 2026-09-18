@@ -262,10 +262,13 @@ if (in_array($text, $textadmin) || $datain == "admin") {
         'guard_svc_edit', 'guard_edit_api_key',
         'add_rebecca_api_key', 'rebecca_edit_api_key',
         'add_pasarguard_api_key', 'pasarguard_edit_api_key',
+        'add_pasarguard_auth_method', 'add_pasarguard_username', 'add_pasarguard_password',
+        'pasarguard_edit_username', 'pasarguard_edit_password',
         'confirmremovepanel', 'add_link_panel_edit', 'getlocoption',
         'switchtype_pick', 'switchtype_link_panel', 'switchtype_username_panel',
         'switchtype_password_panel', 'switchtype_guard_version', 'switchtype_guard_api_key', 'switchtype_remna_token',
         'switchtype_rebecca_api_key', 'switchtype_pasarguard_api_key',
+        'switchtype_pasarguard_auth_method', 'switchtype_pasarguard_username', 'switchtype_pasarguard_password',
         'switchtype_xui_api_mode', 'switchtype_xui_token', 'switchtype_confirm',
     ];
     if (in_array($currentStep, $adminPanelFlowSteps, true)) {
@@ -1751,10 +1754,14 @@ $paycount
         savedata("save", "password", "null");
         return;
     } elseif ($userdata['type'] == "pasarguard") {
-        nm_adminInstantReply($from_id, "🔑 لطفاً API Key پنل PasarGuard را ارسال کنید.", $backadmin, 'HTML');
-        step('add_pasarguard_api_key', $from_id);
-        savedata("save", "username", "null");
-        savedata("save", "password", "null");
+        $pasarguardAuthKb = json_encode([
+            'inline_keyboard' => [
+                [['text' => '👤 نام کاربری / رمز عبور', 'callback_data' => 'pasarguardauth#password']],
+                [['text' => '🔑 API Key', 'callback_data' => 'pasarguardauth#api_key']],
+            ],
+        ]);
+        nm_adminInstantReply($from_id, "🔐 روش احراز هویت پنل PasarGuard را انتخاب کنید:", $pasarguardAuthKb, 'HTML');
+        step('add_pasarguard_auth_method', $from_id);
         return;
     } elseif ($userdata['type'] == "x-ui_single") {
         $xuiModeKb = json_encode([
@@ -1894,6 +1901,55 @@ $paycount
         'HTML'
     );
     step('getlimitedpanel', $from_id);
+} elseif ($user['step'] == "add_pasarguard_auth_method" && preg_match('/pasarguardauth#(api_key|password)/', $datain, $dataget)) {
+    $pasarguardAuthMethod = $dataget[1];
+    savedata("save", "pasarguard_auth_mode", $pasarguardAuthMethod);
+    if ($pasarguardAuthMethod === 'password') {
+        savedata("save", "api_key", "null");
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['usernameset'], $backadmin, 'HTML');
+        step('add_pasarguard_username', $from_id);
+    } else {
+        savedata("save", "username", "null");
+        savedata("save", "password", "null");
+        nm_adminInstantReply($from_id, "🔑 لطفاً API Key پنل PasarGuard را ارسال کنید.", $backadmin, 'HTML');
+        step('add_pasarguard_api_key', $from_id);
+    }
+} elseif ($user['step'] == "add_pasarguard_username") {
+    if (!isset($update['message']) && empty($text)) { return; }
+    $pasarguardUsername = trim((string) $text);
+    if ($pasarguardUsername === '') {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['usernameset'], $backadmin, 'HTML');
+        return;
+    }
+    savedata("save", "username", $pasarguardUsername);
+    nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getpassword'], $backadmin, 'HTML');
+    step('add_pasarguard_password', $from_id);
+} elseif ($user['step'] == "add_pasarguard_password") {
+    if (!isset($update['message']) && empty($text)) { return; }
+    $pasarguardPassword = trim((string) $text);
+    if ($pasarguardPassword === '') {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getpassword'], $backadmin, 'HTML');
+        return;
+    }
+    $userdata = json_decode($user['Processing_value'], true);
+    $pasarguardBaseUrl = rtrim((string) ($userdata['url_panel'] ?? ''), '/');
+    $pasarguardUsernameForTest = (string) ($userdata['username'] ?? '');
+    try {
+        $connectionResult = pasarguardTestConnectionUserPass($pasarguardBaseUrl, $pasarguardUsernameForTest, $pasarguardPassword);
+    } catch (Throwable $pasarguardConnectionError) {
+        $connectionResult = ['status' => false, 'msg' => $pasarguardConnectionError->getMessage()];
+    }
+    if (!is_array($connectionResult) || empty($connectionResult['status'])) {
+        $errorMessage = is_array($connectionResult) ? ($connectionResult['msg'] ?? $textbotlang['Admin']['managepanel']['getpassword']) : $textbotlang['Admin']['managepanel']['getpassword'];
+        $feedback = "❌ اتصال به پاسارگارد ناموفق بود:\n{$errorMessage}\n\n📌 لطفاً نام کاربری و رمز عبور را بررسی کرده و رمز عبور را مجدداً ارسال کنید.";
+        nm_adminInstantReply($from_id, $feedback, $backadmin, 'HTML');
+        step('add_pasarguard_password', $from_id);
+        return;
+    }
+    savedata("save", "password", $pasarguardPassword);
+    savedata("save", "url_panel", $pasarguardBaseUrl);
+    nm_adminInstantReply($from_id, "✅ اتصال به پاسارگارد برقرار شد.\n\n" . $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
+    step('getlimitedpanel', $from_id);
 } elseif ($user['step'] == "add_pasarguard_api_key") {
     if (!isset($update['message']) && empty($text)) { return; }
     $apiKey = trim($text);
@@ -2030,8 +2086,18 @@ $paycount
         && trim((string) ($userdata['url_panel'] ?? '')) !== ''
         && array_key_exists('username', $userdata)
         && array_key_exists('password', $userdata);
-    if ($panelDraftValid && in_array($userdata['type'], ['rebecca', 'pasarguard', 'guard'], true)) {
+    if ($panelDraftValid && in_array($userdata['type'], ['rebecca', 'guard'], true)) {
         $panelDraftValid = trim((string) ($userdata['api_key'] ?? '')) !== '';
+    }
+    if ($panelDraftValid && $userdata['type'] === 'pasarguard') {
+        if (($userdata['pasarguard_auth_mode'] ?? 'api_key') === 'password') {
+            $panelDraftValid = trim((string) ($userdata['username'] ?? '')) !== ''
+                && trim((string) ($userdata['username'] ?? '')) !== 'null'
+                && trim((string) ($userdata['password'] ?? '')) !== ''
+                && trim((string) ($userdata['password'] ?? '')) !== 'null';
+        } else {
+            $panelDraftValid = trim((string) ($userdata['api_key'] ?? '')) !== '';
+        }
     }
     if ($panelDraftValid && $userdata['type'] === 'remnawave') {
         $panelDraftValid = trim((string) ($userdata['remna_api_token'] ?? '')) !== '';
@@ -2187,6 +2253,11 @@ $paycount
         $stmt_xui = $pdo->prepare("UPDATE marzban_panel SET xui_api_mode = :m, xui_api_token = :t WHERE name_panel = :n");
         $stmt_xui->execute([':m' => $xuiApiMode, ':t' => $xuiApiTokenValue, ':n' => $userdata['namepanel']]);
     }
+    if (($userdata['type'] ?? '') == "pasarguard") {
+        $pasarguardAuthModeValue = (isset($userdata['pasarguard_auth_mode']) && $userdata['pasarguard_auth_mode'] === 'password') ? 'password' : 'api_key';
+        $stmt_pasarguard = $pdo->prepare("UPDATE marzban_panel SET pasarguard_auth_mode = :m WHERE name_panel = :n");
+        $stmt_pasarguard->execute([':m' => $pasarguardAuthModeValue, ':n' => $userdata['namepanel']]);
+    }
     nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['addedpanel'], $keyboardadmin, 'HTML');
     nm_adminInstantReply($from_id, "🥳", $keyboardadmin, 'HTML');
     step("home", $from_id);
@@ -2263,10 +2334,14 @@ elseif ($user['step'] == "switchtype_pick" && preg_match('/switchtype#(.*)/', $d
         step('switchtype_rebecca_api_key', $from_id);
     } elseif ($userdata['new_type'] == "pasarguard" || $userdata['new_type'] == "pasargard") {
         savedata("save", "new_type", "pasarguard");
-        savedata("save", "username", "null");
-        savedata("save", "password", "null");
-        nm_adminInstantReply($from_id, "🔑 لطفاً API Key پنل PasarGuard را ارسال کنید.", $backadmin, 'HTML');
-        step('switchtype_pasarguard_api_key', $from_id);
+        $switchPasarguardAuthKb = json_encode([
+            'inline_keyboard' => [
+                [['text' => '👤 نام کاربری / رمز عبور', 'callback_data' => 'switchpasarguardauth#password']],
+                [['text' => '🔑 API Key', 'callback_data' => 'switchpasarguardauth#api_key']],
+            ],
+        ]);
+        nm_adminInstantReply($from_id, "🔐 روش احراز هویت پنل PasarGuard را انتخاب کنید:", $switchPasarguardAuthKb, 'HTML');
+        step('switchtype_pasarguard_auth_method', $from_id);
     } elseif ($userdata['new_type'] == "x-ui_single") {
         $xuiModeKb = json_encode([
             'inline_keyboard' => [
@@ -2355,6 +2430,51 @@ elseif ($user['step'] == "switchtype_pick" && preg_match('/switchtype#(.*)/', $d
     savedata("save", "rebecca_service_id", "auto");
     nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
     step('switchtype_confirm', $from_id);
+} elseif ($user['step'] == "switchtype_pasarguard_auth_method" && preg_match('/switchpasarguardauth#(api_key|password)/', $datain, $dataget)) {
+    $pasarguardAuthMethod = $dataget[1];
+    savedata("save", "pasarguard_auth_mode", $pasarguardAuthMethod);
+    if ($pasarguardAuthMethod === 'password') {
+        savedata("save", "api_key", "null");
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['usernameset'], $backadmin, 'HTML');
+        step('switchtype_pasarguard_username', $from_id);
+    } else {
+        savedata("save", "username", "null");
+        savedata("save", "password", "null");
+        nm_adminInstantReply($from_id, "🔑 لطفاً API Key پنل PasarGuard را ارسال کنید.", $backadmin, 'HTML');
+        step('switchtype_pasarguard_api_key', $from_id);
+    }
+} elseif ($user['step'] == "switchtype_pasarguard_username") {
+    if (!isset($update['message']) && empty($text)) { return; }
+    $pasarguardUsername = trim((string) $text);
+    if ($pasarguardUsername === '') {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['usernameset'], $backadmin, 'HTML');
+        return;
+    }
+    savedata("save", "username", $pasarguardUsername);
+    nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getpassword'], $backadmin, 'HTML');
+    step('switchtype_pasarguard_password', $from_id);
+} elseif ($user['step'] == "switchtype_pasarguard_password") {
+    if (!isset($update['message']) && empty($text)) { return; }
+    $pasarguardPassword = trim((string) $text);
+    if ($pasarguardPassword === '') {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getpassword'], $backadmin, 'HTML');
+        return;
+    }
+    $userdata = json_decode($user['Processing_value'], true);
+    $pasarguardBaseUrl = rtrim((string) ($userdata['url_panel'] ?? ''), '/');
+    $pasarguardUsernameForTest = (string) ($userdata['username'] ?? '');
+    $connectionResult = pasarguardTestConnectionUserPass($pasarguardBaseUrl, $pasarguardUsernameForTest, $pasarguardPassword);
+    if (empty($connectionResult['status'])) {
+        $errorMessage = $connectionResult['msg'] ?? $textbotlang['Admin']['managepanel']['getpassword'];
+        $feedback = "❌ اتصال به پاسارگارد ناموفق بود:\n{$errorMessage}\n\n📌 لطفاً نام کاربری و رمز عبور را بررسی کرده و رمز عبور را مجدداً ارسال کنید.";
+        nm_adminInstantReply($from_id, $feedback, $backadmin, 'HTML');
+        step('switchtype_pasarguard_password', $from_id);
+        return;
+    }
+    savedata("save", "password", $pasarguardPassword);
+    savedata("save", "url_panel", $pasarguardBaseUrl);
+    nm_adminInstantReply($from_id, "✅ اتصال به پاسارگارد برقرار شد.\n\n" . $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
+    step('switchtype_confirm', $from_id);
 } elseif ($user['step'] == "switchtype_pasarguard_api_key") {
     if (!isset($update['message']) && empty($text)) { return; }
     $apiKey = trim($text);
@@ -2389,12 +2509,16 @@ elseif ($user['step'] == "switchtype_pick" && preg_match('/switchtype#(.*)/', $d
     $xuiApiMode = isset($userdata['xui_api_mode']) ? $userdata['xui_api_mode'] : 'legacy';
     $xuiApiToken = isset($userdata['xui_api_token']) ? $userdata['xui_api_token'] : null;
     $remnaApiToken = isset($userdata['remna_api_token']) ? $userdata['remna_api_token'] : null;
+    $pasarguardAuthMode = (isset($userdata['pasarguard_auth_mode']) && $userdata['pasarguard_auth_mode'] === 'password') ? 'password' : 'api_key';
     $sqlSwitchType = "UPDATE marzban_panel SET type = :type, version_panel = :version_panel, url_panel = :url_panel, username_panel = :username_panel, password_panel = :password_panel, api_key = :api_key, xui_api_mode = :xui_api_mode, xui_api_token = :xui_api_token, remna_api_token = :remna_api_token";
     if ($finalType == "guard") {
         $sqlSwitchType .= ", guard_service_ids = :guard_service_ids, guard_version = :guard_version";
     }
     if ($finalType == "rebecca") {
         $sqlSwitchType .= ", rebecca_service_id = :rebecca_service_id";
+    }
+    if ($finalType == "pasarguard") {
+        $sqlSwitchType .= ", pasarguard_auth_mode = :pasarguard_auth_mode";
     }
     $sqlSwitchType .= " WHERE code_panel = :code_panel";
     $stmt = $pdo->prepare($sqlSwitchType);
@@ -2407,6 +2531,9 @@ elseif ($user['step'] == "switchtype_pick" && preg_match('/switchtype#(.*)/', $d
     $stmt->bindParam(':xui_api_mode', $xuiApiMode);
     $stmt->bindParam(':xui_api_token', $xuiApiToken);
     $stmt->bindParam(':remna_api_token', $remnaApiToken);
+    if ($finalType == "pasarguard") {
+        $stmt->bindParam(':pasarguard_auth_mode', $pasarguardAuthMode);
+    }
     if ($finalType == "guard") {
         $guardServiceIds = null;
         $guardVersionSwitch = isset($userdata['guard_version']) && $userdata['guard_version'] === 'v2' ? 'v2' : 'v1';
@@ -6902,11 +7029,25 @@ $rx_sales_metrics
             }
         }
     } elseif ($marzban_list_get['type'] == "pasarguard") {
-        $pasarguardApiKey = trim((string) ($marzban_list_get['api_key'] ?? ''));
-        if ($pasarguardApiKey === '') {
-            nm_adminInstantReply($from_id, "🖥 وضعیت اتصال پنل PasarGuard: ❌ کلید API تنظیم نشده است", $optionPasarGuard, 'HTML');
+        $pasarguardAuthModeStatus = pasarguardAuthMode($marzban_list_get);
+        if ($pasarguardAuthModeStatus === 'password') {
+            $pasarguardUsernameStatus = trim((string) ($marzban_list_get['username_panel'] ?? ''));
+            $pasarguardPasswordStatus = trim((string) ($marzban_list_get['password_panel'] ?? ''));
+            $pasarguardCredsMissing = $pasarguardUsernameStatus === '' || $pasarguardPasswordStatus === '';
+            $pasarguardTestRes = $pasarguardCredsMissing
+                ? ['status' => false, 'msg' => 'نام کاربری یا رمز عبور تنظیم نشده است']
+                : pasarguardTestConnectionUserPass($marzban_list_get['url_panel'] ?? null, $pasarguardUsernameStatus, $pasarguardPasswordStatus);
         } else {
-            $pasarguardTestRes = pasarguardTestConnection($marzban_list_get['url_panel'] ?? null, $pasarguardApiKey);
+            $pasarguardApiKey = trim((string) ($marzban_list_get['api_key'] ?? ''));
+            $pasarguardCredsMissing = $pasarguardApiKey === '';
+            $pasarguardTestRes = $pasarguardCredsMissing
+                ? ['status' => false, 'msg' => 'کلید API تنظیم نشده است']
+                : pasarguardTestConnection($marzban_list_get['url_panel'] ?? null, $pasarguardApiKey);
+        }
+        if ($pasarguardCredsMissing) {
+            $missingLabel = $pasarguardAuthModeStatus === 'password' ? 'نام کاربری یا رمز عبور تنظیم نشده است' : 'کلید API تنظیم نشده است';
+            nm_adminInstantReply($from_id, "🖥 وضعیت اتصال پنل PasarGuard: ❌ {$missingLabel}", $optionPasarGuard, 'HTML');
+        } else {
             if ($pasarguardTestRes['status'] !== false) {
                 $pasarguardStats = pasarguardGetSystemStats($marzban_list_get['name_panel']);
                 $pasarguardStatsData = !empty($pasarguardStats['body']) ? json_decode($pasarguardStats['body'], true) : [];
@@ -6968,10 +7109,13 @@ $rx_sales_metrics
 {$rx_sales_metrics}";
                 nm_adminInstantReply($from_id, $text_pasarguard, $optionPasarGuard, 'HTML');
             } else {
+                $pasarguardFailHint = $pasarguardAuthModeStatus === 'password'
+                    ? 'لطفاً آدرس پنل، نام کاربری یا رمز عبور را بررسی کنید.'
+                    : 'لطفاً آدرس پنل یا کلید API را بررسی کنید.';
                 nm_adminInstantReply($from_id, "🖥 وضعیت اتصال پنل PasarGuard: ❌ اتصال ناموفق
 " . ($pasarguardTestRes['msg'] ?? '') . "
 
-لطفاً آدرس پنل یا کلید API را بررسی کنید.", $optionPasarGuard, 'HTML');
+{$pasarguardFailHint}", $optionPasarGuard, 'HTML');
             }
         }
     } else {

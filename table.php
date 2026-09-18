@@ -814,6 +814,7 @@ try {
         username_panel varchar(200) NULL,
         password_panel varchar(200) NULL,
         api_key varchar(500) NULL,
+        pasarguard_auth_mode varchar(20) NOT NULL DEFAULT 'api_key',
         xui_api_token TEXT NULL,
         xui_api_mode varchar(20) NOT NULL DEFAULT 'legacy',
         xui_monitor_state TEXT NULL,
@@ -903,6 +904,11 @@ try {
         addFieldToTable("marzban_panel", "proxies", null, "TEXT");
         addFieldToTable("marzban_panel", "inbounds", null, "TEXT");
         addFieldToTable("marzban_panel", "api_key", null, "VARCHAR(500)");
+        $pasarguardAuthModeColumnExisted = rxTableColumnExists($connect, "marzban_panel", "pasarguard_auth_mode");
+        addFieldToTable("marzban_panel", "pasarguard_auth_mode", "api_key", "VARCHAR(20)");
+        if (!$pasarguardAuthModeColumnExisted) {
+            $connect->query("UPDATE marzban_panel SET pasarguard_auth_mode = 'api_key' WHERE type = 'pasarguard'");
+        }
         addFieldToTable("marzban_panel", "xui_api_token", null, "VARCHAR(1000)");
         $xuiApiModeColumnExisted = rxTableColumnExists($connect, "marzban_panel", "xui_api_mode");
         addFieldToTable("marzban_panel", "xui_api_mode", "legacy", "VARCHAR(20)");

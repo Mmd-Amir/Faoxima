@@ -442,6 +442,11 @@ if (false) {
         return;
     }
     if (is_array($typepanel) && ($typepanel['type'] ?? null) == "pasarguard") {
+        if (($typepanel['pasarguard_auth_mode'] ?? 'api_key') === 'password') {
+            nm_adminInstantReply($from_id, "👤 لطفاً نام کاربری جدید پنل PasarGuard را ارسال کنید.", $backadmin, 'HTML');
+            step('pasarguard_edit_username', $from_id);
+            return;
+        }
         nm_adminInstantReply($from_id, "🔑 لطفاً API Key جدید پنل PasarGuard را ارسال کنید.", $backadmin, 'HTML');
         step('pasarguard_edit_api_key', $from_id);
         return;
@@ -488,6 +493,58 @@ if (false) {
     }
     update("marzban_panel", "api_key", $apiKey, "name_panel", $typepanel['name_panel']);
     outtypepanel("pasarguard", "🔑 کلید PasarGuard با موفقیت ذخیره شد.\n✅ اتصال برقرار است");
+    step('PanelMenu', $from_id);
+} elseif ($user['step'] == "pasarguard_edit_username") {
+    if (!isset($update['message']) && empty($text)) { return; }
+    $panelName = guardResolveUserPanelName($user);
+    $typepanel = $panelName ? select("marzban_panel", "*", "name_panel", $panelName, "select") : null;
+    if (!is_array($typepanel) || ($typepanel['type'] ?? null) != "pasarguard") {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['invalidapikey'], $backadmin, 'HTML');
+        return;
+    }
+    $newUsername = trim((string) $text);
+    if ($newUsername === '') {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['usernameset'], $backadmin, 'HTML');
+        return;
+    }
+    $editState = json_encode(['panel' => $panelName, 'pasarguard_edit_username_value' => $newUsername], JSON_UNESCAPED_UNICODE);
+    update("user", "Processing_value", $editState, "id", $from_id);
+    nm_adminInstantReply($from_id, "🔑 لطفاً رمز عبور جدید پنل PasarGuard را ارسال کنید.", $backadmin, 'HTML');
+    step('pasarguard_edit_password', $from_id);
+} elseif ($user['step'] == "pasarguard_edit_password") {
+    if (!isset($update['message']) && empty($text)) { return; }
+    $panelName = guardResolveUserPanelName($user);
+    $typepanel = $panelName ? select("marzban_panel", "*", "name_panel", $panelName, "select") : null;
+    if (!is_array($typepanel) || ($typepanel['type'] ?? null) != "pasarguard") {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['invalidapikey'], $backadmin, 'HTML');
+        return;
+    }
+    $newPassword = trim((string) $text);
+    if ($newPassword === '') {
+        nm_adminInstantReply($from_id, "🔑 لطفاً رمز عبور جدید پنل PasarGuard را ارسال کنید.", $backadmin, 'HTML');
+        return;
+    }
+    $pendingData = json_decode($user['Processing_value'], true);
+    $newUsername = is_array($pendingData) ? (string) ($pendingData['pasarguard_edit_username_value'] ?? '') : '';
+    if ($newUsername === '') {
+        nm_adminInstantReply($from_id, "❌ اطلاعات ویرایش منقضی شده است. لطفاً دوباره تلاش کنید.", $backadmin, 'HTML');
+        step('PanelMenu', $from_id);
+        return;
+    }
+    $baseUrl = rtrim((string) ($typepanel['url_panel'] ?? ''), '/');
+    $testResult = pasarguardTestConnectionUserPass($baseUrl, $newUsername, $newPassword);
+    if (empty($testResult['status'])) {
+        $errorMessage = $testResult['msg'] ?? 'اتصال ناموفق بود';
+        outtypepanel("pasarguard", "❌ اطلاعات جدید ذخیره نشد، اتصال به PasarGuard ناموفق بود:\n{$errorMessage}");
+        step('PanelMenu', $from_id);
+        return;
+    }
+    if (function_exists('pasarguardClearToken')) {
+        pasarguardClearToken($baseUrl, (string) ($typepanel['username_panel'] ?? ''));
+    }
+    update("marzban_panel", "username_panel", $newUsername, "name_panel", $typepanel['name_panel']);
+    update("marzban_panel", "password_panel", $newPassword, "name_panel", $typepanel['name_panel']);
+    outtypepanel("pasarguard", "🔑 نام کاربری و رمز عبور PasarGuard با موفقیت ذخیره شد.\n✅ اتصال برقرار است");
     step('PanelMenu', $from_id);
 } elseif ($user['step'] == "rebecca_edit_api_key") {
     if (!isset($update['message']) && empty($text)) { return; }
