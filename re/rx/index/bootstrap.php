@@ -930,12 +930,27 @@ if ($setting['Bot_Status'] == "botstatusoff" && !in_array($from_id, $admin_ids))
 
 $isStartRequest = ($text == "/start" || $datain == "start" || $text == "start" || (is_string($text) && strpos($text, "/start ") === 0));
 $isConfirmChannel = ($datain == "confirmchannel");
-$shouldCheckChannel = ($isStartRequest || $isConfirmChannel || $user['joinchannel'] != "active");
+$shouldCheckChannel = true;
 
 if ($shouldCheckChannel && !in_array($from_id, $admin_ids)) {
     $channels_id = select("channels", "link", null, null, "FETCH_COLUMN", ['cache' => false]);
     if (!empty($channels_id) && is_array($channels_id)) {
-        $channels = channel($channels_id);
+        $channels = null;
+        $rxChannelCacheApcu = function_exists('apcu_fetch') && function_exists('apcu_store') && filter_var((string) ini_get('apc.enabled'), FILTER_VALIDATE_BOOLEAN);
+        $rxChannelCacheKey = 'faoxima:joinchannel:' . $from_id . ':' . md5(implode(',', $channels_id));
+        if (!$isConfirmChannel && !$isStartRequest && $rxChannelCacheApcu) {
+            $rxChannelCacheHit = false;
+            $rxChannelCached = apcu_fetch($rxChannelCacheKey, $rxChannelCacheHit);
+            if ($rxChannelCacheHit && is_array($rxChannelCached)) {
+                $channels = $rxChannelCached;
+            }
+        }
+        if ($channels === null) {
+            $channels = channel($channels_id);
+            if ($rxChannelCacheApcu) {
+                @apcu_store($rxChannelCacheKey, $channels, 30);
+            }
+        }
         if ($isConfirmChannel) {
             if (count($channels) == 0) {
                 update("user", "joinchannel", "active", "id", $from_id);
