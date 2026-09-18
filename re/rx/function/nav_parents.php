@@ -446,6 +446,9 @@ if (!function_exists('rxNavParent')) {
                 'getpanelhidebotsaz'                => 'usershub',
                 'getremovehidepanel'                => 'usershub',
                 'gettextgift'                       => 'usershub',
+
+                'getrenewcashtarget'                => 'shop',
+                'getrenewcashtargetdays'            => 'shop',
             ];
         }
         $step = (string) $step;
@@ -1207,6 +1210,39 @@ if (!function_exists('rxRenderMenuState')) {
     }
 }
 
+if (!function_exists('rxNavCashbackGatewayParent')) {
+    function rxNavCashbackGatewayParent($from_id)
+    {
+        static $map = [
+            'CartManage'                  => 'gw_cart',
+            'trnado'                      => 'gw_trnado',
+            'tonpay'                      => 'gw_tonpay',
+            'cubepay'                     => 'gw_cubepay',
+            'blupal'                      => 'gw_blupal',
+            'atlaspay'                    => 'gw_atlaspay',
+            'tetrapay'                    => 'gw_tetrapay',
+            'NowPaymentsManage'           => 'gw_plisio',
+            'nowpayment_setting_keyboard' => 'gw_nowpayment',
+            'keyboardzarinpal'            => 'gw_zarinpal',
+        ];
+        $raw = null;
+        if (isset($GLOBALS['user']) && is_array($GLOBALS['user']) && isset($GLOBALS['user']['Processing_value'])) {
+            $raw = $GLOBALS['user']['Processing_value'];
+        } elseif (function_exists('select')) {
+            $row = select('user', 'Processing_value', 'id', $from_id, 'select', ['cache' => false]);
+            $raw = is_array($row) ? ($row['Processing_value'] ?? null) : null;
+        }
+        if (!is_string($raw) || $raw === '') {
+            return null;
+        }
+        $data = json_decode($raw, true);
+        if (!is_array($data) || !isset($data['cashback_menu']) || !is_string($data['cashback_menu'])) {
+            return null;
+        }
+        return $map[$data['cashback_menu']] ?? null;
+    }
+}
+
 if (!function_exists('rxNavBack')) {
     function rxNavBack($from_id, $originHint = null, $currentStep = null)
     {
@@ -1219,8 +1255,12 @@ if (!function_exists('rxNavBack')) {
             }
             $currentStep = (string) $currentStep;
 
+            $cashbackSharedSteps = ['getcashtarget' => true, 'getcashtargetdays' => true, 'getcashscope' => true];
+
             if (is_string($originHint) && $originHint !== '') {
                 $target = $originHint;
+            } elseif (isset($cashbackSharedSteps[$currentStep]) && ($gwParent = rxNavCashbackGatewayParent($from_id)) !== null) {
+                $target = $gwParent;
             } elseif (rxNavIsMenuStep($currentStep)) {
                 $target = rxNavParent($currentStep);
             } elseif ($currentStep !== '' && $currentStep !== 'home') {
