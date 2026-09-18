@@ -658,6 +658,61 @@ cache_set() {
     printf '%s' "$value" > "${CACHE_DIR}/${key}"
 }
 
+ensure_host_prerequisites() {
+    local missing_packages=()
+    local cmd package
+    local required_commands=(
+        curl:curl
+        wget:wget
+        unzip:unzip
+        openssl:openssl
+        envsubst:gettext-base
+        ss:iproute2
+        gpg:gnupg
+    )
+
+    for cmd in "${required_commands[@]}"; do
+        package="${cmd#*:}"
+        cmd="${cmd%%:*}"
+        command -v "$cmd" >/dev/null 2>&1 || missing_packages+=("$package")
+    done
+
+    if [ "${#missing_packages[@]}" -eq 0 ]; then
+        ui_ok "Required host prerequisites are already installed."
+        return 0
+    fi
+
+    if ! command -v apt-get >/dev/null 2>&1; then
+        ui_err "Missing required commands: ${missing_packages[*]}. Automatic prerequisite installation currently requires an apt-based Debian/Ubuntu system."
+        return 1
+    fi
+
+    local unique_packages=() seen=" " item
+    for item in "${missing_packages[@]}"; do
+        if [[ "$seen" != *" $item "* ]]; then
+            unique_packages+=("$item")
+            seen+="$item "
+        fi
+    done
+
+    ui_action "Installing missing prerequisites automatically: ${unique_packages[*]}"
+    DEBIAN_FRONTEND=noninteractive apt-get update || { ui_err "apt-get update failed while installing prerequisites."; return 1; }
+    DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates "${unique_packages[@]}" || { ui_err "Failed to install required prerequisites."; return 1; }
+
+    local failed=0
+    for cmd in "${required_commands[@]}"; do
+        package="${cmd#*:}"
+        cmd="${cmd%%:*}"
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            ui_err "Prerequisite '${cmd}' is still unavailable after installing package '${package}'."
+            failed=1
+        fi
+    done
+
+    [ "$failed" -eq 0 ] || return 1
+    ui_ok "All required host prerequisites are installed."
+}
+
 docker_installed() {
     command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1
 }
@@ -1288,6 +1343,7 @@ install_bot() {
         "${C_WHITE}Installing nginx + php-fpm + MySQL as a Docker Compose stack.${C_RESET}" \
         "${C_DIM}The stack will be deployed from ${PROJECT_DIR}${C_RESET}"
 
+    ensure_host_prerequisites || { ui_err "Host prerequisites could not be installed."; exit 1; }
     install_docker
 
     local install_source version_arg1="${1:-}" version_arg2="${2:-}"
@@ -1573,6 +1629,8 @@ install_additional_bot() {
     ui_panel "INSTALL ADDITIONAL BOT" "$C_BOLD$C_GREEN" "$C_GREEN" \
         "${C_WHITE}Adds another bot sharing this server's domain, nginx, and MySQL.${C_RESET}" \
         "${C_DIM}The bot is reachable at the main domain under its own name (like cPanel subfolders), and gets its own database inside the same MySQL server.${C_RESET}"
+
+    ensure_host_prerequisites || { ui_err "Host prerequisites could not be installed."; return 1; }
 
     if [ ! -f "$ENV_FILE" ] || [ ! -f "$COMPOSE_FILE" ]; then
         ui_err "Install the main Faoxima Bot first (option 1) before adding additional bots."
@@ -2512,6 +2570,8 @@ update_bot() {
     ui_panel "UPDATE FAOXIMA BOT" "$C_BOLD$C_BLUE" "$C_BLUE" \
         "${C_WHITE}Update from the latest GitHub release, or from a manually-provided ZIP.${C_RESET}" \
         "${C_DIM}Latest config.php code is installed while existing credentials and .env values are preserved.${C_RESET}"
+
+    ensure_host_prerequisites || { ui_err "Host prerequisites could not be installed."; exit 1; }
 
     if [ ! -f "$ENV_FILE" ] || [ ! -f "$COMPOSE_FILE" ]; then
         ui_err "Faoxima Bot is not installed (no .env/docker-compose.yml at ${PROJECT_DIR})."
