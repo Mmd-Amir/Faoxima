@@ -168,28 +168,32 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     sendDocument($from_id, 'api/documents.txt', "📌 داکیومنت api ربات
 نکات :
 ۱ - در صورتی که به endpoint خاصی نیاز داشتید به اکانت پشتیبانی پیام دهید تا بررسی شود.");
-} elseif ($text == "✅ پنل تحت وب" && $adminrulecheck['rule'] == "administrator") {
-    $admin_select = select("admin", "*", "id_admin", $from_id, "select");
-    $randomString = bin2hex(random_bytes(6));
-    update("admin", "username", $from_id, "id_admin", $from_id);
-    if ($admin_select['password'] == null) {
-        update("admin", "password", $randomString, "id_admin", $from_id);
-        update("admin", "password_hash", password_hash($randomString, PASSWORD_DEFAULT), "id_admin", $from_id);
-    } else {
-        $randomString = $admin_select['password'];
+} elseif (($text == "✅ پنل تحت وب" || $datain == "webpanel_mgr_list") && $adminrulecheck['rule'] == "administrator") {
+    $webpanelListAdmins = select("admin", "*", null, null, "fetchAll");
+    $webpanelListKeyboard = ['inline_keyboard' => []];
+    foreach ($webpanelListAdmins as $webpanelListRow) {
+        $webpanelListId = isset($webpanelListRow['id_admin']) ? trim($webpanelListRow['id_admin']) : '';
+        if ($webpanelListId === '') {
+            continue;
+        }
+        $webpanelListUsername = trim((string)($webpanelListRow['username'] ?? '')) !== '' ? trim((string)($webpanelListRow['username'] ?? '')) : $webpanelListId;
+        $webpanelListKeyboard['inline_keyboard'][] = [
+            ['text' => "👤 {$webpanelListUsername} — {$webpanelListId}", 'callback_data' => "webpanel_mgr_view_" . $webpanelListId],
+        ];
     }
-    $keyboardstatistics = json_encode([
-        'inline_keyboard' => [
-            [
-                ['text' => "⚙️ مدیریت حساب پنل (تغییر رمز / آیپی)", 'callback_data' => 'webpanel_mgr_view_' . $from_id],
-            ],
-        ]
-    ]);
-    nm_adminInstantReply($from_id, "✅  پنل تحت وب شما با موفقیت فعال گردید.
-
-🔗آدرس ورود : https://$domainhosts/panel
-👤نام کاربری :  <code>$from_id</code>
-🔑رمز عبور :  <code>$randomString</code>", $keyboardstatistics, 'HTML');
+    $webpanelListKeyboard['inline_keyboard'][] = [
+        ['text' => "🔙 بازگشت به منوی قبل", 'callback_data' => "set_backadmin"],
+        ['text' => "🏠 منوی مدیریت", 'callback_data' => "adm_hub_main"],
+    ];
+    $webpanelListKeyboardJson = json_encode($webpanelListKeyboard);
+    $webpanelListMsg = "✅ <b>پنل تحت وب</b>\n";
+    $webpanelListMsg .= "━━━━━━━━━━━━━━━━━━━━\n";
+    $webpanelListMsg .= "برای مدیریت حساب پنل هر ادمین (نام کاربری، رمز عبور، آیپی ورود)، روی نام او بزنید.";
+    if ($message_id) {
+        Editmessagetext($from_id, $message_id, $webpanelListMsg, $webpanelListKeyboardJson);
+    } else {
+        nm_adminInstantReply($from_id, $webpanelListMsg, $webpanelListKeyboardJson, 'HTML');
+    }
 } elseif (preg_match('/^webpanel_mgr_view_(\w+)$/', $datain, $webpanelMgrViewMatch) && $adminrulecheck['rule'] == "administrator") {
     $viewAdminId = trim($webpanelMgrViewMatch[1]);
     $viewAdminRow = select("admin", "*", "id_admin", $viewAdminId, "select");
@@ -209,6 +213,9 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     $viewMsg .= "━━━━━━━━━━━━━━━━━━━━";
     $viewKeyboard = ['inline_keyboard' => []];
     $viewKeyboard['inline_keyboard'][] = [
+        ['text' => "🔐 اطلاعات ورود پنل", 'callback_data' => "webpanel_mgr_creds_" . $viewAdminId],
+    ];
+    $viewKeyboard['inline_keyboard'][] = [
         ['text' => "✏️ تغییر نام کاربری", 'callback_data' => "webpanel_mgr_uname_" . $viewAdminId],
     ];
     $viewKeyboard['inline_keyboard'][] = [
@@ -217,12 +224,39 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     $viewKeyboard['inline_keyboard'][] = [
         ['text' => "🌐 تنظیم آیپی ورود اختصاصی", 'callback_data' => "webpanel_mgr_ip_" . $viewAdminId],
     ];
+    $viewKeyboard['inline_keyboard'][] = [
+        ['text' => "◀️ بازگشت به لیست ادمین‌ها", 'callback_data' => "webpanel_mgr_list"],
+    ];
     $viewKeyboardJson = json_encode($viewKeyboard);
     if ($message_id) {
         Editmessagetext($from_id, $message_id, $viewMsg, $viewKeyboardJson);
     } else {
         nm_adminInstantReply($from_id, $viewMsg, $viewKeyboardJson, 'HTML');
     }
+} elseif (preg_match('/^webpanel_mgr_creds_(\w+)$/', $datain, $webpanelMgrCredsMatch) && $adminrulecheck['rule'] == "administrator") {
+    $credsAdminId = trim($webpanelMgrCredsMatch[1]);
+    $credsAdminRow = select("admin", "*", "id_admin", $credsAdminId, "select");
+    if (!$credsAdminRow) {
+        nm_adminInstantReply($from_id, "❌ ادمینی با این شناسه یافت نشد.", null, 'HTML');
+        return;
+    }
+    $credsPassword = $credsAdminRow['password'] ?? null;
+    if ($credsPassword === null || $credsPassword === '') {
+        $credsPassword = bin2hex(random_bytes(6));
+        update("admin", "password", $credsPassword, "id_admin", $credsAdminId);
+        update("admin", "password_hash", password_hash($credsPassword, PASSWORD_DEFAULT), "id_admin", $credsAdminId);
+    }
+    $credsUsername = trim((string)($credsAdminRow['username'] ?? ''));
+    if ($credsUsername === '') {
+        $credsUsername = $credsAdminId;
+        update("admin", "username", $credsUsername, "id_admin", $credsAdminId);
+    }
+    $credsBackKb = json_encode(['inline_keyboard' => [[['text' => "◀️ بازگشت", 'callback_data' => "webpanel_mgr_view_" . $credsAdminId]]]]);
+    nm_adminInstantReply($from_id, "🔐 <b>اطلاعات ورود پنل تحت وب</b>
+
+🔗آدرس ورود : https://$domainhosts/panel
+👤نام کاربری :  <code>" . htmlspecialchars($credsUsername) . "</code>
+🔑رمز عبور :  <code>{$credsPassword}</code>", $credsBackKb, 'HTML');
 } elseif (preg_match('/^webpanel_mgr_uname_(\w+)$/', $datain, $webpanelMgrUnameMatch) && $adminrulecheck['rule'] == "administrator") {
     $targetAdminId = trim($webpanelMgrUnameMatch[1]);
     if (!select("admin", "id_admin", "id_admin", $targetAdminId, "select")) {
