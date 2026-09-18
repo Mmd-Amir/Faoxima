@@ -198,26 +198,6 @@ if (is_array($keyboardLayout) && isset($keyboardLayout['keyboard']) && is_array(
     $keyboardRows = $keyboardLayout['keyboard'];
 }
 
-if (!empty($keyboardRows) && function_exists('rx_usertest_panel_active') && !rx_usertest_panel_active()) {
-    $rxFilteredRows = [];
-    foreach ($keyboardRows as $rxRow) {
-        if (!is_array($rxRow)) {
-            continue;
-        }
-        $rxNewRow = [];
-        foreach ($rxRow as $rxBtn) {
-            if (is_array($rxBtn) && isset($rxBtn['text']) && $rxBtn['text'] === 'text_usertest') {
-                continue;
-            }
-            $rxNewRow[] = $rxBtn;
-        }
-        if (!empty($rxNewRow)) {
-            $rxFilteredRows[] = $rxNewRow;
-        }
-    }
-    $keyboardRows = $rxFilteredRows;
-}
-
 if ($setting['inlinebtnmain'] == "oninline" && !empty($keyboardRows)) {
     $trace_keyboard = $keyboardRows;
     foreach ($trace_keyboard as $key => $callback_set) {
