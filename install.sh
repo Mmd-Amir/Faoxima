@@ -493,9 +493,71 @@ dc() {
 
 normalize_domain() {
     local domain="${1:-}"
-    domain=$(printf '%s' "$domain" | tr '[:upper:]' '[:lower:]')
-    domain="${domain%.}"
+    domain=$(printf '%s' "$domain" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | tr '[:upper:]' '[:lower:]')
+    while [[ "$domain" == *. ]]; do
+        domain="${domain%.}"
+    done
     printf '%s' "$domain"
+}
+
+validate_domain_format() {
+    local domain
+    domain=$(normalize_domain "$1")
+    DOMAIN_VALIDATION_ERROR=""
+
+    if [ -z "$domain" ]; then
+        DOMAIN_VALIDATION_ERROR="Domain cannot be empty."
+        return 1
+    fi
+
+    if [ "${#domain}" -gt 253 ]; then
+        DOMAIN_VALIDATION_ERROR="Domain is too long."
+        return 1
+    fi
+
+    if [[ "$domain" == *://* || "$domain" == */* || "$domain" == *:* || "$domain" == *@* ]]; then
+        DOMAIN_VALIDATION_ERROR="Enter only the hostname, without http://, https://, port, path, or credentials."
+        return 1
+    fi
+
+    if [[ "$domain" != *.* ]]; then
+        DOMAIN_VALIDATION_ERROR="Domain must contain at least one dot."
+        return 1
+    fi
+
+    local len half first second
+    len=${#domain}
+    if [ $((len % 2)) -eq 0 ]; then
+        half=$((len / 2))
+        first="${domain:0:half}"
+        second="${domain:half}"
+        if [ "$first" = "$second" ]; then
+            DOMAIN_VALIDATION_ERROR="Domain appears to be duplicated: ${domain}"
+            return 1
+        fi
+    fi
+
+    local labels=() label
+    IFS='.' read -r -a labels <<< "$domain"
+    if [ "${#labels[@]}" -lt 2 ]; then
+        DOMAIN_VALIDATION_ERROR="Invalid domain format."
+        return 1
+    fi
+
+    for label in "${labels[@]}"; do
+        if [ -z "$label" ] || [ "${#label}" -gt 63 ] || [[ ! "$label" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]; then
+            DOMAIN_VALIDATION_ERROR="Invalid domain label: ${label:-<empty>}"
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+domain_resolves() {
+    local domain
+    domain=$(normalize_domain "$1")
+    getent ahosts "$domain" >/dev/null 2>&1 || getent hosts "$domain" >/dev/null 2>&1
 }
 
 get_cert_enddate() {
@@ -537,6 +599,7 @@ ensure_envsubst() {
 render_vhost() {
     local domain outfile="$2" pma_allowed_ips ip
     domain=$(normalize_domain "$1")
+    validate_domain_format "$domain" || { ui_err "$DOMAIN_VALIDATION_ERROR"; return 1; }
     ensure_envsubst || { ui_err "envsubst is not available and could not be installed."; return 1; }
     mkdir -p "$(dirname "$outfile")" || { ui_err "Failed to create directory for ${outfile}."; return 1; }
     if [ ! -f "$NGINX_TEMPLATE" ]; then
@@ -578,6 +641,7 @@ render_bot_location() {
 ensure_dummy_cert() {
     local domain
     domain=$(normalize_domain "$1")
+    validate_domain_format "$domain" || { ui_err "$DOMAIN_VALIDATION_ERROR"; return 1; }
     dc run --rm --no-deps --entrypoint sh certbot -c "
         set -e
         dir=/etc/letsencrypt/live/${domain}
@@ -604,6 +668,11 @@ discard_dummy_cert() {
 issue_certificate() {
     local domain
     domain=$(normalize_domain "$1")
+    validate_domain_format "$domain" || { ui_err "$DOMAIN_VALIDATION_ERROR"; return 1; }
+    if ! domain_resolves "$domain"; then
+        ui_err "Domain '${domain}' does not resolve in DNS. Certificate issuance was stopped before touching nginx."
+        return 1
+    fi
     if dc run --rm --entrypoint certbot certbot certonly --webroot -w /var/www/certbot --agree-tos --non-interactive \
             -m "admin@${domain}" -d "$domain"; then
         dc exec nginx nginx -s reload 2>/dev/null || true
@@ -631,7 +700,10 @@ env_get() {
 
 env_set() {
     local key="$1" value="$2"
-    [ "$key" = "DOMAIN" ] && value=$(normalize_domain "$value")
+    if [ "$key" = "DOMAIN" ]; then
+        value=$(normalize_domain "$value")
+        validate_domain_format "$value" || { ui_err "$DOMAIN_VALIDATION_ERROR"; return 1; }
+    fi
     if [ ! -f "$ENV_FILE" ]; then
         touch "$ENV_FILE" || { ui_err "Failed to create ${ENV_FILE}."; exit 1; }
     fi
@@ -1413,19 +1485,26 @@ install_bot() {
         "${C_WHITE}Now we'll wire up your domain and Telegram bot credentials.${C_RESET}" \
         "${C_DIM}Get the bot token from @BotFather and your numeric chat ID from @userinfobot.${C_RESET}"
 
-    local domainname
-    printf '\n  %s❯%s Enter the domain (e.g. example.com): ' "$C_YELLOW" "$C_RESET"
-    read -r domainname
-    while [[ ! "$domainname" =~ ^[a-zA-Z0-9.-]+$ ]]; do
-        ui_err "Invalid domain format. Please try again."
-        printf '  %s❯%s Enter the domain: ' "$C_YELLOW" "$C_RESET"
+    local domainname entered_domain
+    while true; do
+        printf '\n  %s❯%s Enter the domain (e.g. example.com): ' "$C_YELLOW" "$C_RESET"
         read -r domainname
+        entered_domain="$domainname"
+        domainname=$(normalize_domain "$domainname")
+        if ! validate_domain_format "$domainname"; then
+            ui_err "$DOMAIN_VALIDATION_ERROR"
+            continue
+        fi
+        if ! domain_resolves "$domainname"; then
+            ui_err "Domain '${domainname}' does not resolve in DNS yet. Add/fix its A or AAAA record and try again."
+            continue
+        fi
+        if [ "$entered_domain" != "$domainname" ]; then
+            ui_info "Domain normalized to: ${domainname}"
+        fi
+        ui_ok "Domain validated and DNS resolves: ${domainname}"
+        break
     done
-    local entered_domain="$domainname"
-    domainname=$(normalize_domain "$domainname")
-    if [ "$entered_domain" != "$domainname" ]; then
-        ui_info "Domain normalized to lowercase: ${domainname}"
-    fi
 
     local YOUR_BOT_TOKEN
     printf '  %s❯%s Bot Token: ' "$C_YELLOW" "$C_RESET"
@@ -3453,17 +3532,26 @@ change_domain() {
         return 1
     fi
 
-    local new_domain
-    while [[ ! "$new_domain" =~ ^[a-zA-Z0-9.-]+$ ]]; do
+    local new_domain entered_domain
+    while true; do
         printf '  %s❯%s Enter new domain: ' "$C_YELLOW" "$C_RESET"
         read -r new_domain
-        [[ ! "$new_domain" =~ ^[a-zA-Z0-9.-]+$ ]] && ui_err "Invalid domain format"
+        entered_domain="$new_domain"
+        new_domain=$(normalize_domain "$new_domain")
+        if ! validate_domain_format "$new_domain"; then
+            ui_err "$DOMAIN_VALIDATION_ERROR"
+            continue
+        fi
+        if ! domain_resolves "$new_domain"; then
+            ui_err "Domain '${new_domain}' does not resolve in DNS yet. Add/fix its A or AAAA record and try again."
+            continue
+        fi
+        if [ "$entered_domain" != "$new_domain" ]; then
+            ui_info "Domain normalized to: ${new_domain}"
+        fi
+        ui_ok "Domain validated and DNS resolves: ${new_domain}"
+        break
     done
-    local entered_domain="$new_domain"
-    new_domain=$(normalize_domain "$new_domain")
-    if [ "$entered_domain" != "$new_domain" ]; then
-        ui_info "Domain normalized to lowercase: ${new_domain}"
-    fi
 
     local old_domain
     old_domain=$(normalize_domain "$(env_get DOMAIN)")
@@ -3920,7 +4008,10 @@ file_env_get() {
 
 file_env_set() {
     local file="$1" key="$2" value="$3"
-    [ "$key" = "DOMAIN" ] && value=$(normalize_domain "$value")
+    if [ "$key" = "DOMAIN" ]; then
+        value=$(normalize_domain "$value")
+        validate_domain_format "$value" || { ui_err "$DOMAIN_VALIDATION_ERROR"; return 1; }
+    fi
     local escaped_value
     escaped_value=${value//\\/\\\\}
     escaped_value=${escaped_value//&/\\&}
