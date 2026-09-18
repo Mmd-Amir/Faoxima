@@ -227,13 +227,14 @@ if (isset($_GET['pricelow']) and $_GET['pricelow']) {
         ]);
     }
     if (function_exists('balance_atomic_charge')) {
-        $__allowNeg = intval($_GET['pricelow']);
-        balance_atomic_charge($_GET['id'], intval($_GET['pricelow']), $__allowNeg);
+        $__adminDebitOk = balance_atomic_charge($_GET['id'], intval($_GET['pricelow']), 0);
+        $__adminDebitOk = !empty($__adminDebitOk['ok']);
     } else {
         $value = intval($user['Balance']) - intval($_GET['pricelow']);
         update("user", "Balance", $value, "id", $_GET['id']);
+        $__adminDebitOk = true;
     }
-    if (function_exists('wallet_ledger_record')) {
+    if ($__adminDebitOk && function_exists('wallet_ledger_record')) {
         wallet_ledger_record($_GET['id'], 'debit', $_GET['pricelow'], 'admin_debit', 'کاهش موجودی از پنل تحت وب');
     }
     header("Location: user.php?id={$_GET['id']}");

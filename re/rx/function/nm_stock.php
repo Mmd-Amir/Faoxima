@@ -107,7 +107,10 @@ function nmStockConvertInvoiceToPanelService($chatId, array $userRow, array $inv
     }
     if (function_exists('balance_atomic_charge')) {
         $__allowNegBl = (($userRow['agent'] ?? '') === 'n2') ? (int)($userRow['maxbuyagent'] ?? 0) : 0;
-        balance_atomic_charge($chatId, (float)$price, $__allowNegBl);
+        $__chargeBl = balance_atomic_charge($chatId, (float)$price, $__allowNegBl);
+        if (!empty($__chargeBl['ok']) && function_exists('wallet_ledger_record')) {
+            wallet_ledger_record($chatId, 'debit', $price, 'service_action', 'تمدید سرویس (تبدیل انبار)', null, 'invoice', (string)$invoice['id_invoice']);
+        }
     } else {
         update('user', 'Balance', (float)($userRow['Balance'] ?? 0) - $price, 'id', $chatId);
     }
@@ -405,7 +408,10 @@ function nmMaybeHandleStockCallback($datain,$chatId,$messageId=null,$callbackQue
             if(!$stockNew){ sendmessage($chatId,'❌ موجودی انبار برای این محصول تمام شده است. مبلغی کسر نشد.',$keyboard??null,'HTML'); return true; }
             if (function_exists('balance_atomic_charge')) {
                 $__allowNegRb=(($userRow['agent']??'')==='n2')?(int)($userRow['maxbuyagent']??0):0;
-                balance_atomic_charge($chatId,(float)$price,$__allowNegRb);
+                $__chargeRb=balance_atomic_charge($chatId,(float)$price,$__allowNegRb);
+                if (!empty($__chargeRb['ok']) && function_exists('wallet_ledger_record')) {
+                    wallet_ledger_record($chatId, 'debit', $price, 'service_action', 'تمدید سرویس (انبار ملی)', null, 'invoice', (string)$invoice['id_invoice']);
+                }
             } else {
                 update('user','Balance',(float)($userRow['Balance']??0)-$price,'id',$chatId);
             }
@@ -492,7 +498,10 @@ function nmStockCompleteExtendFallback($userId, array $userRow, array $invoice, 
         if ($priceToCharge > 0 && isset($userRow['Balance'])) {
             if (function_exists('balance_atomic_charge')) {
                 $__allowNegFb = (($userRow['agent'] ?? '') === 'n2') ? (int)($userRow['maxbuyagent'] ?? 0) : 0;
-                balance_atomic_charge($userId, $priceToCharge, $__allowNegFb);
+                $__chargeFb = balance_atomic_charge($userId, $priceToCharge, $__allowNegFb);
+                if (!empty($__chargeFb['ok']) && function_exists('wallet_ledger_record')) {
+                    wallet_ledger_record($userId, 'debit', $priceToCharge, 'service_action', 'تمدید سرویس (جایگزین انبار)', null, 'invoice', (string)($invoice['id_invoice'] ?? ''));
+                }
             } else {
                 $newBalance = (float)$userRow['Balance'] - $priceToCharge;
                 update('user', 'Balance', $newBalance, 'id', $userId);
@@ -948,7 +957,10 @@ function nmStockCompleteBuyFromInventory($userId, array $userRow, array $panel, 
             if ($__pp3 > 0) {
                 if (function_exists('balance_atomic_charge')) {
                     $__allowNeg3 = (($userRow['agent'] ?? '') === 'n2') ? (int)($userRow['maxbuyagent'] ?? 0) : 0;
-                    balance_atomic_charge($userId, $__pp3, $__allowNeg3);
+                    $__charge3 = balance_atomic_charge($userId, $__pp3, $__allowNeg3);
+                    if (!empty($__charge3['ok']) && function_exists('wallet_ledger_record')) {
+                        wallet_ledger_record($userId, 'debit', $__pp3, 'purchase', 'خرید سرویس (انبار ملی)', (string)$invoiceId, 'invoice', (string)$invoiceId);
+                    }
                 } else {
                     update('user', 'Balance', (float)($userRow['Balance'] ?? 0) - $__pp3, 'id', $userId);
                 }

@@ -1263,10 +1263,23 @@ $text_porsant
     $price_gift_Start = select("affiliates", "*", null, null, "select");
     $price_gift_Start = intval($price_gift_Start['price_Discount']) / 2;
     $useraffiliates = select("user", "*", 'id', $reagent['reagent'], "select");
-    $Balance_add_regent = $useraffiliates['Balance'] + $price_gift_Start;
-    update("user", "Balance", $Balance_add_regent, "id", $reagent['reagent']);
-    $Balance_add_user = $user['Balance'] + $price_gift_Start;
-    update("user", "Balance", $Balance_add_user, "id", $from_id);
+    if (function_exists('balance_atomic_credit') && $price_gift_Start > 0) {
+        $__giftOkRef = balance_atomic_credit($reagent['reagent'], $price_gift_Start);
+        if ($__giftOkRef && function_exists('wallet_ledger_record')) {
+            wallet_ledger_record($reagent['reagent'], 'credit', $price_gift_Start, 'referral_gift', 'هدیه عضویت زیرمجموعه', null, 'user', (string)$from_id);
+        }
+        $__giftOkUser = balance_atomic_credit($from_id, $price_gift_Start);
+        if ($__giftOkUser && function_exists('wallet_ledger_record')) {
+            wallet_ledger_record($from_id, 'credit', $price_gift_Start, 'referral_gift', 'هدیه عضویت', null, 'user', (string)$reagent['reagent']);
+        }
+    } else {
+        $Balance_add_regent = $useraffiliates['Balance'] + $price_gift_Start;
+        update("user", "Balance", $Balance_add_regent, "id", $reagent['reagent']);
+        $Balance_add_user = $user['Balance'] + $price_gift_Start;
+        update("user", "Balance", $Balance_add_user, "id", $from_id);
+    }
+    $Balance_add_regent = select("user", "Balance", "id", $reagent['reagent'], "select", ['cache' => false])['Balance'] ?? ($useraffiliates['Balance'] + $price_gift_Start);
+    $Balance_add_user = select("user", "Balance", "id", $from_id, "select", ['cache' => false])['Balance'] ?? ($user['Balance'] + $price_gift_Start);
     $addbalancediscount = number_format($price_gift_Start, 0);
     sendmessage($reagent['reagent'], $datatextbot['dyn_affiliates_extra_gift_credited_inviter'] ?? "🎉 یک نفر با معرفی شما وارد شد! هدیه به حساب شما واریز شد.", null, 'html');
     sendmessage($from_id, $datatextbot['dyn_affiliates_extra_gift_activated'] ?? "🎉 هدیه عضویت برای شما فعال شد!", null, 'html');
@@ -1416,6 +1429,9 @@ $text_porsant
             return;
         }
         $Balance_Low_user = $__chargeEv['new_balance'];
+        if (function_exists('wallet_ledger_record')) {
+            wallet_ledger_record($from_id, 'debit', $volume, 'service_action', 'خرید حجم اضافه', null, 'invoice', (string)($user['Processing_value'] ?? ''));
+        }
     } else {
         $Balance_Low_user = $user['Balance'] - $volume;
         update("user", "Balance", $Balance_Low_user, "id", $from_id);
@@ -1696,8 +1712,16 @@ $text_porsant
         return;
     }
     if ($status) {
-        $balance_last = intval($setting['wheelـluck_price']) + $user['Balance'];
-        update("user", "Balance", $balance_last, "id", $from_id);
+        $wheelPrize = intval($setting['wheelـluck_price']);
+        if (function_exists('balance_atomic_credit') && $wheelPrize > 0) {
+            $__wheelOk = balance_atomic_credit($from_id, $wheelPrize);
+            if ($__wheelOk && function_exists('wallet_ledger_record')) {
+                wallet_ledger_record($from_id, 'credit', $wheelPrize, 'lottery', 'جایزه گردونه شانس', null, 'wheel_list', (string)$from_id);
+            }
+        } else {
+            $balance_last = $wheelPrize + $user['Balance'];
+            update("user", "Balance", $balance_last, "id", $from_id);
+        }
         $price = number_format($setting['wheelـluck_price']);
         sendmessage($from_id, sprintf($textbotlang['users']['wheel_luck']['winner-congratulations'], $price), null, 'HTML');
         if (strlen($setting['Channel_Report'] ?? '') > 0) {

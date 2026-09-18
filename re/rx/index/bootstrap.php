@@ -3367,6 +3367,9 @@ $nameconfig";
         }
         $Balance_Low_user = $__chargeEx['new_balance'];
         $__chargedExUser = true;
+        if (function_exists('wallet_ledger_record')) {
+            wallet_ledger_record($from_id, 'debit', $pricelastextend, 'service_action', 'تمدید سرویس', $randomString, 'invoice', (string)$id_invoice);
+        }
     } else {
         $Balance_Low_user = $user['Balance'];
     }
@@ -3377,7 +3380,10 @@ $nameconfig";
     $extend = $ManagePanel->extend($marzban_list_get['Methodextend'], $prodcut['Volume_constraint'], $prodcut['Service_time'], $nameloc['username'], $prodcut['code_product'], $marzban_list_get['code_panel']);
     if ($extend['status'] == false) {
         if ($__chargedExUser && function_exists('balance_atomic_credit')) {
-            balance_atomic_credit($from_id, $pricelastextend);
+            $__refundedEx = balance_atomic_credit($from_id, $pricelastextend);
+            if ($__refundedEx && function_exists('wallet_ledger_record')) {
+                wallet_ledger_record($from_id, 'credit', $pricelastextend, 'refund', 'بازگشت وجه تمدید سرویس', $randomString, 'invoice', (string)$id_invoice);
+            }
         }
         $rxStockEmpty = ($extend['code'] ?? '') === 'manual_stock_empty';
         $rxQueuedExists = ($extend['code'] ?? '') === 'queued_renewal_exists';
@@ -3790,6 +3796,7 @@ $nameconfig";
         }
     }
     $__allowNegVx = ($user['agent'] === 'n2') ? (int)($user['maxbuyagent'] ?? 0) : 0;
+    $__chargedVxUser = false;
     if ($volumepricelast > 0) {
         $__chargeVx = function_exists('balance_atomic_charge') ? balance_atomic_charge($from_id, $volumepricelast, $__allowNegVx) : ['ok' => false];
         if (empty($__chargeVx['ok'])) {
@@ -3797,6 +3804,10 @@ $nameconfig";
             return;
         }
         $Balance_Low_user = $__chargeVx['new_balance'];
+        $__chargedVxUser = true;
+        if (function_exists('wallet_ledger_record')) {
+            wallet_ledger_record($from_id, 'debit', $volumepricelast, 'service_action', 'خرید حجم اضافه', null, 'invoice', (string)($nameloc['id_invoice'] ?? ''));
+        }
     } else {
         $Balance_Low_user = $user['Balance'];
     }
@@ -3810,6 +3821,12 @@ $nameconfig";
     $data_limit = intval($volume) / intval($extrapricevalue);
     $extra_volume = $ManagePanel->extra_volume($nameloc['username'], $marzban_list_get['code_panel'], $data_limit);
     if ($extra_volume['status'] == false) {
+        if ($__chargedVxUser && function_exists('balance_atomic_credit')) {
+            $__refundedVx = balance_atomic_credit($from_id, $volumepricelast);
+            if ($__refundedVx && function_exists('wallet_ledger_record')) {
+                wallet_ledger_record($from_id, 'credit', $volumepricelast, 'refund', 'بازگشت وجه خرید حجم اضافه', null, 'invoice', (string)($nameloc['id_invoice'] ?? ''));
+            }
+        }
         $extra_volume['msg'] = json_encode($extra_volume['msg']);
         $textreports = "خطای خرید حجم اضافه
 <blockquote>نام پنل : {$marzban_list_get['name_panel']}</blockquote>
@@ -4155,6 +4172,9 @@ $nameconfig";
             return;
         }
         $Balance_Low_user = $__chargePc['new_balance'];
+        if (function_exists('wallet_ledger_record')) {
+            wallet_ledger_record($from_id, 'debit', $Pricechange, 'service_action', 'تغییر موقعیت سرویس', null, 'invoice', (string)($nameloc['id_invoice'] ?? ''));
+        }
     }
     update("invoice", "Service_location", $marzban_list_get_new['name_panel'], "username", $nameloc['username']);
     if ($marzban_list_get_new['inboundid'] != null) {
@@ -4555,6 +4575,9 @@ $nameconfig";
             return;
         }
         $Balance_Low_user = $__chargeEt['new_balance'];
+        if (function_exists('wallet_ledger_record')) {
+            wallet_ledger_record($from_id, 'debit', $pricelasttime, 'service_action', 'خرید زمان اضافه', null, 'invoice', (string)($nameloc['id_invoice'] ?? ''));
+        }
     } else {
         $Balance_Low_user = $user['Balance'];
     }
@@ -4588,7 +4611,10 @@ $nameconfig";
         }
 
         if (!empty($__chargedEtUser) && function_exists('balance_atomic_credit')) {
-            balance_atomic_credit($from_id, $pricelasttime);
+            $__refundedEt = balance_atomic_credit($from_id, $pricelasttime);
+            if ($__refundedEt && function_exists('wallet_ledger_record')) {
+                wallet_ledger_record($from_id, 'credit', $pricelasttime, 'refund', 'بازگشت وجه زمان اضافه', null, 'invoice', (string)($nameloc['id_invoice'] ?? ''));
+            }
         }
         return;
     }

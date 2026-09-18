@@ -23,6 +23,7 @@ final class TransactionHistoryHandler extends BaseHandler
         'service_action'        => 'عملیات سرویس',
         'transfer_out'          => 'انتقال موجودی به کاربر دیگر',
         'transfer_in'           => 'انتقال موجودی از کاربر دیگر',
+        'referral_gift'         => 'هدیه عضویت زیرمجموعه',
     ];
 
     public function handle(): void

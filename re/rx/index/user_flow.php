@@ -878,6 +878,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         'service_action'       => 'عملیات سرویس',
         'transfer_out'         => 'انتقال موجودی به کاربر دیگر',
         'transfer_in'          => 'انتقال موجودی از کاربر دیگر',
+        'referral_gift'        => 'هدیه عضویت زیرمجموعه',
     ];
     $txRangeKey = $txRangeMatch[1];
     $txLimit = 5;
@@ -1045,16 +1046,19 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         step('home', $from_id);
         return;
     }
+    wallet_ledger_record($from_id, 'debit', $trAmount, 'transfer_out', 'انتقال موجودی به کاربر ' . $trRecipientId, null, 'user', (string)$trRecipientId);
     $trCredited = balance_atomic_credit($trRecipientId, $trAmount);
     if (!$trCredited) {
-        balance_atomic_credit($from_id, $trAmount);
+        $trRefunded = balance_atomic_credit($from_id, $trAmount);
+        if ($trRefunded) {
+            wallet_ledger_record($from_id, 'credit', $trAmount, 'refund', 'بازگشت وجه انتقال ناموفق', null, 'user', (string)$trRecipientId);
+        }
         Editmessagetext($from_id, $message_id, "❌ خطا در واریز به کاربر مقصد. مبلغ به کیف پول شما بازگشت داده شد.", null, 'HTML');
         update("user", "Processing_value", "0", "id", $from_id);
         update("user", "Processing_value_one", "", "id", $from_id);
         step('home', $from_id);
         return;
     }
-    wallet_ledger_record($from_id, 'debit', $trAmount, 'transfer_out', 'انتقال موجودی به کاربر ' . $trRecipientId, null, 'user', (string)$trRecipientId);
     wallet_ledger_record($trRecipientId, 'credit', $trAmount, 'transfer_in', 'انتقال موجودی از کاربر ' . $from_id, null, 'user', (string)$from_id);
     update("user", "Processing_value", "0", "id", $from_id);
     update("user", "Processing_value_one", "", "id", $from_id);
@@ -2583,7 +2587,10 @@ $textonebuy
             ];
             nmStockDeliverConfig($stock, $inventoryInvoice, '✅ وضعیت نت ملی فعال است؛ اشتراک از انبار شبکه‌ملی تحویل شد');
             if (function_exists('balance_atomic_charge')) {
-                balance_atomic_charge($from_id, (float)$__bulkItemCharge, $__bulkAllowNeg);
+                $__bulkChargeNm = balance_atomic_charge($from_id, (float)$__bulkItemCharge, $__bulkAllowNeg);
+                if (!empty($__bulkChargeNm['ok']) && function_exists('wallet_ledger_record')) {
+                    wallet_ledger_record($from_id, 'debit', $__bulkItemCharge, 'purchase', 'خرید انبوه سرویس (انبار ملی)', (string)$randomString, 'invoice', (string)$randomString);
+                }
             }
             $__bulkChargedTotal += $__bulkItemCharge;
             continue;
@@ -2652,7 +2659,10 @@ $textonebuy
         $textcreatuser = applyConnectionPlaceholders($textcreatuser, $output_config_link, $config);
         sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
         if (function_exists('balance_atomic_charge')) {
-            balance_atomic_charge($from_id, (float)$__bulkItemCharge, $__bulkAllowNeg);
+            $__bulkChargeLive = balance_atomic_charge($from_id, (float)$__bulkItemCharge, $__bulkAllowNeg);
+            if (!empty($__bulkChargeLive['ok']) && function_exists('wallet_ledger_record')) {
+                wallet_ledger_record($from_id, 'debit', $__bulkItemCharge, 'purchase', 'خرید انبوه سرویس', (string)$randomString, 'invoice', (string)$randomString);
+            }
         } else {
             update("user", "Balance", select("user", "Balance", "id", $from_id, "select")['Balance'] - $__bulkItemCharge, "id", $from_id);
         }

@@ -2033,7 +2033,10 @@ function DirectPayment($order_id, $image = 'images.jpg')
                 return;
             }
             $balance = $Balance_id['Balance'] + $Payment_report['price'];
-            balance_atomic_credit($Balance_id['id'], $Payment_report['price']);
+            $__refundOkNs = balance_atomic_credit($Balance_id['id'], $Payment_report['price']);
+            if ($__refundOkNs && function_exists('wallet_ledger_record')) {
+                wallet_ledger_record($Balance_id['id'], 'credit', $Payment_report['price'], 'refund', 'بازگشت وجه - موجودی انبار ملی تمام شده', (string)$order_id, 'invoice', (string)$get_invoice['id_invoice']);
+            }
             try {
                 $__nationalNote = '[auto-refund: national stock empty at ' . date('Y-m-d H:i:s') . ']';
                 $__mk = $pdo->prepare("UPDATE Payment_report SET dec_not_confirmed = CASE WHEN dec_not_confirmed IS NULL OR dec_not_confirmed = '' THEN :n1 ELSE CONCAT(dec_not_confirmed, ' | ', :n2) END WHERE id_order = :o");
@@ -2107,7 +2110,10 @@ function DirectPayment($order_id, $image = 'images.jpg')
         if ($dataoutput['username'] == null) {
             $dataoutput['msg'] = json_encode($dataoutput['msg']);
             $balance = $Balance_id['Balance'] + $Payment_report['price'];
-            balance_atomic_credit($Balance_id['id'], $Payment_report['price']);
+            $__refundOkCu = balance_atomic_credit($Balance_id['id'], $Payment_report['price']);
+            if ($__refundOkCu && function_exists('wallet_ledger_record')) {
+                wallet_ledger_record($Balance_id['id'], 'credit', $Payment_report['price'], 'refund', 'بازگشت وجه - خطا در ساخت سرویس', (string)$order_id, 'invoice', (string)$get_invoice['id_invoice']);
+            }
             // [refund-marker] برای جلوگیری از double-refund توسط retry — حتماً قبل از sendmessageها مارک کن
             try {
                 $__failNote = '[auto-refund: service creation failed at ' . date('Y-m-d H:i:s') . ']';
@@ -2336,7 +2342,10 @@ $textonebuy
         }
         if (!is_array($prodcut)) {
             $balance = $Balance_id['Balance'] + $Payment_report['price'];
-            balance_atomic_credit($Balance_id['id'], $Payment_report['price']);
+            $__refundOkPr = balance_atomic_credit($Balance_id['id'], $Payment_report['price']);
+            if ($__refundOkPr && function_exists('wallet_ledger_record')) {
+                wallet_ledger_record($Balance_id['id'], 'credit', $Payment_report['price'], 'refund', 'بازگشت وجه - محصول تمدید در دسترس نیست', (string)$Payment_report['id_order'], 'invoice', (string)($nameloc['id_invoice'] ?? ''));
+            }
             sendmessage($Balance_id['id'], "❌ محصول این تمدید دیگر در دسترس نیست؛ مبلغ پرداختی به کیف پول شما بازگردانده شد.", $keyboard, 'HTML');
             return;
         }
@@ -2350,7 +2359,10 @@ $textonebuy
             if (!is_array($stockNew) || (string)($stockNew['content'] ?? '') === '') {
                 if (is_array($stockNew) && function_exists('nmStockReleaseReservation')) nmStockReleaseReservation($stockNew);
                 $balance = $Balance_id['Balance'] + $Payment_report['price'];
-                balance_atomic_credit($Balance_id['id'], $Payment_report['price']);
+                $__refundOkSt = balance_atomic_credit($Balance_id['id'], $Payment_report['price']);
+                if ($__refundOkSt && function_exists('wallet_ledger_record')) {
+                    wallet_ledger_record($Balance_id['id'], 'credit', $Payment_report['price'], 'refund', 'بازگشت وجه - موجودی انبار تمام شده', (string)$Payment_report['id_order'], 'invoice', (string)($nameloc['id_invoice'] ?? ''));
+                }
                 sendmessage($Balance_id['id'], "❌ موجودی انبار برای این محصول تمام شده است؛ مبلغ پرداختی به کیف پول شما بازگردانده شد.", $keyboard, 'HTML');
                 return;
             }
@@ -2373,7 +2385,10 @@ $textonebuy
             $extend = $ManagePanel->extend($marzban_list_get['Methodextend'], $prodcut['Volume_constraint'], $prodcut['Service_time'], $nameloc['username'], $prodcut['code_product'], $marzban_list_get['code_panel']);
         if ($extend['status'] == false) {
             $balance = $Balance_id['Balance'] + $Payment_report['price'];
-            balance_atomic_credit($Balance_id['id'], $Payment_report['price']);
+            $__refundOkEx = balance_atomic_credit($Balance_id['id'], $Payment_report['price']);
+            if ($__refundOkEx && function_exists('wallet_ledger_record')) {
+                wallet_ledger_record($Balance_id['id'], 'credit', $Payment_report['price'], 'refund', 'بازگشت وجه - خطا در تمدید سرویس', (string)$Payment_report['id_order'], 'invoice', (string)($nameloc['id_invoice'] ?? ''));
+            }
             sendmessage($Balance_id['id'], $textbotlang['users']['sell']['ErrorConfig'], $keyboard, 'HTML');
             sendmessage($Balance_id['id'], "💎  کاربر عزیز بدلیل تمدید نشدن سرویس مبلغ $balance تومان به کیف پول شما اضافه گردید.", $keyboard, 'HTML');
             $extend['msg'] = json_encode($extend['msg']);

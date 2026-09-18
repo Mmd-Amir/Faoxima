@@ -92,9 +92,14 @@ final class WalletTransferHandler extends BaseHandler
             FaoximaResponse::fail(422, 'موجودی کیف پول شما کافی نیست');
         }
 
+        wallet_ledger_record($senderId, 'debit', $amount, 'transfer_out', 'انتقال موجودی به کاربر ' . $recipientId, null, 'user', $recipientId);
+
         $credited = balance_atomic_credit($recipientId, $amount);
         if (!$credited) {
-            balance_atomic_credit($senderId, $amount);
+            $refunded = balance_atomic_credit($senderId, $amount);
+            if ($refunded) {
+                wallet_ledger_record($senderId, 'credit', $amount, 'refund', 'بازگشت وجه انتقال ناموفق', null, 'user', $recipientId);
+            }
             FaoximaLogger::critical('WalletTransfer credit failed, refunded sender', [
                 'sender' => $senderId,
                 'recipient' => $recipientId,
@@ -103,7 +108,6 @@ final class WalletTransferHandler extends BaseHandler
             FaoximaResponse::fail(500, 'خطا در انتقال موجودی. مبلغ به کیف پول شما بازگشت داده شد');
         }
 
-        wallet_ledger_record($senderId, 'debit', $amount, 'transfer_out', 'انتقال موجودی به کاربر ' . $recipientId, null, 'user', $recipientId);
         wallet_ledger_record($recipientId, 'credit', $amount, 'transfer_in', 'انتقال موجودی از کاربر ' . $senderId, null, 'user', $senderId);
 
         if (function_exists('sendmessage')) {

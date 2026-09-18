@@ -29,10 +29,14 @@ if (isset($update['pre_checkout_query'])) {
     if ($cashbackEligible && $pricecashback != "0") {
         $result = round(($Payment_report['price'] * $pricecashback) / 100);
         if (function_exists('balance_atomic_credit')) {
-            balance_atomic_credit($Balance_id['id'], $result);
+            $__starCashbackOk = balance_atomic_credit($Balance_id['id'], $result);
         } else {
             $Balance_confrim = intval($Balance_id['Balance']) + $result;
             update("user", "Balance", $Balance_confrim, "id", $Balance_id['id']);
+            $__starCashbackOk = true;
+        }
+        if (!empty($__starCashbackOk) && function_exists('wallet_ledger_record')) {
+            wallet_ledger_record($Balance_id['id'], 'credit', $result, 'cashback', 'کش‌بک پرداخت استارز', (string)$Payment_report['id_order'], 'Payment_report', (string)$Payment_report['id_order']);
         }
         $text_report = sprintf($textbotlang['users']['Discount']['gift-deposit'], $result);
         sendmessage($Balance_id['id'], $text_report, null, 'HTML');
@@ -237,6 +241,9 @@ if (isset($update['pre_checkout_query'])) {
             return;
         }
         $Balance_Low_user = $__charge['new_balance'];
+        if (function_exists('wallet_ledger_record')) {
+            wallet_ledger_record($from_id, 'debit', $__pp, 'service_action', 'تمدید سرویس (انبار ملی)', null, 'invoice', (string)$nameloc['id_invoice']);
+        }
         update("invoice", "name_product", $prodcut['name_product'], "id_invoice", $nameloc['id_invoice']);
         update("invoice", "price_product", $prodcut['price_product'], "id_invoice", $nameloc['id_invoice']);
         update("invoice", "Volume", $prodcut['Volume_constraint'], "id_invoice", $nameloc['id_invoice']);
@@ -272,10 +279,16 @@ if (isset($update['pre_checkout_query'])) {
         return;
     }
     $Balance_Low_user = $__charge2['new_balance'];
+    if (function_exists('wallet_ledger_record')) {
+        wallet_ledger_record($from_id, 'debit', $__pp2, 'service_action', 'تمدید سرویس', null, 'invoice', (string)($nameloc['id_invoice'] ?? ''));
+    }
     $extend = $ManagePanel->extend($marzban_list_get['Methodextend'], $prodcut['Volume_constraint'], $prodcut['Service_time'], $usernamePanelExtends, $prodcut['code_product'], $marzban_list_get['code_panel']);
     if (empty($extend['status']) && function_exists('balance_atomic_credit')) {
-        balance_atomic_credit($from_id, $__pp2);
+        $__refundedFin = balance_atomic_credit($from_id, $__pp2);
         $Balance_Low_user = $user['Balance'];
+        if ($__refundedFin && function_exists('wallet_ledger_record')) {
+            wallet_ledger_record($from_id, 'credit', $__pp2, 'refund', 'بازگشت وجه تمدید سرویس', null, 'invoice', (string)($nameloc['id_invoice'] ?? ''));
+        }
     }
     if ($extend['status'] == false) {
         $rxStockEmpty = ($extend['code'] ?? '') === 'manual_stock_empty';
