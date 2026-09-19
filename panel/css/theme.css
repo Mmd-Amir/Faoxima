@@ -4554,3 +4554,960 @@ body::after { display: none; }
     }
     .stat-card { padding: 16px; }
 }
+
+
+/* =========================================================================
+   STAGE 2D — SHARED COMPONENT SYSTEM
+   Buttons · form controls · search/filter toolbars · tables · badges ·
+   pagination · modal chrome · dropdown chrome · generic links ·
+   existing empty states.  Presentation only — no markup, script or
+   behaviour is touched by this layer.
+   ========================================================================= */
+
+/* ---- 2D.0  Component tokens --------------------------------------------- */
+
+:root {
+    /* Filled accent controls.
+       --accent-ink is the Stage 2B "safe foreground" token: it is guaranteed
+       >= 4.5:1 against the resolved --surface-1 for every preset and every
+       custom colour.  Reusing it as the FILL and --surface-1 as the TEXT
+       inherits that guarantee unchanged, because contrast is symmetric.
+       Raw var(--accent) as a fill is NOT safe: --accent-fg is white for five
+       of the six presets and white-on-accent measures 2.30:1 (green) to
+       4.20:1 (purple). */
+    --control-solid:    var(--accent-ink);
+    --control-on-solid: var(--surface-1);
+
+    --control-h:        38px;
+    --control-h-sm:     32px;
+    --control-radius:   var(--radius-md);
+
+    --input-h:          40px;
+    --input-h-compact:  38px;
+    --input-bg:         var(--surface-2);
+
+    --badge-h:          23px;
+    --badge-radius:     var(--radius-sm);
+    --badge-neutral-fg: #A1A1AA;
+
+    --table-radius:     var(--radius-lg);
+    --table-row-pad-y:  12px;
+    --table-cell-pad-x: 14px;
+
+    --link-underline:       var(--text-dim);
+    --link-underline-hover: var(--accent-ink);
+
+    --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.35);
+
+    /* Semantic foregrounds for soft badges / soft buttons / menu danger.
+       Dark-theme values; light-theme overrides below are darker so that
+       normal-size text clears 4.5:1 on the soft badge surfaces. */
+    --sem-success-fg: #4ADE80;
+    --sem-danger-fg:  #F87171;
+    --sem-warning-fg: #FBBF24;
+    --sem-info-fg:    #22D3EE;
+    --sem-purple-fg:  #A78BFA;
+
+    /* Opaque badge surfaces.
+       The original badge tints are translucent rgba(), so a badge's real
+       background -- and therefore its text contrast -- depended on the
+       surface underneath it.  Measured in light mode, .badge-info read
+       4.66:1 on --surface-1 but only 3.96:1 on --surface-3, i.e. a real
+       AA failure that moved with the page.  Pinning each badge to the
+       opaque value of its tint over --surface-1 makes the contrast
+       surface-independent and equal to the measured value below. */
+    --sem-success-bg: #173024;
+    --sem-danger-bg:  #361D20;
+    --sem-warning-bg: #372A18;
+    --sem-info-bg:    #132E36;
+    --sem-purple-bg:  #2B1F3B;
+    --sem-neutral-bg: #26282F;
+
+    /* Robust accent TEXT colour.
+       --accent-ink is validated against --surface-1 only.  Measured on
+       --surface-2 / --surface-3 / --bg-body it drops to ~4.10:1 in light
+       mode and ~4.01:1 in dark for some presets and custom colours.  This
+       token keeps the accent hue but mixes it 15% toward black (light) /
+       10% toward white (dark), which was measured to clear 4.5:1 on ALL
+       FOUR surfaces for all 6 presets and all 5 custom colours
+       (worst 4.874 light, 4.673 dark).  Fills and decorations keep using
+       --accent-ink unchanged; only text uses this. */
+    --accent-text: var(--accent-ink);
+}
+
+[data-theme="light"] {
+    --badge-neutral-fg: #475569;
+    --shadow-modal: 0 24px 56px rgba(24, 24, 27, 0.18), 0 2px 8px rgba(24, 24, 27, 0.08);
+    --sem-success-fg: #166534;
+    --sem-danger-fg:  #B91C1C;
+    --sem-warning-fg: #92400E;
+    --sem-info-fg:    #0C6880;
+    --sem-purple-fg:  #7E22CE;
+
+    --sem-success-bg: #DEF6E7;
+    --sem-danger-bg:  #FDE3E3;
+    --sem-warning-bg: #FEF0DA;
+    --sem-info-bg:    #DAF4F9;
+    --sem-purple-bg:  #F2E6FE;
+    --sem-neutral-bg: #F1F3F6;
+}
+
+@supports (color: color-mix(in srgb, #000 50%, #fff)) {
+    :root {
+        --accent-text: color-mix(in srgb, var(--accent-ink) 90%, #ffffff);
+    }
+    [data-theme="light"] {
+        --accent-text: color-mix(in srgb, var(--accent-ink) 85%, #000000);
+    }
+}
+
+
+/* ---- 2D.1  Button system ------------------------------------------------ */
+
+.btn {
+    min-height: var(--control-h);
+    padding: 0 14px;
+    gap: 6px;
+    border-radius: var(--control-radius);
+    font-size: var(--fs-btn);
+    font-weight: 600;
+    line-height: 1.2;
+    border: 1px solid transparent;
+    box-shadow: none;
+    transition: background-color .14s ease, border-color .14s ease,
+                color .14s ease, box-shadow .14s ease, transform .14s ease;
+}
+.btn:hover { transform: none; }
+.btn:active { transform: translateY(1px); }
+.btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.btn:disabled,
+.btn[disabled],
+.btn.disabled {
+    opacity: .5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+.btn-sm { min-height: var(--control-h-sm); padding: 0 10px; font-size: 12px; gap: 5px; }
+.btn-block { width: 100%; }
+
+/* Primary — filled accent using the safe foreground contract. */
+.btn-primary {
+    background-color: var(--control-solid);
+    background-image: none;
+    color: var(--control-on-solid);
+    border-color: transparent;
+    box-shadow: none;
+}
+.btn-primary:hover {
+    background-color: var(--control-solid);
+    background-image: none;
+    color: var(--control-on-solid);
+    filter: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .24);
+}
+.btn-primary:active { box-shadow: none; }
+
+/* Secondary / outline — neutral surface + soft border, no accent flooding. */
+.btn-outline,
+.btn-secondary {
+    background: var(--surface-1);
+    border-color: var(--border-soft);
+    color: var(--text-main);
+}
+.btn-outline:hover,
+.btn-secondary:hover {
+    background: var(--surface-2);
+    border-color: var(--border-mid);
+    color: var(--text-main);
+}
+
+/* Ghost — no chrome until hover. */
+.btn-ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-muted);
+}
+.btn-ghost:hover { background: var(--surface-2); color: var(--text-main); }
+
+/* Destructive / success — solid, deeper than the raw semantic hex so that
+   normal-size white text clears 4.5:1. */
+.btn-danger {
+    background: #DC2626;
+    color: #fff;
+    border-color: transparent;
+    box-shadow: none;
+}
+.btn-danger:hover {
+    filter: none;
+    background: #DC2626;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .24);
+}
+.btn-success {
+    background: #15803D;
+    color: #fff;
+    border-color: transparent;
+    box-shadow: none;
+}
+.btn-success:hover {
+    filter: none;
+    background: #15803D;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .24);
+}
+[data-theme="light"] .btn-danger { background: #B91C1C; }
+[data-theme="light"] .btn-danger:hover { background: #B91C1C; }
+[data-theme="light"] .btn-success { background: #15803D; }
+[data-theme="light"] .btn-success:hover { background: #15803D; }
+
+/* Soft semantic buttons — 15% tint + a safe semantic foreground. */
+.btn-soft-success {
+    background: var(--color-success-soft);
+    color: var(--sem-success-fg);
+    border-color: rgba(34, 197, 94, 0.28);
+}
+.btn-soft-danger {
+    background: var(--color-danger-soft);
+    color: var(--sem-danger-fg);
+    border-color: rgba(239, 68, 68, 0.28);
+}
+.btn-soft-warning {
+    background: var(--color-warning-soft);
+    color: var(--sem-warning-fg);
+    border-color: rgba(245, 158, 11, 0.28);
+}
+.btn-soft-info {
+    background: var(--color-info-soft);
+    color: var(--sem-info-fg);
+    border-color: rgba(6, 182, 212, 0.28);
+}
+.btn-soft-purple {
+    background: var(--color-purple-soft);
+    color: var(--sem-purple-fg);
+    border-color: rgba(168, 85, 247, 0.28);
+}
+.btn-soft-success:hover,
+.btn-soft-danger:hover,
+.btn-soft-warning:hover,
+.btn-soft-info:hover,
+.btn-soft-purple:hover {
+    background: var(--surface-3);
+    box-shadow: none;
+    filter: none;
+}
+.btn-soft-success:hover { color: var(--sem-success-fg); border-color: var(--color-success); }
+.btn-soft-danger:hover  { color: var(--sem-danger-fg);  border-color: var(--color-danger); }
+.btn-soft-warning:hover { color: var(--sem-warning-fg); border-color: var(--color-warning); }
+.btn-soft-info:hover    { color: var(--sem-info-fg);    border-color: var(--color-info); }
+.btn-soft-purple:hover  { color: var(--sem-purple-fg);  border-color: var(--color-purple); }
+
+/* Table / row action control — quiet icon box. */
+.btn-action {
+    width: 30px;
+    height: 30px;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-muted);
+    box-shadow: none;
+    transition: background-color .14s ease, border-color .14s ease, color .14s ease;
+}
+.btn-action:hover {
+    background: var(--surface-2);
+    border-color: var(--border-soft);
+    color: var(--text-main);
+}
+.btn-action:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.btn-action .svg-icon { width: 16px; height: 16px; }
+
+
+/* ---- 2D.2  Form controls ------------------------------------------------ */
+
+.form-group { margin-bottom: 14px; }
+.form-label {
+    font-size: var(--fs-field-label);
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+.form-control {
+    height: var(--input-h);
+    min-height: var(--input-h);
+    padding: 0 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-soft);
+    background: var(--input-bg);
+    color: var(--text-main);
+    font-size: 13px;
+    line-height: 1.4;
+    outline: none;
+    transition: border-color .14s ease, box-shadow .14s ease, background-color .14s ease;
+}
+[data-theme="light"] .form-control {
+    background: var(--input-bg);
+    border-color: var(--border-mid);
+}
+.form-control:focus {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+    background: var(--input-bg);
+}
+[data-theme="light"] .form-control:focus { background: var(--input-bg); }
+.form-control::placeholder { color: var(--text-placeholder); }
+.form-control:disabled,
+.form-control[disabled] { opacity: .55; cursor: not-allowed; }
+
+select.form-control {
+    height: var(--input-h);
+    padding-inline-start: 34px;
+    padding-inline-end: 12px;
+    background-position: left 12px center;
+}
+textarea.form-control {
+    height: auto;
+    min-height: 96px;
+    padding: 9px 12px;
+    line-height: 1.6;
+}
+
+.input-icon-wrap {
+    min-height: var(--input-h);
+    padding: 0 10px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-soft);
+    background: var(--input-bg);
+}
+.input-icon-wrap:focus-within {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.input-icon-wrap .form-control {
+    height: auto;
+    min-height: 0;
+    padding: 8px;
+    border: 0;
+    background: transparent;
+}
+.input-icon-wrap .form-control:focus { box-shadow: none; border: 0; }
+
+.toggle-pass:hover { color: var(--accent-ink); }
+
+/* Checkbox — geometry only; checked fill uses the safe solid contract and
+   the tick is mask-painted with the matching on-solid colour so it stays
+   visible for every preset and custom colour. */
+input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    border-radius: 5px;
+    border: 1.5px solid var(--border-strong);
+    background: var(--surface-2);
+}
+input[type="checkbox"]:hover:not(:disabled) { border-color: var(--accent-ink); }
+input[type="checkbox"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+input[type="checkbox"]:checked,
+input[type="checkbox"]:indeterminate {
+    background: var(--control-solid);
+    border-color: var(--control-solid);
+}
+input[type="checkbox"]:checked::after,
+input[type="checkbox"]:indeterminate::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-color: var(--control-on-solid);
+    background-image: none;
+    background-size: auto;
+    -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+            mask-position: center;
+    -webkit-mask-size: 12px 12px;
+            mask-size: 12px 12px;
+}
+input[type="checkbox"]:checked::after {
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='3.5 8.5 6.5 11.5 12.5 4.5'/%3E%3C/svg%3E");
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='3.5 8.5 6.5 11.5 12.5 4.5'/%3E%3C/svg%3E");
+}
+input[type="checkbox"]:indeterminate::after {
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000000' stroke-width='2.4' stroke-linecap='round'%3E%3Cline x1='4' y1='8' x2='12' y2='8'/%3E%3C/svg%3E");
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000000' stroke-width='2.4' stroke-linecap='round'%3E%3Cline x1='4' y1='8' x2='12' y2='8'/%3E%3C/svg%3E");
+}
+input[type="checkbox"]:disabled {
+    opacity: .45;
+    background: var(--surface-3);
+    border-color: var(--border-soft);
+    cursor: not-allowed;
+}
+
+/* Focus rings on the remaining shared inputs. */
+.mdt-search input {
+    height: var(--input-h-compact);
+    padding: 0 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-soft);
+    background: var(--surface-2);
+    color: var(--text-main);
+    font-size: 13px;
+}
+.mdt-search input:focus {
+    outline: none;
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.dataTables_wrapper .dataTables_filter input,
+.dataTables_wrapper .dataTables_length select {
+    height: var(--input-h-compact);
+    padding: 0 10px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-soft);
+    background: var(--surface-2);
+    color: var(--text-main);
+    font-size: 13px;
+}
+.dataTables_wrapper .dataTables_filter input:focus,
+.dataTables_wrapper .dataTables_length select:focus {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+
+/* ---- 2D.3  Search / filter toolbars + chips ----------------------------- */
+
+.card.fx-search-filter,
+.card.fx-date-filter,
+.card.fx-status-filter {
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    border-radius: var(--radius-lg);
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    box-shadow: none;
+}
+.fx-date-filter__title,
+.fx-status-filter__title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+.fx-date-filter__presets,
+.fx-status-filter__pills { gap: 6px; margin-bottom: 10px; }
+
+.fx-date-filter__preset,
+.fx-status-filter__pill {
+    height: 34px;
+    min-height: 34px;
+    padding: 0 12px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    background: transparent;
+    border-color: var(--border-soft);
+    color: var(--text-muted);
+}
+.fx-date-filter__preset.btn-primary,
+.fx-status-filter__pill.btn-primary {
+    background: var(--accent-soft);
+    border-color: var(--accent-mid);
+    color: var(--text-main);
+    box-shadow: none;
+}
+.fx-date-filter__preset.btn-primary:hover,
+.fx-status-filter__pill.btn-primary:hover {
+    background: var(--accent-soft);
+    box-shadow: none;
+}
+.fx-date-filter__preset.btn-outline:hover,
+.fx-status-filter__pill.btn-outline:hover {
+    background: var(--surface-3);
+    border-color: var(--border-mid);
+    color: var(--text-main);
+}
+
+.fx-date-filter__form { gap: 10px; }
+.fx-date-filter__field label {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+.fx-date-filter__field input {
+    height: var(--input-h-compact);
+    padding: 0 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-soft);
+    background: var(--surface-1);
+    color: var(--text-main);
+    font-size: 13px;
+}
+.fx-date-filter__field input:focus {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+[data-theme="light"] .fx-date-filter__field input {
+    background: var(--surface-1);
+    border-color: var(--border-soft);
+}
+[data-theme="light"] .fx-date-filter__field input:focus { background: var(--surface-1); }
+.fx-date-filter__actions { gap: 8px; }
+.fx-date-filter__actions .btn {
+    height: var(--input-h-compact);
+    min-height: var(--input-h-compact);
+    padding: 0 14px;
+    font-size: 12.5px;
+}
+.fx-date-filter__active {
+    margin-top: 8px;
+    font-size: 11.5px;
+    color: var(--text-dim);
+}
+
+.fx-search-filter__input {
+    height: var(--input-h-compact);
+    padding: 0 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-soft);
+    background: var(--surface-1);
+    color: var(--text-main);
+    font-size: 13px;
+}
+.fx-search-filter__input:focus {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+[data-theme="light"] .fx-search-filter__input {
+    background: var(--surface-1);
+    border-color: var(--border-soft);
+}
+[data-theme="light"] .fx-search-filter__input:focus { background: var(--surface-1); }
+.fx-search-filter__btn {
+    height: var(--input-h-compact);
+    min-height: var(--input-h-compact);
+    padding: 0 14px;
+    font-size: 12.5px;
+}
+
+.chip-row { gap: 6px; }
+.chip {
+    height: 32px;
+    padding: 0 12px;
+    gap: 6px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-soft);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+.chip:hover { transform: none; }
+.chip .symbol,
+.chip .svg-icon { color: var(--text-dim); }
+@media (hover: hover) {
+    .chip:hover {
+        background: var(--surface-2);
+        border-color: var(--border-mid);
+        color: var(--text-main);
+    }
+    .chip:hover .symbol,
+    .chip:hover .svg-icon { color: var(--text-muted); }
+}
+.chip.is-active {
+    background: var(--accent-soft);
+    border-color: var(--accent-mid);
+    color: var(--text-main);
+}
+.chip.is-active .symbol,
+.chip.is-active .svg-icon { color: var(--text-main); }
+
+
+/* ---- 2D.4  Table system ------------------------------------------------- */
+
+.table-wrap { border-radius: var(--table-radius); }
+.cell-actions__group { gap: 6px; }
+
+table.dataTable thead th,
+table.app-table thead th {
+    background: var(--surface-2) !important;
+    color: var(--text-muted) !important;
+    font-size: var(--fs-th) !important;
+    font-weight: 600 !important;
+    letter-spacing: .2px;
+    padding: 10px var(--table-cell-pad-x) !important;
+    border-bottom: 1px solid var(--border-soft) !important;
+}
+[data-theme="light"] table.dataTable thead th,
+[data-theme="light"] table.app-table thead th {
+    background: var(--surface-2) !important;
+    border-bottom-color: var(--border-soft) !important;
+}
+
+table.dataTable tbody td,
+table.app-table tbody td {
+    padding: var(--table-row-pad-y) var(--table-cell-pad-x) !important;
+    font-size: var(--fs-td) !important;
+    border-bottom: 1px solid var(--border-soft) !important;
+}
+
+/* Hover is a subtle neutral shift — accent never floods the row. */
+table.dataTable tbody tr:hover td,
+table.app-table tbody tr:hover td { background: var(--surface-2) !important; }
+[data-theme="light"] table.dataTable tbody tr:hover td,
+[data-theme="light"] table.app-table tbody tr:hover td { background: var(--surface-2) !important; }
+table.dataTable tbody tr:hover td:first-child,
+table.app-table tbody tr:hover td:first-child { box-shadow: none; }
+
+/* Bulk-selection row — visually distinct from hover. */
+table.dataTable tbody tr:has(input[name="ids[]"]:checked) td,
+table.app-table tbody tr:has(input[name="ids[]"]:checked) td {
+    background: var(--accent-soft) !important;
+}
+table.dataTable tbody tr:has(input[name="ids[]"]:checked):hover td,
+table.app-table tbody tr:has(input[name="ids[]"]:checked):hover td {
+    background: var(--accent-soft) !important;
+}
+table.dataTable tbody tr:has(input[name="ids[]"]:checked) td:first-child,
+table.app-table tbody tr:has(input[name="ids[]"]:checked) td:first-child {
+    box-shadow: inset -3px 0 0 var(--accent-ink);
+}
+
+.mdt-sortable.mdt-sort-asc::after { border-bottom-color: var(--accent-ink); }
+.mdt-sortable.mdt-sort-desc::after { border-top-color: var(--accent-ink); }
+
+.track-id:hover { background: var(--accent-soft); color: var(--text-main); }
+
+
+/* ---- 2D.5  Mobile table -> card ----------------------------------------
+   The existing responsive conversion is verified and unchanged.  This block
+   only re-asserts the values that the 2D desktop rules above also set
+   (padding / font-size / border / background), so the card layout is
+   byte-for-byte the behaviour it had before Stage 2D. */
+
+@media (max-width: 768px), (max-width: 992px) and (pointer: coarse) {
+    .app-table td, table.dataTable tbody td {
+        padding: 7px 0 !important;
+        font-size: 13px !important;
+        border: 0 !important;
+        border-bottom: 1px dashed var(--border-soft) !important;
+        background: transparent !important;
+    }
+    .app-table tbody tr > td:first-child,
+    table.dataTable tbody tr > td:first-child {
+        border-bottom: 1px solid var(--border-mid) !important;
+        padding-bottom: 10px !important;
+        font-size: 14px !important;
+    }
+    .app-table td:last-child, table.dataTable tbody td:last-child {
+        border-bottom: 0 !important;
+        padding-top: 12px !important;
+    }
+    table.app-table tbody tr, table.dataTable tbody tr {
+        background: transparent !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.20) !important;
+    }
+    [data-theme="light"] table.app-table tbody tr,
+    [data-theme="light"] table.dataTable tbody tr {
+        border-bottom-color: rgba(15, 23, 42, 0.15) !important;
+    }
+    table.app-table tbody tr:last-child,
+    table.dataTable tbody tr:last-child { border-bottom: 0 !important; }
+    table.app-table tbody tr:hover td, table.dataTable tbody tr:hover td,
+    table.app-table tbody tr:active td, table.dataTable tbody tr:active td,
+    table.app-table tbody tr:focus-within td, table.dataTable tbody tr:focus-within td {
+        background: transparent !important;
+    }
+    table.app-table tbody tr:hover td:first-child,
+    table.dataTable tbody tr:hover td:first-child,
+    table.app-table tbody tr:focus-within td:first-child,
+    table.dataTable tbody tr:focus-within td:first-child { box-shadow: none !important; }
+    table.app-table tbody tr:has(input[name="ids[]"]:checked) td,
+    table.dataTable tbody tr:has(input[name="ids[]"]:checked) td { background: transparent !important; }
+    table.app-table tbody tr:has(input[name="ids[]"]:checked) td:first-child,
+    table.dataTable tbody tr:has(input[name="ids[]"]:checked) td:first-child { box-shadow: none !important; }
+    .app-table tbody tr > td:first-child:has(input[type="checkbox"]) input[type="checkbox"]:checked::after,
+    .app-table tbody tr > td:first-child:has(input[type="checkbox"]) input[type="checkbox"]:indeterminate::after,
+    table.dataTable tbody tr > td:first-child:has(input[type="checkbox"]) input[type="checkbox"]:checked::after,
+    table.dataTable tbody tr > td:first-child:has(input[type="checkbox"]) input[type="checkbox"]:indeterminate::after {
+        -webkit-mask-size: 17px 17px;
+                mask-size: 17px 17px;
+    }
+}
+
+
+/* ---- 2D.6  Badge system ------------------------------------------------- */
+
+.badge {
+    min-height: var(--badge-h);
+    padding: 2px 8px;
+    border-radius: var(--badge-radius);
+    font-size: var(--fs-badge);
+    font-weight: 600;
+    line-height: 1.3;
+    gap: 4px;
+    border-width: 1px;
+}
+.badge .svg-icon { width: 12px; height: 12px; }
+
+.badge-success,
+.badge-active   { background: var(--sem-success-bg); color: var(--sem-success-fg); border-color: rgba(34, 197, 94, 0.28); }
+.badge-danger,
+.badge-block    { background: var(--sem-danger-bg);  color: var(--sem-danger-fg);  border-color: rgba(239, 68, 68, 0.28); }
+.badge-warning,
+.badge-unpaid   { background: var(--sem-warning-bg); color: var(--sem-warning-fg); border-color: rgba(245, 158, 11, 0.28); }
+.badge-info,
+.badge-cyan     { background: var(--sem-info-bg);    color: var(--sem-info-fg);    border-color: rgba(6, 182, 212, 0.28); }
+.badge-purple   { background: var(--sem-purple-bg);  color: var(--sem-purple-fg);  border-color: rgba(168, 85, 247, 0.28); }
+.badge-gray     { background: var(--sem-neutral-bg); color: var(--badge-neutral-fg); border-color: rgba(148, 163, 184, 0.28); }
+/* Accent badge follows the user's colour only as a tint; the label stays
+   --text-main so it can never inherit an unreadable accent foreground. */
+.badge-accent   { background: var(--accent-soft); color: var(--text-main); border-color: var(--accent-mid); }
+
+.fx-compact-more {
+    min-height: 22px;
+    padding: 0 8px;
+    border-radius: var(--badge-radius);
+    background: var(--surface-3);
+    color: var(--text-muted);
+    border: 1px solid var(--border-soft);
+    font-size: 11px;
+    font-weight: 600;
+}
+.fx-compact-more:hover,
+.fx-compact-more.is-open {
+    background: var(--accent-soft);
+    color: var(--text-main);
+    border-color: var(--accent-mid);
+}
+
+
+/* ---- 2D.7  Pagination --------------------------------------------------- */
+
+.mdt-foot { margin-top: 12px; gap: 10px; font-size: 12px; color: var(--text-muted); }
+.mdt-pager { gap: 4px; }
+.mdt-page {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 32px;
+    padding: 0 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-soft);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background-color .14s ease, border-color .14s ease, color .14s ease;
+}
+.mdt-page:hover:not(.disabled):not(.active) {
+    background: var(--surface-2);
+    border-color: var(--border-mid);
+    color: var(--text-main);
+}
+.mdt-page:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.mdt-page.active {
+    background: var(--control-solid);
+    border-color: transparent;
+    color: var(--control-on-solid);
+    cursor: default;
+}
+.mdt-page.disabled { opacity: .45; cursor: not-allowed; }
+.mdt-dots { padding: 0 2px; color: var(--text-dim); }
+
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+    background: var(--surface-2) !important;
+    color: var(--text-main) !important;
+    border-color: var(--border-mid) !important;
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {
+    background: var(--control-solid) !important;
+    color: var(--control-on-solid) !important;
+    border-color: transparent !important;
+}
+
+
+/* ---- 2D.8  Modal / dialog chrome ---------------------------------------- */
+
+.modal-overlay { background: rgba(9, 10, 13, 0.62); }
+
+.modal-box {
+    background: var(--surface-1);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-xl);
+}
+.modal-overlay .modal-box { box-shadow: var(--shadow-modal); }
+
+.modal-head {
+    padding: 15px 20px 12px;
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--border-soft);
+}
+.modal-head__title { font-size: 16px; font-weight: 600; }
+.modal-box > form,
+.modal-box > .modal-body { padding: 18px 20px 20px; }
+.modal-foot {
+    padding: 13px 20px;
+    gap: 8px;
+    border-top: 1px solid var(--border-soft);
+    background: var(--surface-1);
+}
+.modal-close {
+    width: 30px;
+    height: 30px;
+    border-radius: var(--radius-sm);
+    font-size: 18px;
+    color: var(--text-muted);
+}
+.modal-close:hover { background: var(--surface-3); color: var(--text-main); }
+
+@media (max-width: 480px) {
+    .modal-box { max-height: calc(100vh - 24px - var(--safe-t) - var(--safe-b)); }
+    .modal-head { padding: 14px 16px 11px; }
+    .modal-box > form,
+    .modal-box > .modal-body { padding: 14px 16px 16px; }
+    .modal-foot { padding: 12px 16px; }
+    .modal-foot .btn { flex: 1 1 auto; justify-content: center; }
+}
+
+
+/* ---- 2D.9  Dropdown / menu chrome --------------------------------------- */
+
+.hdr-dd__head {
+    padding: 6px 8px 9px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+.hdr-dd__item {
+    padding: 8px 10px;
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    color: var(--text-main);
+}
+.hdr-dd__item:hover { background: var(--surface-2); color: var(--text-main); }
+.hdr-dd__empty { padding: 14px 8px; font-size: 12px; color: var(--text-muted); }
+
+.profile-menu__head { padding: 12px 10px 9px; }
+.profile-menu__head b { font-size: 13px; }
+.profile-menu__head small { font-size: 11px; color: var(--text-muted); }
+.profile-menu a,
+.profile-menu button {
+    padding: 8px 10px;
+    border-radius: var(--radius-md);
+    font-size: 13px;
+}
+.profile-menu a:hover,
+.profile-menu button:hover { background: var(--surface-2); color: var(--text-main); }
+.profile-menu .menu-danger { color: var(--sem-danger-fg); }
+.profile-menu .menu-danger:hover {
+    background: var(--color-danger-soft);
+    color: var(--sem-danger-fg);
+}
+
+
+/* ---- 2D.10  Generic textual links --------------------------------------
+   The global `a { color: var(--accent) }` rule cannot be contrast-safe: the
+   accent is user-selectable and raw accent text measures as low as 1.00:1
+   (white on white).  Unclassed links therefore use a readable neutral text
+   colour plus a CSS-only underline affordance; the accent appears only as
+   the hover underline, which is a graphic rather than text. */
+
+a { transition: color .14s ease, text-decoration-color .14s ease; }
+a:hover { filter: none; }
+
+a:not([class]) {
+    color: var(--text-main);
+    text-decoration: underline;
+    text-decoration-color: var(--link-underline);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+}
+a:not([class]):hover {
+    color: var(--text-main);
+    text-decoration-color: var(--link-underline-hover);
+    text-decoration-thickness: 2px;
+}
+a:not([class]):focus-visible {
+    outline: none;
+    border-radius: var(--radius-xs);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.text-link {
+    color: var(--text-main);
+    text-decoration: underline;
+    text-decoration-color: var(--link-underline);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+}
+.text-link:hover {
+    color: var(--text-main);
+    text-decoration-color: var(--link-underline-hover);
+}
+/* Accent-coloured TEXT uses --accent-text, not --accent-ink: --accent-ink
+   is only validated against --surface-1, and these three are the shared
+   consumers that can sit on a raised surface.  Fills, borders, focus rings
+   and hover underlines keep --accent-ink / --accent-ring unchanged. */
+.text-accent { color: var(--accent-text); }
+
+.card__title .symbol { color: var(--accent-text); }
+.mc-tooltip b { color: var(--accent-text); }
+
+
+/* ---- 2D.11  Existing empty states --------------------------------------- */
+
+.mdt-empty {
+    padding: 32px 20px !important;
+    color: var(--text-muted) !important;
+    font-size: 13px;
+    font-style: normal;
+}
+
+
+/* ---- 2D.12  Bulk-selection bar (shared component) ----------------------- */
+
+.fx-bulk-badge {
+    background: var(--surface-3);
+    border: 1px solid var(--sem-success-fg);
+    color: var(--sem-success-fg);
+    border-radius: var(--radius-lg);
+    padding: 7px 9px 7px 13px;
+    gap: 7px;
+    font-size: 12.5px;
+}
+.fx-bulk-badge__count {
+    min-width: 20px;
+    height: 20px;
+    border-radius: var(--radius-full);
+    background: var(--sem-success-fg);
+    color: var(--surface-1);
+    font-size: 11.5px;
+}
+.fx-bulk-badge__clear,
+.fx-bulk-badge__delete {
+    padding: 6px 11px;
+    border-radius: var(--radius-md);
+    font-size: 12px;
+    font-weight: 600;
+}
+.fx-bulk-badge__clear {
+    background: var(--sem-warning-fg);
+    color: var(--surface-1);
+}
+.fx-bulk-badge__delete {
+    background: var(--sem-danger-fg);
+    color: var(--surface-1);
+}
