@@ -5005,9 +5005,10 @@ $caption";
 
     try {
         $atomicStmt = $pdo->prepare(
-            "UPDATE Payment_report SET payment_Status = 'paid' WHERE id_order = :id_order AND payment_Status = 'waiting'"
+            "UPDATE Payment_report SET payment_Status = 'processing', at_updated = :at_updated WHERE id_order = :id_order AND payment_Status = 'waiting'"
         );
         $atomicStmt->bindValue(':id_order', $Payment_report['id_order'], PDO::PARAM_STR);
+        $atomicStmt->bindValue(':at_updated', date('Y/m/d H:i:s'), PDO::PARAM_STR);
         $atomicStmt->execute();
         if ($atomicStmt->rowCount() === 0) {
             if (function_exists('rx_log_event')) {
@@ -5033,7 +5034,40 @@ $caption";
         }
         return;
     }
+    if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
+    $_confirm_pay_kb = $Confirm_pay;
+    $Confirm_pay = null;
     DirectPayment($order_id);
+    $Confirm_pay = $_confirm_pay_kb;
+    $Payment_report_after = select("Payment_report", "*", "id_order", $order_id, "select", ['cache' => false]);
+    $directPaymentDone = is_array($Payment_report_after) && intval($Payment_report_after['direct_payment_done'] ?? 0) === 1;
+    $alreadyPaid = is_array($Payment_report_after) && $Payment_report_after['payment_Status'] === 'paid';
+    if (!$alreadyPaid && $directPaymentDone) {
+        $finalizeStmt = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'paid' WHERE id_order = :id_order AND payment_Status = 'processing'");
+        $finalizeStmt->bindValue(':id_order', $order_id, PDO::PARAM_STR);
+        $finalizeStmt->execute();
+        $alreadyPaid = $finalizeStmt->rowCount() > 0;
+        if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
+    }
+    if (!$alreadyPaid && !$directPaymentDone) {
+        $rollbackStmt = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'waiting' WHERE id_order = :id_order AND payment_Status = 'processing'");
+        $rollbackStmt->bindValue(':id_order', $order_id, PDO::PARAM_STR);
+        $rollbackStmt->execute();
+        if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
+        if (function_exists('rx_log_event')) {
+            rx_log_event('ADMIN_CONFIRM_PAY_FULFILL_FAILED', 'Confirm_pay claimed order but DirectPayment did not complete; rolled back to waiting', [
+                'id_order' => $order_id,
+                'admin_id' => $from_id,
+            ]);
+        }
+        telegram('answerCallbackQuery', array(
+            'callback_query_id' => $callback_query_id,
+            'text' => "❌ تکمیل عملیات با خطا مواجه شد، دوباره تلاش کنید",
+            'show_alert' => true,
+            'cache_time' => 0,
+        ));
+        return;
+    }
 
     if (!empty($Payment_report['card_photo_file_id']) && !empty($Payment_report['card_last4'])) {
         $_vc_uid  = (string)$Payment_report['id_user'];
@@ -5081,6 +5115,54 @@ $caption";
             'text' => $text_report,
             'parse_mode' => "HTML"
         ]);
+    }
+    $textconfrom = "✅ پرداخت توسط ادمین تایید شده
+👤 شناسه کاربر: <code>{$Balance_id['id']}</code>
+🛒 کد پیگیری پرداخت: {$Payment_report['id_order']}
+⚜️ نام کاربری: @{$Balance_id['username']}
+💎 موجودی بعد از تایید : {$Balance_id['Balance']}
+💸 مبلغ پرداختی: $format_price_cart تومان
+";
+    $_receiptTargets = [['chat_id' => (string)$_receipt_chat_id, 'message_id' => (int)$_receipt_msg_id, 'thread_id' => $_receipt_thread_id > 0 ? $_receipt_thread_id : null]];
+    $_privateReceiptTargetsRaw = (string)($Payment_report['private_receipt_targets'] ?? '');
+    $_privateReceiptTargets = $_privateReceiptTargetsRaw !== '' ? json_decode($_privateReceiptTargetsRaw, true) : [];
+    if (is_array($_privateReceiptTargets)) {
+        foreach ($_privateReceiptTargets as $_target) {
+            $_targetChatId = (string)($_target['chat_id'] ?? '');
+            $_targetMsgId = (int)($_target['message_id'] ?? 0);
+            if ($_targetChatId === '' || $_targetMsgId <= 0) {
+                continue;
+            }
+            $_receiptTargets[] = ['chat_id' => $_targetChatId, 'message_id' => $_targetMsgId, 'thread_id' => null];
+        }
+    }
+    $_seenReceiptTargets = [];
+    foreach ($_receiptTargets as $_target) {
+        $_dedupKey = $_target['chat_id'] . ':' . $_target['message_id'];
+        if (isset($_seenReceiptTargets[$_dedupKey])) {
+            continue;
+        }
+        $_seenReceiptTargets[$_dedupKey] = true;
+        try {
+            $_editResult = Editmessagetext($_target['chat_id'], $_target['message_id'], $textconfrom, $Confirm_pay, 'HTML', $_target['thread_id']);
+            if ((!is_array($_editResult) || empty($_editResult['ok'])) && function_exists('rx_log_event')) {
+                rx_log_event('ADMIN_CONFIRM_RECEIPT_EDIT_FAILED', 'Editmessagetext returned failure for a receipt target', [
+                    'id_order' => $Payment_report['id_order'],
+                    'chat_id' => $_target['chat_id'],
+                    'message_id' => $_target['message_id'],
+                    'desc' => is_array($_editResult) ? (string)($_editResult['description'] ?? '') : '',
+                ]);
+            }
+        } catch (Throwable $_e) {
+            if (function_exists('rx_log_event')) {
+                rx_log_event('ADMIN_CONFIRM_RECEIPT_EDIT_FAILED', 'Editmessagetext failed for a receipt target', [
+                    'id_order' => $Payment_report['id_order'],
+                    'chat_id' => $_target['chat_id'],
+                    'message_id' => $_target['message_id'],
+                    'err' => $_e->getMessage(),
+                ]);
+            }
+        }
     }
     update("Payment_report", "at_updated", date('Y/m/d H:i:s'), "id_order", $Payment_report['id_order']);
     update("user", "Processing_value_one", "none", "id", $Balance_id['id']);

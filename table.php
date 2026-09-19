@@ -1264,7 +1264,9 @@ try {
         card_last4 varchar(4) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
         report_chat_id varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
         report_message_id INT NULL,
-        report_thread_id INT NULL)
+        report_thread_id INT NULL,
+        private_receipt_targets TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+        direct_payment_done TINYINT(1) NULL)
         ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
         if (!$result) {
             error_log("[table.php] table Payment_report: " . mysqli_error($connect));
@@ -1323,6 +1325,16 @@ try {
         if (mysqli_num_rows($Check_filde) != 1) {
             $connect->query("ALTER TABLE Payment_report ADD report_thread_id INT NULL");
             echo "The report_thread_id field was added ✅";
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM Payment_report LIKE 'private_receipt_targets'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE Payment_report ADD private_receipt_targets TEXT NULL");
+            echo "The private_receipt_targets field was added ✅";
+        }
+        $Check_filde = $connect->query("SHOW COLUMNS FROM Payment_report LIKE 'direct_payment_done'");
+        if (mysqli_num_rows($Check_filde) != 1) {
+            $connect->query("ALTER TABLE Payment_report ADD direct_payment_done TINYINT(1) NULL");
+            echo "The direct_payment_done field was added ✅";
         }
     }
 } catch (Exception $e) {

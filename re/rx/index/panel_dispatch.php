@@ -769,6 +769,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
                 ->execute([$_arze_report_group, $_arze_report_msg_id, $_arze_thread, $PaymentReport['id_order']]);
         }
     } else {
+        $_arze_private_targets = [];
         foreach ($admin_ids as $id_admin) {
             $adminrulecheck = select("admin", "*", "id_admin", $id_admin, "select");
             if ($adminrulecheck['rule'] == "support")
@@ -781,7 +782,18 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
                     'parse_mode' => "HTML",
                 ]);
             }
-            sendmessage($id_admin, $textsendrasid, $Confirm_pay, 'HTML');
+            $_arze_private_result = sendmessage($id_admin, $textsendrasid, $Confirm_pay, 'HTML');
+            $_arze_private_msg_id = is_array($_arze_private_result) ? (int) ($_arze_private_result['result']['message_id'] ?? 0) : 0;
+            if ($_arze_private_msg_id > 0) {
+                $_arze_private_targets[] = ['admin_id' => $id_admin, 'chat_id' => $id_admin, 'message_id' => $_arze_private_msg_id];
+            }
+        }
+        if (!empty($_arze_private_targets)) {
+            $pdo->prepare("UPDATE Payment_report SET report_chat_id = ?, report_message_id = ? WHERE id_order = ?")
+                ->execute([$_arze_private_targets[0]['chat_id'], $_arze_private_targets[0]['message_id'], $PaymentReport['id_order']]);
+            if (function_exists('update')) {
+                update("Payment_report", "private_receipt_targets", json_encode($_arze_private_targets, JSON_UNESCAPED_UNICODE), "id_order", $PaymentReport['id_order']);
+            }
         }
     }
     if ($user['Processing_value_tow'] == "getconfigafterpay") {
@@ -992,6 +1004,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
                 ->execute([$_receipt_report_group, $_receipt_report_msg_id, $_receipt_thread, $PaymentReport['id_order']]);
         }
     } elseif (empty($_receipt_route['topic_enabled'])) {
+        $_receipt_private_targets = [];
         foreach ($admin_ids as $id_admin) {
             $adminrulecheck = select("admin", "*", "id_admin", $id_admin, "select");
             if ($adminrulecheck['rule'] == "support")
@@ -1012,7 +1025,18 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
                     'parse_mode' => "HTML",
                 ]);
             }
-            sendmessage($id_admin, $textsendrasid, $Confirm_pay, 'HTML');
+            $_receipt_private_result = sendmessage($id_admin, $textsendrasid, $Confirm_pay, 'HTML');
+            $_receipt_private_msg_id = is_array($_receipt_private_result) ? (int) ($_receipt_private_result['result']['message_id'] ?? 0) : 0;
+            if ($_receipt_private_msg_id > 0) {
+                $_receipt_private_targets[] = ['admin_id' => $id_admin, 'chat_id' => $id_admin, 'message_id' => $_receipt_private_msg_id];
+            }
+        }
+        if (!empty($_receipt_private_targets)) {
+            $pdo->prepare("UPDATE Payment_report SET report_chat_id = ?, report_message_id = ? WHERE id_order = ?")
+                ->execute([$_receipt_private_targets[0]['chat_id'], $_receipt_private_targets[0]['message_id'], $PaymentReport['id_order']]);
+            if (function_exists('update')) {
+                update("Payment_report", "private_receipt_targets", json_encode($_receipt_private_targets, JSON_UNESCAPED_UNICODE), "id_order", $PaymentReport['id_order']);
+            }
         }
     }
     $dateacc = date('Y/m/d H:i:s');

@@ -164,6 +164,12 @@ final class PaymentReceiptHandler extends BaseHandler
         $targetThreadId = $reportGroupId !== '' ? $reportThreadId : null;
 
         $reportMessageId = null;
+        $privateReceiptTargets = [];
+        $trackPrivateTarget = function ($adminId, $msgId) use ($reportGroupId, &$privateReceiptTargets) {
+            if ($reportGroupId === '' && $msgId !== null && $msgId > 0) {
+                $privateReceiptTargets[] = ['admin_id' => $adminId, 'chat_id' => $adminId, 'message_id' => (int)$msgId];
+            }
+        };
 
         if ($reqCardTmp !== null) {
             $receiptFileId     = null;
@@ -185,6 +191,7 @@ final class PaymentReceiptHandler extends BaseHandler
                     if ($candidate === $reportGroupId) {
                         $reportMessageId = $albumResult['receipt_message_id'];
                     }
+                    $trackPrivateTarget($candidate, $albumResult['receipt_message_id']);
                     break;
                 }
                 $failedAdmins[] = $candidate;
@@ -208,9 +215,11 @@ final class PaymentReceiptHandler extends BaseHandler
                     $albumMsgId = $this->sendCardAlbumToSingleAdmin($apiKey, $adminId, $newCardPhotoFileId, $receiptFileId, $caption, $keyboard, $targetThreadId);
                     if ($albumMsgId !== null) {
                         if ($adminId === $reportGroupId) { $reportMessageId = $albumMsgId; }
+                        $trackPrivateTarget($adminId, $albumMsgId);
                     } else {
                         $txtMsgId = $this->sendReceiptText($apiKey, $adminId, $caption, $keyboard, $targetThreadId);
                         if ($txtMsgId !== null && $adminId === $reportGroupId) { $reportMessageId = $txtMsgId; }
+                        $trackPrivateTarget($adminId, $txtMsgId);
                     }
                 }
                 $receiptSentSuccessfully = true;
@@ -222,6 +231,7 @@ final class PaymentReceiptHandler extends BaseHandler
                     if ($txtMsgId !== null) {
                         $textOk = true;
                         if ($adminId === $reportGroupId) { $reportMessageId = $txtMsgId; }
+                        $trackPrivateTarget($adminId, $txtMsgId);
                     }
                 }
                 if (!$textOk) {
@@ -256,6 +266,9 @@ final class PaymentReceiptHandler extends BaseHandler
                     if (!$useAlbum && $candidate === $reportGroupId) {
                         $reportMessageId = $photoResult['message_id'];
                     }
+                    if (!$useAlbum) {
+                        $trackPrivateTarget($candidate, $photoResult['message_id']);
+                    }
                     break;
                 }
                 $failedAdmins[] = $candidate;
@@ -268,6 +281,7 @@ final class PaymentReceiptHandler extends BaseHandler
                     if ($txtMsgId !== null) {
                         $textOk = true;
                         if ($adminId === $reportGroupId) { $reportMessageId = $txtMsgId; }
+                        $trackPrivateTarget($adminId, $txtMsgId);
                     }
                 }
                 if (!$textOk) {
@@ -281,6 +295,7 @@ final class PaymentReceiptHandler extends BaseHandler
                 if ($useAlbum) {
                     $albumMsgId = $this->sendCardAlbumToSingleAdmin($apiKey, $firstSuccessAdmin, $cardPhotoFileId, $receiptFileId, $caption, $keyboard, $targetThreadId);
                     if ($albumMsgId !== null && $firstSuccessAdmin === $reportGroupId) { $reportMessageId = $albumMsgId; }
+                    $trackPrivateTarget($firstSuccessAdmin, $albumMsgId);
                 }
                 $otherAdmins = array_merge($failedAdmins, $remainingAdmins);
                 foreach ($otherAdmins as $adminId) {
@@ -292,6 +307,7 @@ final class PaymentReceiptHandler extends BaseHandler
                             ?? $this->sendReceiptText($apiKey, $adminId, $caption, $keyboard, $targetThreadId);
                     }
                     if ($altMsgId !== null && $adminId === $reportGroupId) { $reportMessageId = $altMsgId; }
+                    $trackPrivateTarget($adminId, $altMsgId);
                 }
             }
             $fileId = $receiptFileId;
@@ -305,6 +321,17 @@ final class PaymentReceiptHandler extends BaseHandler
                     ->execute([$reportGroupId, $reportMessageId, $targetThreadId, $orderId, $this->user['id']]);
             } catch (Throwable $e) {
                 FaoximaLogger::warn('report_message_id save failed', ['err' => $e->getMessage()]);
+            }
+        } elseif (!empty($privateReceiptTargets)) {
+            try {
+                $pdo = FaoximaDb::pdo();
+                $pdo->prepare("UPDATE Payment_report SET report_chat_id = ?, report_message_id = ? WHERE id_order = ? AND id_user = ?")
+                    ->execute([$privateReceiptTargets[0]['chat_id'], $privateReceiptTargets[0]['message_id'], $orderId, $this->user['id']]);
+                if (function_exists('update')) {
+                    update("Payment_report", "private_receipt_targets", json_encode($privateReceiptTargets, JSON_UNESCAPED_UNICODE), "id_order", $orderId);
+                }
+            } catch (Throwable $e) {
+                FaoximaLogger::warn('private_receipt_targets save failed', ['err' => $e->getMessage()]);
             }
         }
 

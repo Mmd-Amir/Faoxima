@@ -2030,6 +2030,9 @@ function DirectPayment($order_id, $image = 'images.jpg')
         if (function_exists('nmPanelNationalEnabled') && nmPanelNationalEnabled($marzban_list_get)) {
             if (is_array($info_product) && nmStockCompleteBuyFromInventory($Balance_id['id'], $Balance_id, $marzban_list_get, $info_product, $get_invoice['id_invoice'], $username_ac, false, 'paid_national_buy')) {
                 sendmessage($Balance_id['id'], $textbotlang['users']['selectoption'], $keyboard, 'HTML');
+                if (function_exists('update')) {
+                    update("Payment_report", "direct_payment_done", 1, "id_order", $order_id);
+                }
                 return;
             }
             $balance = $Balance_id['Balance'] + $Payment_report['price'];
@@ -2832,5 +2835,8 @@ $textonebuy
                 'price'   => $__creditFmt,
             ], $setting);
         }
+    }
+    if (function_exists('update')) {
+        update("Payment_report", "direct_payment_done", 1, "id_order", $order_id);
     }
 }
