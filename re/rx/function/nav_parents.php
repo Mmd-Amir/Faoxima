@@ -331,6 +331,7 @@ if (!function_exists('rxNavParent')) {
                 'updatetime'                => 'PanelMenu',
                 'val_usertest'              => 'PanelMenu',
                 'getlimitnew'               => 'PanelMenu',
+                'panellimit_getnew'         => 'PanelMenu',
                 'GetusernameNew'            => 'PanelMenu',
                 'GeturlNew'                 => 'PanelMenu',
                 'protocolset'               => 'PanelMenu',

@@ -367,14 +367,65 @@ if (false) {
     update("marzban_panel", "secret_code", $text, "name_panel", $user['Processing_value']);
     step('PanelMenu', $from_id);
 } elseif ($text == "🚨 محدودیت اکانت" && $adminrulecheck['rule'] == "administrator") {
+    $rxLimitPanelName = function_exists('nmResolvePanelNameForUser') ? nmResolvePanelNameForUser($user) : (string)($user['Processing_value'] ?? '');
+    $rxLimitMenu = function_exists('panel_limit_menu_render') ? panel_limit_menu_render($rxLimitPanelName) : null;
+    if ($rxLimitMenu === null) {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['nullpanel'], $backadmin, 'HTML');
+        return;
+    }
+    nm_adminInstantReply($from_id, $rxLimitMenu['text'], $rxLimitMenu['keyboard'], 'HTML');
+} elseif ($datain == "panellimit_menu" && $adminrulecheck['rule'] == "administrator") {
+    $rxLimitPanelName = function_exists('nmResolvePanelNameForUser') ? nmResolvePanelNameForUser($user) : (string)($user['Processing_value'] ?? '');
+    $rxLimitMenu = function_exists('panel_limit_menu_render') ? panel_limit_menu_render($rxLimitPanelName) : null;
+    if ($rxLimitMenu === null) {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['nullpanel'], $backadmin, 'HTML');
+        return;
+    }
+    nm_adminInstantReply($from_id, $rxLimitMenu['text'], $rxLimitMenu['keyboard'], 'HTML');
+} elseif ($datain == "panellimit_change" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['setlimit'], $backadmin, 'HTML');
-    step('getlimitnew', $from_id);
-} elseif ($user['step'] == "getlimitnew") {
+    step('panellimit_getnew', $from_id);
+} elseif ($user['step'] == "panellimit_getnew") {
     if (!isset($update['message']) && empty($text)) { return; }
-    $typepanel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
+    if (!ctype_digit((string)$text)) {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['limitmenu_invalid'], $backadmin, 'HTML');
+        return;
+    }
+    $rxLimitPanelName = function_exists('nmResolvePanelNameForUser') ? nmResolvePanelNameForUser($user) : (string)($user['Processing_value'] ?? '');
+    $typepanel = select("marzban_panel", "*", "name_panel", $rxLimitPanelName, "select");
+    panel_limit_set($typepanel, $text);
     outtypepanel($typepanel['type'], $textbotlang['Admin']['managepanel']['changedlimit']);
-    update("marzban_panel", "limit_panel", $text, "name_panel", $user['Processing_value']);
     step('PanelMenu', $from_id);
+    $typepanel = select("marzban_panel", "*", "name_panel", $rxLimitPanelName, "select", ['cache' => false]);
+    $rxLimitMenu = panel_limit_menu_render($typepanel);
+    if ($rxLimitMenu !== null) {
+        sendmessage($from_id, $rxLimitMenu['text'], $rxLimitMenu['keyboard'], 'HTML');
+    }
+} elseif ($datain == "panellimit_reset" && $adminrulecheck['rule'] == "administrator") {
+    $rxLimitPanelName = function_exists('nmResolvePanelNameForUser') ? nmResolvePanelNameForUser($user) : (string)($user['Processing_value'] ?? '');
+    $typepanel = select("marzban_panel", "*", "name_panel", $rxLimitPanelName, "select", ['cache' => false]);
+    panel_limit_reset($typepanel);
+    $typepanel = select("marzban_panel", "*", "name_panel", $rxLimitPanelName, "select", ['cache' => false]);
+    $rxLimitMenu = panel_limit_menu_render($typepanel);
+    if ($rxLimitMenu !== null) {
+        nm_adminInstantReply($from_id, $rxLimitMenu['text'], $rxLimitMenu['keyboard'], 'HTML');
+    }
+} elseif ($datain == "panellimit_unlimited" && $adminrulecheck['rule'] == "administrator") {
+    $rxLimitPanelName = function_exists('nmResolvePanelNameForUser') ? nmResolvePanelNameForUser($user) : (string)($user['Processing_value'] ?? '');
+    $typepanel = select("marzban_panel", "*", "name_panel", $rxLimitPanelName, "select", ['cache' => false]);
+    panel_limit_set_unlimited($typepanel);
+    $typepanel = select("marzban_panel", "*", "name_panel", $rxLimitPanelName, "select", ['cache' => false]);
+    $rxLimitMenu = panel_limit_menu_render($typepanel);
+    if ($rxLimitMenu !== null) {
+        nm_adminInstantReply($from_id, $rxLimitMenu['text'], $rxLimitMenu['keyboard'], 'HTML');
+    }
+} elseif ($datain == "panellimit_back" && $adminrulecheck['rule'] == "administrator") {
+    step('PanelMenu', $from_id);
+    $rxLimitPanelName = function_exists('nmResolvePanelNameForUser') ? nmResolvePanelNameForUser($user) : (string)($user['Processing_value'] ?? '');
+    $typepanel = select("marzban_panel", "*", "name_panel", $rxLimitPanelName, "select");
+    if (is_array($typepanel) && !empty($typepanel)) {
+        outtypepanel($typepanel['type'], $textbotlang['Admin']['Back-menu']);
+    }
 } elseif ($text == "⏳ زمان سرویس تست" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, "🕰 مدت زمان سرویس تست را ارسال کنید.
 ⚠️ زمان بر حسب ساعت است.", $backadmin, 'HTML');

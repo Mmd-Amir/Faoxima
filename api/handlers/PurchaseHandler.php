@@ -254,6 +254,11 @@ final class PurchaseHandler extends BaseHandler
         }
 
 
+        $rxPanelLimitLockKey = panel_limit_lock_acquire((string)($panel['name_panel'] ?? ''));
+        if (panel_creation_limit_reached_unlocked($panel)) {
+            panel_limit_lock_release($rxPanelLimitLockKey);
+            FaoximaResponse::fail(409, faoxima_textbot_get('dyn_purchase_panel_limit_reached', 'ظرفیت ساخت کانفیگ در این پنل تکمیل شده است.'));
+        }
         try {
             FaoximaDb::execute(
                 "INSERT INTO invoice
@@ -286,7 +291,9 @@ final class PurchaseHandler extends BaseHandler
                     ':price_before_discount' => $discPriceBefore !== null ? (string)$discPriceBefore : null,
                 ]
             );
+            panel_limit_lock_release($rxPanelLimitLockKey);
         } catch (Throwable $e) {
+            panel_limit_lock_release($rxPanelLimitLockKey);
             if ($e instanceof PDOException && (string)$e->getCode() === '23000') {
                 FaoximaResponse::fail(409, 'این نام کاربری قبلاً ثبت شده است، لطفاً دوباره تلاش کنید.');
             }

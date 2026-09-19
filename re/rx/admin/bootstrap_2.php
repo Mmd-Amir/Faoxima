@@ -329,7 +329,7 @@ if (in_array($text, $textadmin) || $datain == "admin") {
             return;
         }
     }
-    if (strpos($currentStep, 'get_remna_') === 0 || in_array($currentStep, ["updatetime", "val_usertest", "getlimitnew", "GetusernameNew", "GeturlNew", "protocolset", "updatemethodusername", "GetNameNew", "getprotocol", "getprotocolremove", "GetpaawordNew", "updateextendmethod", "setpricechangelocation"])) {
+    if (strpos($currentStep, 'get_remna_') === 0 || in_array($currentStep, ["updatetime", "val_usertest", "getlimitnew", "panellimit_getnew", "GetusernameNew", "GeturlNew", "protocolset", "updatemethodusername", "GetNameNew", "getprotocol", "getprotocolremove", "GetpaawordNew", "updateextendmethod", "setpricechangelocation"])) {
         $panelNameBack = function_exists('nmResolvePanelNameForUser') ? nmResolvePanelNameForUser($user) : (string)$user['Processing_value'];
         if ($panelNameBack !== '') {
             update("user", "Processing_value", $panelNameBack, "id", $from_id);
