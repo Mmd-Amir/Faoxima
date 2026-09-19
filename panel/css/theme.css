@@ -5511,3 +5511,170 @@ a:not([class]):focus-visible {
     background: var(--sem-danger-fg);
     color: var(--surface-1);
 }
+
+
+/* =========================================================================
+   STAGE 3A — DASHBOARD PAGE FAMILY
+   Scope: panel/index.php ONLY.  Presentation only — no PHP/JS/markup change.
+
+   Every rule below is anchored on the dashboard wrapper selector
+       #main-content .wrapper:has(> .dash-row)
+   which cannot match any other page: `.dash-row` exists only in index.php,
+   reports.php has no `.wrapper` at all, and users.php has no `.dash-row`.
+   That keeps shared primitives (`.panel`, `.stat-card`, `.chart-box`,
+   `.panel__title`, `.mdt-*`) from being reopened globally — Stage 2C/2D stay
+   frozen for every other page family.
+
+   Several dashboard rules can safely drop the anchor because the class is
+   dashboard-exclusive (`.chart-toolbar`, `.chart-range-btn`, `.donut-wrap`,
+   `.activity-*`); those are grouped in 3A.5/3A.6.
+   ========================================================================= */
+
+/* ---- 3A.1  Card header hierarchy ---------------------------------------- */
+
+#main-content .wrapper:has(> .dash-row) .panel { padding: 18px; }
+
+#main-content .wrapper:has(> .dash-row) .panel__head {
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+#main-content .wrapper:has(> .dash-row) .panel__title {
+    font-size: var(--fs-section);
+    font-weight: 600;
+}
+#main-content .wrapper:has(> .dash-row) .panel__sub {
+    font-size: var(--fs-caption);
+    margin-top: 3px;
+}
+
+/* ---- 3A.2  KPI row ------------------------------------------------------ */
+
+#main-content .wrapper:has(> .dash-row) .stats-grid {
+    gap: 12px;
+    margin-bottom: 16px;
+}
+#main-content .wrapper:has(> .dash-row) .stat-card {
+    padding: 16px;
+    gap: 10px;
+}
+#main-content .wrapper:has(> .dash-row) .stat-card__trend {
+    padding: 2px 7px;
+    font-size: 11px;
+}
+
+/* ---- 3A.3  Analytics grid rhythm ---------------------------------------- */
+
+#main-content .wrapper:has(> .dash-row) .dash-row {
+    gap: 14px;
+    margin-bottom: 14px;
+}
+#main-content .wrapper:has(> .dash-row) .dash-row > .panel {
+    display: flex;
+    flex-direction: column;
+}
+
+/* ---- 3A.4  Primary analytics: chart proportion + category fill ---------- */
+
+#main-content .wrapper:has(> .dash-row) .chart-box {
+    height: 288px;
+    flex: 0 0 auto;
+}
+#main-content .wrapper:has(> .dash-row) .chart-box.sm { height: 240px; }
+
+/* the doughnut canvas fills the card so the 1/3 column stops leaving a dead
+   band under the legend when the row is stretched by the taller chart card */
+#main-content .wrapper:has(> .dash-row) .donut-wrap {
+    flex: 1 1 auto;
+    min-height: 236px;
+}
+
+/* ---- 3A.5  Range control group (dashboard-exclusive selectors) ---------- */
+/* `.chart-toolbar` / `.chart-range-btn` occur only in index.php, so these four
+   rules cannot affect another page family.  Padding and radius stay owned by
+   the Stage 2D rules (`.chart-toolbar > .chart-range-btn`), which outrank a
+   bare class selector; only the properties 2D does not set are declared here.
+   `font-size` deliberately holds at --fs-label (12px) at every width, which
+   supersedes the legacy <=480px shrink to 11px — the control stays readable
+   on a phone. */
+
+.chart-toolbar {
+    gap: 2px;
+    padding: 3px;
+    margin-bottom: 0;
+}
+.chart-range-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    font-size: var(--fs-label);
+    line-height: 1;
+}
+.chart-toolbar > .chart-range-btn.active {
+    color: var(--accent-text);
+    font-weight: 600;
+}
+.chart-range-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+/* ---- 3A.6  Recent activity --------------------------------------------- */
+
+#main-content .wrapper:has(> .dash-row) .activity-list { gap: 0; }
+#main-content .wrapper:has(> .dash-row) .activity-item {
+    gap: 10px;
+    padding: 10px 8px;
+    border-radius: 0;
+    border-bottom: 1px solid var(--border-soft);
+}
+#main-content .wrapper:has(> .dash-row) .activity-item:last-child { border-bottom: 0; }
+#main-content .wrapper:has(> .dash-row) .activity-item:hover { background: var(--surface-2); }
+
+#main-content .wrapper:has(> .dash-row) .activity-ico {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-md);
+}
+#main-content .wrapper:has(> .dash-row) .activity-ico .svg-icon {
+    width: 17px;
+    height: 17px;
+}
+#main-content .wrapper:has(> .dash-row) .activity-body b {
+    font-size: var(--fs-body);
+    font-weight: 600;
+}
+#main-content .wrapper:has(> .dash-row) .activity-body small { font-size: var(--fs-caption); }
+
+/* pager settles at the bottom of the activity card */
+#main-content .wrapper:has(> .dash-row) .panel:has(.activity-list) .mdt-foot { margin-top: auto; }
+
+/* ---- 3A.7  Full-width orders card -------------------------------------- */
+
+#main-content .wrapper:has(> .dash-row) > .panel { padding: 18px; }
+#main-content .wrapper:has(> .dash-row) > .panel .panel__head { margin-bottom: 12px; }
+#main-content .wrapper:has(> .dash-row) > .panel .table-wrap { border-radius: var(--radius-md); }
+
+/* ---- 3A.8  Dashboard responsive composition ---------------------------- */
+
+@media (max-width: 1100px) {
+    #main-content .wrapper:has(> .dash-row) .stat-card { padding: 15px; }
+}
+
+@media (max-width: 640px) {
+    #main-content .wrapper:has(> .dash-row) .panel { padding: 16px; }
+    #main-content .wrapper:has(> .dash-row) .panel__head { flex-wrap: wrap; }
+    #main-content .wrapper:has(> .dash-row) .chart-toolbar {
+        width: 100%;
+        justify-content: flex-start;
+    }
+    #main-content .wrapper:has(> .dash-row) .chart-box { height: 236px; }
+    #main-content .wrapper:has(> .dash-row) .chart-box.sm { height: 208px; }
+    #main-content .wrapper:has(> .dash-row) .donut-wrap {
+        flex: 0 0 auto;
+        min-height: 208px;
+    }
+    #main-content .wrapper:has(> .dash-row) .stat-card { padding: 14px; gap: 8px; }
+    #main-content .wrapper:has(> .dash-row) > .panel { padding: 16px; }
+}
