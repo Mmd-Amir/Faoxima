@@ -169,13 +169,13 @@ $__hdr_notif_total = $__hdr_new_orders + $__hdr_open_tickets;
 <style>
 .profile-trigger.brand-pill {
     direction: ltr;
-    gap: 9px;
-    padding: 0 16px 0 0;
+    gap: 8px;
+    padding: 0 14px 0 4px;
     background: var(--surface-2);
     border: 1px solid var(--border-soft);
-    border-radius: 999px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 1px 3px rgba(20, 20, 30, 0.12), 0 10px 28px -8px rgba(20, 20, 30, 0.35);
-    height: 36px;
+    height: 38px;
 }
 [data-theme="dark"] .profile-trigger.brand-pill,
 :root:not([data-theme="light"]) .profile-trigger.brand-pill {
@@ -187,13 +187,13 @@ $__hdr_notif_total = $__hdr_new_orders + $__hdr_open_tickets;
     border-color: var(--border-mid);
 }
 .profile-trigger.brand-pill .logo {
-    width: 36px; height: 36px;
+    width: 30px; height: 30px;
     border-radius: 50%;
     display: grid; place-items: center;
     overflow: hidden;
     flex-shrink: 0;
     background: #fff;
-    margin: -1px;
+    margin: 0;
     box-shadow: 0 1px 3px rgba(20, 20, 30, 0.18), 0 3px 8px rgba(20, 20, 30, 0.14);
 }
 [data-theme="dark"] .profile-trigger.brand-pill .logo,
@@ -211,25 +211,25 @@ $__hdr_notif_total = $__hdr_new_orders + $__hdr_open_tickets;
 }
 .version-pill {
     direction: ltr;
-    display: flex; align-items: center; gap: 9px;
+    display: flex; align-items: center; gap: 8px;
     width: 100%;
-    padding: 0 14px 0 0;
-    background: var(--surface-2);
-    border: 1px solid var(--border-soft);
-    border-radius: 999px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
     box-shadow: 0 1px 3px rgba(20, 20, 30, 0.12), 0 10px 28px -8px rgba(20, 20, 30, 0.35);
-    height: 34px;
+    height: 28px;
 }
 [data-theme="dark"] .version-pill,
 :root:not([data-theme="light"]) .version-pill { box-shadow: none; }
 .version-pill .logo {
-    width: 34px; height: 34px;
+    width: 20px; height: 20px;
     border-radius: 50%;
     display: grid; place-items: center;
     overflow: hidden;
     flex-shrink: 0;
     background: #fff;
-    margin: -1px;
+    margin: 0;
     box-shadow: 0 1px 3px rgba(20, 20, 30, 0.18), 0 3px 8px rgba(20, 20, 30, 0.14);
 }
 [data-theme="dark"] .version-pill .logo,
@@ -241,17 +241,17 @@ $__hdr_notif_total = $__hdr_new_orders + $__hdr_open_tickets;
     display: block;
 }
 .version-pill__label {
-    font-size: 15px; font-weight: 800; letter-spacing: -0.01em;
-    color: var(--text-main);
+    font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+    color: var(--text-muted);
 }
 .version-pill__num {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 15px; font-weight: 700;
-    color: var(--text-main);
+    font-size: 11px; font-weight: 600;
+    color: var(--text-dim);
     margin-inline-start: auto;
 }
 .profile-trigger.brand-pill .profile-info b {
-    font-weight: 800; font-size: 15px; letter-spacing: -0.01em;
+    font-weight: 600; font-size: 13px; letter-spacing: -0.01em;
     color: var(--text-main);
 }
 .submenu-wrap { position: relative; }
@@ -306,7 +306,7 @@ $__hdr_notif_total = $__hdr_new_orders + $__hdr_open_tickets;
     .submenu-wrap.open .submenu-panel { transform: translateY(0) scale(1); }
 }
 .hdr-actions { flex: 1 1 auto; display: flex; justify-content: flex-end; }
-.hdr-actions .hdr-search { flex: 0 1 640px; max-width: 640px; margin-inline-end: auto; }
+.hdr-actions .hdr-search { flex: 0 1 520px; max-width: 520px; margin-inline-end: auto; }
 @media (max-width: 900px) {
     .hdr-actions .hdr-search { flex-basis: 360px; max-width: 360px; }
 }
@@ -318,10 +318,10 @@ $__hdr_notif_total = $__hdr_new_orders + $__hdr_open_tickets;
     .profile-info { display: flex; }
     #hdrBellWrap .profile-menu { right: auto; left: 8px; }
 }
-.hdr-search__mobtoggle { display: none; border-radius: 999px; }
+.hdr-search__mobtoggle { display: none; border-radius: var(--radius-md); }
 .hdr-search input {
-    border-radius: 100px;
-    padding: 10px 16px;
+    border-radius: var(--radius-md);
+    padding: 0 14px;
     box-shadow: 0 1px 3px rgba(20, 20, 30, 0.12), 0 10px 28px -8px rgba(20, 20, 30, 0.35);
 }
 [data-theme="dark"] .hdr-search input,
