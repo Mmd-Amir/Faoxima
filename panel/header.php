@@ -137,6 +137,18 @@ $__hdr_notif_total = $__hdr_new_orders + $__hdr_open_tickets;
         var s = html.style;
         var PRESET = { red:'#ef4444', blue:'#3b82f6', purple:'#a855f7', yellow:'#facc15', orange:'#f97316', green:'#22c55e' };
         function fg(r,g,b){ function lin(v){ v/=255; return v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055,2.4); } var L=0.2126*lin(r)+0.7152*lin(g)+0.0722*lin(b); return L>0.45?'#14121d':'#ffffff'; }
+        function lin(v){ v/=255; return v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055,2.4); }
+        function relLum(r,g,b){ return 0.2126*lin(r)+0.7152*lin(g)+0.0722*lin(b); }
+        function ratioOn(r,g,b,bgL){ var L=relLum(r,g,b); var hi=L>bgL?L:bgL, lo=L>bgL?bgL:L; return (hi+0.05)/(lo+0.05); }
+        function surfaceLum(light){ var v=''; try { v=getComputedStyle(html).getPropertyValue('--surface-1')||''; } catch(e){ v=''; } var sm=/^#?([0-9a-f]{6})$/i.exec(String(v).trim()); if(sm){ var sn=parseInt(sm[1],16); return relLum((sn>>16)&255,(sn>>8)&255,sn&255); } return light?relLum(255,255,255):relLum(21,22,26); }
+        function mixInk(r,g,b,k,light){ return light ? [Math.round(r*(1-k)),Math.round(g*(1-k)),Math.round(b*(1-k))] : [Math.round(r+(255-r)*k),Math.round(g+(255-g)*k),Math.round(b+(255-b)*k)]; }
+        function hexOf(c){ function h(v){ var x=v.toString(16); return x.length<2?'0'+x:x; } return '#'+h(c[0])+h(c[1])+h(c[2]); }
+        function inkFor(r,g,b,light){ var bgL=surfaceLum(light); if(ratioOn(r,g,b,bgL)>=4.5) return hexOf([r,g,b]); var lo=0,hi=1,i,mid,c; for(i=0;i<24;i++){ mid=(lo+hi)/2; c=mixInk(r,g,b,mid,light); if(ratioOn(c[0],c[1],c[2],bgL)>=4.5) hi=mid; else lo=mid; } c=mixInk(r,g,b,hi,light); var gd=0; while(ratioOn(c[0],c[1],c[2],bgL)<4.5 && gd++<255){ hi=Math.min(1,hi+0.004); c=mixInk(r,g,b,hi,light); } return hexOf(c); }
+
+        var t = localStorage.getItem('faoxima_theme');
+        var light = (t === 'light');
+        html.setAttribute('data-theme', light ? 'light' : 'dark');
+
         var hex;
         if (PRESET[color]) { hex = PRESET[color]; html.setAttribute('data-color', color); }
         else {
@@ -144,12 +156,12 @@ $__hdr_notif_total = $__hdr_new_orders + $__hdr_open_tickets;
             if (m) { hex='#'+m[1].toLowerCase(); var n=parseInt(m[1],16),r=(n>>16)&255,g=(n>>8)&255,b=n&255;
                 s.setProperty('--accent',hex); s.setProperty('--accent-soft','rgba('+r+','+g+','+b+',0.15)');
                 s.setProperty('--accent-mid','rgba('+r+','+g+','+b+',0.35)'); s.setProperty('--accent-glow','rgba('+r+','+g+','+b+',0.5)');
+                s.setProperty('--accent-ink', inkFor(r,g,b,light));
+                s.setProperty('--accent-ring', 'rgba('+r+','+g+','+b+','+(light?'0.40':'0.45')+')');
                 html.setAttribute('data-color','custom'); }
             else { hex=PRESET.blue; html.setAttribute('data-color','blue'); }
         }
         var pn=parseInt(hex.slice(1),16); s.setProperty('--accent-fg', fg((pn>>16)&255,(pn>>8)&255,pn&255));
-        var t = localStorage.getItem('faoxima_theme');
-        html.setAttribute('data-theme', (t === 'light' || t === 'dark') ? t : 'dark');
     } catch (e) {  }
 })();
 </script>

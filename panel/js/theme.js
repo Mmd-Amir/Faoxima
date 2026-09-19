@@ -8,7 +8,7 @@
     var ALLOWED_COLORS = ['red', 'blue', 'purple', 'yellow', 'orange', 'green'];
 
     var PRESET_HEX = { red:'#ef4444', blue:'#3b82f6', purple:'#a855f7', yellow:'#facc15', orange:'#f97316', green:'#22c55e' };
-    var ACCENT_VARS = ['--accent', '--accent-soft', '--accent-mid', '--accent-glow'];
+    var ACCENT_VARS = ['--accent', '--accent-soft', '--accent-mid', '--accent-glow', '--accent-ink', '--accent-ring'];
 
     function normHex(v) { var m = /^#?([0-9a-f]{6})$/i.exec(String(v == null ? '' : v).trim()); return m ? ('#' + m[1].toLowerCase()) : null; }
     function parts(hex) { var n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
@@ -17,6 +17,56 @@
         function lin(v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
         var L = 0.2126 * lin(p[0]) + 0.7152 * lin(p[1]) + 0.0722 * lin(p[2]);
         return L > 0.45 ? '#14121d' : '#ffffff';
+    }
+
+    var INK_MIN = 4.5;
+    var INK_SURFACE_FALLBACK = { light: [255, 255, 255], dark: [21, 22, 26] };
+    function linCh(v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+    function relLum(r, g, b) { return 0.2126 * linCh(r) + 0.7152 * linCh(g) + 0.0722 * linCh(b); }
+    function ratioOn(r, g, b, bgL) { var L = relLum(r, g, b); var hi = L > bgL ? L : bgL, lo = L > bgL ? bgL : L; return (hi + 0.05) / (lo + 0.05); }
+    function currentTheme() { return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'; }
+    function surfaceLum(theme) {
+        var raw = '';
+        try { raw = getComputedStyle(document.documentElement).getPropertyValue('--surface-1') || ''; } catch (e) { raw = ''; }
+        var m = /^#?([0-9a-f]{6})$/i.exec(String(raw).trim());
+        if (m) { var n = parseInt(m[1], 16); return relLum((n >> 16) & 255, (n >> 8) & 255, n & 255); }
+        var f = INK_SURFACE_FALLBACK[theme];
+        return relLum(f[0], f[1], f[2]);
+    }
+    function mixInk(r, g, b, k, theme) {
+        if (theme === 'light') return [Math.round(r * (1 - k)), Math.round(g * (1 - k)), Math.round(b * (1 - k))];
+        return [Math.round(r + (255 - r) * k), Math.round(g + (255 - g) * k), Math.round(b + (255 - b) * k)];
+    }
+    function hexOf(c) { function h(v) { var x = v.toString(16); return x.length < 2 ? '0' + x : x; } return '#' + h(c[0]) + h(c[1]) + h(c[2]); }
+    function accentInk(hex, theme) {
+        var p = parts(hex), r = p[0], g = p[1], b = p[2], bgL = surfaceLum(theme);
+        if (ratioOn(r, g, b, bgL) >= INK_MIN) return hex;
+        var lo = 0, hi = 1, i, mid, c;
+        for (i = 0; i < 24; i++) {
+            mid = (lo + hi) / 2;
+            c = mixInk(r, g, b, mid, theme);
+            if (ratioOn(c[0], c[1], c[2], bgL) >= INK_MIN) hi = mid; else lo = mid;
+        }
+        c = mixInk(r, g, b, hi, theme);
+        var guard = 0;
+        while (ratioOn(c[0], c[1], c[2], bgL) < INK_MIN && guard++ < 255) {
+            hi = Math.min(1, hi + 0.004);
+            c = mixInk(r, g, b, hi, theme);
+        }
+        return hexOf(c);
+    }
+    function applyCustomAccent(hex) {
+        var s = document.documentElement.style;
+        var theme = currentTheme();
+        var p = parts(hex);
+        s.setProperty('--accent-ink', accentInk(hex, theme));
+        s.setProperty('--accent-ring', 'rgba(' + p[0] + ',' + p[1] + ',' + p[2] + ',' + (theme === 'light' ? '0.40' : '0.45') + ')');
+    }
+    function storedCustomHex() {
+        var v = null;
+        try { v = localStorage.getItem(COLOR_KEY); } catch (e) { v = null; }
+        if (!v || PRESET_HEX[v]) return null;
+        return normHex(v);
     }
 
     function applyColor(value) {
@@ -34,6 +84,7 @@
             s.setProperty('--accent-soft', 'rgba(' + p[0] + ',' + p[1] + ',' + p[2] + ',0.15)');
             s.setProperty('--accent-mid',  'rgba(' + p[0] + ',' + p[1] + ',' + p[2] + ',0.35)');
             s.setProperty('--accent-glow', 'rgba(' + p[0] + ',' + p[1] + ',' + p[2] + ',0.5)');
+            applyCustomAccent(hex);
             document.documentElement.setAttribute('data-color', 'custom');
         }
         s.setProperty('--accent-fg', contrastFg(hex));
@@ -58,6 +109,8 @@
         if (theme !== 'light' && theme !== 'dark') theme = DEFAULT_THEME;
         document.documentElement.setAttribute('data-theme', theme);
         try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
+        var customHex = storedCustomHex();
+        if (customHex) applyCustomAccent(customHex);
         var icon = document.getElementById('theme-toggle-icon');
         var label = document.getElementById('theme-toggle-label');
         if (icon) {

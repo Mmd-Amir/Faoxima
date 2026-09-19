@@ -16,6 +16,7 @@
     --text-main:      #F4F4F5;
     --text-muted:     #A1A1AA;
     --text-dim:       #84848C;
+    --text-placeholder: #909098;
 
     
     --accent:         #3b82f6;
@@ -220,6 +221,7 @@
     --text-main:     #18181B;
     --text-muted:    #52525B;
     --text-dim:      #71717A;
+    --text-placeholder: #63636B;
     --glass-tint-1:  transparent;
     --glass-tint-2:  transparent;
     --glass-tint-3:  transparent;
@@ -860,7 +862,8 @@ a:hover { filter: brightness(1.15); }
     box-shadow: 0 0 0 3px var(--accent-soft);
     background: rgba(255, 255, 255, 0.05);
 }
-.form-control::placeholder { color: var(--text-dim); }
+.form-control::placeholder { color: var(--text-placeholder); }
+input::placeholder, textarea::placeholder { color: var(--text-placeholder); }
 
 select.form-control {
     appearance: none;
@@ -3040,7 +3043,7 @@ body {
     font-family: inherit; font-size: 13.5px;
     transition: 0.18s;
 }
-.hdr-search input::placeholder { color: var(--text-dim); }
+.hdr-search input::placeholder { color: var(--text-placeholder); }
 .hdr-search input:focus {
     outline: none;
     border-color: var(--accent-mid);
