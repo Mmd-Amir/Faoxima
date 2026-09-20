@@ -125,7 +125,7 @@ $primaryKeys = [
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>چیدمان کیبورد — پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat47">
+    <link rel="stylesheet" href="css/theme.css?v=flat49">
     <script src="js/theme.js?v=flat5" defer>
 
 </script>
@@ -183,7 +183,7 @@ $primaryKeys = [
         }
     </style>
 </head>
-<body>
+<body class="fx-keyboard-editor">
 
 
 <script type="application/json" id="kb-initial">
@@ -231,7 +231,7 @@ $primaryKeys = [
     <div class="kb-preview-wrap">
         <div class="kb-preview-head">
             <span><span class="dot"></span> پیش‌نمایش زنده — همینطور که می‌سازید</span>
-            <span style="font-family: monospace; font-size: 11px;">~/ربات/کیبورد</span>
+            <span>~/ربات/کیبورد</span>
         </div>
 
         <div id="kb-rows" class="kb-rows" aria-live="polite">
@@ -244,22 +244,22 @@ $primaryKeys = [
         </button>
     </div>
 
-    <div class="card" style="margin-top: 20px;">
+    <div class="card">
         <div class="card__head">
             <div class="card__title">
                 <?php echo icon('circle-info', 'svg-icon svg-md'); ?>
                 <span>راهنمای رنگ‌بندی دکمه‌ها</span>
             </div>
         </div>
-        <div style="padding: 0 4px; color: var(--text-muted); font-size: 13px; line-height: 1.9;">
-            <p style="margin: 0 0 10px;">
+        <div>
+            <p>
                 می‌توانید برای هر دکمه یکی از چهار حالت رنگی را انتخاب کنید. این رنگ‌ها برای دکمه‌های inline-keyboard ربات تلگرام اعمال می‌شوند:
             </p>
-            <ul style="margin: 0; padding-inline-start: 18px; line-height: 2;">
-                <li><b style="color: var(--text-main);">پیش‌فرض (Default)</b> — رنگ خودکار با توجه به تم کاربر در تلگرام</li>
-                <li><b style="color: var(--accent);">اصلی (Primary)</b> — رنگ تم پنل</li>
-                <li><b style="color: #22c55e;">موفقیت (Success)</b> — سبز برای خرید، فعال‌سازی</li>
-                <li><b style="color: #ef4444;">خطر (Danger)</b> — قرمز برای لغو، حذف</li>
+            <ul>
+                <li><b>پیش‌فرض (Default)</b> — رنگ خودکار با توجه به تم کاربر در تلگرام</li>
+                <li><b>اصلی (Primary)</b> — رنگ تم پنل</li>
+                <li><b>موفقیت (Success)</b> — سبز برای خرید، فعال‌سازی</li>
+                <li><b>خطر (Danger)</b> — قرمز برای لغو، حذف</li>
             </ul>
         </div>
     </div>

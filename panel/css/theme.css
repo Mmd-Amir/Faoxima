@@ -6787,3 +6787,292 @@ html[data-color="custom"] #main-content .wrapper.fx-page-appearance .ap-preview 
         font-size: var(--fs-caption);
     }
 }
+/* ==========================================================================
+   STAGE 3D-B3 — STANDALONE KEYBOARD EDITORS
+   panel/keyboard.php  ·  panel/service_keyboard.php
+   --------------------------------------------------------------------------
+   Both pages are complete documents with no panel shell: neither contains
+   `#main-content` nor `.wrapper`, and neither includes the shared header.
+   They share no container either — keyboard.php roots its content at
+   `.kb-page`, service_keyboard.php at `.skb-page` — and on both pages the
+   toast and the editor modal are SIBLINGS of that root, not descendants.
+   A marker on the page root would therefore miss them.
+
+   The scope marker therefore lives on `<body>`:
+
+       body.fx-keyboard-editor    →  keyboard.php
+       body.fx-service-keyboard   →  service_keyboard.php
+
+   Both names are unused anywhere else in panel/, and `theme.js` never
+   assigns `document.body.className` (it only toggles the named classes
+   `sidebar-open` / `sidebar-collapsed`), so the marker cannot be clobbered.
+   `body.lb-modal-open` is the existing precedent for this pattern.
+
+   Pure append.  Nothing above this banner is modified, moved or deleted.
+   Every selector below is anchored on one of the two markers, so each rule
+   matches exactly one page and zero elements on the other 27 pages.
+   No `!important`, no hardcoded colour, no bare `direction`, and no
+   `display`/`opacity` on any class that JavaScript toggles
+   (`open` `show` `dragging` `drag-over` `active` `hidden` `sel` `is-auto`
+   `span2` `scroll-left` `scroll-right` `all-default` `no-default`).
+
+   Token discipline:
+     accent as TEXT        →  var(--accent-text)   (validated on all 4 surfaces)
+     accent as INDICATOR   →  var(--accent-ink)
+     focus ring            →  var(--shadow-focus)  /  var(--accent-ring)
+     state foreground      →  var(--sem-*-fg)
+     state surface         →  var(--sem-*-bg)
+     text on a solid fill  →  var(--control-on-solid)
+
+   Two selectors that look like defects are deliberately left alone:
+   the Telegram button-colour gradients on `.kb-btn[data-style=…]`,
+   `.btn-prev[data-style=…]`, `.ph-btn[data-style=…]`,
+   `.sw[data-style=…]` and `.kb-color-opt__swatch` are literal previews of
+   what the button will look like inside Telegram, so they must NOT track
+   the panel accent — the same reasoning as the 2A `PRESET_HEX` table and
+   the six KPI icon colours.
+   ========================================================================== */
+
+
+/* ==========================================================================
+   A.  keyboard.php  —  body.fx-keyboard-editor
+   ========================================================================== */
+
+/* --- A.1  Accent used as TEXT ------------------------------------------- */
+/* `--accent` is the raw hue; as a text colour it fails AA on --surface-2/-3
+   in light mode.  `--accent-text` is the design system's validated accent
+   text token.  K1–K4 plus the page-local topbar brand. */
+body.fx-keyboard-editor .kb-topbar__brand { color: var(--accent-text); }
+body.fx-keyboard-editor .kb-hero__text h1 .svg-icon { color: var(--accent-text); }
+body.fx-keyboard-editor .kb-modal__head .svg-icon { color: var(--accent-text); }
+body.fx-keyboard-editor .kb-field > label::before { color: var(--accent-text); }
+body.fx-keyboard-editor .kb-select optgroup { color: var(--accent-text); }
+body.fx-keyboard-editor .kb-row__handle:hover { color: var(--accent-text); }
+body.fx-keyboard-editor .kb-add-btn:hover { color: var(--accent-text); }
+body.fx-keyboard-editor .kb-add-row:hover { color: var(--accent-text); }
+body.fx-keyboard-editor .kb-icon-btn:hover { color: var(--accent-text); }
+
+/* --- A.2  Accent as INDICATOR + focus rings ------------------------------ */
+/* The original focus rings used `--accent-glow`, a flat 50%-alpha halo that
+   is tuned for dark surfaces and smears in light mode.  `--accent-ring` is
+   the theme-aware variant (0.45 dark / 0.40 light) and `--shadow-focus` is
+   the token the 2D component system defines for exactly this purpose.  K5–K8. */
+body.fx-keyboard-editor .kb-btn:hover { border-color: var(--accent-ink); }
+body.fx-keyboard-editor .kb-add-btn:hover { border-color: var(--accent-ink); }
+body.fx-keyboard-editor .kb-add-row:hover { border-color: var(--accent-ink); }
+body.fx-keyboard-editor .kb-icon-btn:hover { border-color: var(--accent-ink); }
+body.fx-keyboard-editor .kb-topbar .btn:hover {
+    border-color: color-mix(in srgb, var(--accent-ink) 55%, transparent);
+}
+body.fx-keyboard-editor .kb-row.drag-over {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+body.fx-keyboard-editor .kb-field input[type="text"]:focus {
+    border-color: var(--accent-ink);
+    box-shadow: var(--shadow-focus);
+}
+body.fx-keyboard-editor .kb-select:focus {
+    border-color: var(--accent-ink);
+    box-shadow: var(--shadow-focus);
+}
+body.fx-keyboard-editor .kb-color-opt input:checked + .kb-color-opt__card {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 2px var(--accent-ring);
+}
+body.fx-keyboard-editor .kb-color-opt input:focus-visible + .kb-color-opt__card {
+    border-color: var(--accent-ink);
+    box-shadow: var(--shadow-focus);
+}
+
+/* --- A.3  Semantic state colours ---------------------------------------- */
+/* `--color-success` / `--color-danger` / `--color-danger-soft` are the DARK
+   values, declared once and used unconditionally, so on light surfaces these
+   read as washed-out pills.  `--sem-*-fg` / `--sem-*-bg` are theme-aware.
+   K9–K14. */
+body.fx-keyboard-editor .kb-toast.success {
+    border-color: var(--sem-success-fg);
+    color: var(--sem-success-fg);
+}
+body.fx-keyboard-editor .kb-toast.error {
+    border-color: var(--sem-danger-fg);
+    color: var(--sem-danger-fg);
+}
+body.fx-keyboard-editor .kb-preview-head .dot { background: var(--sem-success-fg); }
+body.fx-keyboard-editor .kb-icon-btn.danger:hover {
+    border-color: var(--sem-danger-fg);
+    color: var(--sem-danger-fg);
+    background: var(--sem-danger-bg);
+}
+body.fx-keyboard-editor .kb-btn .kb-btn__remove:hover {
+    background: var(--sem-danger-fg);
+    color: var(--control-on-solid);
+}
+
+/* --- A.4  Help card + preview path -------------------------------------- */
+/* The nine presentational inline styles on the help card and the monospace
+   preview path are removed from the markup and re-expressed here.  The two
+   functional inline styles — `#kb-custom-wrap{display:none}` and the
+   service page's `.pagination{display:none}` — are untouched. */
+body.fx-keyboard-editor .kb-page > .card { margin-top: 20px; }
+body.fx-keyboard-editor .kb-page > .card > .card__head + div {
+    padding: 0 4px;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.9;
+}
+body.fx-keyboard-editor .kb-page > .card > .card__head + div > p { margin: 0 0 10px; }
+body.fx-keyboard-editor .kb-page > .card > .card__head + div > ul {
+    margin: 0;
+    padding-inline-start: 18px;
+    line-height: 2;
+}
+body.fx-keyboard-editor .kb-page > .card > .card__head + div > ul > li > b {
+    color: var(--text-main);
+}
+body.fx-keyboard-editor .kb-page > .card > .card__head + div > ul > li:nth-child(2) > b {
+    color: var(--accent-text);
+}
+body.fx-keyboard-editor .kb-page > .card > .card__head + div > ul > li:nth-child(3) > b {
+    color: var(--sem-success-fg);
+}
+body.fx-keyboard-editor .kb-page > .card > .card__head + div > ul > li:nth-child(4) > b {
+    color: var(--sem-danger-fg);
+}
+body.fx-keyboard-editor .kb-preview-head > span:last-child {
+    font-family: monospace;
+    font-size: 11px;
+}
+
+/* --- A.5  Surfaces and geometry ----------------------------------------- */
+/* The page inherited 8–10px radii and a hardcoded dark modal footer; both
+   are brought onto the current surface/radius scale. */
+body.fx-keyboard-editor .kb-hero { border-radius: 16px; }
+body.fx-keyboard-editor .kb-preview-wrap { border-radius: 16px; }
+body.fx-keyboard-editor .kb-row { border-radius: 12px; }
+body.fx-keyboard-editor .kb-row:hover { background: var(--surface-3); }
+body.fx-keyboard-editor .kb-btn { border-radius: 9px; }
+body.fx-keyboard-editor .kb-add-row { border-radius: 12px; }
+body.fx-keyboard-editor .kb-modal__box { border-radius: 16px; }
+body.fx-keyboard-editor .kb-modal__foot { background: var(--surface-3); }
+
+/* --- A.6  Responsive restatement ---------------------------------------- */
+/* A media query contributes NO specificity, so the base rules above outrank
+   the page's own `@media (max-width: 600px)` collapse inside that very
+   breakpoint.  The modal box is the only element whose radius the page
+   re-declares responsively, so it is the only one restated. */
+@media (max-width: 600px) {
+    body.fx-keyboard-editor .kb-modal__box { border-radius: 18px 18px 14px 14px; }
+}
+
+
+/* ==========================================================================
+   B.  service_keyboard.php  —  body.fx-service-keyboard
+   ========================================================================== */
+
+/* --- B.1  Accent used as TEXT ------------------------------------------- */
+/* This page's <style> uses the raw `--accent` as a text colour in eight
+   places.  Same defect class as A.1. */
+body.fx-service-keyboard .skb-brand { color: var(--accent-text); }
+body.fx-service-keyboard .g-tab.active { color: var(--accent-text); }
+body.fx-service-keyboard .s-tab.active { color: var(--accent-text); }
+body.fx-service-keyboard .s-tabs-arrow:hover:not(:disabled) { color: var(--accent-text); }
+body.fx-service-keyboard .btn-auto-tag { color: var(--accent-text); }
+body.fx-service-keyboard .pg-btn:hover:not(:disabled) { color: var(--accent-text); }
+body.fx-service-keyboard .sv-more.open .sv-more-btn { color: var(--accent-text); }
+body.fx-service-keyboard .sv-more-chk { color: var(--accent-text); }
+
+/* --- B.2  Accent as INDICATOR ------------------------------------------- */
+body.fx-service-keyboard .g-tab.active { border-bottom-color: var(--accent-ink); }
+body.fx-service-keyboard .s-tab.active { border-bottom-color: var(--accent-ink); }
+body.fx-service-keyboard .pg-btn:hover:not(:disabled) { border-color: var(--accent-ink); }
+body.fx-service-keyboard .sv-more.open .sv-more-btn { border-color: var(--accent-ink); }
+body.fx-service-keyboard .s-mselect:focus { border-color: var(--accent-ink); }
+body.fx-service-keyboard .s-tabs-wrap::-webkit-scrollbar-thumb:hover { background: var(--accent-ink); }
+body.fx-service-keyboard .btn-auto-tag {
+    border-color: color-mix(in srgb, var(--accent-ink) 35%, transparent);
+}
+/* `--accent-fg` exists, so the hardcoded `#fff` fallback was dead weight. */
+body.fx-service-keyboard .s-tabs-arrow:active:not(:disabled) { color: var(--accent-fg); }
+body.fx-service-keyboard .pg-btn.active { color: var(--accent-fg); }
+
+/* --- B.3  Semantic state colours ---------------------------------------- */
+/* K19 — `--text-strong` is defined NOWHERE in panel/, so this declaration
+   always fell back to `#fff`: white text on `--accent-soft`, i.e. invisible
+   in light mode.  K22 / K30 / K32 — six hardcoded state colours. */
+body.fx-service-keyboard .sv-counter-text b { color: var(--accent-text); }
+body.fx-service-keyboard .sv-counter.all-default b { color: var(--sem-warning-fg); }
+body.fx-service-keyboard .sv-counter.no-default b { color: var(--sem-success-fg); }
+body.fx-service-keyboard .sv-badge.saving { color: var(--sem-warning-fg); }
+body.fx-service-keyboard .sv-badge.saved { color: var(--sem-success-fg); }
+body.fx-service-keyboard .skb-toast.success {
+    border-color: var(--sem-success-fg);
+    color: var(--sem-success-fg);
+}
+body.fx-service-keyboard .skb-toast.error {
+    border-color: var(--sem-danger-fg);
+    color: var(--sem-danger-fg);
+}
+/* --- INERT OVERRIDES (pre-existing dead markup) -------------------------- */
+/* `reply-badge`, `inline-badge` and `reply-warn-banner` are declared in this
+   page's own <style> but are never emitted by any markup or script anywhere
+   in panel/ — a project-wide grep finds them only as CSS declarations, with
+   zero `class="…"` occurrences.  The four rules below therefore render
+   nothing today.  They are kept, deliberately, as the token-backed
+   counterpart of the hardcoded `#ef4444` / `#22c55e` /
+   `rgba(239,68,68,.18)` declarations in that <style>: if the warning banner
+   is ever re-enabled it lands on the design system instead of on the
+   dark-only palette.  They are excluded from the contrast gate's live-target
+   list, so no accessibility claim rests on them. */
+body.fx-service-keyboard .reply-badge {
+    background: var(--sem-danger-bg);
+    color: var(--sem-danger-fg);
+    border-color: color-mix(in srgb, var(--sem-danger-fg) 40%, transparent);
+}
+body.fx-service-keyboard .inline-badge {
+    background: var(--sem-success-bg);
+    color: var(--sem-success-fg);
+    border-color: color-mix(in srgb, var(--sem-success-fg) 40%, transparent);
+}
+body.fx-service-keyboard .reply-warn-banner {
+    background: var(--sem-danger-bg);
+    border-color: color-mix(in srgb, var(--sem-danger-fg) 40%, transparent);
+}
+body.fx-service-keyboard .reply-warn-banner .svg-icon { color: var(--sem-danger-fg); }
+body.fx-service-keyboard .reply-warn-banner b { color: var(--sem-danger-fg); }
+body.fx-service-keyboard .reply-warn-banner u { color: var(--sem-danger-fg); }
+/* --- end inert overrides ------------------------------------------------- */
+body.fx-service-keyboard .sv-more-danger { color: var(--sem-danger-fg); }
+body.fx-service-keyboard .sv-more-danger .svg-icon { color: var(--sem-danger-fg); }
+
+/* --- B.4  Surfaces and geometry ----------------------------------------- */
+/* K28 — the swatch tooltip was a hardcoded dark chip, wrong on light.
+   The counter's hover tint was a hardcoded indigo that ignored the preset.
+   The mobile "more" button used a near-invisible white-alpha fill. */
+body.fx-service-keyboard .sw-tip {
+    background: var(--surface-3);
+    color: var(--text-main);
+    border-color: var(--border-mid);
+}
+body.fx-service-keyboard .sv-counter:hover {
+    background: color-mix(in srgb, var(--accent-ink) 12%, transparent);
+}
+body.fx-service-keyboard .sv-more-btn { background: var(--surface-2); }
+body.fx-service-keyboard .sv-more-btn:hover { background: var(--surface-3); }
+body.fx-service-keyboard .m-body { border-radius: 0 0 16px 16px; }
+body.fx-service-keyboard .g-tabs { border-radius: 14px 14px 0 0; }
+body.fx-service-keyboard .btn-card { border-radius: 14px; }
+body.fx-service-keyboard .phone { border-radius: 18px; }
+body.fx-service-keyboard .sv-more-menu { border-radius: 14px; }
+
+/* --- B.5  Responsive restatement ---------------------------------------- */
+/* The page re-declares `border-radius` for `.g-tabs`, `.btn-card` and
+   `.phone` inside its own `@media (max-width: 600px)`.  Because a media
+   query adds no specificity, the base rules in B.4 would otherwise win
+   inside that breakpoint and flatten the page's mobile sizing.  Each is
+   restated here at the same breakpoint, anchored the same way. */
+@media (max-width: 600px) {
+    body.fx-service-keyboard .g-tabs { border-radius: 8px 8px 0 0; }
+    body.fx-service-keyboard .btn-card { border-radius: 10px; }
+    body.fx-service-keyboard .phone { border-radius: 12px; }
+}

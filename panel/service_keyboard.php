@@ -456,7 +456,7 @@ function phoneRows(string $mKey, array $btns): array {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>رنگ‌بندی دکمه‌ها — پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat47">
+    <link rel="stylesheet" href="css/theme.css?v=flat49">
     <script src="js/theme.js?v=flat5" defer></script>
     <style>
         body { padding-top: 0 !important; }
@@ -751,7 +751,7 @@ function phoneRows(string $mKey, array $btns): array {
         }
     </style>
 </head>
-<body>
+<body class="fx-service-keyboard">
 
 <script type="application/json" id="skb-data">
 <?php
