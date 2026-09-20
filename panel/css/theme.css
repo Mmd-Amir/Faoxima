@@ -6419,3 +6419,371 @@ html[data-color="custom"] #main-content .wrapper.fx-page-appearance .ap-preview 
         inset-inline-start: 9px;
     }
 }
+
+/* ============================================================================
+   STAGE 3D-B2 — THEME-ONLY SETTINGS FAMILY
+   ----------------------------------------------------------------------------
+   seeting_x_ui.php · broadcast.php · textbot.php
+
+   Presentation only.  No <form> action, method, enctype, field name, hidden
+   field, CSRF token, AJAX endpoint, listener, storage key, theme-engine
+   method, SQL statement or redirect target is changed by this layer.
+
+   SCOPE — every selector below is anchored on the family marker
+     #main-content .wrapper.fx-page-settings-theme
+   the single class token added to the existing <div class="wrapper"> /
+   <section class="wrapper"> of the three pages.  None of the three loads
+   admin-extra.css, so this is the only stage layer that reaches them.
+
+   The three pages ship page-local <style> blocks.  Those blocks follow
+   theme.css in document order and their selectors match at (0,1,0), so every
+   rule below is written at (1,2,0) or higher and wins without !important.
+
+   Accent TEXT uses --accent-text (the Stage 2B/2D rule): raw --accent is not
+   contrast-safe as text — for the yellow preset on a light surface it
+   measures 1.53:1.  Fills, borders, icons and focus rings use --accent-ink /
+   --accent-ring.  Semantic states use --sem-*-bg / --sem-*-fg, which have a
+   light-theme definition; the legacy --color-*-soft pair is declared only in
+   the dark :root and therefore never adapted to the light theme.
+
+   No new custom property, no hard-coded colour, no !important.
+   ============================================================================ */
+
+
+/* ---- 3D-B2.1  Page rhythm ----------------------------------------------- */
+
+#main-content .wrapper.fx-page-settings-theme > .page-head {
+    margin-bottom: var(--gap-section);
+}
+#main-content .wrapper.fx-page-settings-theme > .alert {
+    margin-bottom: var(--gap-section);
+}
+#main-content .wrapper.fx-page-settings-theme .card {
+    padding: var(--space-6);
+}
+
+
+/* ---- 3D-B2.2  Accent text and accent icons ------------------------------
+   Same migration Stage 2D.10 performed for .card__title .symbol; the
+   page-head symbol and the family's own accent-coloured text were missed. */
+
+#main-content .wrapper.fx-page-settings-theme .page-head__title .symbol,
+#main-content .wrapper.fx-page-settings-theme .xui-field label::before,
+#main-content .wrapper.fx-page-settings-theme .bc-stat__value,
+#main-content .wrapper.fx-page-settings-theme .text-key,
+#main-content .wrapper.fx-page-settings-theme .search-scope__btn.active,
+#main-content .wrapper.fx-page-settings-theme .cat-select__item:hover,
+#main-content .wrapper.fx-page-settings-theme .cat-select__item.active,
+#main-content .wrapper.fx-page-settings-theme .fmt-btn:hover {
+    color: var(--accent-text);
+}
+
+#main-content .wrapper.fx-page-settings-theme .page-head__title .svg-icon,
+#main-content .wrapper.fx-page-settings-theme .card__title .svg-icon,
+#main-content .wrapper.fx-page-settings-theme .card__title i {
+    color: var(--accent-ink);
+}
+
+
+/* ---- 3D-B2.3  Field contract --------------------------------------------
+   Every family field lands on the shared control contract: --input-h tall,
+   --input-bg surface, --control-radius corners, --accent-ink border and
+   --accent-ring focus.  These are the same declarations Stage 2D gives
+   .form-control; nothing new is invented.  Heights are deliberately NOT
+   re-declared for the multi-line fields, so each keeps the page's own
+   content-driven sizing (rows="22" for the JSON editor, min-height for the
+   broadcast composer, autogrow for the bot-text rows). */
+
+#main-content .wrapper.fx-page-settings-theme .xui-input,
+#main-content .wrapper.fx-page-settings-theme .xui-select,
+#main-content .wrapper.fx-page-settings-theme .filter-bar input {
+    width: 100%;
+    min-width: 0;
+    height: var(--input-h);
+    min-height: var(--input-h);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--control-radius);
+    background: var(--input-bg);
+    color: var(--text-main);
+    font-family: 'Vazirmatn', system-ui, sans-serif;
+    font-size: var(--fs-body);
+    line-height: 1.4;
+    outline: none;
+    transition: border-color .14s ease, box-shadow .14s ease,
+                background-color .14s ease;
+}
+
+#main-content .wrapper.fx-page-settings-theme .xui-textarea,
+#main-content .wrapper.fx-page-settings-theme .bc-msg,
+#main-content .wrapper.fx-page-settings-theme .text-row textarea {
+    width: 100%;
+    min-width: 0;
+    padding: var(--space-3);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--control-radius);
+    background: var(--input-bg);
+    color: var(--text-main);
+    font-size: var(--fs-body);
+    line-height: 1.7;
+    outline: none;
+    transition: border-color .14s ease, box-shadow .14s ease,
+                background-color .14s ease;
+}
+
+[data-theme="light"] #main-content .wrapper.fx-page-settings-theme .xui-input,
+[data-theme="light"] #main-content .wrapper.fx-page-settings-theme .xui-select,
+[data-theme="light"] #main-content .wrapper.fx-page-settings-theme .filter-bar input,
+[data-theme="light"] #main-content .wrapper.fx-page-settings-theme .xui-textarea,
+[data-theme="light"] #main-content .wrapper.fx-page-settings-theme .bc-msg,
+[data-theme="light"] #main-content .wrapper.fx-page-settings-theme .text-row textarea {
+    border-color: var(--border-mid);
+}
+
+#main-content .wrapper.fx-page-settings-theme .xui-input::placeholder,
+#main-content .wrapper.fx-page-settings-theme .bc-msg::placeholder,
+#main-content .wrapper.fx-page-settings-theme .filter-bar input::placeholder,
+#main-content .wrapper.fx-page-settings-theme .text-row textarea::placeholder {
+    color: var(--text-placeholder);
+}
+
+#main-content .wrapper.fx-page-settings-theme .xui-input:focus,
+#main-content .wrapper.fx-page-settings-theme .xui-select:focus,
+#main-content .wrapper.fx-page-settings-theme .xui-textarea:focus,
+#main-content .wrapper.fx-page-settings-theme .bc-msg:focus,
+#main-content .wrapper.fx-page-settings-theme .filter-bar input:focus,
+#main-content .wrapper.fx-page-settings-theme .text-row textarea:focus {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+    background: var(--input-bg);
+}
+
+/* The bot-text source rows are read-only and open a modal on click.  The
+   page's own rules make them non-resizable and show a pointer; the field
+   contract above would otherwise win on specificity and re-enable resizing,
+   so the intent is restated here. */
+#main-content .wrapper.fx-page-settings-theme .text-row textarea[readonly] {
+    cursor: pointer;
+    resize: none;
+}
+#main-content .wrapper.fx-page-settings-theme .text-row textarea[readonly]:hover {
+    border-color: var(--accent-ink);
+}
+
+
+/* ---- 3D-B2.4  Semantic state --------------------------------------------
+   --color-*-soft / --color-* exist only in the dark :root, so in the light
+   theme an alert or badge kept a dark-hue text colour (measured as low as
+   1.9:1).  --sem-*-bg / --sem-*-fg are defined for both themes. */
+
+#main-content .wrapper.fx-page-settings-theme .text-row textarea.changed {
+    border-color: var(--sem-warning-fg);
+    background: var(--sem-warning-bg);
+}
+#main-content .wrapper.fx-page-settings-theme .text-key__badge {
+    background: var(--sem-warning-bg);
+    border-color: var(--sem-warning-fg);
+    color: var(--sem-warning-fg);
+    font-size: var(--fs-eyebrow);
+}
+#main-content .wrapper.fx-page-settings-theme .alert-success {
+    background: var(--sem-success-bg);
+    border-color: var(--sem-success-fg);
+    color: var(--sem-success-fg);
+}
+#main-content .wrapper.fx-page-settings-theme .alert-warning {
+    background: var(--sem-warning-bg);
+    border-color: var(--sem-warning-fg);
+    color: var(--sem-warning-fg);
+}
+#main-content .wrapper.fx-page-settings-theme .alert-danger {
+    background: var(--sem-danger-bg);
+    border-color: var(--sem-danger-fg);
+    color: var(--sem-danger-fg);
+}
+#main-content .wrapper.fx-page-settings-theme .alert-info {
+    background: var(--sem-info-bg);
+    border-color: var(--sem-info-fg);
+    color: var(--sem-info-fg);
+}
+#main-content .wrapper.fx-page-settings-theme .progress-summary__ok {
+    color: var(--sem-success-fg);
+}
+#main-content .wrapper.fx-page-settings-theme .progress-summary__fail {
+    color: var(--sem-danger-fg);
+}
+
+
+/* ---- 3D-B2.5  Broadcast composition ------------------------------------- */
+
+/* minmax(0, 1fr) instead of 1fr: the automatic min-content minimum of a
+   1fr track is a horizontal-overflow hazard the moment a child grows a
+   wider intrinsic minimum. */
+#main-content .wrapper.fx-page-settings-theme .bc-grid {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: var(--gap-section);
+}
+
+/* A media query contributes no specificity, so the (1,2,0) rule above
+   outranks the page's own `@media (max-width: 900px) { .bc-grid {
+   grid-template-columns: 1fr; } }` *inside that very breakpoint* — the
+   composer would stay in two columns on a phone, crushing the message
+   card to a sliver and pushing the audience column off-screen.  The
+   collapse is restated at the same breakpoint, anchored the same way,
+   so the page's responsive intent survives. */
+@media (max-width: 900px) {
+    #main-content .wrapper.fx-page-settings-theme .bc-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+#main-content .wrapper.fx-page-settings-theme .bc-stat {
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-4);
+    margin-bottom: var(--space-3);
+}
+#main-content .wrapper.fx-page-settings-theme .bc-stat__label {
+    font-size: var(--fs-field-label);
+    margin-bottom: var(--space-1);
+}
+#main-content .wrapper.fx-page-settings-theme .bc-stat__value {
+    font-size: var(--fs-kpi);
+    line-height: 1.25;
+}
+#main-content .wrapper.fx-page-settings-theme .progress-bar {
+    background: var(--input-bg);
+    border-color: var(--border-soft);
+}
+#main-content .wrapper.fx-page-settings-theme .progress-bar__fill {
+    background: var(--accent-ink);
+}
+#main-content .wrapper.fx-page-settings-theme .progress-info {
+    font-size: var(--fs-caption);
+    margin-top: var(--space-2);
+}
+
+
+/* ---- 3D-B2.6  Bot-texts composition ------------------------------------- */
+
+#main-content .wrapper.fx-page-settings-theme .filter-bar {
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+}
+#main-content .wrapper.fx-page-settings-theme .search-scope {
+    border-radius: var(--control-radius);
+    padding: var(--space-1);
+}
+#main-content .wrapper.fx-page-settings-theme .search-scope__btn {
+    border-radius: var(--radius-sm);
+    font-size: var(--fs-td);
+}
+#main-content .wrapper.fx-page-settings-theme .search-scope__btn:hover {
+    background: var(--surface-3);
+}
+#main-content .wrapper.fx-page-settings-theme .search-scope__btn.active {
+    box-shadow: inset 0 0 0 1px var(--accent-ink);
+}
+#main-content .wrapper.fx-page-settings-theme .cat-select {
+    margin-bottom: var(--space-5);
+}
+#main-content .wrapper.fx-page-settings-theme .cat-select__box {
+    min-height: var(--input-h);
+    padding: 0 var(--space-4);
+    border-radius: var(--control-radius);
+    font-size: var(--fs-body);
+}
+#main-content .wrapper.fx-page-settings-theme .cat-select__box:hover,
+#main-content .wrapper.fx-page-settings-theme .cat-select.open .cat-select__box {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+#main-content .wrapper.fx-page-settings-theme .cat-select__dd {
+    border-radius: var(--radius-lg);
+    padding: var(--space-2);
+}
+#main-content .wrapper.fx-page-settings-theme .cat-select__item {
+    border-radius: var(--radius-sm);
+    font-size: var(--fs-td);
+}
+
+/* The category panel becomes the settings card.  Without it 985 editor rows
+   float directly on the page background with no grouping and, in the light
+   theme, with almost no definition against --bg-body.  display is NOT
+   declared here, so the page's own active / search-mode / search-empty
+   tab-switching rules keep working. */
+#main-content .wrapper.fx-page-settings-theme .text-tabpanel {
+    background: var(--surface-1);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    padding: var(--space-1) var(--space-4) var(--space-4);
+}
+#main-content .wrapper.fx-page-settings-theme .text-tabpanel__searchhead {
+    font-size: var(--fs-section);
+    padding: var(--space-3) var(--space-1);
+    margin-bottom: var(--space-1);
+}
+
+/* Rows become hairline-separated entries inside the card rather than
+   individually bordered boxes.  The separator is kept on EVERY row: a search
+   or a category switch can hide any row, so a :last-child reset would leave
+   the visible list without a closing rule.  The middle track is minmax(0,1fr)
+   for the same overflow reason as .bc-grid. */
+#main-content .wrapper.fx-page-settings-theme .text-row {
+    grid-template-columns: 220px minmax(0, 1fr) auto;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-1);
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--border-soft);
+    border-radius: 0;
+}
+#main-content .wrapper.fx-page-settings-theme .text-row:hover {
+    border-bottom-color: var(--border-mid);
+}
+/* The row that owns the focused editor is marked with an accent bar on the
+   inline-start edge, the same affordance Stage 2D gives a selected table
+   row.  It replaces a hover rule that only nudged a border colour. */
+#main-content .wrapper.fx-page-settings-theme .text-row:focus-within {
+    background: var(--accent-soft);
+    border-bottom-color: var(--accent-ink);
+    box-shadow: inset -3px 0 0 var(--accent-ink);
+}
+#main-content .wrapper.fx-page-settings-theme .text-key {
+    padding-top: var(--space-2);
+    font-size: var(--fs-mono);
+}
+
+/* Action bar — the same contract Stage 3D-B1 gave .save-bar.  Sticky
+   positioning and z-index are inherited from the page's own rule. */
+#main-content .wrapper.fx-page-settings-theme .save-bar {
+    margin-top: var(--gap-section);
+    padding: var(--space-4) 0;
+    gap: var(--space-3);
+    background: linear-gradient(180deg, transparent, var(--bg-body) 45%);
+}
+
+
+/* ---- 3D-B2.7  Narrow viewports ------------------------------------------
+   At 360–390px the JSON editor's 380px floor and the broadcast composer's
+   220px floor each take most of the screen; both become content-sized. */
+
+@media (max-width: 768px) {
+    #main-content .wrapper.fx-page-settings-theme .xui-textarea {
+        min-height: 220px;
+    }
+    #main-content .wrapper.fx-page-settings-theme .bc-msg {
+        min-height: 160px;
+    }
+    #main-content .wrapper.fx-page-settings-theme .text-tabpanel {
+        padding: var(--space-1) var(--space-3) var(--space-3);
+    }
+    #main-content .wrapper.fx-page-settings-theme .text-row {
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--space-2);
+    }
+    #main-content .wrapper.fx-page-settings-theme .text-key {
+        padding-top: 0;
+        font-size: var(--fs-caption);
+    }
+}

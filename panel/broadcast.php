@@ -147,7 +147,7 @@ try {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>پیام همگانی | پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat47">
+    <link rel="stylesheet" href="css/theme.css?v=flat48">
     <script src="js/theme.js?v=flat5" defer>
 
 </script>
@@ -215,7 +215,7 @@ try {
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper">
+        <div class="wrapper fx-page-settings-theme">
 
             <div class="page-head">
                 <div>
@@ -250,7 +250,7 @@ try {
                         </select>
                     </div>
 
-                    <div class="alert" style="background:var(--accent-soft); border:1px solid var(--accent-mid); color:var(--text-main); padding:10px 14px; border-radius:8px; font-size:12.5px; line-height:1.8;">
+                    <div class="alert alert-info">
                         <?php echo icon('circle-info', 'svg-icon svg-sm'); ?>
                         ارسال در دسته‌های ۱۵تایی انجام می‌شود تا با محدودیت تلگرام برخورد نکنیم. کاربرانی که ربات را بلاک کرده‌اند خودکار رد می‌شوند.
                     </div>
@@ -296,8 +296,8 @@ try {
                                 <span><span id="bc-pct">۰</span>٪</span>
                             </div>
                             <div style="margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border-soft); display: flex; justify-content: space-between; font-size: 13px;">
-                                <span style="color: var(--color-success);">✓ موفق: <b id="bc-sent">۰</b></span>
-                                <span style="color: var(--color-danger);">✗ ناموفق: <b id="bc-failed">۰</b></span>
+                                <span class="progress-summary__ok">✓ موفق: <b id="bc-sent">۰</b></span>
+                                <span class="progress-summary__fail">✗ ناموفق: <b id="bc-failed">۰</b></span>
                             </div>
                         </div>
                     </div>

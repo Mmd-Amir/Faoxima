@@ -243,7 +243,7 @@ $delKey   = isset($_GET['deleted']) ? (string)$_GET['deleted'] : '';
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>متن‌های ربات | پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat47">
+    <link rel="stylesheet" href="css/theme.css?v=flat48">
     <script src="js/theme.js?v=flat5" defer>
 
 </script>
@@ -572,7 +572,7 @@ $delKey   = isset($_GET['deleted']) ? (string)$_GET['deleted'] : '';
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper">
+        <div class="wrapper fx-page-settings-theme">
 
             <div class="page-head">
                 <div>
@@ -585,27 +585,27 @@ $delKey   = isset($_GET['deleted']) ? (string)$_GET['deleted'] : '';
             </div>
 
             <?php if ($savedNum > 0): ?>
-                <div class="alert" style="background:var(--color-success-soft); border:1px solid var(--color-success); color:var(--color-success); padding:12px 16px; border-radius:10px; margin-bottom:18px; display:flex; align-items:center; gap:10px;">
+                <div class="alert alert-success">
                     <?php echo icon('circle-check', 'svg-icon'); ?>
                     <span><?php echo $savedNum; ?> متن به‌روزرسانی شد.</span>
                 </div>
             <?php elseif ($savedNum === 0): ?>
-                <div class="alert" style="background:var(--surface-3); border:1px solid var(--border-mid); padding:12px 16px; border-radius:10px; margin-bottom:18px;">
+                <div class="alert alert-info">
                     تغییری انجام نشد.
                 </div>
             <?php endif; ?>
             <?php if ($addedKey !== ''): ?>
-                <div class="alert" style="background:var(--color-success-soft); border:1px solid var(--color-success); color:var(--color-success); padding:12px 16px; border-radius:10px; margin-bottom:18px;">
+                <div class="alert alert-success">
                     کلید جدید <code><?php echo htmlspecialchars($addedKey, ENT_QUOTES); ?></code> افزوده شد.
                 </div>
             <?php endif; ?>
             <?php if ($delKey !== ''): ?>
-                <div class="alert" style="background:var(--color-warning-soft); border:1px solid var(--color-warning); color:var(--color-warning); padding:12px 16px; border-radius:10px; margin-bottom:18px;">
+                <div class="alert alert-warning">
                     کلید <code><?php echo htmlspecialchars($delKey, ENT_QUOTES); ?></code> حذف شد.
                 </div>
             <?php endif; ?>
             <?php if ($flash['err']): ?>
-                <div class="alert" style="background:var(--color-danger-soft); border:1px solid var(--color-danger); color:var(--color-danger); padding:12px 16px; border-radius:10px; margin-bottom:18px;">
+                <div class="alert alert-danger">
                     <?php echo htmlspecialchars($flash['err'], ENT_QUOTES, 'UTF-8'); ?>
                 </div>
             <?php endif; ?>
