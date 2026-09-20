@@ -127,7 +127,7 @@ function faoxima_shop_is_on($cur, $on, $off) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>قابلیت‌های فروشگاه | پنل فاکسیما</title>
     <link rel="stylesheet" href="css/theme.css?v=flat47">
-    <link rel="stylesheet" href="css/admin-extra.css?v=flat32">
+    <link rel="stylesheet" href="css/admin-extra.css?v=flat34">
     <script src="js/theme.js?v=flat5" defer>
 
 </script>
@@ -138,7 +138,7 @@ function faoxima_shop_is_on($cur, $on, $off) {
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper">
+        <div class="wrapper fx-page-settings">
 
             <div class="page-head">
                 <div>

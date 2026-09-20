@@ -236,7 +236,7 @@ function faoxima_fin_mask_secret($v) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>تنظیمات مالی | پنل فاکسیما</title>
     <link rel="stylesheet" href="css/theme.css?v=flat47">
-    <link rel="stylesheet" href="css/admin-extra.css?v=flat32">
+    <link rel="stylesheet" href="css/admin-extra.css?v=flat34">
     <script src="js/money-input.js?v=fx1" defer></script>
     <script src="js/theme.js?v=flat5" defer>
 
@@ -248,7 +248,7 @@ function faoxima_fin_mask_secret($v) {
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper">
+        <div class="wrapper fx-page-settings">
 
             <div class="page-head">
                 <div>
@@ -338,7 +338,7 @@ function faoxima_fin_mask_secret($v) {
                     <?php endforeach; ?>
                 </div>
 
-                <div class="alert" style="background: var(--accent-soft); border: 1px solid var(--accent-mid); color: var(--text-main); margin-top: 16px;">
+                <div class="alert alert-info">
                     <?php echo icon('circle-info', 'svg-icon'); ?>
                     <span>فیلدهای مرچنت/کلید API به‌صورت <code>••••XXXX</code> نمایش داده می‌شوند. برای تغییر، مقدار جدید را تایپ کنید — اگر خالی بماند، تغییری اعمال نمی‌شود.</span>
                 </div>
