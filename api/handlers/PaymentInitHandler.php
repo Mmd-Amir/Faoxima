@@ -187,6 +187,10 @@ final class PaymentInitHandler extends BaseHandler
                     $this->handleBluPal($amount);
                     return;
 
+                case 'variza':
+                    $this->handleVariza($amount);
+                    return;
+
                 case 'atlaspay':
                     $this->handleAtlasPay($amount);
                     return;
@@ -363,6 +367,9 @@ final class PaymentInitHandler extends BaseHandler
         if ($method === 'cubepay') {
             return 60;
         }
+        if ($method === 'variza') {
+            return 60;
+        }
         if ($method === 'atlaspay') {
             return 20;
         }
@@ -405,6 +412,7 @@ final class PaymentInitHandler extends BaseHandler
             'tonpay'        => ['minbalancetonpay',        'maxbalancetonpay'],
             'cubepay'       => ['minbalancecubepay',       'maxbalancecubepay'],
             'blupal'        => ['minbalanceblupal',        'maxbalanceblupal'],
+            'variza'        => ['minbalancevariza',        'maxbalancevariza'],
             'atlaspay'      => ['minbalanceatlaspay',      'maxbalanceatlaspay'],
             'tetrapay'      => ['minbalancetetrapay',      'maxbalancetetrapay'],
         ];
@@ -874,6 +882,56 @@ final class PaymentInitHandler extends BaseHandler
 
         update('Payment_report', 'blupal_invoice_id', $invoiceId, 'id_order', $orderId);
         update('Payment_report', 'blupal_payment_link', $paymentLink, 'id_order', $orderId);
+
+        FaoximaResponse::ok([
+            'kind'     => 'url',
+            'url'      => $paymentLink,
+            'order_id' => $orderId,
+            'message'  => faoxima_textbot_get('dyn_paymentinit_click_link_to_pay', '🌸 برای تکمیل پرداخت روی لینک زیر کلیک کنید.'),
+        ]);
+    }
+
+
+    private function handleVariza(int $amount): void
+    {
+        if (!function_exists('varizaCreatePayment')) {
+            FaoximaResponse::fail(503, faoxima_textbot_get('dyn_paymentinit_variza_function_missing', '❌ تابع درگاه واریزا روی این سرور موجود نیست.'));
+        }
+
+        $minRow = select('PaySetting', 'ValuePay', 'NamePay', 'minbalancevariza', 'select');
+        $maxRow = select('PaySetting', 'ValuePay', 'NamePay', 'maxbalancevariza', 'select');
+        $min = is_array($minRow) ? (int)($minRow['ValuePay'] ?? 0) : 0;
+        $max = is_array($maxRow) ? (int)($maxRow['ValuePay'] ?? 0) : 0;
+        if ($min > 0 && $amount < $min) {
+            FaoximaResponse::fail(422, faoxima_render_text(faoxima_textbot_get('dyn_paymentinit_min_amount', '❌ حداقل مبلغ پرداخت {min} تومان است.'), ['min' => number_format($min)]));
+        }
+        if ($max > 0 && $amount > $max) {
+            FaoximaResponse::fail(422, faoxima_render_text(faoxima_textbot_get('dyn_paymentinit_max_amount', '❌ حداکثر مبلغ پرداخت {max} تومان است.'), ['max' => number_format($max)]));
+        }
+
+        $orderId = bin2hex(random_bytes(5));
+
+        $this->insertPaymentReport('variza', $amount, $orderId);
+
+        try {
+            $pay = varizaCreatePayment($orderId, $amount);
+        } catch (Throwable $e) {
+            FaoximaLogger::userFacing('varizaCreatePayment() threw', ['err' => $e->getMessage()]);
+            FaoximaResponse::fail(502, faoxima_textbot_get('dyn_paymentinit_gateway_generic_error', '❌ خطا در ارتباط با درگاه پرداخت.'));
+        }
+
+        $slug = is_array($pay) ? trim((string)($pay['slug'] ?? '')) : '';
+        $paymentLink = is_array($pay) ? trim((string)($pay['pay_url'] ?? '')) : '';
+
+        if ($slug === '' || $paymentLink === '') {
+            $errMsg = is_array($pay) ? json_encode($pay, JSON_UNESCAPED_UNICODE) : 'unknown';
+            FaoximaLogger::userFacing('varizaCreatePayment() returned bad response', ['raw' => $errMsg]);
+            update('Payment_report', 'payment_Status', 'reject', 'id_order', $orderId);
+            update('Payment_report', 'dec_not_confirmed', $errMsg, 'id_order', $orderId);
+            FaoximaResponse::fail(502, faoxima_textbot_get('dyn_paymentinit_payment_link_creation_failed', '❌ ساخت لینک پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.'));
+        }
+
+        update('Payment_report', 'dec_not_confirmed', $slug, 'id_order', $orderId);
 
         FaoximaResponse::ok([
             'kind'     => 'url',

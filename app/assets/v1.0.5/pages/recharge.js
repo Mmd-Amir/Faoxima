@@ -10,6 +10,7 @@ function iconForMethod(m) {
     if (id === 'tonpay')               return 'tronado';
     if (id === 'cubepay')              return 'tronado';
     if (id === 'blupal')               return 'tronado';
+    if (id === 'variza')               return 'tronado';
     if (id === 'atlaspay')             return 'tronado';
     if (id === 'tetrapay')             return 'tronado';
     if (id.startsWith('iranpay'))      return 'flower';
@@ -422,7 +423,7 @@ function isAutoConfirmGatewayId(id) {
     return (
         x === 'plisio' || x === 'nowpayment' || x === 'digitaltron' ||
         x.startsWith('iranpay') || x === 'tonpay' || x === 'cubepay' ||
-        x === 'zarinpal' || x === 'blupal' || x === 'atlaspay' || x === 'tetrapay'
+        x === 'zarinpal' || x === 'blupal' || x === 'variza' || x === 'atlaspay' || x === 'tetrapay'
     );
 }
 

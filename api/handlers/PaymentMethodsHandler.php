@@ -28,6 +28,7 @@ final class PaymentMethodsHandler extends BaseHandler
         $tonpayActive   = $get('statustonpay');
         $cubepayActive  = $get('statuscubepay');
         $blupalActive   = $get('statusblupal');
+        $varizaActive   = $get('statusvariza');
         $atlaspayActive = $get('statusatlaspay');
         $tetrapayActive = $get('statustetrapay');
         $plisio         = $get('nowpaymentstatus');
@@ -55,6 +56,7 @@ final class PaymentMethodsHandler extends BaseHandler
             'tonpay'        => ['minbalancetonpay',        'maxbalancetonpay'],
             'cubepay'       => ['minbalancecubepay',       'maxbalancecubepay'],
             'blupal'        => ['minbalanceblupal',        'maxbalanceblupal'],
+            'variza'        => ['minbalancevariza',        'maxbalancevariza'],
             'atlaspay'      => ['minbalanceatlaspay',      'maxbalanceatlaspay'],
             'tetrapay'      => ['minbalancetetrapay',      'maxbalancetetrapay'],
         ];
@@ -196,6 +198,14 @@ final class PaymentMethodsHandler extends BaseHandler
                 'id'    => 'blupal',
                 'label' => $L('blupal', '💙 بلوپال'),
                 'icon'  => '💙',
+                'kind'  => 'form',
+            ];
+        }
+        if ($varizaActive === 'onvariza') {
+            $methods[] = [
+                'id'    => 'variza',
+                'label' => $L('variza', '💳 واریزا'),
+                'icon'  => '💳',
                 'kind'  => 'form',
             ];
         }

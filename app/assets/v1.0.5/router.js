@@ -98,7 +98,7 @@ async function watchResumePage(view, encodedOrderId) {
 
     const isCryptoFlow = methodStr.includes('digital') || methodStr.includes('arze') || methodStr.includes('crypto');
     const isDirectBuy = flowStr === 'direct_buy';
-    const isExternalBotGateway = methodStr === 'iranpay2' || methodStr === 'tonpay' || methodStr === 'cubepay' || methodStr === 'blupal' || methodStr === 'atlaspay' || methodStr === 'tetrapay';
+    const isExternalBotGateway = methodStr === 'iranpay2' || methodStr === 'tonpay' || methodStr === 'cubepay' || methodStr === 'blupal' || methodStr === 'variza' || methodStr === 'atlaspay' || methodStr === 'tetrapay';
     const resolvedMode = isCryptoFlow
         ? (isDirectBuy ? 'crypto_offline' : 'recharge')
         : 'recharge';
@@ -112,7 +112,7 @@ async function watchResumePage(view, encodedOrderId) {
         gatewayUrl,
         keepMiniAppOpen: isExternalBotGateway,
         expiresAtSec,
-        timeoutSec: methodStr === 'cubepay' ? 3600 : (methodStr === 'atlaspay' ? 1200 : (methodStr === 'tetrapay' ? 600 : 1800)),
+        timeoutSec: (methodStr === 'cubepay' || methodStr === 'variza') ? 3600 : (methodStr === 'atlaspay' ? 1200 : (methodStr === 'tetrapay' ? 600 : 1800)),
         pollEverySec: 5,
         onSuccess: (st) => {
             const amount = Number(st.amount || 0).toLocaleString('en-US');
