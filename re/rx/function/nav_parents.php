@@ -40,6 +40,7 @@ if (!function_exists('rxNavParent')) {
                 'gw_tonpay'                 => 'finance',
                 'gw_cubepay'                => 'finance',
                 'gw_blupal'                 => 'finance',
+                'gw_variza'                 => 'finance',
                 'gw_atlaspay'               => 'finance',
                 'gw_tetrapay'               => 'finance',
                 'gw_zarinpal'               => 'finance',
@@ -145,6 +146,13 @@ if (!function_exists('rxNavParent')) {
                 'getmaxblupal'              => 'gw_blupal',
                 'helpblupal'                => 'gw_blupal',
                 'gettextblupal'             => 'gw_blupal',
+                'apivariza'                 => 'gw_variza',
+                'variza_webhook_secret'     => 'gw_variza',
+                'getcashvariza'             => 'gw_variza',
+                'getmainvariza'             => 'gw_variza',
+                'getmaxvariza'              => 'gw_variza',
+                'helpvariza'                => 'gw_variza',
+                'gettextvariza'             => 'gw_variza',
                 'apiatlaspay'               => 'gw_atlaspay',
                 'getcashatlaspay'           => 'gw_atlaspay',
                 'getmainatlaspay'           => 'gw_atlaspay',
@@ -479,6 +487,7 @@ if (!function_exists('rxIsRenderableState')) {
                 'featcat_lottery', 'featcat_antispam', 'featcat_redis',
                 'featnav_affiliates', 'affiliates_antifraud_menu', 'featnav_changeloc',
                 'gw_cart', 'gw_cart_auto', 'gw_trnado', 'gw_tonpay', 'gw_cubepay', 'gw_blupal',
+                'gw_variza',
                 'gw_atlaspay', 'gw_tetrapay',
                 'gw_zarinpal', 'gw_plisio', 'gw_iranpay', 'gw_tron', 'gw_star', 'gw_nowpayment',
             ]);
@@ -536,6 +545,9 @@ if (!function_exists('rxNavMenuSignatures')) {
                     'tonpay_apikey'          => 'gw_tonpay',
                     'cubepay_apikey'         => 'gw_cubepay',
                     'blupal_apikey'          => 'gw_blupal',
+                    'variza_name'            => 'gw_variza',
+                    'variza_apikey'          => 'gw_variza',
+                    'variza_webhooksecret'   => 'gw_variza',
                     'atlaspay_apikey'        => 'gw_atlaspay',
                     'atlaspay_account'       => 'gw_atlaspay',
                     'tetrapay_apikey'        => 'gw_tetrapay',
@@ -1316,7 +1328,7 @@ if (!function_exists('rxAssertUniqueMenuCallbacks')) {
             'aqaye_backmenu', 'plisio_backmenu', 'help_backmenu', 'feat_backmenu',
             'ch_backmenu', 'set_backmenu', 'shop_backmenu', 'cat_back', 'shopitem_back',
             'usershub_backmenu', 'panelshub_backmenu', 'channelhub_backmenu', 'wallet_backmenu',
-            'tonpay_backmenu', 'cubepay_backmenu', 'blupal_backmenu', 'atlaspay_backmenu', 'tetrapay_backmenu',
+            'tonpay_backmenu', 'cubepay_backmenu', 'blupal_backmenu', 'variza_backmenu', 'atlaspay_backmenu', 'tetrapay_backmenu',
         ]);
         $seen = [];
         $collisions = [];

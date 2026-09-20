@@ -232,6 +232,8 @@ function buildPaymentGatewayKeyboard(array $textbotlang)
     $tonpaystatus = $tonpay_status_raw === 'ontonpay' ? $statusOn : $statusOff;
     $cubepaystatus = $cubepay_status_raw === 'oncubepay' ? $statusOn : $statusOff;
     $blupalstatus = $blupal_status_raw === 'onblupal' ? $statusOn : $statusOff;
+    $variza_status_raw = getPaySettingValue('statusvariza', 'offvariza');
+    $varizastatus = $variza_status_raw === 'onvariza' ? $statusOn : $statusOff;
     $atlaspaystatus = $atlaspay_status_raw === 'onatlaspay' ? $statusOn : $statusOff;
     $tetrapaystatus = $tetrapay_status_raw === 'ontetrapay' ? $statusOn : $statusOff;
     $zarinpalstatus = $zarinpal === 'onzarinpal' ? $statusOn : $statusOff;
@@ -279,6 +281,11 @@ function buildPaymentGatewayKeyboard(array $textbotlang)
             ['text' => '⚙️ تنظیمات', 'callback_data' => 'blupalsetting'],
             ['text' => $blupalstatus, 'callback_data' => "editpayment-blupal-$blupal_status_raw"],
             ['text' => '💙 بلوپال', 'callback_data' => 'blupal'],
+        ],
+        [
+            ['text' => '⚙️ تنظیمات', 'callback_data' => 'varizasetting'],
+            ['text' => $varizastatus, 'callback_data' => "editpayment-variza-$variza_status_raw"],
+            ['text' => '💳 واریزا', 'callback_data' => 'variza'],
         ],
         [
             ['text' => '⚙️ تنظیمات', 'callback_data' => 'atlaspaysetting'],
@@ -930,6 +937,16 @@ if (!empty($datain) && in_array($from_id, $admin_ids ?? [])) {
         'blupal_back'     => $textbotlang['Admin']['backadmin'],
         'blupal_backmenu' => $textbotlang['Admin']['backmenu'],
 
+        'variza_name'         => "🏷️ نام نمایشی درگاه واریزا",
+        'variza_apikey'       => "🔑 ثبت توکن API واریزا",
+        'variza_webhooksecret' => "🔐 ثبت کلید وب‌هوک واریزا",
+        'variza_cashback'     => "💰 کش بک واریزا",
+        'variza_min'          => "⬇️ کف واریزا",
+        'variza_max'          => "⬆️ سقف واریزا",
+        'variza_edu'          => "📚 آموزش واریزا",
+        'variza_back'         => $textbotlang['Admin']['backadmin'],
+        'variza_backmenu'     => $textbotlang['Admin']['backmenu'],
+
         'atlaspay_name'     => "🏷️ نام نمایشی درگاه اطلس‌پی",
         'atlaspay_apikey'   => "🔑 ثبت API Key اطلس‌پی",
         'atlaspay_account'  => "📊 موجودی و اطلاعات حساب",
@@ -1029,6 +1046,7 @@ if (!empty($datain) && in_array($from_id, $admin_ids ?? [])) {
         'tonpay_backmenu' => 'finance',
         'cubepay_backmenu' => 'finance',
         'blupal_backmenu' => 'finance',
+        'variza_backmenu' => 'finance',
         'atlaspay_backmenu' => 'finance',
         'tetrapay_backmenu' => 'finance',
         'zpal_backmenu'   => 'finance',
