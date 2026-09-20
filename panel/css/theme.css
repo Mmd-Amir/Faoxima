@@ -6191,3 +6191,231 @@ a:not([class]):focus-visible {
         line-height: 1.85;
     }
 }
+/* ============================================================================
+   STAGE 3D-A — APPEARANCE & THEME CONTROL EXPERIENCE
+   ----------------------------------------------------------------------------
+   Presentation only.  No storage key, data-color value, theme-engine method,
+   FOUC bootstrap or request contract is changed.
+
+   SCOPE — every selector is anchored on the appearance page marker
+     #main-content .wrapper.fx-page-appearance
+   the single class token added to appearance.php's existing
+   <div class="wrapper">.  The html[data-theme] / html[data-color="custom"]
+   selectors below still carry that marker, so they are equally bounded.
+
+   The theme-mode control's selected state is painted from html[data-theme]
+   (set during parse by header.php's FOUC bootstrap) rather than from a
+   JS-added class, so it is correct at first paint and cannot disagree with
+   the runtime theme.
+   ============================================================================ */
+
+#main-content .wrapper.fx-page-appearance > .page-head {
+    margin-bottom: 14px;
+    padding: 10px 0;
+}
+#main-content .wrapper.fx-page-appearance .ap-card {
+    max-width: 720px;
+    padding: 18px;
+}
+
+/* --- section rhythm ------------------------------------------------------ */
+#main-content .wrapper.fx-page-appearance .ap-section-title {
+    margin: 0 0 4px;
+    font-size: var(--fs-card);
+    font-weight: 700;
+}
+#main-content .wrapper.fx-page-appearance .ap-lead {
+    margin: 0 0 14px;
+    font-size: var(--fs-td);
+    color: var(--text-muted);
+}
+#main-content .wrapper.fx-page-appearance .ap-modes + .ap-section-title {
+    margin-top: 22px;
+}
+#main-content .wrapper.fx-page-appearance .ap-custom {
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border-soft);
+}
+
+/* --- theme-mode segmented control ---------------------------------------- */
+#main-content .wrapper.fx-page-appearance .ap-modes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+}
+#main-content .wrapper.fx-page-appearance .ap-mode {
+    -webkit-appearance: none;
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: var(--control-h);
+    padding: 0 14px;
+    font: inherit;
+    font-size: var(--fs-card);
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: border-color .15s ease, background-color .15s ease, color .15s ease;
+}
+#main-content .wrapper.fx-page-appearance .ap-mode:hover {
+    color: var(--text-main);
+    border-color: var(--border-mid);
+}
+#main-content .wrapper.fx-page-appearance .ap-mode:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+#main-content .wrapper.fx-page-appearance .ap-mode.active,
+html[data-theme="dark"] #main-content .wrapper.fx-page-appearance .ap-mode[data-theme-mode="dark"],
+html[data-theme="light"] #main-content .wrapper.fx-page-appearance .ap-mode[data-theme-mode="light"] {
+    color: var(--text-main);
+    background: var(--surface-1);
+    border-color: var(--accent-ink);
+    box-shadow: inset 0 0 0 1px var(--accent-ink);
+}
+#main-content .wrapper.fx-page-appearance .ap-mode.active::after,
+html[data-theme="dark"] #main-content .wrapper.fx-page-appearance .ap-mode[data-theme-mode="dark"]::after,
+html[data-theme="light"] #main-content .wrapper.fx-page-appearance .ap-mode[data-theme-mode="light"]::after {
+    content: "";
+    flex: 0 0 auto;
+    width: 5px;
+    height: 9px;
+    margin-top: -3px;
+    border: solid var(--accent-ink);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+/* --- accent preset grid -------------------------------------------------- */
+/* The preset tiles carry data-color="<preset>" as their OWN attribute (it is
+   the click payload read by the page script), so the frozen Stage 2A
+   preset-token blocks `[data-color="x"] { ... --accent-ink: ... }` - written
+   for <html> - ALSO match the tile and re-declare --accent-ink / --accent-ring
+   with that preset's DARK-theme value on the tile itself.  The original page
+   never consumed --accent-ink inside a tile, so the collision was invisible;
+   the selected-state ring below is the first consumer and would otherwise
+   paint the dark ink in light theme (#A78BFA on #FFFFFF = 2.71:1, below 3:1).
+   Alias the ROOT values on the grid (which has no data-color of its own) and
+   consume the aliases inside the tile, so the tile inherits the theme-correct
+   ink rather than its own colliding re-declaration.  No token value is
+   duplicated and no frozen file is touched. */
+#main-content .wrapper.fx-page-appearance #ap-grid {
+    --fx-ink: var(--accent-ink);
+    --fx-ring: var(--accent-ring);
+    gap: 10px;
+    margin-top: 12px;
+}
+#main-content .wrapper.fx-page-appearance .ap-swatch {
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 48px;
+    padding: 10px 14px;
+    padding-inline-start: 32px;
+    font: inherit;
+    font-size: var(--fs-card);
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: border-color .15s ease, background-color .15s ease, color .15s ease;
+}
+#main-content .wrapper.fx-page-appearance .ap-swatch:hover {
+    transform: none;
+    color: var(--text-main);
+    background: var(--surface-3);
+    border-color: var(--border-mid);
+}
+#main-content .wrapper.fx-page-appearance .ap-swatch:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--fx-ring);
+}
+#main-content .wrapper.fx-page-appearance .ap-swatch.active {
+    color: var(--text-main);
+    font-weight: 700;
+    background: var(--surface-1);
+    border-color: var(--fx-ink);
+    box-shadow: inset 0 0 0 1px var(--fx-ink);
+}
+#main-content .wrapper.fx-page-appearance .ap-swatch.active::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    inset-inline-start: 11px;
+    width: 6px;
+    height: 11px;
+    margin-top: -7px;
+    border: solid var(--fx-ink);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+#main-content .wrapper.fx-page-appearance .ap-dot {
+    width: 22px;
+    height: 22px;
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.18), 0 0 0 1px var(--border-mid);
+}
+
+/* --- custom colour ------------------------------------------------------- */
+#main-content .wrapper.fx-page-appearance .ap-hexrow {
+    gap: 10px;
+    margin-top: 12px;
+}
+#main-content .wrapper.fx-page-appearance .ap-hexrow input[type="text"] {
+    padding: 10px 12px;
+    border-radius: var(--radius-lg);
+    border-color: var(--border-mid);
+    font-size: var(--fs-card);
+}
+#main-content .wrapper.fx-page-appearance .ap-hexrow input[type="text"]:focus {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+#main-content .wrapper.fx-page-appearance .ap-hexrow input[type="color"],
+#main-content .wrapper.fx-page-appearance .ap-preview {
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--border-mid);
+    border-radius: var(--radius-lg);
+}
+#main-content .wrapper.fx-page-appearance .ap-hexrow input[type="color"] {
+    background: var(--surface-1);
+}
+#main-content .wrapper.fx-page-appearance .ap-note {
+    margin-top: 10px;
+    font-size: var(--fs-caption);
+    color: var(--text-dim);
+}
+#main-content .wrapper.fx-page-appearance .ap-actions {
+    margin-top: 18px;
+}
+/* while a custom colour is live the custom block reads as the active control */
+html[data-color="custom"] #main-content .wrapper.fx-page-appearance .ap-custom {
+    border-top-color: var(--accent-ink);
+}
+html[data-color="custom"] #main-content .wrapper.fx-page-appearance .ap-preview {
+    box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+/* --- narrow viewports ---------------------------------------------------- */
+@media (max-width: 560px) {
+    #main-content .wrapper.fx-page-appearance .ap-card {
+        padding: 14px;
+    }
+    #main-content .wrapper.fx-page-appearance .ap-swatch {
+        padding-inline-start: 28px;
+    }
+    #main-content .wrapper.fx-page-appearance .ap-swatch.active::after {
+        inset-inline-start: 9px;
+    }
+}

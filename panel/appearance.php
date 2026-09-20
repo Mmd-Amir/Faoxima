@@ -59,7 +59,7 @@ if (empty($_SESSION['user']) || !is_string($_SESSION['user']) || $_SESSION['user
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper">
+        <div class="wrapper fx-page-appearance">
 
             <div class="page-head">
                 <div>
@@ -75,16 +75,23 @@ if (empty($_SESSION['user']) || !is_string($_SESSION['user']) || $_SESSION['user
             </div>
 
             <div class="card ap-card">
+                <div class="ap-section-title">حالت نمایش</div>
+                <div class="ap-lead">حالت روشن یا تیره‌ی پنل را انتخاب کنید.</div>
+                <div class="ap-modes" id="ap-modes" role="group" aria-label="حالت نمایش">
+                    <button type="button" class="ap-mode" data-theme-mode="dark">حالت شب</button>
+                    <button type="button" class="ap-mode" data-theme-mode="light">حالت روز</button>
+                </div>
+
                 <div class="ap-section-title">رنگ پنل</div>
                 <div class="ap-lead">یک رنگ از پیش‌فرض‌ها انتخاب کنید یا کد رنگ دلخواه‌تان را وارد کنید. رنگ بلافاصله اعمال می‌شود.</div>
 
                 <div class="ap-grid" id="ap-grid">
-                    <div class="ap-swatch" data-color="blue"><span>آبی</span><span class="ap-dot" style="background:#3b82f6"></span></div>
-                    <div class="ap-swatch" data-color="purple"><span>بنفش</span><span class="ap-dot" style="background:#a855f7"></span></div>
-                    <div class="ap-swatch" data-color="red"><span>قرمز</span><span class="ap-dot" style="background:#ef4444"></span></div>
-                    <div class="ap-swatch" data-color="green"><span>سبز</span><span class="ap-dot" style="background:#22c55e"></span></div>
-                    <div class="ap-swatch" data-color="yellow"><span>زرد</span><span class="ap-dot" style="background:#facc15"></span></div>
-                    <div class="ap-swatch" data-color="orange"><span>نارنجی</span><span class="ap-dot" style="background:#f97316"></span></div>
+                    <button type="button" class="ap-swatch" data-color="blue"><span>آبی</span><span class="ap-dot" style="background:#3b82f6"></span></button>
+                    <button type="button" class="ap-swatch" data-color="purple"><span>بنفش</span><span class="ap-dot" style="background:#8B5CF6"></span></button>
+                    <button type="button" class="ap-swatch" data-color="red"><span>قرمز</span><span class="ap-dot" style="background:#ef4444"></span></button>
+                    <button type="button" class="ap-swatch" data-color="green"><span>سبز</span><span class="ap-dot" style="background:#22c55e"></span></button>
+                    <button type="button" class="ap-swatch" data-color="yellow"><span>زرد</span><span class="ap-dot" style="background:#facc15"></span></button>
+                    <button type="button" class="ap-swatch" data-color="orange"><span>نارنجی</span><span class="ap-dot" style="background:#f97316"></span></button>
                 </div>
 
                 <div class="ap-custom">
@@ -109,7 +116,8 @@ if (empty($_SESSION['user']) || !is_string($_SESSION['user']) || $_SESSION['user
 
 <script>
 (function () {
-    var PRESET = { red:'#ef4444', blue:'#3b82f6', purple:'#a855f7', yellow:'#facc15', orange:'#f97316', green:'#22c55e' };
+    var PRESET = { red:'#ef4444', blue:'#3b82f6', purple:'#8B5CF6', yellow:'#facc15', orange:'#f97316', green:'#22c55e' };
+    var DEFAULT_COLOR = 'purple';
     function norm(v) { var m = /^#?([0-9a-f]{6})$/i.exec(String(v == null ? '' : v).trim()); return m ? ('#' + m[1].toLowerCase()) : null; }
 
     function init() {
@@ -118,14 +126,21 @@ if (empty($_SESSION['user']) || !is_string($_SESSION['user']) || $_SESSION['user
         var nat  = document.getElementById('ap-native');
         var prev = document.getElementById('ap-preview');
         var reset = document.getElementById('ap-reset');
+        var modes = document.querySelectorAll('.ap-mode');
 
         function setPreview(h) { if (prev) prev.style.background = h; }
         function syncFields(h) { if (hexI) hexI.value = h; if (nat) { try { nat.value = h; } catch (e) {} } setPreview(h); }
         function apply(v) { if (T && T.setColor) T.setColor(v); }
+        function syncModes() {
+            var t = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+            for (var i = 0; i < modes.length; i++) {
+                modes[i].classList.toggle('active', modes[i].getAttribute('data-theme-mode') === t);
+            }
+        }
 
-        var cur = 'blue';
-        try { cur = localStorage.getItem('faoxima_color') || 'blue'; } catch (e) {}
-        var curHex = PRESET[cur] || norm(cur) || '#3b82f6';
+        var cur = DEFAULT_COLOR;
+        try { cur = localStorage.getItem('faoxima_color') || DEFAULT_COLOR; } catch (e) {}
+        var curHex = PRESET[cur] || norm(cur) || PRESET[DEFAULT_COLOR];
         syncFields(curHex);
 
         var tiles = document.querySelectorAll('.ap-swatch');
@@ -139,6 +154,18 @@ if (empty($_SESSION['user']) || !is_string($_SESSION['user']) || $_SESSION['user
             })(tiles[i]);
         }
 
+        for (var m = 0; m < modes.length; m++) {
+            (function (b) {
+                b.addEventListener('click', function () {
+                    var mode = b.getAttribute('data-theme-mode');
+                    if (T && T.setTheme) T.setTheme(mode);
+                    syncModes();
+                });
+            })(modes[m]);
+        }
+        document.addEventListener('faoxima:themechange', syncModes);
+        syncModes();
+
         if (hexI) hexI.addEventListener('input', function () {
             var h = norm(hexI.value); if (!h) return;
             apply(h); if (nat) { try { nat.value = h; } catch (e) {} } setPreview(h);
@@ -148,7 +175,7 @@ if (empty($_SESSION['user']) || !is_string($_SESSION['user']) || $_SESSION['user
             apply(h); if (hexI) hexI.value = h; setPreview(h);
         });
         if (reset) reset.addEventListener('click', function () {
-            apply('blue'); syncFields(PRESET.blue);
+            apply(DEFAULT_COLOR); syncFields(PRESET[DEFAULT_COLOR]);
         });
     }
 
