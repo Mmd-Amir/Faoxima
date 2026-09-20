@@ -5878,3 +5878,316 @@ a:not([class]):focus-visible {
         height: 14px;
     }
 }
+
+
+/* ============================================================================
+   STAGE 3C — TICKETS & SUPPORT CONVERSATION EXPERIENCE
+   ----------------------------------------------------------------------------
+   Presentation only.  No markup contract, no request parameter, no SQL, no
+   AJAX endpoint, no polling interval and no inline JavaScript is touched.
+
+   SCOPE
+     Every selector below is anchored on the ticket page marker
+       #main-content .wrapper.fx-page-tickets
+     — the single class token added to tickets.php's existing
+     <div class="wrapper">.  Nothing here can match any other panel page.
+
+   TWO SHELLS, TWO ROOTS
+     tickets.php renders ONE wrapper for TWO different experiences, so the
+     shells are separated structurally and never by assumption:
+       inbox  : #main-content .wrapper.fx-page-tickets:has(#ticketsTable)
+       thread : #main-content .wrapper.fx-page-tickets:has(.tk-chat)
+     #ticketsTable exists only in list mode; .tk-chat exists only in thread
+     mode.  Neither selector can reach the other shell.
+
+   INBOX COLUMN MAP (fixed by the protected thead markup, tickets.php L663-671)
+     1 checkbox · 2 tracking · 3 user · 4 department · 5 subject
+     6 status   · 7 updated  · 8 messages · 9 actions
+     Column cells are addressed positionally rather than by their Persian
+     data-label text, so the rules stay ASCII and fail loudly if the column
+     order ever changes.
+
+   The .tk-* component rules live in an inline <style> INSIDE tickets.php,
+   linked AFTER theme.css.  Everything below therefore out-specifies it
+   (id + marker class + class) rather than relying on source order, and that
+   inline block is left byte-identical.
+
+   No !important is used anywhere.  Where a Stage 2D rule already owns a
+   property with !important, the custom property it reads
+   (--table-row-pad-y / --table-cell-pad-x) is re-scoped instead of
+   re-declaring the property.
+
+   Accent contract: accent TEXT uses --accent-text, accent non-text
+   indicators use --accent-ink.  Raw var(--accent) is never used for text.
+   ============================================================================ */
+
+
+/* ---- 3C.1  Shared page head (both shells) --------------------------------- */
+
+#main-content .wrapper.fx-page-tickets > .page-head {
+    margin-bottom: 14px;
+    padding: 10px 0;
+}
+#main-content .wrapper.fx-page-tickets > .page-head .chip-row { gap: 8px; }
+#main-content .wrapper.fx-page-tickets > .page-head .btn {
+    height: var(--control-h-sm);
+    min-height: var(--control-h-sm);
+}
+
+
+/* ---- 3C.2  INBOX — toolbar and result shell ------------------------------- */
+
+#main-content .wrapper.fx-page-tickets:has(#ticketsTable) > .card.fx-search-filter {
+    padding: 10px 14px;
+    margin-bottom: 12px;
+}
+#main-content .wrapper.fx-page-tickets:has(#ticketsTable) > .card.fx-search-filter .fx-search-filter__form {
+    gap: 8px;
+}
+/* the result container: 22px -> 16px buys ~12px of table width on every page */
+#main-content .wrapper.fx-page-tickets .card:has(#ticketsTable) { padding: 16px; }
+/* #tk-bulk-bar holds only the permanently display:none inline delete button —
+   the real bulk UI is the floating #fx-bulk-badge.  Collapse its dead margin. */
+#main-content .wrapper.fx-page-tickets #tk-bulk-bar { margin-bottom: 0; }
+
+
+/* ---- 3C.3  INBOX — the support queue table -------------------------------- */
+
+/* Row padding is driven by --table-row-pad-y, which the Stage 2D td rule reads
+   with !important.  Re-scoping the custom property tunes the row height without
+   re-declaring the property (and without !important).
+   Desktop row height 58px -> ~51px; the action buttons (--control-h-sm, 32px)
+   remain the tallest thing in the row, so nothing is clipped. */
+#main-content .wrapper.fx-page-tickets #ticketsTable {
+    --table-row-pad-y: 9px;
+    --table-cell-pad-x: 10px;
+}
+
+/* Hierarchy: every data cell drops to secondary, so the subject is the one
+   thing that reads first.  Badges, links and buttons keep their own colour. */
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody td { color: var(--text-muted); }
+
+/* 5 — subject: the easiest text in the row to identify. */
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody td:nth-child(5) {
+    color: var(--text-main);
+    font-weight: 600;
+}
+
+/* 2 — tracking code: technical metadata, monospaced numeric rhythm.
+   The value, its LTR isolation and its inline text-align are untouched. */
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody td:nth-child(2) {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', 'Consolas', 'Courier New', monospace;
+    font-size: var(--fs-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    color: var(--text-dim);
+}
+
+/* 7 — updated timestamp and 4 — department must not wrap: wrapping here is
+   what inflated the row to 90px at 1024px. */
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody td:nth-child(7),
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody td:nth-child(4) {
+    white-space: nowrap;
+}
+
+/* 8 — message count: compact quiet metadata, never a call to action. */
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody td:nth-child(8) {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+/* 6 — status and 9 — actions keep their full size on one line. */
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody td:nth-child(6),
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody td.cell-actions {
+    white-space: nowrap;
+}
+
+
+/* ---- 3C.4  INBOX — Unseen / Customerresponse emphasis ----------------------
+   tk_status_badge() renders BOTH 'Unseen' and 'Customerresponse' as the
+   badge-warning badge, so .badge-warning is the exact, class-based hook for
+   "needs a reply" — no Persian text selector is needed.
+
+   Emphasis is deliberately restrained: a soft NEUTRAL surface lift plus a
+   slightly stronger subject weight, on top of the existing status badge.
+   No accent tint, no edge, no animation.  A selected row still wins, because
+   the Stage 2D selection rule owns `background` with !important.            */
+
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody tr:has(.badge-warning) td {
+    background: var(--surface-2);
+}
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody tr:has(.badge-warning) td:nth-child(5) {
+    font-weight: 700;
+}
+
+
+/* ---- 3C.5  THREAD — header and support context band ------------------------ */
+
+#main-content .wrapper.fx-page-tickets:has(.tk-chat) > .page-head { margin-bottom: 14px; }
+
+/* The sub line is already-rendered metadata ("user — department — subject —
+   status").  It is grouped visually into one compact context band; no text is
+   added, duplicated or generated. */
+#main-content .wrapper.fx-page-tickets:has(.tk-chat) .page-head__sub {
+    display: inline-block;
+    max-width: 100%;
+    margin-top: 6px;
+    padding: 6px 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    color: var(--text-muted);
+    line-height: 1.9;
+}
+#main-content .wrapper.fx-page-tickets:has(.tk-chat) .page-head__sub .badge,
+#main-content .wrapper.fx-page-tickets:has(.tk-chat) .page-head__sub .text-link {
+    vertical-align: middle;
+}
+
+
+/* ---- 3C.6  THREAD — conversation canvas ------------------------------------
+   The card keeps --surface-1; the conversation sits on a --surface-2 canvas so
+   that --surface-1 message surfaces read as raised.  Without this the user
+   bubble is exactly the same colour as the card in BOTH themes and has no
+   visible boundary at all.                                                    */
+
+#main-content .wrapper.fx-page-tickets .card:has(.tk-chat) { padding: 16px; }
+#main-content .wrapper.fx-page-tickets .tk-chat {
+    gap: 14px;
+    padding: 14px;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    background: var(--surface-2);
+}
+
+
+/* ---- 3C.7  THREAD — message surfaces ---------------------------------------
+   User  : neutral elevated surface (--surface-1 on the --surface-2 canvas).
+   Admin : the same surface plus an accent-associated border and a 3px accent
+           inline-start edge.  No saturated accent fill — the accent never
+           becomes a large filled region.
+   Radius is a uniform 10px: the old 14px bubbles carried a 4px corner, i.e. a
+   speech-tail device, which this stage removes.                               */
+
+#main-content .wrapper.fx-page-tickets .tk-bubble {
+    border-radius: var(--radius-lg);
+    padding: 10px 13px;
+    border: 1px solid var(--border-mid);
+    background: var(--surface-1);
+}
+#main-content .wrapper.fx-page-tickets .tk-row.user .tk-bubble {
+    background: var(--surface-1);
+    border-color: var(--border-mid);
+}
+#main-content .wrapper.fx-page-tickets .tk-row.admin .tk-bubble {
+    background: var(--surface-1);
+    border-color: var(--accent-mid);
+    border-inline-start: 3px solid var(--accent-ink);
+}
+
+
+/* ---- 3C.8  THREAD — message metadata, quotes, reactions, actions -----------
+   Accent TEXT switches from raw var(--accent) to --accent-text, the only
+   accent token validated for text on all four surfaces.                      */
+
+#main-content .wrapper.fx-page-tickets .tk-who {
+    opacity: 1;
+    color: var(--text-muted);
+}
+#main-content .wrapper.fx-page-tickets .tk-row.admin .tk-who { color: var(--accent-text); }
+#main-content .wrapper.fx-page-tickets .tk-time {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+#main-content .wrapper.fx-page-tickets .tk-quote {
+    border-inline-start-color: var(--accent-ink);
+    background: var(--surface-2);
+    color: var(--text-muted);
+    white-space: normal;
+}
+#main-content .wrapper.fx-page-tickets .tk-receipt.is-seen { color: var(--accent-ink); }
+
+#main-content .wrapper.fx-page-tickets .tk-reaction-chip {
+    background: var(--surface-1);
+    border-color: var(--border-mid);
+}
+#main-content .wrapper.fx-page-tickets .tk-reaction-chip.is-mine {
+    background: var(--accent-soft);
+    border-color: var(--accent-mid);
+}
+#main-content .wrapper.fx-page-tickets .tk-msg-action-btn {
+    background: var(--surface-1);
+    border-color: var(--border-mid);
+}
+#main-content .wrapper.fx-page-tickets .tk-msg-action-btn:hover {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    border-color: var(--accent-mid);
+}
+#main-content .wrapper.fx-page-tickets .tk-reply-preview-who { color: var(--accent-text); }
+#main-content .wrapper.fx-page-tickets .tk-reply-preview-bar {
+    border-inline-start-color: var(--accent-ink);
+    background: var(--surface-2);
+}
+
+
+/* ---- 3C.9  THREAD — reply composer ----------------------------------------
+   The reply form contract is untouched: same action, same method, same
+   enctype, same field names.  Visual integration only.                       */
+
+#main-content .wrapper.fx-page-tickets .tk-reply {
+    margin-top: 14px;
+    padding: 12px;
+    gap: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+}
+#main-content .wrapper.fx-page-tickets .tk-reply textarea.form-control {
+    min-height: 68px;
+    background-color: var(--surface-1);
+    border-color: var(--border-mid);
+}
+#main-content .wrapper.fx-page-tickets .tk-reply .tkup-drop {
+    min-height: 52px;
+    background: var(--surface-1);
+}
+#main-content .wrapper.fx-page-tickets .tkup-drop:hover {
+    border-color: var(--accent-ink);
+    color: var(--accent-text);
+    background: var(--accent-soft);
+}
+#main-content .wrapper.fx-page-tickets .tkup-drop:focus-within {
+    border-color: var(--accent-ink);
+}
+#main-content .wrapper.fx-page-tickets .tkup-slot-rm { background: var(--surface-1); }
+
+
+/* ---- 3C.10  Responsive ----------------------------------------------------- */
+
+/* Touch devices have no hover, so the hover-revealed message actions are
+   unreachable there.  Reveal them permanently on coarse pointers and small
+   screens.  Presentation only — no handler, no interval, no JS is touched. */
+@media (hover: none), (pointer: coarse), (max-width: 768px) {
+    #main-content .wrapper.fx-page-tickets .tk-msg-actions {
+        opacity: 1;
+        pointer-events: auto;
+    }
+    #main-content .wrapper.fx-page-tickets .tk-bubble-wrap { max-width: 88%; }
+}
+
+@media (max-width: 768px), (max-width: 992px) and (pointer: coarse) {
+    #main-content .wrapper.fx-page-tickets > .page-head { margin-bottom: 12px; }
+    #main-content .wrapper.fx-page-tickets .card:has(.tk-chat) { padding: 12px; }
+    #main-content .wrapper.fx-page-tickets .tk-chat {
+        gap: 12px;
+        padding: 10px;
+        border-radius: var(--radius-md);
+    }
+    #main-content .wrapper.fx-page-tickets:has(.tk-chat) .page-head__sub {
+        display: block;
+        line-height: 1.85;
+    }
+}

@@ -629,7 +629,7 @@ if ($viewT === '') {
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper">
+        <div class="wrapper fx-page-tickets">
 
             <?php if ($viewT === ''): ?>
 
