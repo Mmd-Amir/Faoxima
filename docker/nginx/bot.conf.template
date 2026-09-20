@@ -15,6 +15,7 @@ location ^~ /${URL_PATH}/storage/      { deny all; return 403; }
 location ^~ /${URL_PATH}/logs/         { deny all; return 403; }
 location ^~ /${URL_PATH}/api/handlers/ { deny all; return 403; }
 location ^~ /${URL_PATH}/api/lib/      { deny all; return 403; }
+location ^~ /${URL_PATH}/panel/lib/    { deny all; return 403; }
 
 location ~* ^/${URL_PATH}/app/.*\.(?:js|mjs)$ {
     root ${DOC_ROOT};
@@ -51,6 +52,13 @@ location ~ ^/${URL_PATH}/(.*\.php)$ {
     fastcgi_param HTTP_AUTHORIZATION $http_authorization;
     fastcgi_buffers 16 16k;
     fastcgi_buffer_size 32k;
+}
+
+# Executable-extension case variants and near-misses:
+# never serve, never execute.
+location ~* ^/${URL_PATH}/.*\.(?:php[0-9]?|phtml|phar|pht)$ {
+    deny all;
+    return 404;
 }
 
 location /${URL_PATH}/app/ {
