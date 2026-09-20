@@ -240,7 +240,7 @@ if (isset($_GET['removeid']) && $_GET['removeid'] !== '') {
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper">
+        <div class="wrapper fx-page-list">
 
             <div class="page-head">
                 <div>

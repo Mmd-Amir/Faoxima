@@ -592,7 +592,7 @@ function faoxima_d_label_section($s) {
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper">
+        <div class="wrapper fx-page-list">
 
             <div class="page-head">
                 <div>

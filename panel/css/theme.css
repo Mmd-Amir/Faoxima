@@ -5678,3 +5678,203 @@ a:not([class]):focus-visible {
     #main-content .wrapper:has(> .dash-row) .stat-card { padding: 14px; gap: 8px; }
     #main-content .wrapper:has(> .dash-row) > .panel { padding: 16px; }
 }
+
+
+/* =========================================================================
+   STAGE 3B — LIST / CRUD PAGE FAMILY
+   Scope: the seven populated management pages, addressed through an explicit
+   presentation marker on each page's own wrapper:
+
+       #main-content .wrapper.fx-page-list
+
+   users.php · invoice.php · product.php · service.php · payment.php ·
+   category.php · discounts.php carry that marker.
+
+   Why a marker instead of a structural selector: cancelService.php carries the
+   identical search + status + date + `.card > .table-wrap > table.app-table--
+   summary` + pager stack, and tickets.php carries the same stack minus the
+   status/date blocks.  No `:has()` anchor can separate this family from those
+   two pages, so the marker is the only leak-proof anchor.  It also keeps this
+   layer away from the dashboard, reports, appearance and the settings pages.
+
+   The layer composes only: it moves no values, invents no sections and
+   re-opens no Stage 2C/2D primitive.  Every selector below is anchored on the
+   family wrapper, so nothing here can reach another page.
+   ========================================================================= */
+
+/* ---- 3B.1  Page head: one action rhythm --------------------------------- */
+/* Stage 2C page-head geometry is kept.  Only the family rhythm is unified —
+   product/category already ship `btn-sm` (32px) actions while discounts ships
+   full-height `.btn` (38px) ones; the family settles on the 32px action. */
+
+#main-content .wrapper.fx-page-list > .page-head {
+    margin-bottom: 14px;
+    padding: 10px 0;
+}
+#main-content .wrapper.fx-page-list > .page-head .chip-row { gap: 8px; }
+#main-content .wrapper.fx-page-list > .page-head .btn {
+    height: var(--control-h-sm);
+    min-height: var(--control-h-sm);
+}
+
+/* ---- 3B.2  Summary band at list-page density ---------------------------- */
+/* Same four metrics, same markup, same decorative icon palette as Stage 2C —
+   only the card is brought down to list density so the band reads as a compact
+   overview strip instead of a second dashboard KPI row. */
+
+#main-content .wrapper.fx-page-list > .stats-grid {
+    gap: 10px;
+    margin-bottom: 12px;
+}
+#main-content .wrapper.fx-page-list > .stats-grid > .stat-card {
+    gap: 10px;
+    padding: 12px 14px;
+}
+#main-content .wrapper.fx-page-list > .stats-grid .stat-card__top { gap: 10px; }
+#main-content .wrapper.fx-page-list > .stats-grid .stat-card__label { font-size: var(--fs-caption); }
+#main-content .wrapper.fx-page-list > .stats-grid .stat-card__value { font-size: var(--fs-kpi); }
+#main-content .wrapper.fx-page-list > .stats-grid .stat-card__icon {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-md);
+}
+#main-content .wrapper.fx-page-list > .stats-grid .stat-card__icon .svg-icon {
+    width: 16px;
+    height: 16px;
+}
+
+/* ---- 3B.3  One filtering system ----------------------------------------- */
+/* search / status / date stop reading as three unrelated full-width cards.
+   Consecutive filter blocks fuse into a single segmented surface: the upper
+   block drops its own bottom edge, the lower block keeps its top border as the
+   shared divider, and the touching corners are squared so no double border or
+   inner radius remains.
+
+   `.card + .card { margin-top: 22px }` would otherwise hold the fused blocks
+   22px apart, so the lower block's margin-top has to be neutralised too. */
+
+#main-content .wrapper.fx-page-list > .card.fx-search-filter,
+#main-content .wrapper.fx-page-list > .card.fx-status-filter,
+#main-content .wrapper.fx-page-list > .card.fx-date-filter {
+    padding: 10px 14px;
+    margin-bottom: 12px;
+}
+
+#main-content .wrapper.fx-page-list > .card.fx-search-filter:has(+ .card.fx-status-filter),
+#main-content .wrapper.fx-page-list > .card.fx-search-filter:has(+ .card.fx-date-filter),
+#main-content .wrapper.fx-page-list > .card.fx-status-filter:has(+ .card.fx-date-filter) {
+    margin-bottom: 0;
+    border-bottom: 0;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+#main-content .wrapper.fx-page-list > .card.fx-search-filter + .card.fx-status-filter,
+#main-content .wrapper.fx-page-list > .card.fx-search-filter + .card.fx-date-filter,
+#main-content .wrapper.fx-page-list > .card.fx-status-filter + .card.fx-date-filter {
+    margin-top: 0;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+
+/* The block label rides the control line instead of claiming a full-width row
+   of its own.  `align-items: flex-start` keeps the label pinned to the FIRST
+   control row when the pills/presets wrap onto further rows at tablet and
+   mobile widths, and `min-height` matches the pill height so the label's text
+   is optically centred on that row rather than sitting on its baseline. */
+#main-content .wrapper.fx-page-list > .card.fx-status-filter,
+#main-content .wrapper.fx-page-list > .card.fx-date-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px 10px;
+}
+#main-content .wrapper.fx-page-list > .card.fx-status-filter > .fx-status-filter__title,
+#main-content .wrapper.fx-page-list > .card.fx-date-filter > .fx-date-filter__title {
+    flex: 0 0 auto;
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;      /* = .fx-status-filter__pill / .fx-date-filter__preset height (Stage 2D) */
+    margin-bottom: 0;
+}
+#main-content .wrapper.fx-page-list > .card.fx-status-filter > .fx-status-filter__pills,
+#main-content .wrapper.fx-page-list > .card.fx-date-filter > .fx-date-filter__presets {
+    flex: 1 1 auto;
+    margin-bottom: 0;
+}
+#main-content .wrapper.fx-page-list > .card.fx-date-filter > .fx-date-filter__form {
+    flex: 1 1 100%;
+    max-width: 860px;
+    gap: 8px;
+}
+#main-content .wrapper.fx-page-list > .card.fx-date-filter > .fx-date-filter__active {
+    flex: 1 1 100%;
+    margin-top: 0;
+}
+
+#main-content .wrapper.fx-page-list .fx-search-filter__form { gap: 8px; }
+
+/* Below 1100px the pill/preset row is wider than the space left beside the
+   block label, so with the Stage 2D `flex: 1 1 auto` the row is pushed onto a
+   line of its own and the label's row is wasted.  Allowing the row to shrink
+   keeps the label on the first control line.
+
+   Above 1100px the Stage 2D basis already yields the single-row composition;
+   forcing a zero basis there would collapse the date presets, so the rule is
+   deliberately bounded to the widths where it helps.  Measured on invoice.php
+   (filter stack, search + status + date):
+       1440px  239 -> 239   (unchanged, already single-row)
+       1024px  321 -> 279
+        390px  754 -> 710   */
+
+@media (max-width: 1100px) {
+    #main-content .wrapper.fx-page-list > .card.fx-status-filter > .fx-status-filter__pills,
+    #main-content .wrapper.fx-page-list > .card.fx-date-filter > .fx-date-filter__presets {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+}
+
+/* ---- 3B.4  Result area -------------------------------------------------- */
+/* The card stays the only bordered surface around the table (`.table-wrap` is
+   borderless), so the desktop padding simply comes down to list density.
+
+   Guarded by the complement of the Stage 2D mobile condition: inside
+   `(max-width: 768px)` / `(max-width: 992px) and (pointer: coarse)` the mobile
+   table->card conversion deliberately strips the result card's chrome
+   (`.card:has(.app-table--summary) { padding: 0; border: 0 }`), and an
+   unguarded rule here would re-introduce the padding and the border. */
+
+@media (min-width: 993px), (min-width: 769px) and (pointer: fine) {
+    #main-content .wrapper.fx-page-list > .card:has(.table-wrap) { padding: 16px; }
+}
+
+/* ---- 3B.5  Mobile ------------------------------------------------------- */
+/* The mobile table -> card conversion is the protected verified pattern and is
+   not rewritten.  Only the summary band is tightened here.
+
+   The 480px filter rules that make the pills/presets 2-up and the date form
+   single-column are deliberately left alone: they are the original author's
+   touch-target sizing, not a defect.  The filter blocks therefore stack
+   logically at mobile, as the stage brief requires, and the label keeps riding
+   the first control row via 3B.3 rather than claiming a row of its own. */
+
+@media (max-width: 768px), (max-width: 992px) and (pointer: coarse) {
+
+    #main-content .wrapper.fx-page-list > .page-head { margin-bottom: 12px; }
+
+    #main-content .wrapper.fx-page-list > .stats-grid {
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+    #main-content .wrapper.fx-page-list > .stats-grid > .stat-card { padding: 10px 12px; }
+    #main-content .wrapper.fx-page-list > .stats-grid .stat-card__value { font-size: 18px; }
+    #main-content .wrapper.fx-page-list > .stats-grid .stat-card__icon {
+        width: 28px;
+        height: 28px;
+    }
+    #main-content .wrapper.fx-page-list > .stats-grid .stat-card__icon .svg-icon {
+        width: 14px;
+        height: 14px;
+    }
+}

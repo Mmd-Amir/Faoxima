@@ -100,7 +100,7 @@ $categories = $query->fetchAll();
 <section id="container">
     <?php include("header.php"); ?>
     <section id="main-content">
-        <div class="wrapper">
+        <div class="wrapper fx-page-list">
             <div class="page-head">
                 <div>
                     <div class="page-head__title">
