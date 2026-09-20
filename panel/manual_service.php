@@ -1,9 +1,5 @@
 <?php
 
-@ini_set('display_errors', '1');
-@ini_set('display_startup_errors', '1');
-@error_reporting(E_ALL);
-
 if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
     define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
 }
@@ -697,10 +693,10 @@ function faoxima_ms_status_label(string $s): array
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>فروش دستی | پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat47">
+    <link rel="stylesheet" href="css/theme.css?v=flat50">
     <link rel="stylesheet" href="css/admin-extra.css?v=flat33">
     <link rel="stylesheet" href="css/components.css?v=flat33">
-    <script src="js/theme.js?v=flat5" defer></script>
+    <script src="js/theme.js?v=flat50" defer></script>
     <style>
         .ms-row__title .badge {
             font-size: 10.5px;

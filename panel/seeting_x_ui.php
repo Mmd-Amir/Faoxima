@@ -143,9 +143,9 @@ $settingsValueForTextarea = htmlspecialchars($settingsValue, ENT_NOQUOTES, 'UTF-
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>تنظیمات X-UI — پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat48">
+    <link rel="stylesheet" href="css/theme.css?v=flat50">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-    <script src="js/theme.js?v=flat5" defer>
+    <script src="js/theme.js?v=flat50" defer>
 
 </script>
     <style>

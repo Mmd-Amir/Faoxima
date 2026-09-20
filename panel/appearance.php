@@ -20,8 +20,8 @@ if (empty($_SESSION['user']) || !is_string($_SESSION['user']) || $_SESSION['user
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>تنظیمات ظاهر — پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat47">
-    <script src="js/theme.js?v=flat5" defer></script>
+    <link rel="stylesheet" href="css/theme.css?v=flat50">
+    <script src="js/theme.js?v=flat50" defer></script>
     <style>
         .ap-card { max-width: 720px; }
         .ap-lead { color: var(--text-muted, #8a8a9a); font-size: 13px; margin: 2px 0 18px; }

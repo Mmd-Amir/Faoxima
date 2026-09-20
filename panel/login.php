@@ -158,8 +158,8 @@ if (isset($_POST['login'])) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>ورود به پنل مدیریت | فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat47">
-<script src="js/theme.js?v=flat5" defer>
+    <link rel="stylesheet" href="css/theme.css?v=flat50">
+<script src="js/theme.js?v=flat50" defer>
 
 </script>
 </head>
