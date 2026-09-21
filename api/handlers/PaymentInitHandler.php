@@ -57,6 +57,14 @@ final class PaymentInitHandler extends BaseHandler
             FaoximaResponse::fail(409, faoxima_textbot_get('dyn_paymentinit_pending_request_exists', '⏳ یک درخواست پرداخت در انتظار بررسی دارید. لطفاً ابتدا آن را تکمیل یا لغو کنید.'));
         }
 
+        register_shutdown_function(static function () use ($pdo, $lockName): void {
+            try {
+                $releaseStmt = $pdo->prepare('SELECT RELEASE_LOCK(:n)');
+                $releaseStmt->execute([':n' => $lockName]);
+            } catch (Throwable $e) {
+            }
+        });
+
         try {
             if ($method === 'carttocart' || $method === 'carttocart_pv') {
                 $this->purgeStaleCarttocart((int)$this->user['id']);
