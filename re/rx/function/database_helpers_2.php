@@ -668,20 +668,6 @@ function isValidDate($date)
 {
     return (strtotime($date) != false);
 }
-function rxGatewayTruthy($value)
-{
-    if (is_bool($value)) {
-        return $value;
-    }
-    if (is_int($value) || is_float($value)) {
-        return (int) $value === 1;
-    }
-    if (is_string($value)) {
-        return in_array(strtolower(trim($value)), ['1', 'true', 'success', 'successful', 'ok', 'yes'], true);
-    }
-    return false;
-}
-
 function tronadoExtractPaymentToken($payment)
 {
     if (!is_array($payment)) {

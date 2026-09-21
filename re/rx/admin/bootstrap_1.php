@@ -61,29 +61,6 @@ function ensureGuardPanelColumnsReady(PDO $pdo)
     ];
 }
 
-function guardFormatServiceList(array $services)
-{
-    if (empty($services)) {
-        return "• لیست سرویس خالی است.";
-    }
-    $lines = [];
-    foreach ($services as $service) {
-        $serviceData = is_array($service) ? $service : [];
-        $id = isset($serviceData['id']) ? intval($serviceData['id']) : 'نامشخص';
-        $title = guardServiceLabel($serviceData);
-        $usageRate = null;
-        foreach (['usage_rate', 'usageRate'] as $rateKey) {
-            if (isset($serviceData[$rateKey]) && is_numeric($serviceData[$rateKey])) {
-                $usageRate = $serviceData[$rateKey];
-                break;
-            }
-        }
-        $rateLabel = $usageRate !== null ? " [{$usageRate}x]" : '';
-        $lines[] = "• id={$id} | {$title}{$rateLabel}";
-    }
-    return implode("\n", $lines);
-}
-
 function guardExtractUsageRateValue(array $service)
 {
     foreach (['usage_rate', 'usageRate'] as $rateKey) {
@@ -104,14 +81,6 @@ function guardFormatUsageRateLabel($rate)
         $formatted .= '.0';
     }
     return $formatted;
-}
-
-function guardBuildServiceButtonLabel(array $service, $isSelected)
-{
-    $label = guardServiceLabel($service);
-    $rateLabel = guardFormatUsageRateLabel(guardExtractUsageRateValue($service));
-    $statusIcon = $isSelected ? '✅' : '❌';
-    return "[{$rateLabel}x] {$label} {$statusIcon}";
 }
 
 function guardBuildServiceSummaryLabel(array $service)

@@ -742,57 +742,6 @@ function loadLinesFromTxt(string $path, int $max): array
     return $out;
 }
 
-function readBatchFromTxt(string $path, int $n): array
-{
-    if (!is_file($path)) return [];
-    $batch = [];
-    $tmp = $path . '.tail.tmp';
-    $in = @fopen($path, 'r');
-    if (!$in) return [];
-    $out = @fopen($tmp, 'w');
-    if (!$out) { fclose($in); return []; }
-    $i = 0;
-    while (($line = fgets($in)) !== false) {
-        $line = trim($line);
-        if ($line === '') continue;
-        if ($i < $n) {
-            $batch[] = $line;
-            $i++;
-        } else {
-            fwrite($out, $line . "\n");
-        }
-    }
-    fclose($in);
-    fclose($out);
-    @rename($tmp, $path);
-    return $batch;
-}
-
-function prependLinesToTxt(string $path, array $lines): void
-{
-    if (empty($lines)) return;
-    $tmp = $path . '.prep.tmp';
-    $out = @fopen($tmp, 'w');
-    if (!$out) return;
-    foreach ($lines as $line) {
-        $line = trim((string) $line);
-        if ($line !== '') fwrite($out, $line . "\n");
-    }
-    if (is_file($path)) {
-        $in = @fopen($path, 'r');
-        if ($in) {
-            while (!feof($in)) {
-                $chunk = fread($in, 65536);
-                if ($chunk === false) break;
-                fwrite($out, $chunk);
-            }
-            fclose($in);
-        }
-    }
-    fclose($out);
-    @rename($tmp, $path);
-}
-
 function prependEntriesToJson(string $path, array $items): void
 {
     $existing = [];

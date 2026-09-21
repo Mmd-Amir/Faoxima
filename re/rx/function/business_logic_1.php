@@ -650,13 +650,6 @@ function createPayZarinpal($price, $order_id)
     curl_close($curl);
     return json_decode($response, true);
 }
-function createPayCubepay($price, $order_id)
-{
-    if (!function_exists('cubepayCreatePayment')) {
-        return ['success' => false, 'message' => 'تابع درگاه کیوب‌پی روی این سرور موجود نیست.'];
-    }
-    return cubepayCreatePayment($order_id, $price, $order_id);
-}
 if (!function_exists('nm_replyOrEdit')) {
 
 function nm_replyOrEdit($chatId, $text, $keyboard = null, $parseMode = 'HTML')

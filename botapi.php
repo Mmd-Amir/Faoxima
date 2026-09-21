@@ -2796,15 +2796,6 @@ function pinmessage($from_id,$message_id){
 'chat_id' => $from_id,
 ]);
  }
-function getChatPinnedMessageId($chat_id){
-  $resp = telegram('getChat', [
-'chat_id' => $chat_id,
-]);
-  if (isset($resp['ok']) && $resp['ok'] && isset($resp['result']['pinned_message']['message_id'])) {
-    return (int) $resp['result']['pinned_message']['message_id'];
-  }
-  return null;
- }
   function answerInlineQuery($inline_query_id,$results){
   return telegram('answerInlineQuery', [
       "inline_query_id" => $inline_query_id,

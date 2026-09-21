@@ -631,11 +631,6 @@ final class PaymentInitHandler extends BaseHandler
     }
 
 
-    private function buildCryptoUrlFallback(string $method, int $amount): string
-    {
-        return $this->botDeepLink('miniapp_pay_' . $method);
-    }
-
     private function handleTronado(int $amount): void
     {
         if (!function_exists('trnado')) {
@@ -1116,22 +1111,6 @@ final class PaymentInitHandler extends BaseHandler
             'order_id' => $orderId,
             'message'  => faoxima_textbot_get('dyn_paymentinit_nowpayment_invoice_created', 'فاکتور ارزی NowPayments ساخته شد. روی لینک کلیک کنید.'),
         ]);
-    }
-
-    private function botDeepLink(string $startParam): string
-    {
-        global $usernamebot, $username;
-        $bot = '';
-        if (isset($usernamebot) && is_string($usernamebot)) {
-            $bot = ltrim(trim($usernamebot), '@');
-        }
-        if ($bot === '' && isset($username) && is_string($username)) {
-            $bot = ltrim(trim($username), '@');
-        }
-        if ($bot === '') {
-            FaoximaResponse::fail(503, faoxima_textbot_get('dyn_paymentinit_bot_username_not_configured', '❌ نام کاربری ربات روی سرور ثبت نشده است.'));
-        }
-        return 'https://t.me/' . $bot . '?start=' . $startParam;
     }
 
     private function insertPaymentReport(string $method, int $amount, string $orderId, ?string $extId = null): void

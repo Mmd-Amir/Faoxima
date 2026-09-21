@@ -479,15 +479,6 @@ function nmStockFallbackForInvoice(array $invoice, array $product = null, $mode 
     return $stock;
 }
 
-function nmStockStatusText($panelCode = null)
-{
-    $rows = nmStockCounts($panelCode);
-    if (!$rows) return "📦 انبار شبکه‌ملی\n\n❌ موجودی فعالی ثبت نشده است.";
-    $lines = ["📦 وضعیت موجودی انبار شبکه‌ملی", "", "سطح / فرمت / تعداد:"];
-    foreach ($rows as $row) $lines[] = "• {$row['tier']} / {$row['format']} : {$row['cnt']} عدد";
-    return implode("\n", $lines);
-}
-
 function nmStockCompleteExtendFallback($userId, array $userRow, array $invoice, array $product, $priceToCharge = 0, $mode = 'extend_fallback')
 {
     global $pdo;

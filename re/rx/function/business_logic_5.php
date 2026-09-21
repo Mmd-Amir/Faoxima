@@ -2,25 +2,6 @@
 
 
 
-function nm_appendInfoCardQrButton($existing, $invoice_id)
-{
-    $kb = ['inline_keyboard' => []];
-    if (is_string($existing) && $existing !== '') {
-        $decoded = json_decode($existing, true);
-        if (is_array($decoded) && isset($decoded['inline_keyboard']) && is_array($decoded['inline_keyboard'])) {
-            $kb = $decoded;
-        }
-    } elseif (is_array($existing) && isset($existing['inline_keyboard'])) {
-        $kb = $existing;
-    }
-    if (!function_exists('isQrDisabled') || !isQrDisabled()) {
-        $qrButton = ['text' => '📷 دریافت QR Code', 'callback_data' => 'infocard_qr_' . $invoice_id];
-        array_unshift($kb['inline_keyboard'], [$qrButton]);
-    }
-    return json_encode($kb, JSON_UNESCAPED_UNICODE);
-}
-
-
 function nm_sendInfoCardsForServiceList($from_id, array $services)
 {
     if (!function_exists('nm_renderInfoCardForInvoice') || !function_exists('telegram')) {
