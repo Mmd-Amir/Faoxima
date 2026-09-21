@@ -48,6 +48,7 @@ if (empty($_SESSION['_session_regenerated'])) {
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/../jdf.php';
+require_once __DIR__ . '/../re/rx/function/statistics_helpers.php';
 
 
 $sessionUser = isset($_SESSION["user"]) && is_string($_SESSION["user"]) && $_SESSION["user"] !== ''
@@ -121,8 +122,7 @@ function faoxima_chart_data(\PDO $pdo, string $range, int $customDays = 7): arra
         "SELECT time_sell, price_product
            FROM invoice
           WHERE time_sell >= :since
-            AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold')
-            AND name_product != 'سرویس تست'"
+            AND " . rx_stats_historical_sale_predicate()
     );
     $stmt->bindValue(':since', $earliest, PDO::PARAM_INT);
     $stmt->execute();
@@ -298,13 +298,10 @@ $datefirstday = time() - 86400;
 @set_time_limit(20);
 
 
-$query = $pdo->prepare("SELECT SUM(price_product) FROM invoice WHERE (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') AND name_product != 'سرویس تست'");
-$query->execute();
-$subinvoice = $query->fetch(PDO::FETCH_ASSOC);
-$total_income = $subinvoice['SUM(price_product)'] ?? 0;
+$total_income = rx_stats_total_sales_amount($pdo);
 
 
-$resultcount = (int)$pdo->query("SELECT COUNT(*) FROM user")->fetchColumn();
+$resultcount = rx_stats_total_users($pdo);
 
 
 $stmt = $pdo->prepare("SELECT COUNT(*) FROM user WHERE register > :time_register AND register != 'none'");
@@ -313,7 +310,7 @@ $stmt->execute();
 $resultcountday = (int)$stmt->fetchColumn();
 
 
-$resultcontsell = (int)$pdo->query("SELECT COUNT(*) FROM invoice WHERE (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') AND name_product != 'سرویس تست'")->fetchColumn();
+$resultcontsell = rx_stats_total_sales_count($pdo);
 
 
 $initialChart = faoxima_chart_data($pdo, '7d');
@@ -324,14 +321,10 @@ $json_data    = json_encode($initialChart['data']);
 $__VALID = "(status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold')";
 
 function faoxima_income_between(PDO $pdo, int $from, int $to): float {
-    $s = $pdo->prepare("SELECT COALESCE(SUM(price_product),0) FROM invoice WHERE time_sell >= :a AND time_sell < :b AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') AND name_product != 'سرویس تست'");
-    $s->bindValue(':a', (int)$from, PDO::PARAM_INT); $s->bindValue(':b', (int)$to, PDO::PARAM_INT); $s->execute();
-    return (float)$s->fetchColumn();
+    return (float) rx_stats_income_between($pdo, $from, $to);
 }
 function faoxima_orders_between(PDO $pdo, int $from, int $to): int {
-    $s = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE time_sell >= :a AND time_sell < :b AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') AND name_product != 'سرویس تست'");
-    $s->bindValue(':a', (int)$from, PDO::PARAM_INT); $s->bindValue(':b', (int)$to, PDO::PARAM_INT); $s->execute();
-    return (int)$s->fetchColumn();
+    return (int) rx_stats_orders_between($pdo, $from, $to);
 }
 function faoxima_users_between(PDO $pdo, int $from, int $to): int {
     $s = $pdo->prepare("SELECT COUNT(*) FROM user WHERE register != 'none' AND register >= :a AND register < :b");
@@ -385,7 +378,7 @@ try {
 try {
     $st = $pdo->query("SELECT COALESCE(NULLIF(TRIM(p.category),''),'بدون دسته') AS cat, COALESCE(SUM(i.price_product),0) AS total
         FROM invoice i LEFT JOIN product p ON p.name_product = i.name_product
-        WHERE (i.status = 'active' OR i.status = 'end_of_time' OR i.status = 'end_of_volume' OR i.status = 'sendedwarn' OR i.status = 'send_on_hold') AND i.name_product != 'سرویس تست'
+        WHERE " . rx_stats_historical_sale_predicate('i') . "
         GROUP BY cat ORDER BY total DESC");
     $catRows = [];
     foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
@@ -413,7 +406,7 @@ try {
 } catch (\Throwable $e) { error_log('[dashboard] category: ' . $e->getMessage()); }
 
 try {
-    $st = $pdo->prepare("SELECT time_sell FROM invoice WHERE time_sell >= :a AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') AND name_product != 'سرویس تست'");
+    $st = $pdo->prepare("SELECT time_sell FROM invoice WHERE time_sell >= :a AND " . rx_stats_historical_sale_predicate());
     $st->bindValue(':a', (int)$weekChartStart, PDO::PARAM_INT); $st->execute();
     foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $ts) {
         $t = (int)$ts; if ($t < $weekChartStart) continue;
@@ -434,7 +427,7 @@ try {
     foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $activity[] = ['t' => (int)$r['t'], 'ico' => 'green', 'icon' => 'cart-shopping', 'title' => 'سفارش جدید', 'sub' => trim((string)$r['username'] . ' — ' . (string)$r['name_product'], ' —')];
     }
-    $st = $pdo->prepare("SELECT id_user, price, Payment_Method, `time` AS t FROM Payment_report WHERE payment_Status = 'paid' AND `time` >= :s ORDER BY `time` DESC LIMIT 200");
+    $st = $pdo->prepare("SELECT id_user, price, Payment_Method, `time` AS t FROM Payment_report WHERE " . rx_stats_real_payment_predicate() . " AND `time` >= :s ORDER BY `time` DESC LIMIT 200");
     $st->bindValue(':s', $since24Str, PDO::PARAM_STR); $st->execute();
     foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $ts = strtotime(str_replace('/', '-', (string)$r['t']));

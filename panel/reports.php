@@ -43,6 +43,7 @@ if (empty($_SESSION['_session_regenerated'])) {
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/../jdf.php';
+require_once __DIR__ . '/../re/rx/function/statistics_helpers.php';
 
 
 $sessionUser = isset($_SESSION["user"]) && is_string($_SESSION["user"]) && $_SESSION["user"] !== ''
@@ -88,15 +89,15 @@ $discountTopCodes = [];
 try {
     $jToday = explode('-', jdate('Y-n-j', $nowTs, '', 'Asia/Tehran', 'en'));
     $todayStart = (int)jmktime(0, 0, 0, (int)($jToday[1] ?? 1), (int)($jToday[2] ?? 1), (int)($jToday[0] ?? 1400));
-    $st = $pdo->prepare("SELECT COALESCE(SUM(price_product),0) FROM invoice WHERE time_sell >= :a AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') AND name_product != 'سرویس تست'");
+    $st = $pdo->prepare("SELECT COALESCE(SUM(price_product),0) FROM invoice WHERE time_sell >= :a AND " . rx_stats_historical_sale_predicate());
     $st->bindValue(':a', (int)$todayStart, PDO::PARAM_INT); $st->execute();
     $incomeToday = (float)$st->fetchColumn();
 
-    $totalIncome = (float)$pdo->query("SELECT COALESCE(SUM(price_product),0) FROM invoice WHERE (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') AND name_product != 'سرویس تست'")->fetchColumn();
-    $totalOrders = (int)$pdo->query("SELECT COUNT(*) FROM invoice WHERE (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') AND name_product != 'سرویس تست'")->fetchColumn();
-    $totalUsers  = (int)$pdo->query("SELECT COUNT(*) FROM user")->fetchColumn();
+    $totalIncome = rx_stats_total_sales_amount($pdo);
+    $totalOrders = rx_stats_total_sales_count($pdo);
+    $totalUsers  = rx_stats_total_users($pdo);
     $avg30Start = $nowTs - 30 * 86400;
-    $st30 = $pdo->prepare("SELECT COALESCE(SUM(price_product),0), COUNT(*) FROM invoice WHERE time_sell >= :a AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') AND name_product != 'سرویس تست'");
+    $st30 = $pdo->prepare("SELECT COALESCE(SUM(price_product),0), COUNT(*) FROM invoice WHERE time_sell >= :a AND " . rx_stats_historical_sale_predicate());
     $st30->bindValue(':a', (int)$avg30Start, PDO::PARAM_INT); $st30->execute();
     $row30 = $st30->fetch(PDO::FETCH_NUM);
     $ord30 = (int)($row30[1] ?? 0);
@@ -106,7 +107,7 @@ try {
 try {
     $prod30Start = $nowTs - 30 * 86400;
     $prodTopN = 8;
-    $st = $pdo->prepare("SELECT name_product, COUNT(*) AS total FROM invoice WHERE time_sell >= :a AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') AND name_product != 'سرویس تست' GROUP BY name_product ORDER BY total DESC");
+    $st = $pdo->prepare("SELECT name_product, COUNT(*) AS total FROM invoice WHERE time_sell >= :a AND " . rx_stats_historical_sale_predicate() . " GROUP BY name_product ORDER BY total DESC");
     $st->bindValue(':a', (int)$prod30Start, PDO::PARAM_INT); $st->execute();
     $prodRows = [];
     foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
@@ -131,11 +132,13 @@ try {
     }
 } catch (\Throwable $e) { error_log('[reports] products: ' . $e->getMessage()); }
 
-$validSale = "(status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') AND name_product != 'سرویس تست'";
+$validSale = rx_stats_historical_sale_predicate();
 
-$validSaleI = "(i.Status = 'active' OR i.Status = 'end_of_time' OR i.Status = 'end_of_volume' OR i.Status = 'sendedwarn' OR i.Status = 'send_on_hold') AND i.name_product != 'سرویس تست'";
+$validSaleI = rx_stats_historical_sale_predicate('i');
 
 $purchaseMarkers = "(id_invoice IS NULL OR id_invoice = '' OR id_invoice = 'none' OR (id_invoice NOT LIKE 'getconfigafterpay%' AND id_invoice NOT LIKE 'getextenduser%' AND id_invoice NOT LIKE 'getextravolumeuser%' AND id_invoice NOT LIKE 'getextratimeuser%'))";
+
+$realPaymentPredicate = rx_stats_real_payment_predicate('p');
 
 try {
     $st = $pdo->query("SELECT CASE WHEN a.id_admin IS NOT NULL THEN 'admin' WHEN u.agent = 'n2' THEN 'n2' WHEN u.agent = 'n' THEN 'n' ELSE 'f' END AS grp, COUNT(*) AS users FROM user u LEFT JOIN admin a ON a.id_admin = u.id GROUP BY grp");
@@ -168,7 +171,7 @@ try {
 } catch (\Throwable $e) { error_log('[reports] topactive: ' . $e->getMessage()); }
 
 try {
-    $st = $pdo->query("SELECT p.id_user, COALESCE(NULLIF(MAX(u.username),''), p.id_user) AS uname, COALESCE(SUM(p.price),0) AS deposit, COUNT(*) AS cnt FROM Payment_report p LEFT JOIN user u ON u.id = p.id_user WHERE p.payment_Status = 'paid' AND {$purchaseMarkers} GROUP BY p.id_user ORDER BY deposit DESC LIMIT 10");
+    $st = $pdo->query("SELECT p.id_user, COALESCE(NULLIF(MAX(u.username),''), p.id_user) AS uname, COALESCE(SUM(p.price),0) AS deposit, COUNT(*) AS cnt FROM Payment_report p LEFT JOIN user u ON u.id = p.id_user WHERE {$realPaymentPredicate} AND {$purchaseMarkers} GROUP BY p.id_user ORDER BY deposit DESC LIMIT 10");
     $topDeposit = $st->fetchAll(PDO::FETCH_ASSOC);
 } catch (\Throwable $e) { error_log('[reports] topdeposit: ' . $e->getMessage()); }
 
