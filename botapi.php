@@ -1726,6 +1726,7 @@ if (!function_exists('rx_getKeyboardDefaultStyles')) {
                     'cubepay_name'     => 'primary',
                     'blupal_name'      => 'primary',
                     'variza_name'      => 'primary',
+                    'abangateway_name' => 'primary',
                     'atlaspay_name'    => 'primary',
                     'tetrapay_name'    => 'primary',
                 ],

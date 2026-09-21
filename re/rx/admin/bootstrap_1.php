@@ -234,6 +234,8 @@ function buildPaymentGatewayKeyboard(array $textbotlang)
     $blupalstatus = $blupal_status_raw === 'onblupal' ? $statusOn : $statusOff;
     $variza_status_raw = getPaySettingValue('statusvariza', 'offvariza');
     $varizastatus = $variza_status_raw === 'onvariza' ? $statusOn : $statusOff;
+    $abangateway_status_raw = getPaySettingValue('statusabangateway', 'offabangateway');
+    $abangatewaystatus = $abangateway_status_raw === 'onabangateway' ? $statusOn : $statusOff;
     $atlaspaystatus = $atlaspay_status_raw === 'onatlaspay' ? $statusOn : $statusOff;
     $tetrapaystatus = $tetrapay_status_raw === 'ontetrapay' ? $statusOn : $statusOff;
     $zarinpalstatus = $zarinpal === 'onzarinpal' ? $statusOn : $statusOff;
@@ -286,6 +288,11 @@ function buildPaymentGatewayKeyboard(array $textbotlang)
             ['text' => '⚙️ تنظیمات', 'callback_data' => 'varizasetting'],
             ['text' => $varizastatus, 'callback_data' => "editpayment-variza-$variza_status_raw"],
             ['text' => '💳 واریزا', 'callback_data' => 'variza'],
+        ],
+        [
+            ['text' => '⚙️ تنظیمات', 'callback_data' => 'abangatewaysetting'],
+            ['text' => $abangatewaystatus, 'callback_data' => "editpayment-abangateway-$abangateway_status_raw"],
+            ['text' => '💳 آبان گیت وی', 'callback_data' => 'abangateway'],
         ],
         [
             ['text' => '⚙️ تنظیمات', 'callback_data' => 'atlaspaysetting'],
@@ -947,6 +954,16 @@ if (!empty($datain) && in_array($from_id, $admin_ids ?? [])) {
         'variza_back'         => $textbotlang['Admin']['backadmin'],
         'variza_backmenu'     => $textbotlang['Admin']['backmenu'],
 
+        'abangateway_name'     => "🏷️ نام نمایشی درگاه آبان گیت وی",
+        'abangateway_url'      => "🔗 ثبت آدرس درگاه آبان گیت وی",
+        'abangateway_apikey'   => "🔑 ثبت کلید اتصال آبان گیت وی",
+        'abangateway_cashback' => "💰 کش بک آبان گیت وی",
+        'abangateway_min'      => "⬇️ کف آبان گیت وی",
+        'abangateway_max'      => "⬆️ سقف آبان گیت وی",
+        'abangateway_edu'      => "📚 آموزش آبان گیت وی",
+        'abangateway_back'     => $textbotlang['Admin']['backadmin'],
+        'abangateway_backmenu' => $textbotlang['Admin']['backmenu'],
+
         'atlaspay_name'     => "🏷️ نام نمایشی درگاه اطلس‌پی",
         'atlaspay_apikey'   => "🔑 ثبت API Key اطلس‌پی",
         'atlaspay_account'  => "📊 موجودی و اطلاعات حساب",
@@ -1047,6 +1064,7 @@ if (!empty($datain) && in_array($from_id, $admin_ids ?? [])) {
         'cubepay_backmenu' => 'finance',
         'blupal_backmenu' => 'finance',
         'variza_backmenu' => 'finance',
+        'abangateway_backmenu' => 'finance',
         'atlaspay_backmenu' => 'finance',
         'tetrapay_backmenu' => 'finance',
         'zpal_backmenu'   => 'finance',
