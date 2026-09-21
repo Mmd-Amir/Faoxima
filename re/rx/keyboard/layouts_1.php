@@ -134,7 +134,6 @@ $datatextbot = array(
     'blupal' => '',
     'abangateway' => '',
     'atlaspay' => '',
-    'tetrapay' => '',
     'zarinpal' => '',
     'text_fq' => '',
     'textpaymentnotverify' =>"",
@@ -634,21 +633,6 @@ $atlaspay = rx_kb_encode([
             ['text' => $textbotlang['Admin']['backmenu'], 'callback_data' => 'atlaspay_backmenu']
         ]
     ]);
-$tetrapay = rx_kb_encode([
-        [rx_kb_style(['text' => "🏷️ نام نمایشی درگاه تتراپی", 'callback_data' => 'tetrapay_name'], 'tetrapay_name', $_rx_gw_styles)],
-        [rx_kb_style(['text' => "🔑 ثبت API Key تتراپی", 'callback_data' => 'tetrapay_apikey'], 'tetrapay_apikey', $_rx_gw_styles)],
-        [rx_kb_style(['text' => "🌍 ثبت آدرس سرور API تتراپی", 'callback_data' => 'tetrapay_apiurl'], 'tetrapay_apiurl', $_rx_gw_styles)],
-        [rx_kb_style(['text' => "💰 کش بک تتراپی", 'callback_data' => 'tetrapay_cashback'], 'tetrapay_cashback', $_rx_gw_styles)],
-        [
-            rx_kb_style(['text' => "⬇️ کف تتراپی", 'callback_data' => 'tetrapay_min'], 'tetrapay_min', $_rx_gw_styles),
-            rx_kb_style(['text' => "⬆️ سقف تتراپی", 'callback_data' => 'tetrapay_max'], 'tetrapay_max', $_rx_gw_styles)
-        ],
-        [rx_kb_style(['text' => "📚 آموزش تتراپی", 'callback_data' => 'tetrapay_edu'], 'tetrapay_edu', $_rx_gw_styles)],
-        [
-            rx_kb_style(['text' => $textbotlang['Admin']['backadmin'], 'callback_data' => 'tetrapay_back'], 'tetrapay_back', $_rx_gw_styles),
-            ['text' => $textbotlang['Admin']['backmenu'], 'callback_data' => 'tetrapay_backmenu']
-        ]
-    ]);
 $keyboardzarinpal = rx_kb_encode([
         [rx_kb_style(['text' => "🏷️ نام نمایشی درگاه زرین پال", 'callback_data' => 'zpal_name'], 'zpal_name', $_rx_gw_styles)],
         [rx_kb_style(['text' => "مرچنت زرین پال", 'callback_data' => 'zpal_merchant'], 'zpal_merchant', $_rx_gw_styles)],
@@ -746,7 +730,6 @@ $abangatewayStatus = getPaySettingValue("statusabangateway");
 $abangatewayUrl = trim((string) getPaySettingValue("urlabangateway"));
 $abangatewayKey = trim((string) getPaySettingValue("apiabangateway"));
 $atlaspayStatus = getPaySettingValue("statusatlaspay");
-$tetrapayStatus = getPaySettingValue("statustetrapay");
 $paymentverify = getPaySettingValue("checkpaycartfirst");
 $stmt = $pdo->prepare("SELECT * FROM Payment_report WHERE id_user = '$from_id' AND payment_Status = 'paid' ");
 $stmt->execute();
@@ -820,11 +803,6 @@ $step_payment = [
    if($atlaspayStatus == "onatlaspay"){
         $step_payment['inline_keyboard'][] = [
             rx_kb_style(['text' => $datatextbot['atlaspay'] ?: '🌐 اطلس‌پی', 'callback_data' => "atlaspay"], 'atlaspay', $_rx_pay_styles)
-    ];
-    }
-   if($tetrapayStatus == "ontetrapay"){
-        $step_payment['inline_keyboard'][] = [
-            rx_kb_style(['text' => $datatextbot['tetrapay'] ?: '🔷 تتراپی', 'callback_data' => "tetrapay"], 'tetrapay', $_rx_pay_styles)
     ];
     }
     if($zarinpal == "onzarinpal"){

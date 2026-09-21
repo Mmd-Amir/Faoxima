@@ -2194,13 +2194,6 @@ try {
         ['minbalanceatlaspay', 50000],
         ['maxbalanceatlaspay', 2000000],
         ['helpatlaspay', '2'],
-        ['statustetrapay', 'offtetrapay'],
-        ['apitetrapay', ''],
-        ['apiurltetrapay', ''],
-        ['chashbacktetrapay', '0'],
-        ['minbalancetetrapay', 20000],
-        ['maxbalancetetrapay', 1000000],
-        ['helptetrapay', '2'],
         ['chashbackcart_target', 'all'],
         ['chashbackiranpay2_target', 'all'],
         ['chashbacktonpay_target', 'all'],
@@ -2209,7 +2202,6 @@ try {
         ['chashbackvariza_target', 'all'],
         ['chashbackabangateway_target', 'all'],
         ['chashbackatlaspay_target', 'all'],
-        ['chashbacktetrapay_target', 'all'],
         ['chashbackzarinpal_target', 'all'],
         ['chashbackplisio_target', 'all'],
         ['cashbacknowpayment_target', 'all'],
@@ -3310,9 +3302,6 @@ try {
     rxSafeAddColumn($connect, "Payment_report", "atlaspay_order_id",      "VARCHAR(64) NULL");
     rxSafeAddColumn($connect, "Payment_report", "atlaspay_tracking_code", "VARCHAR(64) NULL");
     rxSafeAddColumn($connect, "Payment_report", "atlaspay_payment_url",   "VARCHAR(500) NULL");
-    rxSafeAddColumn($connect, "Payment_report", "tetrapay_token",         "VARCHAR(64) NULL");
-    rxSafeAddColumn($connect, "Payment_report", "tetrapay_tracking_code", "VARCHAR(64) NULL");
-    rxSafeAddColumn($connect, "Payment_report", "tetrapay_payment_link",  "VARCHAR(500) NULL");
 
     try {
         $haveBlupalIdx = $connect->query("SHOW INDEX FROM Payment_report WHERE Key_name = 'idx_pr_blupal_invoice'");
@@ -3325,13 +3314,6 @@ try {
         $haveAtlasIdx = $connect->query("SHOW INDEX FROM Payment_report WHERE Key_name = 'idx_pr_atlaspay_order'");
         if ($haveAtlasIdx && $haveAtlasIdx->num_rows === 0) {
             @$connect->query("ALTER TABLE Payment_report ADD INDEX idx_pr_atlaspay_order (atlaspay_order_id)");
-        }
-    } catch (Throwable $e) {  }
-
-    try {
-        $haveTetraIdx = $connect->query("SHOW INDEX FROM Payment_report WHERE Key_name = 'idx_pr_tetrapay_token'");
-        if ($haveTetraIdx && $haveTetraIdx->num_rows === 0) {
-            @$connect->query("ALTER TABLE Payment_report ADD INDEX idx_pr_tetrapay_token (tetrapay_token)");
         }
     } catch (Throwable $e) {  }
 

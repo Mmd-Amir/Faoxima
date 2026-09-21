@@ -1728,7 +1728,6 @@ if (!function_exists('rx_getKeyboardDefaultStyles')) {
                     'variza_name'      => 'primary',
                     'abangateway_name' => 'primary',
                     'atlaspay_name'    => 'primary',
-                    'tetrapay_name'    => 'primary',
                 ],
                 'admin_features' => [
                     'feat_info'     => 'success',

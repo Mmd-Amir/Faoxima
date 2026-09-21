@@ -891,8 +891,6 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $abangateway, 'HTML');
 } elseif ($datain == "atlaspaysetting" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $atlaspay, 'HTML');
-} elseif ($datain == "tetrapaysetting" && $adminrulecheck['rule'] == "administrator") {
-    nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $tetrapay, 'HTML');
 } elseif ($text == "📊 موجودی و اطلاعات حساب" && $adminrulecheck['rule'] == "administrator") {
     $balanceData = function_exists('atlaspayBalance') ? atlaspayBalance() : null;
     $accountData = function_exists('atlaspayAccount') ? atlaspayAccount() : null;
@@ -1024,28 +1022,6 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
 } elseif ($user['step'] == "apiatlaspay") {
     nm_adminInstantReply($from_id, $textbotlang['Admin']['SettingnowPayment']['Savaapi'], $atlaspay, 'HTML');
     update("PaySetting", "ValuePay", $text, "NamePay", "apiatlaspay");
-    step('home', $from_id);
-} elseif ($text == "🔑 ثبت API Key تتراپی" && $adminrulecheck['rule'] == "administrator") {
-    $PaySetting = select("PaySetting", "ValuePay", "NamePay", "apitetrapay", "select");
-    $currentKey = $PaySetting['ValuePay'] ?? 'ثبت نشده';
-    $texttetrapay = "🔑 کلید API تتراپی خود را اینجا وارد کنید.\n\nکلید فعلی شما: {$currentKey}";
-    nm_adminInstantReply($from_id, $texttetrapay, $backadmin, 'HTML');
-    step('apitetrapay', $from_id);
-} elseif ($user['step'] == "apitetrapay") {
-    nm_adminInstantReply($from_id, $textbotlang['Admin']['SettingnowPayment']['Savaapi'], $tetrapay, 'HTML');
-    update("PaySetting", "ValuePay", $text, "NamePay", "apitetrapay");
-    step('home', $from_id);
-} elseif ($text == "🌍 ثبت آدرس سرور API تتراپی" && $adminrulecheck['rule'] == "administrator") {
-    $PaySetting = select("PaySetting", "ValuePay", "NamePay", "apiurltetrapay", "select");
-    $currentUrl = $PaySetting['ValuePay'] ?? '';
-    $currentUrl = $currentUrl !== '' ? $currentUrl : 'ثبت نشده';
-    $texttetrapayUrl = "🌍 آدرس سرور API تتراپی خود را اینجا وارد کنید (مثال: https://xxx.xxx.xxx.xxx).\n\nآدرس فعلی شما: {$currentUrl}";
-    nm_adminInstantReply($from_id, $texttetrapayUrl, $backadmin, 'HTML');
-    step('apiurltetrapay', $from_id);
-} elseif ($user['step'] == "apiurltetrapay") {
-    $cleanUrl = rtrim(trim($text), '/');
-    nm_adminInstantReply($from_id, $textbotlang['Admin']['SettingnowPayment']['Savaapi'], $tetrapay, 'HTML');
-    update("PaySetting", "ValuePay", $cleanUrl, "NamePay", "apiurltetrapay");
     step('home', $from_id);
 } elseif ($text == "🔑 ثبت API Key بلوپال" && $adminrulecheck['rule'] == "administrator") {
     $PaySetting = select("PaySetting", "ValuePay", "NamePay", "apiblupal", "select");
@@ -1233,14 +1209,6 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
 } elseif ($user['step'] == "gettextatlaspay") {
     nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $atlaspay, 'HTML');
     update("textbot", "text", $text, "id_text", "atlaspay");
-    step("home", $from_id);
-} elseif ($text == "🏷️ نام نمایشی درگاه تتراپی") {
-    $prompt = "🏷️ نام نمایشی دلخواه برای درگاه تتراپی را ارسال کنید.";
-    nm_adminInstantReply($from_id, $prompt, $backadmin, 'HTML');
-    step("gettexttetrapay", $from_id);
-} elseif ($user['step'] == "gettexttetrapay") {
-    nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $tetrapay, 'HTML');
-    update("textbot", "text", $text, "id_text", "tetrapay");
     step("home", $from_id);
 } elseif ($text == "🗂 نام درگاه ریالی سوم") {
     nm_adminInstantReply($from_id, " 📌 نام درگاه را ارسال نمايید", $backadmin, 'HTML');
@@ -2295,13 +2263,6 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
             $valuenew = "onatlaspay";
         }
         update("PaySetting", "ValuePay", $valuenew, "NamePay", "statusatlaspay");
-    } elseif ($type == "tetrapay") {
-        if ($value == "ontetrapay") {
-            $valuenew = "offtetrapay";
-        } else {
-            $valuenew = "ontetrapay";
-        }
-        update("PaySetting", "ValuePay", $valuenew, "NamePay", "statustetrapay");
     }
     $Bot_Status = buildPaymentGatewayKeyboard($textbotlang);
     Editmessagetext($from_id, $message_id, "📌 از لیست زیر میتوانید درگاه ها را مدیریت کنید.
@@ -2396,19 +2357,6 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     savedata("clear", "cashback_percent", $text);
     savedata("save", "cashback_key", "chashbackatlaspay");
     savedata("save", "cashback_menu", "atlaspay");
-    nm_adminInstantReply($from_id, "📌 جامعه هدف این کش‌بک را انتخاب نمایید", rx_cashbackTargetKeyboard(), 'HTML');
-    step("getcashtarget", $from_id);
-} elseif ($text == "💰 کش بک تتراپی") {
-    nm_adminInstantReply($from_id, "📌 در این بخش می توانید تعیین کنید کاربر پس از پرداخت چه درصدی به عنوان هدیه به حسابش واریز شود. ( برای غیرفعال کردن این قابلیت عدد صفر ارسال کنید)", $backadmin, 'HTML');
-    step("getcashtetrapay", $from_id);
-} elseif ($user['step'] == "getcashtetrapay") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    savedata("clear", "cashback_percent", $text);
-    savedata("save", "cashback_key", "chashbacktetrapay");
-    savedata("save", "cashback_menu", "tetrapay");
     nm_adminInstantReply($from_id, "📌 جامعه هدف این کش‌بک را انتخاب نمایید", rx_cashbackTargetKeyboard(), 'HTML');
     step("getcashtarget", $from_id);
 } elseif ($text == "💰 کش بک کیوب‌پی") {
@@ -3363,28 +3311,6 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی تنظیم گردید.", $atlaspay, 'HTML');
     step("home", $from_id);
     update("PaySetting", "ValuePay", $text, "NamePay", "maxbalanceatlaspay");
-} elseif ($text == "⬇️ کف تتراپی") {
-    nm_adminInstantReply($from_id, "📌 حداقل مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmaintetrapay", $from_id);
-} elseif ($user['step'] == "getmaintetrapay") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداقل مبلغ واریزی تنظیم گردید.", $tetrapay, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "minbalancetetrapay");
-} elseif ($text == "⬆️ سقف تتراپی") {
-    nm_adminInstantReply($from_id, "📌 حداکثر مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmaxtetrapay", $from_id);
-} elseif ($user['step'] == "getmaxtetrapay") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی تنظیم گردید.", $tetrapay, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "maxbalancetetrapay");
 } elseif ($text == "⬇️ کف کیوب‌پی") {
     nm_adminInstantReply($from_id, "📌 حداقل مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
     step("getmaincubepay", $from_id);
@@ -4479,42 +4405,6 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     }
     step('home', $from_id);
     nm_adminInstantReply($from_id, "✅ آموزش با موفقیت ذخیره گردید.", $atlaspay, 'HTML');
-} elseif ($text == "📚 آموزش تتراپی" && $adminrulecheck['rule'] == "administrator") {
-    nm_adminInstantReply($from_id, "📌آموزش خود را ارسال نمایید .
-۱ - در صورتی که میخواید اموزشی نشان داده نشود عدد 2 را ارسال کنید
-۲ - شما می توانید آموزش بصورت فیلم ُ  متن ُ تصویر ارسال نمایید", $backadmin, 'HTML');
-    step("helptetrapay", $from_id);
-} elseif ($user['step'] == "helptetrapay") {
-    if ($text) {
-        if (intval($text) == 2) {
-            update("PaySetting", "ValuePay", "0", "NamePay", "helptetrapay");
-        } else {
-            $data = json_encode(array(
-                'type' => "text",
-                'text' => $text
-            ));
-            update("PaySetting", "ValuePay", $data, "NamePay", "helptetrapay");
-        }
-    } elseif ($photo) {
-        $data = json_encode(array(
-            'type' => "photo",
-            'text' => $caption,
-            'photoid' => $photoid
-        ));
-        update("PaySetting", "ValuePay", $data, "NamePay", "helptetrapay");
-    } elseif ($video) {
-        $data = json_encode(array(
-            'type' => "video",
-            'text' => $caption,
-            'videoid' => $videoid
-        ));
-        update("PaySetting", "ValuePay", $data, "NamePay", "helptetrapay");
-    } else {
-        nm_adminInstantReply($from_id, "❌ محتوای ارسال نامعتبر است.", $backadmin, 'HTML');
-        return;
-    }
-    step('home', $from_id);
-    nm_adminInstantReply($from_id, "✅ آموزش با موفقیت ذخیره گردید.", $tetrapay, 'HTML');
 } elseif ($text == "📚 آموزش کیوب‌پی" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, "📌آموزش خود را ارسال نمایید .
 ۱ - در صورتی که میخواید اموزشی نشان داده نشود عدد 2 را ارسال کنید

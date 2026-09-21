@@ -43,7 +43,6 @@ if (!function_exists('rxNavParent')) {
                 'gw_variza'                 => 'finance',
                 'gw_abangateway'            => 'finance',
                 'gw_atlaspay'               => 'finance',
-                'gw_tetrapay'               => 'finance',
                 'gw_zarinpal'               => 'finance',
                 'gw_plisio'                 => 'finance',
                 'gw_iranpay'                => 'finance',
@@ -167,13 +166,6 @@ if (!function_exists('rxNavParent')) {
                 'getmaxatlaspay'            => 'gw_atlaspay',
                 'helpatlaspay'              => 'gw_atlaspay',
                 'gettextatlaspay'           => 'gw_atlaspay',
-                'apitetrapay'               => 'gw_tetrapay',
-                'apiurltetrapay'            => 'gw_tetrapay',
-                'getcashtetrapay'           => 'gw_tetrapay',
-                'getmaintetrapay'           => 'gw_tetrapay',
-                'getmaxtetrapay'            => 'gw_tetrapay',
-                'helptetrapay'              => 'gw_tetrapay',
-                'gettexttetrapay'           => 'gw_tetrapay',
                 'getmainaqzarinpal'         => 'gw_zarinpal',
                 'getmaaxzarinpal'           => 'gw_zarinpal',
                 'getcashzarinpal'           => 'gw_zarinpal',
@@ -496,7 +488,7 @@ if (!function_exists('rxIsRenderableState')) {
                 'featnav_affiliates', 'affiliates_antifraud_menu', 'featnav_changeloc',
                 'gw_cart', 'gw_cart_auto', 'gw_trnado', 'gw_tonpay', 'gw_cubepay', 'gw_blupal',
                 'gw_variza', 'gw_abangateway',
-                'gw_atlaspay', 'gw_tetrapay',
+                'gw_atlaspay',
                 'gw_zarinpal', 'gw_plisio', 'gw_iranpay', 'gw_tron', 'gw_star', 'gw_nowpayment',
             ]);
         }
@@ -549,7 +541,6 @@ if (!function_exists('rxNavMenuSignatures')) {
                     'cubepay_name'           => 'gw_cubepay',
                     'blupal_name'            => 'gw_blupal',
                     'atlaspay_name'          => 'gw_atlaspay',
-                    'tetrapay_name'          => 'gw_tetrapay',
                     'tonpay_apikey'          => 'gw_tonpay',
                     'cubepay_apikey'         => 'gw_cubepay',
                     'blupal_apikey'          => 'gw_blupal',
@@ -561,8 +552,6 @@ if (!function_exists('rxNavMenuSignatures')) {
                     'abangateway_apikey'     => 'gw_abangateway',
                     'atlaspay_apikey'        => 'gw_atlaspay',
                     'atlaspay_account'       => 'gw_atlaspay',
-                    'tetrapay_apikey'        => 'gw_tetrapay',
-                    'tetrapay_apiurl'        => 'gw_tetrapay',
                     'zpal_name'              => 'gw_zarinpal',
                     'plisio_name'            => 'gw_plisio',
                     'cronjob_display'        => 'cronjobs',
@@ -1008,7 +997,7 @@ if (!function_exists('rxRenderMenuState')) {
                $change_product, $setting_panel, $keyboardhelpadmin, $helpedit,
                $channelkeyboard, $supportcenter, $textbotlang, $user,
                $affiliates, $affiliatesAntiFraud, $keyboardchangelimit, $autoconfirm_advanced_keyboard,
-               $CartManage, $trnado, $tonpay, $cubepay, $blupal, $atlaspay, $tetrapay, $keyboardzarinpal,
+               $CartManage, $trnado, $tonpay, $cubepay, $blupal, $atlaspay, $keyboardzarinpal,
                $NowPaymentsManage, $iranpaykeyboard, $tronnowpayments, $Startelegram, $nowpayment_setting_keyboard,
                $backadmin;
 
@@ -1039,7 +1028,6 @@ if (!function_exists('rxRenderMenuState')) {
             'gw_cubepay'    => [isset($cubepay) ? $cubepay : null, 'home'],
             'gw_blupal'     => [isset($blupal) ? $blupal : null, 'home'],
             'gw_atlaspay'   => [isset($atlaspay) ? $atlaspay : null, 'home'],
-            'gw_tetrapay'   => [isset($tetrapay) ? $tetrapay : null, 'home'],
             'gw_zarinpal'   => [isset($keyboardzarinpal) ? $keyboardzarinpal : null, 'home'],
             'gw_plisio'     => [isset($NowPaymentsManage) ? $NowPaymentsManage : null, 'home'],
             'gw_iranpay'    => [isset($iranpaykeyboard) ? $iranpaykeyboard : null, 'home'],
@@ -1245,7 +1233,6 @@ if (!function_exists('rxNavCashbackGatewayParent')) {
             'blupal'                      => 'gw_blupal',
             'abangateway'                 => 'gw_abangateway',
             'atlaspay'                    => 'gw_atlaspay',
-            'tetrapay'                    => 'gw_tetrapay',
             'NowPaymentsManage'           => 'gw_plisio',
             'nowpayment_setting_keyboard' => 'gw_nowpayment',
             'keyboardzarinpal'            => 'gw_zarinpal',
@@ -1340,7 +1327,7 @@ if (!function_exists('rxAssertUniqueMenuCallbacks')) {
             'aqaye_backmenu', 'plisio_backmenu', 'help_backmenu', 'feat_backmenu',
             'ch_backmenu', 'set_backmenu', 'shop_backmenu', 'cat_back', 'shopitem_back',
             'usershub_backmenu', 'panelshub_backmenu', 'channelhub_backmenu', 'wallet_backmenu',
-            'tonpay_backmenu', 'cubepay_backmenu', 'blupal_backmenu', 'variza_backmenu', 'abangateway_backmenu', 'atlaspay_backmenu', 'tetrapay_backmenu',
+            'tonpay_backmenu', 'cubepay_backmenu', 'blupal_backmenu', 'variza_backmenu', 'abangateway_backmenu', 'atlaspay_backmenu',
         ]);
         $seen = [];
         $collisions = [];

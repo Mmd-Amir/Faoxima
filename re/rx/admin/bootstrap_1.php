@@ -218,7 +218,6 @@ function buildPaymentGatewayKeyboard(array $textbotlang)
     $cubepay_status_raw = getPaySettingValue('statuscubepay', 'offcubepay');
     $blupal_status_raw = getPaySettingValue('statusblupal', 'offblupal');
     $atlaspay_status_raw = getPaySettingValue('statusatlaspay', 'offatlaspay');
-    $tetrapay_status_raw = getPaySettingValue('statustetrapay', 'offtetrapay');
     $zarinpal = getPaySettingValue('zarinpalstatus', 'offzarinpal');
     $affilnecurrency = getPaySettingValue('digistatus', 'offdigi');
     $paymentsstartelegram = getPaySettingValue('statusstar', '0');
@@ -237,7 +236,6 @@ function buildPaymentGatewayKeyboard(array $textbotlang)
     $abangateway_status_raw = getPaySettingValue('statusabangateway', 'offabangateway');
     $abangatewaystatus = $abangateway_status_raw === 'onabangateway' ? $statusOn : $statusOff;
     $atlaspaystatus = $atlaspay_status_raw === 'onatlaspay' ? $statusOn : $statusOff;
-    $tetrapaystatus = $tetrapay_status_raw === 'ontetrapay' ? $statusOn : $statusOff;
     $zarinpalstatus = $zarinpal === 'onzarinpal' ? $statusOn : $statusOff;
     $affilnecurrencystatus = $affilnecurrency === 'ondigi' ? $statusOn : $statusOff;
     $paymentstar = (string)$paymentsstartelegram === '1' ? $statusOn : $statusOff;
@@ -298,11 +296,6 @@ function buildPaymentGatewayKeyboard(array $textbotlang)
             ['text' => '⚙️ تنظیمات', 'callback_data' => 'atlaspaysetting'],
             ['text' => $atlaspaystatus, 'callback_data' => "editpayment-atlaspay-$atlaspay_status_raw"],
             ['text' => '🌐 اطلس‌پی', 'callback_data' => 'atlaspay'],
-        ],
-        [
-            ['text' => '⚙️ تنظیمات', 'callback_data' => 'tetrapaysetting'],
-            ['text' => $tetrapaystatus, 'callback_data' => "editpayment-tetrapay-$tetrapay_status_raw"],
-            ['text' => '🔷 تتراپی', 'callback_data' => 'tetrapay'],
         ],
         [
             ['text' => '⚙️ تنظیمات', 'callback_data' => 'zarinpalsetting'],
@@ -974,16 +967,6 @@ if (!empty($datain) && in_array($from_id, $admin_ids ?? [])) {
         'atlaspay_back'     => $textbotlang['Admin']['backadmin'],
         'atlaspay_backmenu' => $textbotlang['Admin']['backmenu'],
 
-        'tetrapay_name'     => "🏷️ نام نمایشی درگاه تتراپی",
-        'tetrapay_apikey'   => "🔑 ثبت API Key تتراپی",
-        'tetrapay_apiurl'   => "🌍 ثبت آدرس سرور API تتراپی",
-        'tetrapay_cashback' => "💰 کش بک تتراپی",
-        'tetrapay_min'      => "⬇️ کف تتراپی",
-        'tetrapay_max'      => "⬆️ سقف تتراپی",
-        'tetrapay_edu'      => "📚 آموزش تتراپی",
-        'tetrapay_back'     => $textbotlang['Admin']['backadmin'],
-        'tetrapay_backmenu' => $textbotlang['Admin']['backmenu'],
-
         'zpal_name'     => "🏷️ نام نمایشی درگاه زرین پال",
         'zpal_merchant' => "مرچنت زرین پال",
         'zpal_cashback' => "💰 کش بک زرین پال",
@@ -1066,7 +1049,6 @@ if (!empty($datain) && in_array($from_id, $admin_ids ?? [])) {
         'variza_backmenu' => 'finance',
         'abangateway_backmenu' => 'finance',
         'atlaspay_backmenu' => 'finance',
-        'tetrapay_backmenu' => 'finance',
         'zpal_backmenu'   => 'finance',
         'zpey_backmenu'   => 'finance',
         'aqaye_backmenu'  => 'finance',

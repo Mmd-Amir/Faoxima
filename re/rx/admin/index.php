@@ -141,7 +141,7 @@ if (
         $rx_kb_vars = [
             'keyboardadmin', 'setting_panel', 'shopkeyboard', 'keyboardhelpadmin',
             'Feature_status', 'channelkeyboard', 'keyboard_Category_manage', 'keyboard_shop_manage',
-            'CartManage', 'trnado', 'tonpay', 'cubepay', 'blupal', 'variza', 'abangateway', 'atlaspay', 'tetrapay', 'keyboardzarinpal',
+            'CartManage', 'trnado', 'tonpay', 'cubepay', 'blupal', 'variza', 'abangateway', 'atlaspay', 'keyboardzarinpal',
             'NowPaymentsManage', 'nowpayment_setting_keyboard', 'tronnowpayments', 'Startelegram',
             'iranpaykeyboard', 'supportcenter', 'backadmin',
             'adminPanelsMenu', 'adminChannelMenu', 'adminUsersMenu',

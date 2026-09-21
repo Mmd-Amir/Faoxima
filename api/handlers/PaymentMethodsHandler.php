@@ -33,7 +33,6 @@ final class PaymentMethodsHandler extends BaseHandler
         $abangatewayUrl    = trim((string) $get('urlabangateway'));
         $abangatewayKey    = trim((string) $get('apiabangateway'));
         $atlaspayActive = $get('statusatlaspay');
-        $tetrapayActive = $get('statustetrapay');
         $plisio         = $get('nowpaymentstatus');
         $nowpayment     = $get('statusnowpayment');
         $digi           = $get('digistatus');
@@ -62,7 +61,6 @@ final class PaymentMethodsHandler extends BaseHandler
             'variza'        => ['minbalancevariza',        'maxbalancevariza'],
             'abangateway'   => ['minbalanceabangateway',   'maxbalanceabangateway'],
             'atlaspay'      => ['minbalanceatlaspay',      'maxbalanceatlaspay'],
-            'tetrapay'      => ['minbalancetetrapay',      'maxbalancetetrapay'],
         ];
         $methodLimitsResolver = function (string $methodId) use ($perMethodKeys, $get, $minBalance, $maxBalance): array {
             if (isset($perMethodKeys[$methodId])) {
@@ -178,14 +176,6 @@ final class PaymentMethodsHandler extends BaseHandler
                 'id'    => 'atlaspay',
                 'label' => $L('atlaspay', '🌐 اطلس‌پی'),
                 'icon'  => '🌐',
-                'kind'  => 'form',
-            ];
-        }
-        if ($tetrapayActive === 'ontetrapay') {
-            $methods[] = [
-                'id'    => 'tetrapay',
-                'label' => $L('tetrapay', '🔷 تتراپی'),
-                'icon'  => '🔷',
                 'kind'  => 'form',
             ];
         }

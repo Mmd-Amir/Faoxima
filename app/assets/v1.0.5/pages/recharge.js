@@ -13,7 +13,6 @@ function iconForMethod(m) {
     if (id === 'variza')               return 'tronado';
     if (id === 'abangateway')          return 'tronado';
     if (id === 'atlaspay')             return 'tronado';
-    if (id === 'tetrapay')             return 'tronado';
     if (id.startsWith('iranpay'))      return 'flower';
     if (id === 'zarinpal')             return 'coin';
     if (id === 'plisio')               return 'exchange';
@@ -424,7 +423,7 @@ function isAutoConfirmGatewayId(id) {
     return (
         x === 'plisio' || x === 'nowpayment' || x === 'digitaltron' ||
         x.startsWith('iranpay') || x === 'tonpay' || x === 'cubepay' ||
-        x === 'zarinpal' || x === 'blupal' || x === 'variza' || x === 'abangateway' || x === 'atlaspay' || x === 'tetrapay'
+        x === 'zarinpal' || x === 'blupal' || x === 'variza' || x === 'abangateway' || x === 'atlaspay'
     );
 }
 
@@ -1045,7 +1044,7 @@ async function startGatewayWatchForRecharge(view, methodId, obj) {
             gatewayUrl: obj.url,
             isCrypto,
             mode: 'recharge',
-            timeoutSec: methodId === 'cubepay' ? 3600 : (methodId === 'atlaspay' ? 1200 : (methodId === 'tetrapay' ? 600 : (methodId === 'tonpay' ? 86400 : 1800))),
+            timeoutSec: methodId === 'cubepay' ? 3600 : (methodId === 'atlaspay' ? 1200 : (methodId === 'tonpay' ? 86400 : 1800)),
             pollEverySec: 5,
             onSuccess: (st) => {
                 const amount = Number(st.amount || 0).toLocaleString('en-US');

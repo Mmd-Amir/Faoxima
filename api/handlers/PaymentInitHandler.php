@@ -199,10 +199,6 @@ final class PaymentInitHandler extends BaseHandler
                     $this->handleAtlasPay($amount);
                     return;
 
-                case 'tetrapay':
-                    $this->handleTetraPay($amount);
-                    return;
-
                 case 'plisio':
                     $this->handlePlisio($amount);
                     return;
@@ -381,9 +377,6 @@ final class PaymentInitHandler extends BaseHandler
         if ($method === 'atlaspay') {
             return 20;
         }
-        if ($method === 'tetrapay') {
-            return 10;
-        }
         return self::STALE_UNPAID_MINUTES;
     }
 
@@ -423,7 +416,6 @@ final class PaymentInitHandler extends BaseHandler
             'variza'        => ['minbalancevariza',        'maxbalancevariza'],
             'abangateway'   => ['minbalanceabangateway',   'maxbalanceabangateway'],
             'atlaspay'      => ['minbalanceatlaspay',      'maxbalanceatlaspay'],
-            'tetrapay'      => ['minbalancetetrapay',      'maxbalancetetrapay'],
         ];
 
         $minMethod = 0;
@@ -788,62 +780,6 @@ final class PaymentInitHandler extends BaseHandler
         FaoximaResponse::ok([
             'kind'     => 'url',
             'url'      => $paymentUrl,
-            'order_id' => $orderId,
-            'message'  => faoxima_textbot_get('dyn_paymentinit_click_link_to_pay', '🌸 برای تکمیل پرداخت روی لینک زیر کلیک کنید.'),
-        ]);
-    }
-
-
-    private function handleTetraPay(int $amount): void
-    {
-        if (!function_exists('tetrapayCreatePaymentLink')) {
-            FaoximaResponse::fail(503, faoxima_textbot_get('dyn_paymentinit_tetrapay_function_missing', '❌ تابع درگاه تتراپی روی این سرور موجود نیست.'));
-        }
-
-        $minRow = select('PaySetting', 'ValuePay', 'NamePay', 'minbalancetetrapay', 'select');
-        $maxRow = select('PaySetting', 'ValuePay', 'NamePay', 'maxbalancetetrapay', 'select');
-        $min = is_array($minRow) ? (int)($minRow['ValuePay'] ?? 0) : 0;
-        $max = is_array($maxRow) ? (int)($maxRow['ValuePay'] ?? 0) : 0;
-        if ($min > 0 && $amount < $min) {
-            FaoximaResponse::fail(422, faoxima_render_text(faoxima_textbot_get('dyn_paymentinit_min_amount', '❌ حداقل مبلغ پرداخت {min} تومان است.'), ['min' => number_format($min)]));
-        }
-        if ($max > 0 && $amount > $max) {
-            FaoximaResponse::fail(422, faoxima_render_text(faoxima_textbot_get('dyn_paymentinit_max_amount', '❌ حداکثر مبلغ پرداخت {max} تومان است.'), ['max' => number_format($max)]));
-        }
-
-        $orderId = bin2hex(random_bytes(5));
-
-        $this->insertPaymentReport('tetrapay', $amount, $orderId);
-
-        try {
-            $pay = tetrapayCreatePaymentLink($amount);
-        } catch (Throwable $e) {
-            FaoximaLogger::userFacing('tetrapayCreatePaymentLink() threw', ['err' => $e->getMessage()]);
-            FaoximaResponse::fail(502, faoxima_textbot_get('dyn_paymentinit_gateway_generic_error', '❌ خطا در ارتباط با درگاه پرداخت.'));
-        }
-
-        $token = is_array($pay) ? trim((string)($pay['token'] ?? '')) : '';
-        $paymentLink = is_array($pay) ? trim((string)($pay['link'] ?? '')) : '';
-        $trackingCode = is_array($pay) ? trim((string)($pay['tracking_code'] ?? '')) : '';
-
-        if ($token === '' || $paymentLink === '') {
-            $errMsg = is_array($pay) ? json_encode($pay, JSON_UNESCAPED_UNICODE) : 'unknown';
-            FaoximaLogger::userFacing('tetrapayCreatePaymentLink() returned bad response', ['raw' => $errMsg]);
-            update('Payment_report', 'payment_Status', 'reject', 'id_order', $orderId);
-            update('Payment_report', 'dec_not_confirmed', $errMsg, 'id_order', $orderId);
-            FaoximaResponse::fail(502, faoxima_textbot_get('dyn_paymentinit_payment_link_creation_failed', '❌ ساخت لینک پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.'));
-        }
-
-        $totalAmountToman = is_array($pay) && isset($pay['total_amount']) ? (int) $pay['total_amount'] : $amount;
-
-        update('Payment_report', 'tetrapay_token', $token, 'id_order', $orderId);
-        update('Payment_report', 'tetrapay_tracking_code', $trackingCode, 'id_order', $orderId);
-        update('Payment_report', 'tetrapay_payment_link', $paymentLink, 'id_order', $orderId);
-        update('Payment_report', 'price', $totalAmountToman, 'id_order', $orderId);
-
-        FaoximaResponse::ok([
-            'kind'     => 'url',
-            'url'      => $paymentLink,
             'order_id' => $orderId,
             'message'  => faoxima_textbot_get('dyn_paymentinit_click_link_to_pay', '🌸 برای تکمیل پرداخت روی لینک زیر کلیک کنید.'),
         ]);

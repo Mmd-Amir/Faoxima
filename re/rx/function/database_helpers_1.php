@@ -393,7 +393,6 @@ if (!function_exists('getCronJobDefinitions')) {
             'nowpaymentcheck' => ['script' => 'nowpaymentcheck.php', 'admin_label' => 'پولر NowPayments', 'instruction' => '💎 بررسی پرداخت‌های NowPayments — %s', 'default' => ['unit' => 'minute', 'value' => 1]],
             'blupalcheck' => ['script' => 'blupalcheck.php', 'admin_label' => 'پولر بلوپال', 'instruction' => '💙 بررسی پرداخت‌های بلوپال — %s', 'default' => ['unit' => 'minute', 'value' => 2]],
             'atlaspaycheck' => ['script' => 'atlaspaycheck.php', 'admin_label' => 'پولر اطلس‌پی', 'instruction' => '🌐 بررسی پرداخت‌های اطلس‌پی — %s', 'default' => ['unit' => 'minute', 'value' => 1]],
-            'tetrapaycheck' => ['script' => 'tetrapaycheck.php', 'admin_label' => 'پولر تتراپی', 'instruction' => '🔷 بررسی پرداخت‌های تتراپی — %s', 'default' => ['unit' => 'minute', 'value' => 1]],
             'tonpaycheck' => ['script' => 'tonpaycheck.php', 'admin_label' => 'پولر تون‌پی', 'instruction' => '💠 بررسی پرداخت‌های تون‌پی — %s', 'default' => ['unit' => 'minute', 'value' => 1]],
             'remnawave_usage' => ['script' => 'remnawave_usage.php', 'admin_label' => 'مصرف رمن‌ویو', 'instruction' => '📊 بررسی مصرف کاربران رمن‌ویو — %s', 'default' => ['unit' => 'minute', 'value' => 15]],
             'logs_cleanup' => ['script' => 'logs_cleanup.php', 'admin_label' => 'پاکسازی لاگ API', 'instruction' => '🧹 پاکسازی لاگ‌های قدیمی API — %s', 'default' => ['unit' => 'day', 'value' => 7]],

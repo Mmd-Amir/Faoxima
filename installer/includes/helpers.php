@@ -316,7 +316,7 @@ function rx_table_migrations_verify_ready(array $dbInfo, int $retries = 5, int $
         ['setting', 'redis_enabled'],
         ['setting', 'banner_start_status'],
         ['invoice', 'invalidated_at'],
-        ['Payment_report', 'tetrapay_token'],
+        ['Payment_report', 'atlaspay_order_id'],
         ['marzban_panel', 'xui_api_mode'],
         ['marzban_panel', 'ip_limit_guard'],
         ['product', 'ip_limit'],

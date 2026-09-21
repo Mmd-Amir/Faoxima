@@ -507,7 +507,6 @@ $datatextbot = array(
     'variza' => '',
     'abangateway' => '',
     'atlaspay' => '',
-    'tetrapay' => '',
     'zarinpal' => '',
     'textsnowpayment' => '',
     'textpaymentnotverify' => "",
