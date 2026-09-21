@@ -170,7 +170,7 @@ if ($product == false) {
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper">
+        <div class="wrapper fx-page-productedit">
 
             <div class="page-head">
                 <div>
@@ -186,7 +186,7 @@ if ($product == false) {
                 </div>
             </div>
 
-            <div class="card" style="max-width:820px; margin: 0 auto;">
+            <div class="card">
 
                 <?php if ($statusmessage): ?>
                     <div class="alert alert-error">

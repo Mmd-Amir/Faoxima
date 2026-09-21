@@ -7197,3 +7197,32 @@ body.fx-service-keyboard .sv-more-menu { border-radius: 14px; }
     grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr));
     gap: var(--space-3);
 }
+/* =========================================================================
+   STAGE 4C-1C — PRODUCTEDIT PAGE SCOPE
+   panel/productedit.php only.  The edit form's card carried
+   `style="max-width:820px; margin: 0 auto"` inline, so its width was owned by
+   markup rather than by the stylesheet.  The page now carries a marker and the
+   layout is owned here.
+
+   Values are reproduced EXACTLY, so this is an ownership migration with no
+   visual delta: the card must still measure 820px wide, centred, with zero
+   vertical margin.  `margin: 0 auto` is kept verbatim rather than converted to
+   `margin-inline`, so the computed box is bit-for-bit what the inline
+   declaration produced.
+
+   The marker is a new name: no other rule in the panel selects
+   `fx-page-productedit`, so this block cannot reach another surface and it
+   enables no other stage's CSS.  `productedit.php` links `theme.css` only, so
+   this block must live in this sheet.
+
+   Deliberately NOT done here: the page's five `color:var(--text-muted)` hints
+   and the three classless action `<div>`s.  Three of those hints are
+   load-bearing (measured: rgb(161,161,170) -> rgb(244,244,245)) and every
+   classless div has no selector hook, so migrating them would change rendering
+   and require a further markup change.
+   ========================================================================= */
+
+#main-content .wrapper.fx-page-productedit > .card {
+    max-width: 820px;
+    margin: 0 auto;
+}
