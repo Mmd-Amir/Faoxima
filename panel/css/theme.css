@@ -7076,3 +7076,124 @@ body.fx-service-keyboard .sv-more-menu { border-radius: 14px; }
     body.fx-service-keyboard .btn-card { border-radius: 10px; }
     body.fx-service-keyboard .phone { border-radius: 12px; }
 }
+/* =========================================================================
+   STAGE 4C-1A — USER LEGACY COMPONENT OWNERSHIP
+   panel/user.php only.  The eight components below were authored before the
+   Stage 2A token layer existed and were never migrated: every one of their
+   rules lives at L1268-L1325 and not one is re-declared anywhere in the
+   redesign region.  This block gives them token-based ownership so the
+   redesign layer, not the pre-2A layer, owns their final computed styles.
+
+   Presentation only.  This is a pure append: no markup, script, form,
+   route, database or Telegram contract is touched, and nothing above this
+   banner is edited, moved or removed.
+
+   Scope safety: these eight class names are emitted by panel/user.php and by
+   no other file in the panel (verified by grep across *.php, css/*.css and
+   js/), so this block cannot reach another surface.
+
+   Deliberate non-migrations, recorded so they are not "corrected" later:
+     * .tg-btn keeps its Telegram brand blue (#229ED9, and the
+       rgba(34,158,217,...) hover shadow).  Those declarations stay with the
+       legacy rule at L1294/L1301 and no colour literal is re-declared here —
+       only shape and spacing are tokenised.  Its :hover state is likewise
+       left entirely to L1301 so the brand interaction is preserved exactly.
+     * .avatar-circle keeps font-size: 36px.  The avatar renders an SVG whose
+       size comes from .svg-icon (18px), not from font-size, and the --fs-*
+       scale has no counterpart above --fs-kpi (22px).
+     * .info-grid > .card { margin: 0 } stays legacy: it depends on .card,
+       which is outside this stage's approved class set.
+     * .info-value declares NO color.  .text-accent (L5464) owns color for
+       <span class="info-value text-accent">, and an equal-specificity color
+       declaration appended after it would win and silently drop the accent
+       from the wallet-balance and discount-percent rows.
+     * .info-row gets no align-items: the legacy row stretches its children
+       and adding `center` would re-seat the status badge.
+   ========================================================================= */
+
+/* ---- 4C-1A.1  Profile header card --------------------------------------- */
+
+.profile-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-6);
+    margin-bottom: var(--gap-section);
+    background: var(--surface-1);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    text-align: center;
+}
+
+.profile-card h1 {
+    font-size: var(--fs-kpi);
+    font-weight: 700;
+}
+
+.profile-card p {
+    font-size: var(--fs-body);
+    color: var(--text-muted);
+}
+
+.avatar-circle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 92px;
+    height: 92px;
+    border-radius: var(--radius-full);
+    background: linear-gradient(135deg, var(--accent), var(--accent-mid));
+    color: var(--accent-fg);
+}
+
+/* ---- 4C-1A.2  Telegram deep-link button ---------------------------------
+   Shape and spacing only — the brand fill and its hover treatment remain
+   owned by the legacy rule, per the stage brief. */
+
+.tg-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-full);
+    font-size: var(--fs-btn);
+    text-decoration: none;
+    transition: 0.2s;
+}
+
+/* ---- 4C-1A.3  Info grid and definition rows -----------------------------
+   The dashed separator is the one piece of pre-2A debt with a direct
+   precedent: Stage 3D-B1 converted .setting-row from dashed to solid.  These
+   rows follow it so the two row families read alike. */
+
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+    gap: var(--space-4);
+    margin-bottom: var(--gap-section);
+    align-items: stretch;
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--border-soft);
+    font-size: var(--fs-body);
+}
+
+.info-row:last-child { border-bottom: 0; }
+
+.info-label { color: var(--text-muted); }
+
+.info-value { font-weight: 600; }
+
+/* ---- 4C-1A.4  Management action grid ------------------------------------ */
+
+.actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr));
+    gap: var(--space-3);
+}
