@@ -160,7 +160,7 @@ if(isset($amountInteger) && $amountInteger !== NULL){
     $text_report = "یک رسید توسط ربات  تایید شد
 
 اطلاعات :
-<blockquote>💰 مبلغ پرداخت : {$Payment_report['price']}</blockquote>
+<blockquote>💰 مبلغ پرداخت : " . rxFormatToman($Payment_report['price']) . "</blockquote>
 <blockquote>👤  آیدی عددی کاربر : {$Balance_id['id']}</blockquote>
 <blockquote>👤 نام کاربری کاربر : @{$Balance_id['username']}</blockquote>
 <blockquote>موجودی کاربر : $balanceformatsell تومان</blockquote>

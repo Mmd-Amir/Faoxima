@@ -2225,7 +2225,7 @@ function DirectPayment($order_id, $image = 'images.jpg')
                 ? $textbotlang['users']['sell']['ErrorConfig']
                 : "❌ متاسفانه ساخت سرویس با خطا مواجه شد. مبلغ پرداختی به کیف پول شما برگشت داده شد.";
             sendmessage($Balance_id['id'], $__uiErr, $keyboard, 'HTML');
-            sendmessage($Balance_id['id'], "💎  کاربر عزیز بدلیل ساخته نشدن سرویس مبلغ $balance تومان به کیف پول شما اضافه گردید.", $keyboard, 'HTML');
+            sendmessage($Balance_id['id'], "💎  کاربر عزیز بدلیل ساخته نشدن سرویس مبلغ " . rxFormatToman($balance) . " تومان به کیف پول شما اضافه گردید.", $keyboard, 'HTML');
             $texterros = "
 ⭕️ خطا در ساخت کانفیگ
 <blockquote>✍️ دلیل خطا : {$dataoutput['msg']}</blockquote>
@@ -2334,6 +2334,8 @@ function DirectPayment($order_id, $image = 'images.jpg')
         $balanceformatsell = select("user", "Balance", "id", $get_invoice['id_user'], "select")['Balance'];
         $balanceformatsell = number_format($balanceformatsell, 0);
         $balancebefore = number_format($Balance_id['Balance'], 0);
+        $rxFmtInvoicePriceProduct = rxFormatToman($get_invoice['price_product']);
+        $rxFmtPaymentReportPrice = rxFormatToman($Payment_report['price']);
         $timejalali = jdate('Y/m/d H:i:s');
         $textonebuy = "";
         if ($countinvoice == 1) {
@@ -2366,8 +2368,8 @@ $textonebuy
 <blockquote>▫️کد پیگیری: {$get_invoice['id_invoice']}</blockquote>
 <blockquote>▫️نوع کاربر : {$Balance_id['agent']}</blockquote>
 <blockquote>▫️شماره تلفن کاربر : {$Balance_id['number']}</blockquote>
-<blockquote>▫️قیمت محصول : {$get_invoice['price_product']} تومان</blockquote>
-<blockquote>▫️قیمت نهایی : {$Payment_report['price']} تومان</blockquote>
+<blockquote>▫️قیمت محصول : {$rxFmtInvoicePriceProduct} تومان</blockquote>
+<blockquote>▫️قیمت نهایی : {$rxFmtPaymentReportPrice} تومان</blockquote>
 <blockquote>▫️زمان خرید : $timejalali</blockquote>";
         if (strlen($setting['Channel_Report']) > 0) {
             telegram('sendmessage', [
@@ -2395,6 +2397,7 @@ $textonebuy
         update("invoice", "Status", "active", "username", $get_invoice['username']);
         if ($Payment_report['Payment_Method'] == "cart to cart" or $Payment_report['Payment_Method'] == "arze digital offline") {
             update("invoice", "Status", "active", "id_invoice", $get_invoice['id_invoice']);
+            $rxFmtBalanceBeforeBuy = rxFormatToman($Balance_id['Balance']);
             $textconfrom = "✅ پرداخت تایید شده
 🛍خرید سرویس
 ▫️نام کاربری کانفیگ :$username_ac
@@ -2402,7 +2405,7 @@ $textonebuy
 👤 شناسه کاربر: <code>{$Balance_id['id']}</code>
 🛒 کد پیگیری پرداخت: {$Payment_report['id_order']}
 ⚜️ نام کاربری: @{$Balance_id['username']}
-💎 موجودی قبل خرید  : {$Balance_id['Balance']}
+💎 موجودی قبل خرید  : {$rxFmtBalanceBeforeBuy}
 💸 مبلغ پرداختی: $format_price_cart تومان
 ✍️ توضیحات : {$paymentNote}
 
@@ -2490,7 +2493,7 @@ $textonebuy
                 wallet_ledger_record($Balance_id['id'], 'credit', $Payment_report['price'], 'refund', 'بازگشت وجه - خطا در تمدید سرویس', (string)$Payment_report['id_order'], 'invoice', (string)($nameloc['id_invoice'] ?? ''));
             }
             sendmessage($Balance_id['id'], $textbotlang['users']['sell']['ErrorConfig'], $keyboard, 'HTML');
-            sendmessage($Balance_id['id'], "💎  کاربر عزیز بدلیل تمدید نشدن سرویس مبلغ $balance تومان به کیف پول شما اضافه گردید.", $keyboard, 'HTML');
+            sendmessage($Balance_id['id'], "💎  کاربر عزیز بدلیل تمدید نشدن سرویس مبلغ " . rxFormatToman($balance) . " تومان به کیف پول شما اضافه گردید.", $keyboard, 'HTML');
             $extend['msg'] = json_encode($extend['msg']);
             $textreports = "
         خطای تمدید سرویس
@@ -2565,10 +2568,12 @@ $textonebuy
             || rx_shopCashbackEligible("chashbackextend", $Balance_id['register'] ?? null, "getextenduser", $Balance_id['id'] ?? null, $Payment_report['id_order'] ?? null);
         if ($renewCashbackEligible && intval($valurcashbackextend) != 0) {
             $result = ($prodcut['price_product'] * $valurcashbackextend) / 100;
-            $pricelastextend = $result;
-            update("user", "Balance", $pricelastextend, "id", $Balance_id['id']);
+            $__renewCashbackOk = balance_atomic_credit($Balance_id['id'], $result);
+            if ($__renewCashbackOk && function_exists('wallet_ledger_record')) {
+                wallet_ledger_record($Balance_id['id'], 'credit', $result, 'cashback', 'هدیه بازگشت وجه تمدید سرویس', (string)($Payment_report['id_order'] ?? ''), 'invoice', (string)($nameloc['id_invoice'] ?? ''));
+            }
             sendmessage($Balance_id['id'], "تبریک 🎉
-📌 به عنوان هدیه تمدید مبلغ $result تومان حساب شما شارژ گردید", null, 'HTML');
+📌 به عنوان هدیه تمدید مبلغ " . rxFormatToman($result) . " تومان حساب شما شارژ گردید", null, 'HTML');
         }
         $priceproductformat = number_format($prodcut['price_product']);
         if (!empty($extend['queued'])) {
@@ -2626,6 +2631,7 @@ $textonebuy
         update("invoice", "Status", "active", "id_invoice", $nameloc['id_invoice']);
         if ($Payment_report['Payment_Method'] == "cart to cart" or $Payment_report['Payment_Method'] == "arze digital offline") {
 
+            $rxFmtBalanceBeforeExtend = rxFormatToman($Balance_id['Balance']);
             $textconfrom = "✅ پرداخت تایید شده
 🔋 تمدید سرویس
 🪪 نام کاربری کانفیگ : $usernamepanel
@@ -2634,7 +2640,7 @@ $textonebuy
 👤 شناسه کاربر: <code>{$Balance_id['id']}</code>
 🛒 کد پیگیری پرداخت: {$Payment_report['id_order']}
 ⚜️ نام کاربری: @{$Balance_id['username']}
-💎 موجودی قبل تمدید  : {$Balance_id['Balance']}
+💎 موجودی قبل تمدید  : {$rxFmtBalanceBeforeExtend}
 💸 مبلغ پرداختی: $format_price_cart تومان
 ✍️ توضیحات : {$paymentNote}
 
@@ -2704,6 +2710,7 @@ $textonebuy
             ]
         ]);
         $volumesformat = number_format($Payment_report['price'], 0);
+        $rxFmtBalanceBeforeVolume = rxFormatToman($Balance_id['Balance']);
         if (intval($setting['scorestatus']) == 1 and !in_array($Balance_id['id'], $admin_ids)) {
             sendmessage($Balance_id['id'], "📌شما 1 امتیاز جدید کسب کردید.", null, 'html');
             $scorenew = $Balance_id['score'] + 1;
@@ -2725,7 +2732,7 @@ $textonebuy
 👤 شناسه کاربر: <code>{$Balance_id['id']}</code>
 🛒 کد پیگیری پرداخت: {$Payment_report['id_order']}
 ⚜️ نام کاربری: @{$Balance_id['username']}
-💎 موجودی قبل ازافزایش موجودی : {$Balance_id['Balance']}
+💎 موجودی قبل ازافزایش موجودی : {$rxFmtBalanceBeforeVolume}
 💸 مبلغ پرداختی: $format_price_cart تومان
 ";
             Editmessagetext($_receipt_chat_id, $message_id, $textconfrom, $Confirm_pay, 'HTML', $_receipt_report_thread > 0 ? $_receipt_report_thread : null);
@@ -2735,9 +2742,9 @@ $textonebuy
 
 <blockquote>🪪 آیدی عددی : {$Balance_id['id']}</blockquote>
 <blockquote>🛍 حجم خریداری شده  : $volumes گیگ</blockquote>
-<blockquote>💰 مبلغ پرداختی : {$Payment_report['price']} تومان</blockquote>
+<blockquote>💰 مبلغ پرداختی : " . rxFormatToman($Payment_report['price']) . " تومان</blockquote>
 <blockquote>👤 نام کاربری کانفیگ {$steppay[0]}</blockquote>
-<blockquote>موجودی کاربر قبل خرید : {$Balance_id['Balance']}</blockquote>";
+<blockquote>موجودی کاربر قبل خرید : {$rxFmtBalanceBeforeVolume}</blockquote>";
         if (strlen($setting['Channel_Report']) > 0) {
             telegram('sendmessage', [
                 'chat_id' => $setting['Channel_Report'],
@@ -2818,13 +2825,14 @@ $textonebuy
             ]
         ]);
         $volumesformat = number_format($Payment_report['price']);
+        $rxFmtBalanceBeforeTime = rxFormatToman($Balance_id['Balance']);
         if (intval($setting['scorestatus']) == 1 and !in_array($Balance_id['id'], $admin_ids)) {
             sendmessage($Balance_id['id'], "📌شما 1 امتیاز جدید کسب کردید.", null, 'html');
             $scorenew = $Balance_id['score'] + 1;
             update("user", "score", $scorenew, "id", $Balance_id['id']);
         }
         $textextratime = "✅ افزایش زمان برای سرویس شما با موفقیت صورت گرفت
- 
+
 ▫️نام سرویس : {$steppay[0]}
 ▫️زمان اضافه : $tmieextra روز
 
@@ -2839,7 +2847,7 @@ $textonebuy
 👤 شناسه کاربر: <code>{$Balance_id['id']}</code>
 🛒 کد پیگیری پرداخت: {$Payment_report['id_order']}
 ⚜️ نام کاربری: @{$Balance_id['username']}
-💎 موجودی قبل ازافزایش موجودی : {$Balance_id['Balance']}
+💎 موجودی قبل ازافزایش موجودی : {$rxFmtBalanceBeforeTime}
 💸 مبلغ پرداختی: $format_price_cart تومان
 ";
             Editmessagetext($_receipt_chat_id, $message_id, $textconfrom, $Confirm_pay, 'HTML', $_receipt_report_thread > 0 ? $_receipt_report_thread : null);
@@ -2849,7 +2857,7 @@ $textonebuy
 
 <blockquote>🪪 آیدی عددی : {$Balance_id['id']}</blockquote>
 <blockquote>🛍 زمان خریداری شده  : $volumes روز</blockquote>
-<blockquote>💰 مبلغ پرداختی : {$Payment_report['price']} تومان</blockquote>
+<blockquote>💰 مبلغ پرداختی : " . rxFormatToman($Payment_report['price']) . " تومان</blockquote>
 <blockquote>👤 نام کاربری کانفیگ {$steppay[0]}</blockquote>";
         if (strlen($setting['Channel_Report']) > 0) {
             telegram('sendmessage', [
@@ -2911,13 +2919,14 @@ $textonebuy
         }
         $format_price_cart = number_format($__paidAmount, 0);
         if ($Payment_report['Payment_Method'] == "cart to cart" or $Payment_report['Payment_Method'] == "arze digital offline") {
+            $rxFmtBalanceBeforeTopup = rxFormatToman($Balance_id['Balance']);
             $textconfrom = "⭕️ یک پرداخت جدید انجام شده است
 افزایش موجودی.
 👤 شناسه کاربر: <code>{$Balance_id['id']}</code>
 🛒 کد پیگیری پرداخت: {$Payment_report['id_order']}
 ⚜️ نام کاربری: @{$Balance_id['username']}
 💸 مبلغ پرداختی: $format_price_cart تومان
-💎 موجودی قبل ازافزایش موجودی : {$Balance_id['Balance']}
+💎 موجودی قبل ازافزایش موجودی : {$rxFmtBalanceBeforeTopup}
 ✍️ توضیحات : {$paymentNote}";
             Editmessagetext($_receipt_chat_id, $message_id, $textconfrom, $Confirm_pay, 'HTML', $_receipt_report_thread > 0 ? $_receipt_report_thread : null);
         }

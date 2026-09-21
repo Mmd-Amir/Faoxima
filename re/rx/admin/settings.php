@@ -4812,7 +4812,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     $iduser = $dataget[1];
     $userdata = select("user", "*", "id", $iduser, "select");
     update("user", "Balance", "0", "id", $iduser);
-    nm_adminInstantReply($from_id, "موجودی کاربر به مبلغ {$userdata['Balance']} صفر گردید", $keyboardadmin, 'HTML');
+    nm_adminInstantReply($from_id, "موجودی کاربر به مبلغ " . rxFormatToman($userdata['Balance']) . " صفر گردید", $keyboardadmin, 'HTML');
 } elseif (preg_match('/removeadmin_(\w+)/', $datain, $dataget) && $adminrulecheck['rule'] == "administrator") {
     $idadmin = trim($dataget[1]);
     $mainAdminId = trim((string) $adminnumber);
@@ -5003,7 +5003,7 @@ elseif ($text == "🫣 مخفی پنل برای کاربر" && $adminrulecheck['
     }
     $text_order = "🛒 شماره پرداخت  :  <code>{$paymentUser['id_order']}</code>
 🙍‍♂️ شناسه کاربر : <code>{$paymentUser['id_user']}</code>
-💰 مبلغ پرداختی : {$paymentUser['price']} تومان
+💰 مبلغ پرداختی : " . rxFormatToman($paymentUser['price']) . " تومان
 ⚜️ وضعیت پرداخت : {$paymentUser['payment_Status']}
 ⭕️ روش پرداخت : {$paymentUser['Payment_Method']}
 📆 تاریخ خرید :  {$paymentUser['time']}";

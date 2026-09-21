@@ -163,7 +163,7 @@ if (!is_array($Payment_report) || empty($Payment_report)) {
 
 
 if ($status === 'expired') {
-    $textexpire = "❌ تراکنش زیر بدلیل عدم پرداخت منقضی شد، لطفا وجهی بابت این تراکنش پرداخت نکنید\n\n🛒 کد سفارش: {$Payment_report['id_order']}\n💰 مبلغ:  {$Payment_report['price']} تومان";
+    $textexpire = "❌ تراکنش زیر بدلیل عدم پرداخت منقضی شد، لطفا وجهی بابت این تراکنش پرداخت نکنید\n\n🛒 کد سفارش: {$Payment_report['id_order']}\n💰 مبلغ:  " . rxFormatToman($Payment_report['price']) . " تومان";
     payment_mark_expired($Payment_report['id_order'], $textexpire);
     http_response_code(200);
     echo 'ok';

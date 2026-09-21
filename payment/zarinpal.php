@@ -140,7 +140,7 @@ $response = json_decode($response,true);
         $Balance_confrim = intval($Balance_id['Balance']) +$result;
         update("user","Balance",$Balance_confrim, "id",$Balance_id['id']);
         $pricecashback =  number_format($pricecashback);
-        $text_report = "🎁 کاربر عزیز مبلغ $result تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
+        $text_report = "🎁 کاربر عزیز مبلغ " . rxFormatToman($result) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
         sendmessage($Balance_id['id'], $text_report, null, 'HTML');
     }
     $paymentreports = select("topicid","idreport","report","paymentreport","select")['idreport'];

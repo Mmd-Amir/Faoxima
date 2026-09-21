@@ -51,11 +51,11 @@ if (preg_match('/Confirmpay_user_(\w+)_(\w+)/', $datain, $dataget)) {
         $_stmt = $connect->prepare("SELECT * FROM user WHERE id = ? LIMIT 1");
         $_stmt->bind_param("s", $_uid); $_stmt->execute();
         $Balance_id = $_stmt->get_result()->fetch_assoc(); $_stmt->close();
-        $Payment_report['price'] = number_format($Payment_report['price'], 0);
+        $priceFormatted = rxFormatToman($Payment_report['price']);
         $text_report = "💵 پرداخت جدید
 
 <blockquote>آیدی عددی کاربر : $from_id</blockquote>
-<blockquote>مبلغ تراکنش : {$Payment_report['price']}</blockquote>
+<blockquote>مبلغ تراکنش : {$priceFormatted}</blockquote>
 <blockquote>روش پرداخت : درگاه ارزی ریالی اول</blockquote>";
         $pricecashback = select("PaySetting", "ValuePay", "NamePay", "chashbackiranpay2", "select")['ValuePay'];
         $cashbackEligible = !function_exists('rx_cashbackEligibleForKey')
@@ -65,7 +65,7 @@ if (preg_match('/Confirmpay_user_(\w+)_(\w+)/', $datain, $dataget)) {
             $Balance_confrim = intval($Balance_id['Balance']) + $result;
             update("user", "Balance", $Balance_confrim, "id", $user['id']);
             $pricecashback = number_format($pricecashback);
-            $text_report = sprintf($textbotlang['users']['Discount']['gift-deposit'], $result);
+            $text_report = sprintf($textbotlang['users']['Discount']['gift-deposit'], rxFormatToman($result));
             sendmessage($from_id, $text_report, null, 'HTML');
         }
         if (strlen($setting['Channel_Report'] ?? '') > 0) {
@@ -1094,7 +1094,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     $discountlimitadd = intval($checklimit['limitused']) + 1;
     update("Discount", "limitused", $discountlimitadd, "code", $text);
     step('home', $from_id);
-    $text_balance_code = sprintf($textbotlang['users']['Discount']['giftcodesuccess'], $get_codesql['price']);
+    $text_balance_code = sprintf($textbotlang['users']['Discount']['giftcodesuccess'], rxFormatToman($get_codesql['price']));
     sendmessage($from_id, $text_balance_code, $keyboard, 'HTML');
     $stmt = $pdo->prepare("INSERT INTO Giftcodeconsumed (id_user, code) VALUES (:id_user, :code)");
     $stmt->execute([
@@ -1171,8 +1171,9 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     $rxPendingGiftStmt->execute([':reagent' => $from_id]);
     $rxPendingGiftCount = (int) $rxPendingGiftStmt->fetchColumn();
     if ($affiliatescommission['Discount'] == "onDiscountaffiliates") {
+        $rxFmtAffiliateDiscount = rxFormatToman($affiliatescommission['price_Discount'] ?? 0);
         $text_start = "<b>🎁 هدیه عضویت:</b>
-• 🎉 مجموع هدیه: {$affiliatescommission['price_Discount']} تومان
+• 🎉 مجموع هدیه: {$rxFmtAffiliateDiscount} تومان
 • 🔻 ۵۰٪ برای شما (معرف)
 • 🔻 ۵۰٪ برای زیرمجموعه (کاربر جدید)
 ";
@@ -1307,14 +1308,18 @@ $text_porsant
     $addbalancediscount = number_format($price_gift_Start, 0);
     sendmessage($reagent['reagent'], $datatextbot['dyn_affiliates_extra_gift_credited_inviter'] ?? "🎉 یک نفر با معرفی شما وارد شد! هدیه به حساب شما واریز شد.", null, 'html');
     sendmessage($from_id, $datatextbot['dyn_affiliates_extra_gift_activated'] ?? "🎉 هدیه عضویت برای شما فعال شد!", null, 'html');
+    $rxFmtUserBalanceBefore = rxFormatToman($user['Balance']);
+    $rxFmtUserBalanceAfter = rxFormatToman($Balance_add_user);
+    $rxFmtReagentBalanceBefore = rxFormatToman($useraffiliates['Balance']);
+    $rxFmtReagentBalanceAfter = rxFormatToman($Balance_add_regent);
     $report_join_gift = "🎁 پرداخت هدیه عضویت
 <blockquote> -آیدی عددی : $from_id</blockquote>
 <blockquote> - نام کاربری : @$username</blockquote>
 <blockquote> - آیدی عددی معرف : {$reagent['reagent']}</blockquote>
-<blockquote> - موجودی زیرمجموعه قبل از هدیه : {$user['Balance']}</blockquote>
-<blockquote> - موجودی زیرمجموعه بعد از هدیه : $Balance_add_user</blockquote>
-<blockquote>  - موجودی معرف قبل از هدیه : {$useraffiliates['Balance']}</blockquote>
-<blockquote> - موجودی معرف بعد از هدیه : $Balance_add_regent</blockquote>
+<blockquote> - موجودی زیرمجموعه قبل از هدیه : {$rxFmtUserBalanceBefore}</blockquote>
+<blockquote> - موجودی زیرمجموعه بعد از هدیه : {$rxFmtUserBalanceAfter}</blockquote>
+<blockquote>  - موجودی معرف قبل از هدیه : {$rxFmtReagentBalanceBefore}</blockquote>
+<blockquote> - موجودی معرف بعد از هدیه : {$rxFmtReagentBalanceAfter}</blockquote>
  ";
     if (strlen($setting['Channel_Report'] ?? '') > 0) {
         telegram('sendmessage', [

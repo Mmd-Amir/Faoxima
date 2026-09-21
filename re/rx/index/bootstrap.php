@@ -2935,7 +2935,7 @@ $nameconfig";
     savedata("clear", "id_invoice", $nameloc['id_invoice']);
     if ($product == 0) {
         $textcustom = "📌 حجم درخواستی خود را ارسال کنید.
-🔔قیمت هر گیگ حجم $custompricevalue تومان می باشد.
+🔔قیمت هر گیگ حجم " . rxFormatToman($custompricevalue) . " تومان می باشد.
 🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
         sendmessage($from_id, $textcustom, $backuser, 'html');
         deletemessage($from_id, $message_id);
@@ -2944,7 +2944,7 @@ $nameconfig";
     }
     if ($nameloc['name_product'] == "🛍 حجم دلخواه" || $nameloc['name_product'] == "⚙️ سرویس دلخواه") {
         $textcustom = "📌 حجم درخواستی خود را ارسال کنید.
-🔔قیمت هر گیگ حجم $custompricevalue تومان می باشد.
+🔔قیمت هر گیگ حجم " . rxFormatToman($custompricevalue) . " تومان می باشد.
 🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
         sendmessage($from_id, $textcustom, $backuser, 'html');
         deletemessage($from_id, $message_id);
@@ -3019,7 +3019,7 @@ $nameconfig";
     $customtimevalueprice = $eextraprice[$user['agent']];
     savedata("save", "volume", $text);
     $textcustom = "⌛️ زمان سرویس خود را انتخاب نمایید
-📌 تعرفه هر روز  : $customtimevalueprice  تومان
+📌 تعرفه هر روز  : " . rxFormatToman($customtimevalueprice) . "  تومان
 ⚠️ حداقل زمان $maintime روز  و حداکثر $maxtime روز  می توانید تهیه کنید";
     sendmessage($from_id, $textcustom, $backuser, 'html');
     step('getvolumecustomuserforextend', $from_id);
@@ -3154,7 +3154,7 @@ $nameconfig";
         $result = ($product['price_product'] * $user['pricediscount']) / 100;
         $pricelastextend = number_format(round($product['price_product'] - $result, 0));
     } else {
-        $pricelastextend = $product['price_product'];
+        $pricelastextend = number_format($product['price_product']);
     }
     $volumeextend = intval($product['Volume_constraint']) == 0 ? $textbotlang['users']['stateus']['Unlimited'] : $product['Volume_constraint'] . ' گیگ';
     $textextend = "📜 فاکتور تمدید شما برای نام کاربری {$nameloc['username']} ایجاد شد.
@@ -3164,7 +3164,7 @@ $nameconfig";
 ⏱ مدت زمان تمدید :{$product['Service_time']} روز
 🔋 حجم تمدید :$volumeextend
 ✍️ توضیحات : {$product['note']}
-💸 موجودی کیف پول : {$user['Balance']}
+💸 موجودی کیف پول : " . rxFormatToman($user['Balance']) . "
 ✅ برای تایید و تمدید سرویس روی دکمه زیر کلیک کنید";
     if ($user['step'] == "getvolumecustomuserforextend") {
         sendmessage($from_id, $textextend, $keyboardextend, 'HTML');
@@ -3233,14 +3233,16 @@ $nameconfig";
         $info_product['Volume_constraint'] = $textbotlang['users']['stateus']['Unlimited'];
     if ($info_product['price_product'] < 0)
         $info_product['price_product'] = 0;
+    $rxFmtExtendInfoProductPrice = rxFormatToman($info_product['price_product']);
+    $rxFmtExtendUserBalance = rxFormatToman($user['Balance']);
     $textextend = "📜 فاکتور تمدید شما برای نام کاربری {$nameloc['username']} ایجاد شد.
 
 🛍 نام محصول :{$info_product['name_product']}
-💸 مبلغ تمدید :{$info_product['price_product']}
+💸 مبلغ تمدید :{$rxFmtExtendInfoProductPrice}
 ⏱ مدت زمان تمدید :{$info_product['Service_time']} روز
 🔋 حجم تمدید :{$info_product['Volume_constraint']} گیگ
 ✍️ توضیحات : {$info_product['note']}
-💸 موجودی کیف پول : {$user['Balance']}
+💸 موجودی کیف پول : {$rxFmtExtendUserBalance}
 
 ✅ برای تایید و تمدید سرویس روی دکمه زیر کلیک کنید";
     $keyboardextend = json_encode([
@@ -3481,6 +3483,7 @@ $nameconfig";
     $priceproductformat = number_format($pricelastextend);
     $balanceformatsell = number_format(select("user", "Balance", "id", $from_id, "select")['Balance'], 0);
     $balanceformatsellbefore = number_format($user['Balance'], 0);
+    $rxFmtProdcutPriceExtend = rxFormatToman($prodcut['price_product']);
     if (!empty($extend['queued'])) {
         $rxQueuedSuccessTpl = $datatextbot['dyn_renewconfirm_queued_success'] ?? '✅ سرویس خریداری شده رزرو شد و به محض پایان سرویس فعلی فعال می‌گردد.';
         $textextend = "$rxQueuedSuccessTpl
@@ -3516,7 +3519,7 @@ $nameconfig";
 <blockquote>▫️نام محصول : {$prodcut['name_product']}</blockquote>
 <blockquote>▫️حجم محصول : {$prodcut['Volume_constraint']}</blockquote>
 <blockquote>▫️زمان محصول : {$prodcut['Service_time']}</blockquote>
-<blockquote>▫️مبلغ تمدید : {$prodcut['price_product']} تومان</blockquote>
+<blockquote>▫️مبلغ تمدید : {$rxFmtProdcutPriceExtend} تومان</blockquote>
 <blockquote>▫️موجودی قبل از خرید : $balanceformatsellbefore تومان</blockquote>
 <blockquote>▫️موجودی بعد از خرید : $balanceformatsell تومان</blockquote>
 <blockquote>▫️زمان خرید : $timejalali</blockquote>";
@@ -3651,7 +3654,7 @@ $nameconfig";
     update("user", "Processing_value", $nameloc['id_invoice'], "id", $from_id);
     $textextra = " ⭕️ مقدار حجمی که میخواهید خریداری کنید را ارسال کنید.
 ❌ مبلغ را به انگلیسی ارسال نمایید.
-        ⚠️ هر گیگ  حجم اضافه $extrapricevalue تومان  است.";
+        ⚠️ هر گیگ  حجم اضافه " . rxFormatToman($extrapricevalue) . " تومان  است.";
     $bakinfos = json_encode([
         'inline_keyboard' => [
             [
@@ -3931,7 +3934,7 @@ $nameconfig";
 <blockquote>🛍 حجم خریداری شده  : $volumes گیگ</blockquote>
 <blockquote>💰 مبلغ پرداختی : $volumesformat تومان</blockquote>
 <blockquote>👤 نام کاربری کانفیگ : {$nameloc['username']}</blockquote>
-<blockquote>موجودی کاربر قبل خرید : {$user['Balance']}</blockquote>
+<blockquote>موجودی کاربر قبل خرید : " . rxFormatToman($user['Balance']) . "</blockquote>
 ";
     if (strlen($setting['Channel_Report'] ?? '') > 0) {
         telegram('sendmessage', [
@@ -3979,7 +3982,7 @@ $nameconfig";
         $userlimitlastfree = 0;
     $Pricechange = select("marzban_panel", "*", "code_panel", $dataget[1], "select")['priceChangeloc'];
     $textchange = "📍 با  تایید کردن انتقال موقعیت سرویس شما در این موقعیت حذف و به موقعیت جدید منتقل خواهد شد.
-💰 هزینه انتقال $Pricechange تومان می باشد
+💰 هزینه انتقال " . rxFormatToman($Pricechange) . " تومان می باشد
 📌 محدودیت باقی مانده شما : $userlimitlast عدد (تعداد محدودیت رایگان باقی مانده :‌$userlimitlastfree عدد)
 
 ✅ برای تایید انتقال روی دکمه زیر کلیک کنید";

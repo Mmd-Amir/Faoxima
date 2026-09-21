@@ -101,7 +101,7 @@ foreach ($rows as $result) {
 
 🛒 روش پرداختی شما : $status_var
 📌 کد فاکتور : <code>{$result['id_order']}</code>
-🪙 مبلغ فاکتور :  {$result['price']} تومان";
+🪙 مبلغ فاکتور :  " . rxFormatToman($result['price']) . " تومان";
 
     $expireStmt->execute([':o' => $result['id_order']]);
     if ($expireStmt->rowCount() !== 1) {

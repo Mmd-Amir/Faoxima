@@ -22,6 +22,7 @@ if (isset($update["inline_query"])) {
             $OrderUser['Service_time'] = $OrderUser['Service_time'] . "روزه";
         }
         $OrderUser['Volume'] = formatInvoiceVolume($OrderUser);
+        $rxFmtOrderUserPrice = rxFormatToman($OrderUser['price_product']);
         $results[] = [
             "type" => "article",
             "id" => uniqid(),
@@ -36,7 +37,7 @@ if (isset($update["inline_query"])) {
 👤 نام کاربری اشتراک :  {$OrderUser['username']}
 📍 موقعیت سرویس :  {$OrderUser['Service_location']}
 🛍 نام محصول :  {$OrderUser['name_product']}
-💰 قیمت پرداختی سرویس : {$OrderUser['price_product']} تومان
+💰 قیمت پرداختی سرویس : {$rxFmtOrderUserPrice} تومان
 ⚜️ حجم سرویس خریداری شده : {$OrderUser['Volume']}
 ⏳ زمان سرویس خریداری شده : {$OrderUser['Service_time']}
 📆 تاریخ خرید : $datatime

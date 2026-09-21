@@ -5003,7 +5003,7 @@ $caption";
 👤 شناسه کاربر: <code>{$Balance_id['id']}</code>
 🛒 کد پیگیری پرداخت: {$Payment_report['id_order']}
 ⚜️ نام کاربری: @{$Balance_id['username']}
-💎 موجودی بعد از تایید : {$Balance_id['Balance']}
+💎 موجودی بعد از تایید : " . rxFormatToman($Balance_id['Balance']) . "
 💸 مبلغ پرداختی: $format_price_cart تومان
 ";
         Editmessagetext($_receipt_chat_id, $_receipt_msg_id, $textconfrom, $Confirm_pay, 'HTML', $_receipt_thread_id > 0 ? $_receipt_thread_id : null);
@@ -5102,7 +5102,7 @@ $caption";
             wallet_ledger_record($Balance_id['id'], 'credit', $result, 'cashback', 'هدیه بازگشت وجه کارت به کارت', $Payment_report['id_order']);
         }
         $pricecashback = number_format($pricecashback);
-        $text_report = "🎁 کاربر عزیز مبلغ $result تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
+        $text_report = "🎁 کاربر عزیز مبلغ " . rxFormatToman($result) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
         sendmessage($Balance_id['id'], $text_report, null, 'HTML');
     }
     $Payment_report['price'] = number_format($Payment_report['price']);
@@ -5127,7 +5127,7 @@ $caption";
 👤 شناسه کاربر: <code>{$Balance_id['id']}</code>
 🛒 کد پیگیری پرداخت: {$Payment_report['id_order']}
 ⚜️ نام کاربری: @{$Balance_id['username']}
-💎 موجودی بعد از تایید : {$Balance_id['Balance']}
+💎 موجودی بعد از تایید : " . rxFormatToman($Balance_id['Balance']) . "
 💸 مبلغ پرداختی: $format_price_cart تومان
 ";
     $_receiptTargets = [['chat_id' => (string)$_receipt_chat_id, 'message_id' => (int)$_receipt_msg_id, 'thread_id' => $_receipt_thread_id > 0 ? $_receipt_thread_id : null]];
@@ -5259,7 +5259,7 @@ $caption";
     $_reject_cancel_text = "🔁 رد رسید لغو شد. رسید دوباره در انتظار بررسی است.
 
 🛒 کد پیگیری پرداخت: {$id_order}
-💰 مبلغ پرداخت : {$Payment_report['price']}
+💰 مبلغ پرداخت : " . rxFormatToman($Payment_report['price']) . "
 👤 ایدی عددی کاربر: {$Payment_report['id_user']}";
     Editmessagetext($_receipt_chat_id, $message_id, $_reject_cancel_text, $_reject_cancel_kb);
 } elseif ($user['step'] == "reject-dec") {
@@ -5285,7 +5285,7 @@ $caption";
 <blockquote>💸 روش پرداخت : {$Payment_report['Payment_Method']}</blockquote>
 <blockquote>👤آیدی عددی  ادمین رد کننده : $from_id</blockquote>
 <blockquote>نام کاربری ادمین رد کننده : @$username</blockquote>
-<blockquote>💰 مبلغ پرداخت : {$Payment_report['price']}</blockquote>
+<blockquote>💰 مبلغ پرداخت : " . rxFormatToman($Payment_report['price']) . "</blockquote>
 <blockquote>دلیل رد کردن : $text</blockquote>
 <blockquote>👤 ایدی عددی کاربر: {$Payment_report['id_user']}</blockquote>";
     if ($_reject_chat_id !== '' && $_reject_message_id !== '') {
@@ -5670,7 +5670,7 @@ $caption";
     $infoproduct = "
 📌 اطلاعات محصول در حال ویرایش:
 نام محصول :  {$info_product['name_product']}
-قیمت محصول : {$info_product['price_product']}
+قیمت محصول : " . rxFormatToman($info_product['price_product']) . "
 حجم محصول : {$info_product['Volume_constraint']}
 موقعیت محصول : {$info_product['Location']}
 زمان محصول : {$info_product['Service_time']}
@@ -5944,7 +5944,7 @@ $caption";
                 ],
             ]
         ]);
-        $textgift = "🎁 کاربر  عزیز مبلغ {$userdata['price']} تومان از طرف مدیریت به عنوان هدیه به کیف پول شما واریز گردید.";
+        $textgift = "🎁 کاربر  عزیز مبلغ " . rxFormatToman($userdata['price']) . " تومان از طرف مدیریت به عنوان هدیه به کیف پول شما واریز گردید.";
         $message_id = sendmessage($from_id, "✅ عملیات ارسال پیام آغاز گردید پس از پایان اطلاع رسانی خواهد شد.", $cancelmessage, "html");
         $data = json_encode(array(
             "id_admin" => $from_id,
@@ -6167,6 +6167,11 @@ $caption";
     } else {
         $text_expie_agent = "";
     }
+    $rxFmtUserBalance = rxFormatToman($user['Balance']);
+    $rxFmtBalanceAllSum = rxFormatToman($balanceall['SUM(price)'] ?? 0);
+    $rxFmtSubbuyuserSum = rxFormatToman($subbuyuser['SUM(price_product)'] ?? 0);
+    $rxFmtSuminvoicehours = rxFormatToman($suminvoicehours);
+    $rxFmtSuminvoicemonth = rxFormatToman($suminvoicemonth);
     $textinfouser = "👀 اطلاعات کاربر:
 
 🔗 اطلاعات کاربری کاربر
@@ -6191,15 +6196,15 @@ $text_expie_agent
 
 💎 گزارشات مالی
 
-🔰 موجودی کاربر : {$user['Balance']}
+🔰 موجودی کاربر : {$rxFmtUserBalance}
 🔰 تعداد خرید کل کاربر : {$dayListSell['COUNT(*)']}
-🔰️ مبلغ کل پرداختی  :  {$balanceall['SUM(price)']}
-🔰 جمع کل خرید : {$subbuyuser['SUM(price_product)']}
+🔰️ مبلغ کل پرداختی  :  {$rxFmtBalanceAllSum}
+🔰 جمع کل خرید : {$rxFmtSubbuyuserSum}
 🔰 درصد تخفیف کاربر : {$user['pricediscount']}
 🔰 تعداد فروش یک ساعت گذشته : $listhours عدد
-🔰 مجموع فروش یک ساعت گذشته : $suminvoicehours تومان
+🔰 مجموع فروش یک ساعت گذشته : {$rxFmtSuminvoicehours} تومان
 🔰 تعداد فروش یک ماه گذشته : $listmonth عدد
-🔰 مجموع فروش یک ماه گذشته : $suminvoicemonth تومان
+🔰 مجموع فروش یک ماه گذشته : {$rxFmtSuminvoicemonth} تومان
 
 ";
     if (is_string($datain) && isset($datain[0]) && $datain[0] == "u") {

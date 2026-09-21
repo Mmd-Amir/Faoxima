@@ -224,7 +224,7 @@ foreach ($datatxtbot as $item) {
         $Balance_confrim = intval($Balance_id['Balance']) +$result ;
         update("user","Balance",$Balance_confrim, "id",$Balance_id['id']);
         $pricecashback =  number_format($pricecashback);
-        $text_report = "🎁 کاربر عزیز مبلغ $result تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
+        $text_report = "🎁 کاربر عزیز مبلغ " . rxFormatToman($result) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
         sendmessage($Balance_id['id'], $text_report, null, 'HTML');
     }
     $paymentreports = select("topicid","idreport","report","paymentreport","select")['idreport'];
@@ -232,12 +232,14 @@ foreach ($datatxtbot as $item) {
     if(isset($data['TronAmount'], $data['ActualTronAmount']) && (float) $data['TronAmount'] < (float) $data['ActualTronAmount']){
         $balancelow = "❌ کاربر کمتر از مبلغ تعیین شده واریز کرده است.";
     }
+$rxFmtPrice = rxFormatToman($price);
+$rxFmtCreditAmount = rxFormatToman($creditAmount);
 $text_reportpayment = "💵 پرداخت جدید
 $balancelow
 <blockquote>- 👤 نام کاربری کاربر : @{$Balance_id['username']}</blockquote>
 <blockquote>- 👤 آیدی عددی کاربر : <code>{$Balance_id['id']}</code></blockquote>
-<blockquote>- 💸 مبلغ تراکنش $price</blockquote>
-<blockquote>- 💰 مبلغ اعتباردهی : $creditAmount تومان</blockquote>
+<blockquote>- 💸 مبلغ تراکنش {$rxFmtPrice}</blockquote>
+<blockquote>- 💰 مبلغ اعتباردهی : {$rxFmtCreditAmount} تومان</blockquote>
 <blockquote>- 💳 روش پرداخت :  ترونادو</blockquote>";
     if (strlen($setting['Channel_Report']) > 0) {
         telegram('sendmessage',[

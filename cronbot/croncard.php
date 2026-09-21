@@ -133,6 +133,8 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         }
         $Balance_id = select("user","*","id",$Payment_report['id_user'],"select");
         $format_price_auto = number_format($Payment_report['price']);
+        $rxFmtBalanceBeforeAuto = rxFormatToman($balanceBeforeAuto);
+        $rxFmtBalanceAfterAuto = rxFormatToman($Balance_id['Balance']);
         $text_financereport = "📣 پرداخت به‌صورت خودکار تایید شد.
 
 اطلاعات :
@@ -142,8 +144,8 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
 <blockquote>👤 نام کاربری کاربر : @{$Balance_id['username']}</blockquote>
 <blockquote>💰 مبلغ پرداخت : $format_price_auto</blockquote>
 <blockquote>کد پیگیری پرداخت : {$Payment_report['id_order']}</blockquote>
-<blockquote>💎 موجودی قبل : $balanceBeforeAuto</blockquote>
-<blockquote>💎 موجودی بعد : {$Balance_id['Balance']}</blockquote>";
+<blockquote>💎 موجودی قبل : {$rxFmtBalanceBeforeAuto}</blockquote>
+<blockquote>💎 موجودی بعد : {$rxFmtBalanceAfterAuto}</blockquote>";
         if (strlen($setting['Channel_Report']) > 0) {
             telegram('sendmessage', [
                 'chat_id' => $setting['Channel_Report'],
@@ -165,13 +167,14 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             wallet_ledger_record($Balance_id['id'], 'credit', $result, 'cashback', 'هدیه بازگشت وجه کارت به کارت (تایید خودکار)', $Payment_report['id_order']);
         }
         $pricecashback =  number_format($pricecashback);
-        $text_report = "🎁 کاربر عزیز مبلغ $result تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
+        $text_report = "🎁 کاربر عزیز مبلغ " . rxFormatToman($result) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
         sendmessage($Balance_id['id'], $text_report, null, 'HTML');
     }
+    $rxFmtCroncardPrice = rxFormatToman($Payment_report['price']);
     $text_reportpayment = "✅ تایید شده (تایید خودکار بدون بررسی)
 
 <blockquote>آیدی عددی کاربر : {$Balance_id['id']}</blockquote>
-<blockquote>مبلغ تراکنش {$Payment_report['price']}</blockquote>
+<blockquote>مبلغ تراکنش {$rxFmtCroncardPrice}</blockquote>
 <blockquote>روش پرداخت :  تایید خودکار بدون بررسی</blockquote>
 <blockquote>{$Payment_report['Payment_Method']}</blockquote>";
     $_cron_confirm_kb = json_encode([

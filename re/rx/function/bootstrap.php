@@ -1272,6 +1272,25 @@ function formatPaymentReportNote($rawNote)
 
     return $rawNote;
 }
+function rxFormatToman($amount)
+{
+    if ($amount === null) {
+        return '0';
+    }
+    if (is_bool($amount)) {
+        return $amount ? '1' : '0';
+    }
+    if (!is_scalar($amount)) {
+        return '0';
+    }
+    if (is_string($amount)) {
+        $amount = trim($amount);
+        if ($amount === '' || !is_numeric($amount)) {
+            return '0';
+        }
+    }
+    return number_format((float) $amount, 0, '.', ',');
+}
 function generateUUID()
 {
     $data = openssl_random_pseudo_bytes(16);

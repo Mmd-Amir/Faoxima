@@ -301,7 +301,7 @@ final class ServiceRenewConfirmHandler extends BaseHandler
                     'product_name' => $product['name_product'],
                     'volume' => (int)$product['Volume_constraint'],
                     'service_time' => (int)$product['Service_time'],
-                    'price' => $finalPrice,
+                    'price' => rxFormatToman($finalPrice),
                     'panel_name' => $panel['name_panel'],
                 ]),
                 [
@@ -480,7 +480,7 @@ final class ServiceRenewConfirmHandler extends BaseHandler
                 'product_name' => $product['name_product'],
                 'volume' => (int)$product['Volume_constraint'],
                 'service_time' => (int)$product['Service_time'],
-                'price' => $finalPrice,
+                'price' => rxFormatToman($finalPrice),
                 'panel_name' => $panel['name_panel'],
             ]),
             [

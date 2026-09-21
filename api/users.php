@@ -403,7 +403,7 @@ switch ($data['actions'] ?? '') {
         if (function_exists('wallet_ledger_record')) {
             wallet_ledger_record($data['chat_id'], 'credit', $data['amount'], 'admin_credit', 'افزایش موجودی توسط ادمین');
         }
-        $text_balance = "💎 کاربر عزیز مبلغ {$data['amount']} تومان به موجودی کیف پول تان اضافه گردید.";
+        $text_balance = "💎 کاربر عزیز مبلغ " . rxFormatToman($data['amount']) . " تومان به موجودی کیف پول تان اضافه گردید.";
         sendmessage($data['chat_id'], $text_balance, null, 'html');
         sendJsonResponse(true, "Successful");
         break;
@@ -424,7 +424,7 @@ switch ($data['actions'] ?? '') {
         if (function_exists('wallet_ledger_record')) {
             wallet_ledger_record($data['chat_id'], 'debit', $data['amount'], 'admin_debit', 'کاهش موجودی توسط ادمین');
         }
-        $text_balance = "❌ کاربر عزیز مبلغ {$data['amount']} تومان از  موجودی کیف پول تان کسر گردید.";
+        $text_balance = "❌ کاربر عزیز مبلغ " . rxFormatToman($data['amount']) . " تومان از  موجودی کیف پول تان کسر گردید.";
         sendmessage($data['chat_id'], $text_balance, null, 'html');
         sendJsonResponse(true, "Successful");
         break;

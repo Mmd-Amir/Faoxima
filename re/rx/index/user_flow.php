@@ -1160,7 +1160,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
                     return;
                 }
                 $textcustom = "📌 حجم درخواستی خود را ارسال کنید.
-🔔قیمت هر گیگ حجم $custompricevalue تومان می باشد.
+🔔قیمت هر گیگ حجم " . rxFormatToman($custompricevalue) . " تومان می باشد.
 🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
                 sendmessage($from_id, $textcustom, $backuser, 'html');
                 step('gettimecustomvol', $from_id);
@@ -1297,7 +1297,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
             return;
         }
         $textcustom = "📌 حجم درخواستی خود را ارسال کنید.
-🔔قیمت هر گیگ حجم $custompricevalue تومان می باشد.
+🔔قیمت هر گیگ حجم " . rxFormatToman($custompricevalue) . " تومان می باشد.
 🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
         sendmessage($from_id, $textcustom, $backuser, 'html');
         step('gettimecustomvol', $from_id);
@@ -1444,7 +1444,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     $maxvolume = json_decode($marzban_list_get['maxvolume'], true);
     $maxvolume = $maxvolume[$user['agent']];
     $textcustom = "📌 حجم درخواستی خود را ارسال کنید.
-🔔قیمت هر گیگ حجم $custompricevalue تومان می باشد.
+🔔قیمت هر گیگ حجم " . rxFormatToman($custompricevalue) . " تومان می باشد.
 🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
     sendmessage($from_id, $textcustom, $backuser, 'html');
     deletemessage($from_id, $message_id);
@@ -1475,7 +1475,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     $customtimevalueprice = $eextraprice[$user['agent']];
     update("user", "Processing_value_one", $text, "id", $from_id);
     $textcustom = "⌛️ زمان سرویس خود را انتخاب نمایید
-📌 تعرفه هر روز  : $customtimevalueprice  تومان
+📌 تعرفه هر روز  : " . rxFormatToman($customtimevalueprice) . "  تومان
 ⚠️ حداقل زمان $maintime روز  و حداکثر $maxtime روز  می توانید تهیه کنید";
     sendmessage($from_id, $textcustom, $backuser, 'html');
     if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") {
@@ -2021,6 +2021,8 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         $textonebuy = "📌 خرید اول کاربر";
     }
     $balanceformatsellbefore = number_format($user['Balance'], 0);
+    $rxFmtInfoProductPrice = rxFormatToman($info_product['price_product']);
+    $rxFmtPriceproduct = rxFormatToman($priceproduct);
     $Response = json_encode([
         'inline_keyboard' => [
             [
@@ -2046,8 +2048,8 @@ $textonebuy
 <blockquote>▫️نوع کاربر : {$user['agent']}</blockquote>
 <blockquote>▫️شماره تلفن کاربر : {$user['number']}</blockquote>
 <blockquote>▫️دسته بندی محصول : {$info_product['category']}</blockquote>
-<blockquote>▫️قیمت محصول : {$info_product['price_product']} تومان</blockquote>
-<blockquote>▫️قیمت نهایی : $priceproduct تومان</blockquote>
+<blockquote>▫️قیمت محصول : {$rxFmtInfoProductPrice} تومان</blockquote>
+<blockquote>▫️قیمت نهایی : {$rxFmtPriceproduct} تومان</blockquote>
 <blockquote>▫️زمان خرید : $timejalali</blockquote>";
     if (strlen($setting['Channel_Report'] ?? '') > 0) {
         telegram('sendmessage', [
@@ -2166,15 +2168,18 @@ $textonebuy
         $info_product['Volume_constraint'] = $textbotlang['users']['stateus']['Unlimited'];
     if ($info_product['price_product'] < 0)
         $info_product['price_product'] = 0;
+    $rxFmtInfoProductmain = rxFormatToman($info_productmain);
+    $rxFmtInfoProductPriceDiscounted = rxFormatToman($info_product['price_product']);
+    $rxFmtUserBalanceInvoicePreview = rxFormatToman($user['Balance']);
     $textin = "
 📇 پیش فاکتور شما:
 👤 نام کاربری: <code>{$user['Processing_value_tow']}</code>
 🔐 نام سرویس: {$info_product['name_product']}
 📆 مدت اعتبار: {$info_product['Service_time']} روز
-💶 قیمت اصلی : <del>$info_productmain تومان</del>
-💶 قیمت با تخفیف: {$info_product['price_product']}  تومان
+💶 قیمت اصلی : <del>{$rxFmtInfoProductmain} تومان</del>
+💶 قیمت با تخفیف: {$rxFmtInfoProductPriceDiscounted}  تومان
 👥 حجم اکانت: {$info_product['Volume_constraint']} گیگ
-💵 موجودی کیف پول شما : {$user['Balance']}
+💵 موجودی کیف پول شما : {$rxFmtUserBalanceInvoicePreview}
 
         💰 سفارش شما آماده پرداخت است.  ";
     $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
@@ -2261,7 +2266,7 @@ $textonebuy
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
     $custompricevalue = $eextraprice[$user['agent']];
     $textcustom = "🔋 لطفا مقدار حجم سرویس مورد نظر را وارد کنید ( برحسب گیگابایت ) :
-📌 تعرفه هر گیگ :  $custompricevalue
+📌 تعرفه هر گیگ :  " . rxFormatToman($custompricevalue) . "
 🔔 حداقل حجم 1 گیگابایت و حداکثر 1000 گیگابایت می باشد.";
     sendmessage($from_id, $textcustom, $backuser, 'html');
     deletemessage($from_id, $message_id);
@@ -2290,7 +2295,7 @@ $textonebuy
     }
     update("user", "Processing_value_one", $text, "id", $from_id);
     $textcustom = "⌛️ زمان سرویس خود را انتخاب نمایید
-📌 تعرفه هر روز  : $customtimevalueprice  تومان
+📌 تعرفه هر روز  : " . rxFormatToman($customtimevalueprice) . "  تومان
 ⚠️ حداقل زمان $maintime روز  و حداکثر $maxtime روز  می توانید تهیه کنید";
     sendmessage($from_id, $textcustom, $backuser, 'html');
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
@@ -2675,6 +2680,7 @@ $textonebuy
     $balanceformatsellbefore = number_format($user['Balance'], 0);
     $pricebulk = $info_product['price_product'] * intval($user['Processing_value_four']);
     $count_service = $user['Processing_value_four'];
+    $rxFmtBulkInfoProductPrice = rxFormatToman($info_product['price_product']);
     $timejalali = jdate('Y/m/d H:i:s');
     $text_report = "📣 جزئیات ساخت اکانت انبوه در ربات شما ثبت شد .
 <blockquote>▫️آیدی عددی کاربر : <code>$from_id</code></blockquote>
@@ -2690,8 +2696,8 @@ $textonebuy
 <blockquote>▫️کد پیگیری: $randomString</blockquote>
 <blockquote>▫️نوع کاربر : {$user['agent']}</blockquote>
 <blockquote>▫️شماره تلفن کاربر : {$user['number']}</blockquote>
-<blockquote>▫️قیمت محصول : {$info_product['price_product']} تومان</blockquote>
-<blockquote>▫️قیمت نهایی : {$info_product['price_product']} تومان</blockquote>
+<blockquote>▫️قیمت محصول : {$rxFmtBulkInfoProductPrice} تومان</blockquote>
+<blockquote>▫️قیمت نهایی : {$rxFmtBulkInfoProductPrice} تومان</blockquote>
 <blockquote>▫️تعداد کانفیگ : {$user['Processing_value_four']} عدد</blockquote>
 <blockquote>▫️زمان خرید : $timejalali</blockquote>";
     if (strlen($setting['Channel_Report'] ?? '') > 0) {

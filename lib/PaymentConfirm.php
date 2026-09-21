@@ -111,7 +111,7 @@ if (!function_exists('payment_confirm_paid')) {
             if (function_exists('sendmessage')) {
                 sendmessage(
                     $balanceUser['id'],
-                    "🎁 کاربر عزیز مبلغ {$cashbackAmount} تومان به عنوان هدیه واریز به حساب شما واریز گردید.",
+                    "🎁 کاربر عزیز مبلغ " . rxFormatToman($cashbackAmount) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.",
                     null,
                     'HTML'
                 );
@@ -132,7 +132,7 @@ if (!function_exists('payment_confirm_paid')) {
         $textReport = "💵 پرداخت جدید\n" .
             "<blockquote>- 👤 نام کاربری کاربر : @{$usernameEsc}</blockquote>\n" .
             "<blockquote>- 👤 آیدی عددی کاربر : {$rlm}<code>{$userIdEsc}</code></blockquote>\n" .
-            "<blockquote>- 💸 مبلغ تراکنش {$report['price']}</blockquote>\n";
+            "<blockquote>- 💸 مبلغ تراکنش " . rxFormatToman($report['price'] ?? 0) . "</blockquote>\n";
         if ($linkLabel !== '' && $linkUrl !== '') {
             $textReport .= "<blockquote>- 🔗 <a href=\"{$linkUrl}\">{$linkLabel}</a></blockquote>\n";
         }

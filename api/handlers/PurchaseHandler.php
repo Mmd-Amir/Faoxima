@@ -920,7 +920,7 @@ final class PurchaseHandler extends BaseHandler
             'order_id' => $orderId,
             'agent' => $this->user['agent'],
             'phone' => $this->user['number'],
-            'price' => $product['price_product'],
+            'price' => rxFormatToman($product['price_product']),
             'when' => $when,
         ]);
 

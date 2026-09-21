@@ -38,7 +38,7 @@ if (isset($update['pre_checkout_query'])) {
         if (!empty($__starCashbackOk) && function_exists('wallet_ledger_record')) {
             wallet_ledger_record($Balance_id['id'], 'credit', $result, 'cashback', 'کش‌بک پرداخت استارز', (string)$Payment_report['id_order'], 'Payment_report', (string)$Payment_report['id_order']);
         }
-        $text_report = sprintf($textbotlang['users']['Discount']['gift-deposit'], $result);
+        $text_report = sprintf($textbotlang['users']['Discount']['gift-deposit'], rxFormatToman($result));
         sendmessage($Balance_id['id'], $text_report, null, 'HTML');
     }
     if (strlen($setting['Channel_Report'] ?? '') > 0) {
