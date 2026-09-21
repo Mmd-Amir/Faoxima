@@ -137,14 +137,6 @@ if (
         $rx_nav_targets[] = $rx_hardcoded_nav;
     }
 
-    if (is_string($__rx_code) && $__rx_code !== ''
-        && preg_match_all('/elseif\s*\(\s*\$text\s*==\s*"([^"]+)"\s*&&\s*\$adminrulecheck\[\'rule\'\]\s*==\s*"administrator"\s*\)/', $__rx_code, $rx_entry_matches)
-        && !empty($rx_entry_matches[1])) {
-        foreach ($rx_entry_matches[1] as $rx_entry_label) {
-            $rx_nav_targets[] = (string) $rx_entry_label;
-        }
-    }
-
     if (function_exists('rx_collectKeyboardLabels')) {
         $rx_kb_vars = [
             'keyboardadmin', 'setting_panel', 'shopkeyboard', 'keyboardhelpadmin',
@@ -208,7 +200,7 @@ if (
         $user['step'] = 'home';
     }
 
-    unset($rx_nav_targets, $rx_nav_key, $rx_hardcoded_nav, $rx_step_err, $rx_entry_matches, $rx_entry_label, $rx_nav_is_dynamic_selection);
+    unset($rx_nav_targets, $rx_nav_key, $rx_hardcoded_nav, $rx_step_err, $rx_nav_is_dynamic_selection);
 }
 
 unset($rx_nav_is_backmenu);
