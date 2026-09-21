@@ -158,9 +158,9 @@ if ($product == false) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>ویرایش محصول | ربات فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat47">
+    <link rel="stylesheet" href="css/theme.css?v=flat50">
 <script src="js/money-input.js?v=fx1" defer></script>
-<script src="js/theme.js?v=flat5" defer>
+<script src="js/theme.js?v=flat50" defer>
 
 </script>
 </head>
@@ -170,7 +170,7 @@ if ($product == false) {
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper">
+        <div class="wrapper fx-page-productedit">
 
             <div class="page-head">
                 <div>
@@ -186,7 +186,7 @@ if ($product == false) {
                 </div>
             </div>
 
-            <div class="card" style="max-width:820px; margin: 0 auto;">
+            <div class="card">
 
                 <?php if ($statusmessage): ?>
                     <div class="alert alert-error">

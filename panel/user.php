@@ -300,9 +300,9 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>مدیریت کاربر <?php echo htmlspecialchars($user['username'], ENT_QUOTES, 'UTF-8'); ?></title>
-    <link rel="stylesheet" href="css/theme.css?v=flat47">
+    <link rel="stylesheet" href="css/theme.css?v=flat50">
 <script src="js/money-input.js?v=fx1" defer></script>
-<script src="js/theme.js?v=flat5" defer>
+<script src="js/theme.js?v=flat50" defer>
 
 </script>
 </head>
@@ -444,7 +444,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                     </button>
                 </div>
                 <div class="table-wrap">
-                    <table class="app-table" style="width:100%">
+                    <table class="app-table">
                         <thead><tr><th>کد</th><th>نوع</th><th>مقدار</th><th>بخش/کاربرد</th><th>عملیات</th></tr></thead>
                         <tbody>
                         <?php
@@ -477,7 +477,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                                             onclick="editUserDiscount(this)">
                                             <?php echo icon('pen-to-square', 'svg-icon'); ?>
                                         </button>
-                                        <form method="POST" style="display:inline" onsubmit="return confirm('این کد حذف شود؟');">
+                                        <form method="POST" onsubmit="return confirm('این کد حذف شود؟');">
                                             <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
                                             <input type="hidden" name="_action" value="user_code_delete">
                                             <input type="hidden" name="kind" value="discount">
@@ -504,7 +504,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                                             onclick="editUserGift(this)">
                                             <?php echo icon('pen-to-square', 'svg-icon'); ?>
                                         </button>
-                                        <form method="POST" style="display:inline" onsubmit="return confirm('این کد حذف شود؟');">
+                                        <form method="POST" onsubmit="return confirm('این کد حذف شود؟');">
                                             <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
                                             <input type="hidden" name="_action" value="user_code_delete">
                                             <input type="hidden" name="kind" value="gift">
@@ -562,7 +562,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                 <input type="text" name="price" id="add_d_price" class="form-control" value="0" min="0">
             </div>
             <div class="form-group">
-                <label class="form-label">سقف کل استفاده <small style="color:var(--text-muted)">(۰ = نامحدود)</small></label>
+                <label class="form-label">سقف کل استفاده <small>(۰ = نامحدود)</small></label>
                 <input type="number" name="limitDiscount" class="form-control" value="0" min="0">
             </div>
             <div class="modal-foot">
@@ -591,7 +591,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                 <input type="text" name="gift_price" class="form-control" data-money min="1" required>
             </div>
             <div class="form-group">
-                <label class="form-label">سقف کل استفاده <small style="color:var(--text-muted)">(۰ = نامحدود)</small></label>
+                <label class="form-label">سقف کل استفاده <small>(۰ = نامحدود)</small></label>
                 <input type="number" name="gift_limit" class="form-control" value="0" min="0">
             </div>
             <div class="modal-foot">
@@ -740,7 +740,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                 <input type="text" name="price" id="eu_d_price" class="form-control" min="0">
             </div>
             <div class="form-group">
-                <label class="form-label">سقف کل استفاده <small style="color:var(--text-muted)">(۰ = نامحدود)</small></label>
+                <label class="form-label">سقف کل استفاده <small>(۰ = نامحدود)</small></label>
                 <input type="number" name="limitDiscount" id="eu_d_limit" class="form-control" min="0">
             </div>
             <div class="modal-foot">
@@ -770,7 +770,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                 <input type="text" name="gift_price" id="eu_g_price" class="form-control" data-money min="1" required>
             </div>
             <div class="form-group">
-                <label class="form-label">سقف کل استفاده <small style="color:var(--text-muted)">(۰ = نامحدود)</small></label>
+                <label class="form-label">سقف کل استفاده <small>(۰ = نامحدود)</small></label>
                 <input type="number" name="gift_limit" id="eu_g_limit" class="form-control" min="0">
             </div>
             <div class="modal-foot">

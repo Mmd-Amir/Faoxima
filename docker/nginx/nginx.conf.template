@@ -26,13 +26,20 @@ server {
     server_tokens off;
     index index.php;
 
+    # Security headers.  Declared at server level so they apply to every
+    # response that does not set its own add_header.  Note: nginx does NOT
+    # inherit add_header into a location that declares its own, so the
+    # static-asset locations below (which set Cache-Control) opt out.
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
 
     client_max_body_size 116M;
     keepalive_timeout 65s;
     gzip on;
-    gzip_types application/json text/plain;
+    gzip_types application/json text/plain text/css application/javascript;
 
     access_log /var/log/nginx/access.log main if=$faoxima_loggable;
 

@@ -365,3 +365,274 @@
     align-items: center;
     gap: 10px;
 }
+
+
+/* =========================================================================
+   STAGE 3D-B1 — GENERAL SETTINGS SURFACE
+   miscsettings.php · shopsettings.php · finance.php
+   -------------------------------------------------------------------------
+   The Settings components above were authored before the Stage 2A token
+   layer existed and were never migrated onto it: fields sat on --surface-3
+   (an inverted elevation), the focus ring and the checked switch fill used
+   raw --accent (which is not contrast-validated), alerts used
+   --color-*-soft values that are declared once, for the dark theme only,
+   and the section area was a ragged auto-fill masonry.  This layer
+   re-points those declarations at the frozen token layer and the Stage 2D
+   control contract (--input-bg / --input-h / --control-radius /
+   --control-solid / --control-on-solid / --accent-ring / --sem-*-fg|bg).
+
+   SCOPE: every selector is anchored on
+       #main-content .wrapper.fx-page-settings
+   a marker carried by exactly three pages.  banner.php and
+   trust_channel.php render the same components but do NOT carry the
+   marker, so their rendering is untouched — as is every other page.
+
+   This layer does not reopen a Stage 2D component: .card, .btn and .alert
+   keep their own definitions, and only properties already owned by the
+   legacy Settings rules are re-declared, at strictly higher specificity.
+   No priority-forcing declarations, no global selector, no new token.
+   ========================================================================= */
+
+
+/* ---- 3D-B1.1  Page composition ------------------------------------------
+   Page header (Stage 2C, unchanged) -> stacked full-width sections -> cards
+   holding grouped fields.  Replaces the auto-fill masonry that produced
+   three ragged columns on finance.php. */
+
+#main-content .wrapper.fx-page-settings .setting-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--gap-section);
+}
+
+/* .card + .card carries a 22px top margin from the Stage 2D layer, which
+   would stack on top of the grid gap.  The grid owns the rhythm here. */
+#main-content .wrapper.fx-page-settings .setting-grid > .card + .card {
+    margin-top: 0;
+}
+
+
+/* ---- 3D-B1.2  Section card ---------------------------------------------- */
+
+#main-content .wrapper.fx-page-settings .setting-grid > .card {
+    padding: var(--space-6);
+}
+
+#main-content .wrapper.fx-page-settings .card__head {
+    margin-bottom: var(--space-3);
+    padding-bottom: var(--space-4);
+}
+
+/* Non-text accent indicator -> --accent-ink.  The Stage 2D rule paints this
+   icon with raw --accent, which is not validated against any surface. */
+#main-content .wrapper.fx-page-settings .card__title .svg-icon {
+    color: var(--accent-ink);
+}
+
+@media (min-width: 768px) {
+    /* Field columns inside a section.  The section stays a single full-width
+       column; the field grid inside it is what absorbs the available width,
+       so a wide viewport shortens the page instead of stretching a 130px
+       value box across 1100px.  auto-fill (not auto-fit) so a card whose
+       field count does not fill the last row keeps its column width instead
+       of letting the final field stretch.  Cells stretch, so the row
+       separators stay aligned across columns. */
+    #main-content .wrapper.fx-page-settings .setting-grid > .card {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+        column-gap: var(--space-6);
+    }
+
+    #main-content .wrapper.fx-page-settings .setting-grid > .card > .card__head {
+        grid-column: 1 / -1;
+    }
+}
+
+
+/* ---- 3D-B1.3  Field rows ------------------------------------------------ */
+
+#main-content .wrapper.fx-page-settings .setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--border-soft);
+}
+
+/* Separators are kept on every row.  The card body is a two-column grid at
+   wide widths, so dropping the separator from :last-child would leave two
+   side-by-side cells with only one of them underlined. */
+
+#main-content .wrapper.fx-page-settings .setting-row__label {
+    flex: 1 1 auto;
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1.6;
+    color: var(--text-main);
+}
+
+/* Helper text under a label.  The class shipped with the original sheet but
+   was never emitted; it is styled here so it renders correctly when used. */
+#main-content .wrapper.fx-page-settings .setting-row__hint {
+    display: block;
+    margin-top: 2px;
+    font-size: 11.5px;
+    font-weight: 400;
+    line-height: 1.6;
+    color: var(--text-muted);
+}
+
+#main-content .wrapper.fx-page-settings .setting-row__control {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+}
+
+/* A labelled field reads as label-over-control, matching the requested card
+   pattern; a switch keeps the label-beside-control row it needs.  If :has()
+   is unsupported the rule is dropped and the row layout degrades to the
+   label-beside-control form rather than to anything broken. */
+#main-content .wrapper.fx-page-settings .setting-row:has(input:not([type="checkbox"])) {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-3) 0;
+}
+
+/* In the stacked form the row is a column flexbox: the label's flex: 1 1 auto
+   from the row form would make it absorb vertical space and push its own
+   field to the bottom of the cell. */
+#main-content .wrapper.fx-page-settings .setting-row:has(input:not([type="checkbox"])) .setting-row__label,
+#main-content .wrapper.fx-page-settings .setting-row:has(input:not([type="checkbox"])) .setting-row__control {
+    flex: 0 0 auto;
+}
+
+#main-content .wrapper.fx-page-settings .setting-row:has(input:not([type="checkbox"])) .setting-row__control {
+    width: 100%;
+}
+
+
+/* ---- 3D-B1.4  Text / number fields --------------------------------------
+   Mirrors the Stage 2D .form-control contract, including its light-theme
+   border step and its --accent-ink + --accent-ring focus treatment.  The
+   inline direction:ltr / text-align:left attributes that keep technical
+   values LTR are deliberately left to win. */
+
+#main-content .wrapper.fx-page-settings .setting-row input[type="text"],
+#main-content .wrapper.fx-page-settings .setting-row input[type="number"] {
+    width: 100%;
+    min-width: 0;
+    height: var(--input-h);
+    min-height: var(--input-h);
+    padding: 0 var(--space-3);
+    border-radius: var(--control-radius);
+    border: 1px solid var(--border-soft);
+    background: var(--input-bg);
+    color: var(--text-main);
+    font-family: 'Vazirmatn', sans-serif;
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: start;
+    outline: none;
+    transition: border-color .14s ease, box-shadow .14s ease, background-color .14s ease;
+}
+
+[data-theme="light"] #main-content .wrapper.fx-page-settings .setting-row input[type="text"],
+[data-theme="light"] #main-content .wrapper.fx-page-settings .setting-row input[type="number"] {
+    border-color: var(--border-mid);
+}
+
+#main-content .wrapper.fx-page-settings .setting-row input[type="text"]::placeholder,
+#main-content .wrapper.fx-page-settings .setting-row input[type="number"]::placeholder {
+    color: var(--text-placeholder);
+}
+
+#main-content .wrapper.fx-page-settings .setting-row input:focus {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+#main-content .wrapper.fx-page-settings .setting-row input:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+}
+
+
+/* ---- 3D-B1.5  Switch ----------------------------------------------------
+   Geometry, knob travel and the RTL knob positions are NOT touched.  Only
+   the fill and knob colours move onto the symmetric contrast contract, and
+   a focus ring is added because the checkbox itself is visually hidden. */
+
+#main-content .wrapper.fx-page-settings .switch input:checked + .switch__slot {
+    background: var(--control-solid);
+    border-color: var(--control-solid);
+}
+
+#main-content .wrapper.fx-page-settings .switch input:checked + .switch__slot::before {
+    background: var(--control-on-solid);
+}
+
+#main-content .wrapper.fx-page-settings .switch input:focus-visible + .switch__slot {
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+
+/* ---- 3D-B1.6  Alerts ----------------------------------------------------
+   --color-success / --color-danger / --color-warning are declared once, in
+   :root, so their text kept a dark-theme hue in the light theme.  The
+   --sem-*-fg / --sem-*-bg pair is theme-aware and was measured in Stage 2D
+   to clear 4.5:1 in both themes. */
+
+#main-content .wrapper.fx-page-settings .alert {
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    gap: var(--icon-gap);
+    font-size: 13px;
+    line-height: 1.7;
+    align-items: flex-start;
+    margin-bottom: var(--gap-section);
+}
+
+#main-content .wrapper.fx-page-settings .alert-success {
+    background: var(--sem-success-bg);
+    border: 1px solid var(--sem-success-fg);
+    color: var(--sem-success-fg);
+}
+
+#main-content .wrapper.fx-page-settings .alert-warning {
+    background: var(--sem-warning-bg);
+    border: 1px solid var(--sem-warning-fg);
+    color: var(--sem-warning-fg);
+}
+
+#main-content .wrapper.fx-page-settings .alert-danger {
+    background: var(--sem-danger-bg);
+    border: 1px solid var(--sem-danger-fg);
+    color: var(--sem-danger-fg);
+}
+
+#main-content .wrapper.fx-page-settings .alert-info {
+    background: var(--sem-info-bg);
+    border: 1px solid var(--sem-info-fg);
+    color: var(--sem-info-fg);
+}
+
+/* The informational note sits between the sections and the action bar. */
+#main-content .wrapper.fx-page-settings .setting-grid + .alert {
+    margin-top: var(--gap-section);
+    margin-bottom: 0;
+}
+
+
+/* ---- 3D-B1.7  Action bar ------------------------------------------------
+   Sticky behaviour is unchanged; the backdrop is re-pointed at the page
+   background token so it blends with the surface it floats over. */
+
+#main-content .wrapper.fx-page-settings .save-bar {
+    margin-top: var(--gap-section);
+    padding: var(--space-4) 0;
+    gap: var(--space-3);
+    background: linear-gradient(180deg, transparent, var(--bg-body) 45%);
+}

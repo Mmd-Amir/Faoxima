@@ -14,6 +14,8 @@ location ^~ /${URL_PATH}/installer/    { deny all; return 403; }
 location ^~ /${URL_PATH}/storage/      { deny all; return 403; }
 location ^~ /${URL_PATH}/logs/         { deny all; return 403; }
 location ^~ /${URL_PATH}/api/handlers/ { deny all; return 403; }
+location ^~ /${URL_PATH}/api/lib/      { deny all; return 403; }
+location ^~ /${URL_PATH}/panel/lib/    { deny all; return 403; }
 
 location ~* ^/${URL_PATH}/app/.*\.(?:js|mjs)$ {
     root ${DOC_ROOT};
@@ -30,6 +32,16 @@ location ~* ^/${URL_PATH}/app/.*\.(?:woff2?|svg|png|jpe?g|gif|ico)$ {
     add_header Cache-Control "public, max-age=2592000";
 }
 
+location ~* ^/${URL_PATH}/panel/.*\.(?:js|mjs|css)$ {
+    root ${DOC_ROOT};
+    add_header Cache-Control "no-store, no-cache, must-revalidate";
+}
+
+location ~* ^/${URL_PATH}/panel/.*\.(?:woff2?|svg|png|jpe?g|gif|ico)$ {
+    root ${DOC_ROOT};
+    add_header Cache-Control "public, max-age=2592000";
+}
+
 location ~ ^/${URL_PATH}/(.*\.php)$ {
     root ${DOC_ROOT};
     fastcgi_pass ${APP_UPSTREAM};
@@ -40,6 +52,13 @@ location ~ ^/${URL_PATH}/(.*\.php)$ {
     fastcgi_param HTTP_AUTHORIZATION $http_authorization;
     fastcgi_buffers 16 16k;
     fastcgi_buffer_size 32k;
+}
+
+# Executable-extension case variants and near-misses:
+# never serve, never execute.
+location ~* ^/${URL_PATH}/.*\.(?:php[0-9]?|phtml|phar|pht)$ {
+    deny all;
+    return 404;
 }
 
 location /${URL_PATH}/app/ {

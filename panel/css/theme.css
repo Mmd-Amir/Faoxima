@@ -3,19 +3,20 @@
 
 :root {
     
-    --bg-body:        #1b1b1d;
-    --bg-grad-top:    #1b1b1d;
-    --bg-grad-bot:    #1b1b1d;
-    --surface-1:      #1d1d1e;
-    --surface-2:      #232325;
-    --surface-3:      #2a2a2d;
-    --border-soft:    rgba(255, 255, 255, 0.10);
-    --border-mid:     rgba(255, 255, 255, 0.16);
-    --border-strong:  rgba(255, 255, 255, 0.28);
+    --bg-body:        #0E0F12;
+    --bg-grad-top:    #0E0F12;
+    --bg-grad-bot:    #0E0F12;
+    --surface-1:      #15161A;
+    --surface-2:      #1A1B20;
+    --surface-3:      #202127;
+    --border-soft:    rgba(255, 255, 255, 0.07);
+    --border-mid:     rgba(255, 255, 255, 0.11);
+    --border-strong:  rgba(255, 255, 255, 0.18);
 
-    --text-main:      #f1f3f8;
-    --text-muted:     #8b94a6;
-    --text-dim:       #5a627a;
+    --text-main:      #F4F4F5;
+    --text-muted:     #A1A1AA;
+    --text-dim:       #84848C;
+    --text-placeholder: #909098;
 
     
     --accent:         #3b82f6;
@@ -23,6 +24,8 @@
     --accent-mid:     rgba(59, 130, 246, 0.35);
     --accent-glow:    rgba(59, 130, 246, 0.5);
     --accent-fg:      #ffffff;
+    --accent-ink:     #60A5FA;
+    --accent-ring:    rgba(59, 130, 246, 0.45);
 
     
     --glass-tint-1:  transparent;
@@ -51,13 +54,17 @@
     --tl-green:  #27c93f;
 
     
-    --radius-sm: 8px;
-    --radius:    14px;
-    --radius-lg: 20px;
-    --radius-xl: 28px;
+    --radius-xs:   4px;
+    --radius-sm:   6px;
+    --radius-md:   8px;
+    --radius:      8px;
+    --radius-lg:  10px;
+    --radius-xl:  12px;
+    --radius-full: 999px;
 
-    --shadow-1: 0 4px 16px rgba(0, 0, 0, 0.28);
-    --shadow-2: 0 20px 48px rgba(0, 0, 0, 0.5);
+    --shadow-1: none;
+    --shadow-2: 0 16px 40px rgba(0, 0, 0, 0.55);
+    --shadow-focus: 0 0 0 3px var(--accent-ring);
 
     --space-1: 4px;
     --space-2: 8px;
@@ -68,11 +75,20 @@
     --space-7: 32px;
     --space-8: 40px;
 
-    --icon-gap:   10px;
-    --gap-inline: 10px;
+    --gap-hair:    var(--space-1);
+    --gap-tight:   var(--space-2);
+    --gap-snug:    var(--space-3);
+    --gap-base:    var(--space-4);
+    --gap-loose:   var(--space-5);
+    --gap-section: var(--space-6);
+    --gap-block:   var(--space-7);
+    --gap-page:    var(--space-8);
+
+    --icon-gap:   var(--space-2);
+    --gap-inline: var(--space-2);
     --gap-stack:  var(--space-3);
 
-    --header-h: 64px;
+    --header-h: 56px;
 
     --safe-t: env(safe-area-inset-top, 0px);
     --safe-r: env(safe-area-inset-right, 0px);
@@ -83,6 +99,24 @@
     --text-sm: 12.5px;
     --text-md: 13.5px;
     --text-lg: 15px;
+
+    --fs-page: 18px;
+    --fs-section: 15px;
+    --fs-card: 14px;
+    --fs-kpi: 22px;
+    --fs-label: 12px;
+    --fs-body: 13px;
+    --fs-nav: 13.5px;
+    --fs-navgroup: 13px;
+    --fs-eyebrow: 10px;
+    --fs-field-label: 12px;
+    --fs-th: 12px;
+    --fs-td: 13px;
+    --fs-btn: 13px;
+    --fs-caption: 11.5px;
+    --fs-badge: 11px;
+    --fs-axis: 11px;
+    --fs-mono: 12px;
 }
 
 
@@ -92,6 +126,8 @@
     --accent-mid:    rgba(239, 68, 68, 0.35);
     --accent-glow:   rgba(239, 68, 68, 0.5);
     --accent-fg:     #fff;
+    --accent-ink:    #F87171;
+    --accent-ring:   rgba(239, 68, 68, 0.45);
 }
 [data-color="blue"] {
     --accent:        #3b82f6;
@@ -99,13 +135,17 @@
     --accent-mid:    rgba(59, 130, 246, 0.35);
     --accent-glow:   rgba(59, 130, 246, 0.5);
     --accent-fg:     #fff;
+    --accent-ink:    #60A5FA;
+    --accent-ring:   rgba(59, 130, 246, 0.45);
 }
 [data-color="purple"] {
-    --accent:        #a855f7;
-    --accent-soft:   rgba(168, 85, 247, 0.15);
-    --accent-mid:    rgba(168, 85, 247, 0.35);
-    --accent-glow:   rgba(168, 85, 247, 0.5);
+    --accent:        #8B5CF6;
+    --accent-soft:   rgba(139, 92, 246, 0.15);
+    --accent-mid:    rgba(139, 92, 246, 0.35);
+    --accent-glow:   rgba(139, 92, 246, 0.5);
     --accent-fg:     #fff;
+    --accent-ink:    #A78BFA;
+    --accent-ring:   rgba(139, 92, 246, 0.45);
 }
 [data-color="yellow"] {
     --accent:        #facc15;
@@ -113,6 +153,8 @@
     --accent-mid:    rgba(250, 204, 21, 0.35);
     --accent-glow:   rgba(250, 204, 21, 0.5);
     --accent-fg:     #1a1a1a;
+    --accent-ink:    #FDE047;
+    --accent-ring:   rgba(250, 204, 21, 0.45);
 }
 [data-color="orange"] {
     --accent:        #f97316;
@@ -120,6 +162,8 @@
     --accent-mid:    rgba(249, 115, 22, 0.35);
     --accent-glow:   rgba(249, 115, 22, 0.5);
     --accent-fg:     #fff;
+    --accent-ink:    #FB923C;
+    --accent-ring:   rgba(249, 115, 22, 0.45);
 }
 [data-color="green"] {
     --accent:        #22c55e;
@@ -127,24 +171,57 @@
     --accent-mid:    rgba(34, 197, 94, 0.35);
     --accent-glow:   rgba(34, 197, 94, 0.5);
     --accent-fg:     #fff;
+    --accent-ink:    #4ADE80;
+    --accent-ring:   rgba(34, 197, 94, 0.45);
+}
+
+[data-color="custom"] {
+    --accent-ink:    var(--accent);
+    --accent-ring:   var(--accent-glow);
+}
+
+[data-theme="light"][data-color="red"] {
+    --accent-ink:    #DC2626;
+    --accent-ring:   rgba(239, 68, 68, 0.40);
+}
+[data-theme="light"][data-color="blue"] {
+    --accent-ink:    #2563EB;
+    --accent-ring:   rgba(59, 130, 246, 0.40);
+}
+[data-theme="light"][data-color="purple"] {
+    --accent-ink:    #7C3AED;
+    --accent-ring:   rgba(139, 92, 246, 0.40);
+}
+[data-theme="light"][data-color="yellow"] {
+    --accent-ink:    #A16207;
+    --accent-ring:   rgba(250, 204, 21, 0.40);
+}
+[data-theme="light"][data-color="orange"] {
+    --accent-ink:    #C2410C;
+    --accent-ring:   rgba(249, 115, 22, 0.40);
+}
+[data-theme="light"][data-color="green"] {
+    --accent-ink:    #15803D;
+    --accent-ring:   rgba(34, 197, 94, 0.40);
 }
 
 
 [data-theme="light"] {
-    --bg-body:       #eef2f8;
-    --bg-grad-top:   #ffffff;
-    --bg-grad-bot:   #e8eaf2;
-    --surface-1:     #ffffff;
-    --surface-2:     #ffffff;
-    --surface-3:     #f8fafc;
-    --border-soft:   rgba(15, 23, 42, 0.08);
-    --border-mid:    rgba(15, 23, 42, 0.12);
-    --border-strong: rgba(15, 23, 42, 0.22);
-    --shadow-1: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
-    --shadow-2: 0 8px 24px rgba(15, 23, 42, 0.08);
-    --text-main:     #0f172a;
-    --text-muted:    #475569;
-    --text-dim:      #64748b;
+    --bg-body:       #F6F7F9;
+    --bg-grad-top:   #F6F7F9;
+    --bg-grad-bot:   #F6F7F9;
+    --surface-1:     #FFFFFF;
+    --surface-2:     #F4F4F5;
+    --surface-3:     #EAEAEC;
+    --border-soft:   #E4E4E7;
+    --border-mid:    #D4D4D8;
+    --border-strong: #A1A1AA;
+    --shadow-1: 0 1px 2px rgba(24, 24, 27, 0.04), 0 1px 3px rgba(24, 24, 27, 0.06);
+    --shadow-2: 0 8px 24px rgba(24, 24, 27, 0.10);
+    --text-main:     #18181B;
+    --text-muted:    #52525B;
+    --text-dim:      #71717A;
+    --text-placeholder: #63636B;
     --glass-tint-1:  transparent;
     --glass-tint-2:  transparent;
     --glass-tint-3:  transparent;
@@ -427,7 +504,7 @@ a:hover { filter: brightness(1.15); }
 }
 .swatch[data-color="red"]    { background: #ef4444; }
 .swatch[data-color="blue"]   { background: #3b82f6; }
-.swatch[data-color="purple"] { background: #a855f7; }
+.swatch[data-color="purple"] { background: #8B5CF6; }
 .swatch[data-color="yellow"] { background: #facc15; }
 .swatch[data-color="orange"] { background: #f97316; }
 .swatch[data-color="green"]  { background: #22c55e; }
@@ -785,7 +862,8 @@ a:hover { filter: brightness(1.15); }
     box-shadow: 0 0 0 3px var(--accent-soft);
     background: rgba(255, 255, 255, 0.05);
 }
-.form-control::placeholder { color: var(--text-dim); }
+.form-control::placeholder { color: var(--text-placeholder); }
+input::placeholder, textarea::placeholder { color: var(--text-placeholder); }
 
 select.form-control {
     appearance: none;
@@ -2578,7 +2656,7 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
 }
 [data-theme="light"] {
     --chart-grid: rgba(0, 0, 0, 0.07);
-    --chart-axis: #475569;
+    --chart-axis: var(--text-muted);
 }
 
 .chart-toolbar {
@@ -2676,12 +2754,12 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
 
 
 [data-theme="dark"] {
-    --bg-body:      #1b1b1d;
-    --bg-grad-top:  #1b1b1d;
-    --bg-grad-bot:  #1b1b1d;
-    --surface-1:    #1d1d1e;
-    --surface-2:    #232325;
-    --surface-3:    #2a2a2d;
+    --bg-body:      #0E0F12;
+    --bg-grad-top:  #0E0F12;
+    --bg-grad-bot:  #0E0F12;
+    --surface-1:    #15161A;
+    --surface-2:    #1A1B20;
+    --surface-3:    #202127;
     --glass-tint-1: transparent;
     --glass-tint-2: transparent;
     --glass-tint-3: transparent;
@@ -2721,14 +2799,14 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
 
 @media (max-width: 820px), (hover: none) and (pointer: coarse) {
     [data-theme="dark"] {
-        --surface-1: #1d1d1e;
-        --surface-2: #232325;
-        --surface-3: #2a2a2d;
+        --surface-1: #15161A;
+        --surface-2: #1A1B20;
+        --surface-3: #202127;
     }
     [data-theme="light"] {
-        --surface-1: #ffffff;
-        --surface-2: #ffffff;
-        --surface-3: #f8fafc;
+        --surface-1: #FFFFFF;
+        --surface-2: #F4F4F5;
+        --surface-3: #EAEAEC;
     }
     [data-theme="dark"] .card,
     [data-theme="dark"] .stat-card,
@@ -2792,7 +2870,7 @@ body {
 }
 
 .app-header {
-    height: 64px;
+    height: var(--header-h);
     background: var(--surface-1);
     border-bottom: 1px solid var(--border-soft);
 }
@@ -2965,7 +3043,7 @@ body {
     font-family: inherit; font-size: 13.5px;
     transition: 0.18s;
 }
-.hdr-search input::placeholder { color: var(--text-dim); }
+.hdr-search input::placeholder { color: var(--text-placeholder); }
 .hdr-search input:focus {
     outline: none;
     border-color: var(--accent-mid);
@@ -4140,4 +4218,3011 @@ input[type="checkbox"]:indeterminate::after {
         height: 22px;
         min-width: 22px;
     }
+}
+
+
+/* ==========================================================================
+   Stage 2C — Shell & Dashboard Foundation
+   Scope: app header, desktop sidebar (plus the existing mobile drawer
+   presentation), main shell rhythm, page header, dashboard KPI cards and the
+   shared dashboard card chrome. Presentation only — no markup, no behaviour
+   and no colour-engine contract is changed here.
+   ========================================================================== */
+
+/* ---- Shell rhythm -------------------------------------------------------- */
+
+#main-content {
+    margin-right: 248px;
+    padding: 24px;
+    padding-inline-start: calc(24px + var(--safe-l));
+    padding-inline-end: calc(24px + var(--safe-r));
+    padding-bottom: calc(24px + var(--safe-b));
+}
+
+.app-header {
+    height: var(--header-h);
+    padding: 0 20px;
+    padding-inline-start: calc(20px + var(--safe-l));
+    padding-inline-end: calc(20px + var(--safe-r));
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--border-soft);
+    box-shadow: none;
+    gap: 10px;
+}
+.app-header__left { gap: 8px; }
+
+.btn-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
+    border-color: transparent;
+    color: var(--text-muted);
+}
+.btn-icon:hover {
+    color: var(--text-main);
+    border-color: var(--border-soft);
+    background: var(--surface-2);
+    transform: none;
+}
+
+.hdr-search { max-width: 520px; }
+.hdr-search input {
+    height: 40px;
+    padding: 0 14px;
+    border-radius: var(--radius-md);
+    border-color: var(--border-soft);
+    background: var(--surface-2);
+    font-size: var(--fs-body);
+    box-shadow: none;
+}
+.hdr-search input:focus,
+[data-theme="dark"] .hdr-search input:focus,
+:root:not([data-theme="light"]) .hdr-search input:focus {
+    border-color: var(--accent-mid);
+    background: var(--surface-3);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.hdr-search__dd { border-radius: var(--radius-lg); }
+
+@media (max-width: 600px) {
+    .hdr-dd { top: 64px; }
+}
+
+/* ---- Desktop sidebar ----------------------------------------------------- */
+
+.app-sidebar {
+    width: 248px;
+    background: var(--surface-1);
+    border-left: 1px solid var(--border-soft);
+    box-shadow: none;
+}
+.sidebar-scroll { padding: 14px 12px 10px; }
+
+.sidebar-section-label {
+    font-size: var(--fs-eyebrow);
+    letter-spacing: 0.6px;
+    font-weight: 600;
+    color: var(--text-dim);
+    padding: 10px 10px 6px;
+}
+
+.sidebar-menu { margin: 0 0 10px; }
+.sidebar-menu li { margin-bottom: 2px; }
+.sidebar-menu a {
+    min-height: 38px;
+    padding: 8px 12px;
+    gap: 10px;
+    border-radius: var(--radius-md);
+    font-size: var(--fs-nav);
+    font-weight: 500;
+    color: var(--text-muted);
+}
+.sidebar-menu a:hover { background: var(--surface-2); color: var(--text-main); }
+.sidebar-menu a .menu-symbol { width: 18px; height: 18px; }
+.sidebar-menu a .menu-symbol .svg-icon { width: 17px; height: 17px; }
+
+.sidebar-menu a.active {
+    background-color: var(--accent-soft);
+    background-image: none;
+    color: var(--text-main);
+    font-weight: 600;
+    box-shadow: none;
+}
+.sidebar-menu a.active .menu-symbol,
+.sidebar-menu a.active i { color: var(--accent-ink); }
+.sidebar-menu a.active::before {
+    content: "";
+    display: block;
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    right: 0;
+    left: auto;
+    width: 3px;
+    height: 18px;
+    background: var(--accent-ink);
+    border-radius: var(--radius-full);
+}
+
+.menu-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: var(--radius-sm);
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1;
+    background: var(--surface-3);
+    color: var(--text-muted);
+    border: 1px solid var(--border-soft);
+}
+.sidebar-menu a.active .menu-badge {
+    background: var(--surface-1);
+    color: var(--text-main);
+    border-color: var(--border-mid);
+}
+
+.nav-group { margin-bottom: 2px; }
+.nav-group__btn {
+    min-height: 38px;
+    padding: 8px 12px;
+    gap: 10px;
+    border-radius: var(--radius-md);
+    font-size: var(--fs-navgroup);
+    font-weight: 600;
+    color: var(--text-muted);
+}
+.nav-group__btn .menu-symbol { width: 18px; height: 18px; }
+.nav-group__btn .menu-symbol .svg-icon { width: 17px; height: 17px; }
+.nav-group__panel .sidebar-menu { margin: 2px 0 4px; }
+.nav-group__panel .sidebar-menu a {
+    min-height: 34px;
+    padding: 7px 12px;
+    font-size: 13px;
+    border-radius: var(--radius-sm);
+}
+
+/* ---- Page header --------------------------------------------------------- */
+
+.page-head {
+    padding: 12px 0;
+    margin-bottom: 18px;
+    gap: 10px 16px;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--border-soft);
+    border-radius: 0;
+    box-shadow: none;
+}
+.page-head__title {
+    font-size: var(--fs-page);
+    font-weight: 700;
+    gap: 10px;
+}
+.page-head__title i,
+.page-head__title .svg-icon,
+.page-head__title .page-head__icon {
+    width: 26px !important;
+    height: 26px !important;
+    padding: 4px;
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+    border-radius: var(--radius-md);
+    stroke-width: 2;
+}
+.page-head__sub { font-size: 12.5px; margin-top: 2px; }
+.page-head .chip { padding: 6px 12px; border-radius: var(--radius-md); }
+
+/* ---- Dashboard KPI cards ------------------------------------------------- */
+
+.stats-grid { gap: 14px; margin-bottom: 20px; }
+
+.stat-card {
+    gap: 14px;
+    padding: 18px;
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+    border: 1px solid var(--border-soft);
+    box-shadow: var(--shadow-1);
+}
+.stat-card:hover { transform: none; border-color: var(--border-mid); }
+.stat-card::before,
+.stat-card:hover::before { display: none; content: none; transform: none; }
+
+.stat-card__icon {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-lg);
+    background-image: none;
+    transition: none;
+}
+.stat-card:hover .stat-card__icon { transform: none; }
+.stat-card__icon .svg-icon { width: 20px; height: 20px; }
+
+.stat-card__icon.icon-blue   { background-color: rgba(99, 102, 241, 0.14); color: #818CF8; }
+.stat-card__icon.icon-rose   { background-color: rgba(244, 63, 94, 0.14);  color: #FB7185; }
+.stat-card__icon.icon-green  { background-color: rgba(16, 185, 129, 0.14); color: #34D399; }
+.stat-card__icon.icon-purple { background-color: rgba(168, 85, 247, 0.14); color: #C084FC; }
+.stat-card__icon.icon-cyan   { background-color: rgba(6, 182, 212, 0.14);  color: #22D3EE; }
+.stat-card__icon.icon-amber  { background-color: rgba(245, 158, 11, 0.14); color: #FBBF24; }
+[data-theme="light"] .stat-card__icon.icon-blue   { color: #4F46E5; }
+[data-theme="light"] .stat-card__icon.icon-rose   { color: #E11D48; }
+[data-theme="light"] .stat-card__icon.icon-green  { color: #059669; }
+[data-theme="light"] .stat-card__icon.icon-purple { color: #9333EA; }
+[data-theme="light"] .stat-card__icon.icon-cyan   { color: #0891B2; }
+[data-theme="light"] .stat-card__icon.icon-amber  { color: #D97706; }
+
+.stat-card__label { font-size: 12px; }
+.stat-card__value { font-size: clamp(19px, 1.5vw, var(--fs-kpi)); font-weight: 700; }
+.stat-card__trend {
+    padding: 3px 8px;
+    font-size: 11.5px;
+    font-weight: 600;
+}
+[data-theme="dark"] .stat-card__trend.down { color: #F87171; }
+[data-theme="light"] .stat-card__trend.up  { color: #166534; }
+[data-theme="light"] .stat-card__trend.down { color: #B91C1C; }
+
+/* ---- Shared dashboard card chrome --------------------------------------- */
+
+.panel,
+.card {
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+    border: 1px solid var(--border-soft);
+    box-shadow: var(--shadow-1);
+}
+.panel:hover {
+    transform: none;
+    border-color: var(--border-mid);
+    box-shadow: var(--shadow-1);
+}
+
+[data-theme="dark"] .stat-card,
+[data-theme="dark"] .panel,
+[data-theme="dark"] .card,
+[data-theme="dark"] .page-head {
+    border-color: var(--border-soft);
+}
+
+.chart-toolbar {
+    gap: 2px;
+    padding: 3px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+}
+.chart-toolbar > .chart-range-btn {
+    border: 0;
+    background: transparent;
+    border-radius: var(--radius-sm);
+    padding: 5px 11px;
+    color: var(--text-muted);
+}
+.chart-toolbar > .chart-range-btn:hover {
+    background: var(--surface-3);
+    color: var(--text-main);
+}
+.chart-toolbar > .chart-range-btn.active {
+    background: var(--surface-1);
+    color: var(--text-main);
+    box-shadow: var(--shadow-1);
+}
+.chart-toolbar > #customRangeBox .chart-range-btn {
+    border: 0;
+    background: var(--surface-1);
+    color: var(--text-main);
+    border-radius: var(--radius-sm);
+    padding: 5px 11px;
+}
+
+body::before,
+body::after { display: none; }
+
+.hdr-bell__badge { background: #DC2626; }
+
+/* ---- Responsive shell ---------------------------------------------------- */
+
+@media (max-width: 992px) {
+    #main-content {
+        padding: 20px;
+        padding-inline-start: calc(20px + var(--safe-l));
+        padding-inline-end: calc(20px + var(--safe-r));
+        padding-bottom: calc(20px + var(--safe-b));
+    }
+    .app-sidebar { width: min(86vw, 320px); }
+}
+
+@media (max-width: 600px) {
+    #main-content {
+        padding: 14px;
+        padding-inline-start: calc(14px + var(--safe-l));
+        padding-inline-end: calc(14px + var(--safe-r));
+        padding-bottom: calc(20px + var(--safe-b));
+    }
+    .page-head { padding: 10px 0; }
+    .page-head__title { font-size: 17px; gap: 8px; }
+    .page-head__title i,
+    .page-head__title .svg-icon,
+    .page-head__title .page-head__icon {
+        width: 22px !important;
+        height: 22px !important;
+        padding: 4px;
+    }
+    .stat-card { padding: 16px; }
+}
+
+
+/* =========================================================================
+   STAGE 2D — SHARED COMPONENT SYSTEM
+   Buttons · form controls · search/filter toolbars · tables · badges ·
+   pagination · modal chrome · dropdown chrome · generic links ·
+   existing empty states.  Presentation only — no markup, script or
+   behaviour is touched by this layer.
+   ========================================================================= */
+
+/* ---- 2D.0  Component tokens --------------------------------------------- */
+
+:root {
+    /* Filled accent controls.
+       --accent-ink is the Stage 2B "safe foreground" token: it is guaranteed
+       >= 4.5:1 against the resolved --surface-1 for every preset and every
+       custom colour.  Reusing it as the FILL and --surface-1 as the TEXT
+       inherits that guarantee unchanged, because contrast is symmetric.
+       Raw var(--accent) as a fill is NOT safe: --accent-fg is white for five
+       of the six presets and white-on-accent measures 2.30:1 (green) to
+       4.20:1 (purple). */
+    --control-solid:    var(--accent-ink);
+    --control-on-solid: var(--surface-1);
+
+    --control-h:        38px;
+    --control-h-sm:     32px;
+    --control-radius:   var(--radius-md);
+
+    --input-h:          40px;
+    --input-h-compact:  38px;
+    --input-bg:         var(--surface-2);
+
+    --badge-h:          23px;
+    --badge-radius:     var(--radius-sm);
+    --badge-neutral-fg: #A1A1AA;
+
+    --table-radius:     var(--radius-lg);
+    --table-row-pad-y:  12px;
+    --table-cell-pad-x: 14px;
+
+    --link-underline:       var(--text-dim);
+    --link-underline-hover: var(--accent-ink);
+
+    --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.35);
+
+    /* Semantic foregrounds for soft badges / soft buttons / menu danger.
+       Dark-theme values; light-theme overrides below are darker so that
+       normal-size text clears 4.5:1 on the soft badge surfaces. */
+    --sem-success-fg: #4ADE80;
+    --sem-danger-fg:  #F87171;
+    --sem-warning-fg: #FBBF24;
+    --sem-info-fg:    #22D3EE;
+    --sem-purple-fg:  #A78BFA;
+
+    /* Opaque badge surfaces.
+       The original badge tints are translucent rgba(), so a badge's real
+       background -- and therefore its text contrast -- depended on the
+       surface underneath it.  Measured in light mode, .badge-info read
+       4.66:1 on --surface-1 but only 3.96:1 on --surface-3, i.e. a real
+       AA failure that moved with the page.  Pinning each badge to the
+       opaque value of its tint over --surface-1 makes the contrast
+       surface-independent and equal to the measured value below. */
+    --sem-success-bg: #173024;
+    --sem-danger-bg:  #361D20;
+    --sem-warning-bg: #372A18;
+    --sem-info-bg:    #132E36;
+    --sem-purple-bg:  #2B1F3B;
+    --sem-neutral-bg: #26282F;
+
+    /* Robust accent TEXT colour.
+       --accent-ink is validated against --surface-1 only.  Measured on
+       --surface-2 / --surface-3 / --bg-body it drops to ~4.10:1 in light
+       mode and ~4.01:1 in dark for some presets and custom colours.  This
+       token keeps the accent hue but mixes it 15% toward black (light) /
+       10% toward white (dark), which was measured to clear 4.5:1 on ALL
+       FOUR surfaces for all 6 presets and all 5 custom colours
+       (worst 4.874 light, 4.673 dark).  Fills and decorations keep using
+       --accent-ink unchanged; only text uses this. */
+    --accent-text: var(--accent-ink);
+}
+
+[data-theme="light"] {
+    --badge-neutral-fg: #475569;
+    --shadow-modal: 0 24px 56px rgba(24, 24, 27, 0.18), 0 2px 8px rgba(24, 24, 27, 0.08);
+    --sem-success-fg: #166534;
+    --sem-danger-fg:  #B91C1C;
+    --sem-warning-fg: #92400E;
+    --sem-info-fg:    #0C6880;
+    --sem-purple-fg:  #7E22CE;
+
+    --sem-success-bg: #DEF6E7;
+    --sem-danger-bg:  #FDE3E3;
+    --sem-warning-bg: #FEF0DA;
+    --sem-info-bg:    #DAF4F9;
+    --sem-purple-bg:  #F2E6FE;
+    --sem-neutral-bg: #F1F3F6;
+}
+
+@supports (color: color-mix(in srgb, #000 50%, #fff)) {
+    :root {
+        --accent-text: color-mix(in srgb, var(--accent-ink) 90%, #ffffff);
+    }
+    [data-theme="light"] {
+        --accent-text: color-mix(in srgb, var(--accent-ink) 85%, #000000);
+    }
+}
+
+
+/* ---- 2D.1  Button system ------------------------------------------------ */
+
+.btn {
+    min-height: var(--control-h);
+    padding: 0 14px;
+    gap: 6px;
+    border-radius: var(--control-radius);
+    font-size: var(--fs-btn);
+    font-weight: 600;
+    line-height: 1.2;
+    border: 1px solid transparent;
+    box-shadow: none;
+    transition: background-color .14s ease, border-color .14s ease,
+                color .14s ease, box-shadow .14s ease, transform .14s ease;
+}
+.btn:hover { transform: none; }
+.btn:active { transform: translateY(1px); }
+.btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.btn:disabled,
+.btn[disabled],
+.btn.disabled {
+    opacity: .5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+.btn-sm { min-height: var(--control-h-sm); padding: 0 10px; font-size: 12px; gap: 5px; }
+.btn-block { width: 100%; }
+
+/* Primary — filled accent using the safe foreground contract. */
+.btn-primary {
+    background-color: var(--control-solid);
+    background-image: none;
+    color: var(--control-on-solid);
+    border-color: transparent;
+    box-shadow: none;
+}
+.btn-primary:hover {
+    background-color: var(--control-solid);
+    background-image: none;
+    color: var(--control-on-solid);
+    filter: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .24);
+}
+.btn-primary:active { box-shadow: none; }
+
+/* Secondary / outline — neutral surface + soft border, no accent flooding. */
+.btn-outline,
+.btn-secondary {
+    background: var(--surface-1);
+    border-color: var(--border-soft);
+    color: var(--text-main);
+}
+.btn-outline:hover,
+.btn-secondary:hover {
+    background: var(--surface-2);
+    border-color: var(--border-mid);
+    color: var(--text-main);
+}
+
+/* Ghost — no chrome until hover. */
+.btn-ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-muted);
+}
+.btn-ghost:hover { background: var(--surface-2); color: var(--text-main); }
+
+/* Destructive / success — solid, deeper than the raw semantic hex so that
+   normal-size white text clears 4.5:1. */
+.btn-danger {
+    background: #DC2626;
+    color: #fff;
+    border-color: transparent;
+    box-shadow: none;
+}
+.btn-danger:hover {
+    filter: none;
+    background: #DC2626;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .24);
+}
+.btn-success {
+    background: #15803D;
+    color: #fff;
+    border-color: transparent;
+    box-shadow: none;
+}
+.btn-success:hover {
+    filter: none;
+    background: #15803D;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .24);
+}
+[data-theme="light"] .btn-danger { background: #B91C1C; }
+[data-theme="light"] .btn-danger:hover { background: #B91C1C; }
+[data-theme="light"] .btn-success { background: #15803D; }
+[data-theme="light"] .btn-success:hover { background: #15803D; }
+
+/* Soft semantic buttons — 15% tint + a safe semantic foreground. */
+.btn-soft-success {
+    background: var(--color-success-soft);
+    color: var(--sem-success-fg);
+    border-color: rgba(34, 197, 94, 0.28);
+}
+.btn-soft-danger {
+    background: var(--color-danger-soft);
+    color: var(--sem-danger-fg);
+    border-color: rgba(239, 68, 68, 0.28);
+}
+.btn-soft-warning {
+    background: var(--color-warning-soft);
+    color: var(--sem-warning-fg);
+    border-color: rgba(245, 158, 11, 0.28);
+}
+.btn-soft-info {
+    background: var(--color-info-soft);
+    color: var(--sem-info-fg);
+    border-color: rgba(6, 182, 212, 0.28);
+}
+.btn-soft-purple {
+    background: var(--color-purple-soft);
+    color: var(--sem-purple-fg);
+    border-color: rgba(168, 85, 247, 0.28);
+}
+.btn-soft-success:hover,
+.btn-soft-danger:hover,
+.btn-soft-warning:hover,
+.btn-soft-info:hover,
+.btn-soft-purple:hover {
+    background: var(--surface-3);
+    box-shadow: none;
+    filter: none;
+}
+.btn-soft-success:hover { color: var(--sem-success-fg); border-color: var(--color-success); }
+.btn-soft-danger:hover  { color: var(--sem-danger-fg);  border-color: var(--color-danger); }
+.btn-soft-warning:hover { color: var(--sem-warning-fg); border-color: var(--color-warning); }
+.btn-soft-info:hover    { color: var(--sem-info-fg);    border-color: var(--color-info); }
+.btn-soft-purple:hover  { color: var(--sem-purple-fg);  border-color: var(--color-purple); }
+
+/* Table / row action control — quiet icon box. */
+.btn-action {
+    width: 30px;
+    height: 30px;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-muted);
+    box-shadow: none;
+    transition: background-color .14s ease, border-color .14s ease, color .14s ease;
+}
+.btn-action:hover {
+    background: var(--surface-2);
+    border-color: var(--border-soft);
+    color: var(--text-main);
+}
+.btn-action:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.btn-action .svg-icon { width: 16px; height: 16px; }
+
+
+/* ---- 2D.2  Form controls ------------------------------------------------ */
+
+.form-group { margin-bottom: 14px; }
+.form-label {
+    font-size: var(--fs-field-label);
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+.form-control {
+    height: var(--input-h);
+    min-height: var(--input-h);
+    padding: 0 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-soft);
+    background: var(--input-bg);
+    color: var(--text-main);
+    font-size: 13px;
+    line-height: 1.4;
+    outline: none;
+    transition: border-color .14s ease, box-shadow .14s ease, background-color .14s ease;
+}
+[data-theme="light"] .form-control {
+    background: var(--input-bg);
+    border-color: var(--border-mid);
+}
+.form-control:focus {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+    background: var(--input-bg);
+}
+[data-theme="light"] .form-control:focus { background: var(--input-bg); }
+.form-control::placeholder { color: var(--text-placeholder); }
+.form-control:disabled,
+.form-control[disabled] { opacity: .55; cursor: not-allowed; }
+
+select.form-control {
+    height: var(--input-h);
+    padding-inline-start: 34px;
+    padding-inline-end: 12px;
+    background-position: left 12px center;
+}
+textarea.form-control {
+    height: auto;
+    min-height: 96px;
+    padding: 9px 12px;
+    line-height: 1.6;
+}
+
+.input-icon-wrap {
+    min-height: var(--input-h);
+    padding: 0 10px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-soft);
+    background: var(--input-bg);
+}
+.input-icon-wrap:focus-within {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.input-icon-wrap .form-control {
+    height: auto;
+    min-height: 0;
+    padding: 8px;
+    border: 0;
+    background: transparent;
+}
+.input-icon-wrap .form-control:focus { box-shadow: none; border: 0; }
+
+.toggle-pass:hover { color: var(--accent-ink); }
+
+/* Checkbox — geometry only; checked fill uses the safe solid contract and
+   the tick is mask-painted with the matching on-solid colour so it stays
+   visible for every preset and custom colour. */
+input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    border-radius: 5px;
+    border: 1.5px solid var(--border-strong);
+    background: var(--surface-2);
+}
+input[type="checkbox"]:hover:not(:disabled) { border-color: var(--accent-ink); }
+input[type="checkbox"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+input[type="checkbox"]:checked,
+input[type="checkbox"]:indeterminate {
+    background: var(--control-solid);
+    border-color: var(--control-solid);
+}
+input[type="checkbox"]:checked::after,
+input[type="checkbox"]:indeterminate::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-color: var(--control-on-solid);
+    background-image: none;
+    background-size: auto;
+    -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+            mask-position: center;
+    -webkit-mask-size: 12px 12px;
+            mask-size: 12px 12px;
+}
+input[type="checkbox"]:checked::after {
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='3.5 8.5 6.5 11.5 12.5 4.5'/%3E%3C/svg%3E");
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='3.5 8.5 6.5 11.5 12.5 4.5'/%3E%3C/svg%3E");
+}
+input[type="checkbox"]:indeterminate::after {
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000000' stroke-width='2.4' stroke-linecap='round'%3E%3Cline x1='4' y1='8' x2='12' y2='8'/%3E%3C/svg%3E");
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000000' stroke-width='2.4' stroke-linecap='round'%3E%3Cline x1='4' y1='8' x2='12' y2='8'/%3E%3C/svg%3E");
+}
+input[type="checkbox"]:disabled {
+    opacity: .45;
+    background: var(--surface-3);
+    border-color: var(--border-soft);
+    cursor: not-allowed;
+}
+
+/* Focus rings on the remaining shared inputs. */
+.mdt-search input {
+    height: var(--input-h-compact);
+    padding: 0 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-soft);
+    background: var(--surface-2);
+    color: var(--text-main);
+    font-size: 13px;
+}
+.mdt-search input:focus {
+    outline: none;
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.dataTables_wrapper .dataTables_filter input,
+.dataTables_wrapper .dataTables_length select {
+    height: var(--input-h-compact);
+    padding: 0 10px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-soft);
+    background: var(--surface-2);
+    color: var(--text-main);
+    font-size: 13px;
+}
+.dataTables_wrapper .dataTables_filter input:focus,
+.dataTables_wrapper .dataTables_length select:focus {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+
+/* ---- 2D.3  Search / filter toolbars + chips ----------------------------- */
+
+.card.fx-search-filter,
+.card.fx-date-filter,
+.card.fx-status-filter {
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    border-radius: var(--radius-lg);
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    box-shadow: none;
+}
+.fx-date-filter__title,
+.fx-status-filter__title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+.fx-date-filter__presets,
+.fx-status-filter__pills { gap: 6px; margin-bottom: 10px; }
+
+.fx-date-filter__preset,
+.fx-status-filter__pill {
+    height: 34px;
+    min-height: 34px;
+    padding: 0 12px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    background: transparent;
+    border-color: var(--border-soft);
+    color: var(--text-muted);
+}
+.fx-date-filter__preset.btn-primary,
+.fx-status-filter__pill.btn-primary {
+    background: var(--accent-soft);
+    border-color: var(--accent-mid);
+    color: var(--text-main);
+    box-shadow: none;
+}
+.fx-date-filter__preset.btn-primary:hover,
+.fx-status-filter__pill.btn-primary:hover {
+    background: var(--accent-soft);
+    box-shadow: none;
+}
+.fx-date-filter__preset.btn-outline:hover,
+.fx-status-filter__pill.btn-outline:hover {
+    background: var(--surface-3);
+    border-color: var(--border-mid);
+    color: var(--text-main);
+}
+
+.fx-date-filter__form { gap: 10px; }
+.fx-date-filter__field label {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+.fx-date-filter__field input {
+    height: var(--input-h-compact);
+    padding: 0 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-soft);
+    background: var(--surface-1);
+    color: var(--text-main);
+    font-size: 13px;
+}
+.fx-date-filter__field input:focus {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+[data-theme="light"] .fx-date-filter__field input {
+    background: var(--surface-1);
+    border-color: var(--border-soft);
+}
+[data-theme="light"] .fx-date-filter__field input:focus { background: var(--surface-1); }
+.fx-date-filter__actions { gap: 8px; }
+.fx-date-filter__actions .btn {
+    height: var(--input-h-compact);
+    min-height: var(--input-h-compact);
+    padding: 0 14px;
+    font-size: 12.5px;
+}
+.fx-date-filter__active {
+    margin-top: 8px;
+    font-size: 11.5px;
+    color: var(--text-dim);
+}
+
+.fx-search-filter__input {
+    height: var(--input-h-compact);
+    padding: 0 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-soft);
+    background: var(--surface-1);
+    color: var(--text-main);
+    font-size: 13px;
+}
+.fx-search-filter__input:focus {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+[data-theme="light"] .fx-search-filter__input {
+    background: var(--surface-1);
+    border-color: var(--border-soft);
+}
+[data-theme="light"] .fx-search-filter__input:focus { background: var(--surface-1); }
+.fx-search-filter__btn {
+    height: var(--input-h-compact);
+    min-height: var(--input-h-compact);
+    padding: 0 14px;
+    font-size: 12.5px;
+}
+
+.chip-row { gap: 6px; }
+.chip {
+    height: 32px;
+    padding: 0 12px;
+    gap: 6px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-soft);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+.chip:hover { transform: none; }
+.chip .symbol,
+.chip .svg-icon { color: var(--text-dim); }
+@media (hover: hover) {
+    .chip:hover {
+        background: var(--surface-2);
+        border-color: var(--border-mid);
+        color: var(--text-main);
+    }
+    .chip:hover .symbol,
+    .chip:hover .svg-icon { color: var(--text-muted); }
+}
+.chip.is-active {
+    background: var(--accent-soft);
+    border-color: var(--accent-mid);
+    color: var(--text-main);
+}
+.chip.is-active .symbol,
+.chip.is-active .svg-icon { color: var(--text-main); }
+
+
+/* ---- 2D.4  Table system ------------------------------------------------- */
+
+.table-wrap { border-radius: var(--table-radius); }
+.cell-actions__group { gap: 6px; }
+
+table.dataTable thead th,
+table.app-table thead th {
+    background: var(--surface-2) !important;
+    color: var(--text-muted) !important;
+    font-size: var(--fs-th) !important;
+    font-weight: 600 !important;
+    letter-spacing: .2px;
+    padding: 10px var(--table-cell-pad-x) !important;
+    border-bottom: 1px solid var(--border-soft) !important;
+}
+[data-theme="light"] table.dataTable thead th,
+[data-theme="light"] table.app-table thead th {
+    background: var(--surface-2) !important;
+    border-bottom-color: var(--border-soft) !important;
+}
+
+table.dataTable tbody td,
+table.app-table tbody td {
+    padding: var(--table-row-pad-y) var(--table-cell-pad-x) !important;
+    font-size: var(--fs-td) !important;
+    border-bottom: 1px solid var(--border-soft) !important;
+}
+
+/* Hover is a subtle neutral shift — accent never floods the row. */
+table.dataTable tbody tr:hover td,
+table.app-table tbody tr:hover td { background: var(--surface-2) !important; }
+[data-theme="light"] table.dataTable tbody tr:hover td,
+[data-theme="light"] table.app-table tbody tr:hover td { background: var(--surface-2) !important; }
+table.dataTable tbody tr:hover td:first-child,
+table.app-table tbody tr:hover td:first-child { box-shadow: none; }
+
+/* Bulk-selection row — visually distinct from hover. */
+table.dataTable tbody tr:has(input[name="ids[]"]:checked) td,
+table.app-table tbody tr:has(input[name="ids[]"]:checked) td {
+    background: var(--accent-soft) !important;
+}
+table.dataTable tbody tr:has(input[name="ids[]"]:checked):hover td,
+table.app-table tbody tr:has(input[name="ids[]"]:checked):hover td {
+    background: var(--accent-soft) !important;
+}
+table.dataTable tbody tr:has(input[name="ids[]"]:checked) td:first-child,
+table.app-table tbody tr:has(input[name="ids[]"]:checked) td:first-child {
+    box-shadow: inset -3px 0 0 var(--accent-ink);
+}
+
+.mdt-sortable.mdt-sort-asc::after { border-bottom-color: var(--accent-ink); }
+.mdt-sortable.mdt-sort-desc::after { border-top-color: var(--accent-ink); }
+
+.track-id:hover { background: var(--accent-soft); color: var(--text-main); }
+
+
+/* ---- 2D.5  Mobile table -> card ----------------------------------------
+   The existing responsive conversion is verified and unchanged.  This block
+   only re-asserts the values that the 2D desktop rules above also set
+   (padding / font-size / border / background), so the card layout is
+   byte-for-byte the behaviour it had before Stage 2D. */
+
+@media (max-width: 768px), (max-width: 992px) and (pointer: coarse) {
+    .app-table td, table.dataTable tbody td {
+        padding: 7px 0 !important;
+        font-size: 13px !important;
+        border: 0 !important;
+        border-bottom: 1px dashed var(--border-soft) !important;
+        background: transparent !important;
+    }
+    .app-table tbody tr > td:first-child,
+    table.dataTable tbody tr > td:first-child {
+        border-bottom: 1px solid var(--border-mid) !important;
+        padding-bottom: 10px !important;
+        font-size: 14px !important;
+    }
+    .app-table td:last-child, table.dataTable tbody td:last-child {
+        border-bottom: 0 !important;
+        padding-top: 12px !important;
+    }
+    table.app-table tbody tr, table.dataTable tbody tr {
+        background: transparent !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.20) !important;
+    }
+    [data-theme="light"] table.app-table tbody tr,
+    [data-theme="light"] table.dataTable tbody tr {
+        border-bottom-color: rgba(15, 23, 42, 0.15) !important;
+    }
+    table.app-table tbody tr:last-child,
+    table.dataTable tbody tr:last-child { border-bottom: 0 !important; }
+    table.app-table tbody tr:hover td, table.dataTable tbody tr:hover td,
+    table.app-table tbody tr:active td, table.dataTable tbody tr:active td,
+    table.app-table tbody tr:focus-within td, table.dataTable tbody tr:focus-within td {
+        background: transparent !important;
+    }
+    table.app-table tbody tr:hover td:first-child,
+    table.dataTable tbody tr:hover td:first-child,
+    table.app-table tbody tr:focus-within td:first-child,
+    table.dataTable tbody tr:focus-within td:first-child { box-shadow: none !important; }
+    table.app-table tbody tr:has(input[name="ids[]"]:checked) td,
+    table.dataTable tbody tr:has(input[name="ids[]"]:checked) td { background: transparent !important; }
+    table.app-table tbody tr:has(input[name="ids[]"]:checked) td:first-child,
+    table.dataTable tbody tr:has(input[name="ids[]"]:checked) td:first-child { box-shadow: none !important; }
+    .app-table tbody tr > td:first-child:has(input[type="checkbox"]) input[type="checkbox"]:checked::after,
+    .app-table tbody tr > td:first-child:has(input[type="checkbox"]) input[type="checkbox"]:indeterminate::after,
+    table.dataTable tbody tr > td:first-child:has(input[type="checkbox"]) input[type="checkbox"]:checked::after,
+    table.dataTable tbody tr > td:first-child:has(input[type="checkbox"]) input[type="checkbox"]:indeterminate::after {
+        -webkit-mask-size: 17px 17px;
+                mask-size: 17px 17px;
+    }
+}
+
+
+/* ---- 2D.6  Badge system ------------------------------------------------- */
+
+.badge {
+    min-height: var(--badge-h);
+    padding: 2px 8px;
+    border-radius: var(--badge-radius);
+    font-size: var(--fs-badge);
+    font-weight: 600;
+    line-height: 1.3;
+    gap: 4px;
+    border-width: 1px;
+}
+.badge .svg-icon { width: 12px; height: 12px; }
+
+.badge-success,
+.badge-active   { background: var(--sem-success-bg); color: var(--sem-success-fg); border-color: rgba(34, 197, 94, 0.28); }
+.badge-danger,
+.badge-block    { background: var(--sem-danger-bg);  color: var(--sem-danger-fg);  border-color: rgba(239, 68, 68, 0.28); }
+.badge-warning,
+.badge-unpaid   { background: var(--sem-warning-bg); color: var(--sem-warning-fg); border-color: rgba(245, 158, 11, 0.28); }
+.badge-info,
+.badge-cyan     { background: var(--sem-info-bg);    color: var(--sem-info-fg);    border-color: rgba(6, 182, 212, 0.28); }
+.badge-purple   { background: var(--sem-purple-bg);  color: var(--sem-purple-fg);  border-color: rgba(168, 85, 247, 0.28); }
+.badge-gray     { background: var(--sem-neutral-bg); color: var(--badge-neutral-fg); border-color: rgba(148, 163, 184, 0.28); }
+/* Accent badge follows the user's colour only as a tint; the label stays
+   --text-main so it can never inherit an unreadable accent foreground. */
+.badge-accent   { background: var(--accent-soft); color: var(--text-main); border-color: var(--accent-mid); }
+
+.fx-compact-more {
+    min-height: 22px;
+    padding: 0 8px;
+    border-radius: var(--badge-radius);
+    background: var(--surface-3);
+    color: var(--text-muted);
+    border: 1px solid var(--border-soft);
+    font-size: 11px;
+    font-weight: 600;
+}
+.fx-compact-more:hover,
+.fx-compact-more.is-open {
+    background: var(--accent-soft);
+    color: var(--text-main);
+    border-color: var(--accent-mid);
+}
+
+
+/* ---- 2D.7  Pagination --------------------------------------------------- */
+
+.mdt-foot { margin-top: 12px; gap: 10px; font-size: 12px; color: var(--text-muted); }
+.mdt-pager { gap: 4px; }
+.mdt-page {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 32px;
+    padding: 0 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-soft);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background-color .14s ease, border-color .14s ease, color .14s ease;
+}
+.mdt-page:hover:not(.disabled):not(.active) {
+    background: var(--surface-2);
+    border-color: var(--border-mid);
+    color: var(--text-main);
+}
+.mdt-page:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.mdt-page.active {
+    background: var(--control-solid);
+    border-color: transparent;
+    color: var(--control-on-solid);
+    cursor: default;
+}
+.mdt-page.disabled { opacity: .45; cursor: not-allowed; }
+.mdt-dots { padding: 0 2px; color: var(--text-dim); }
+
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+    background: var(--surface-2) !important;
+    color: var(--text-main) !important;
+    border-color: var(--border-mid) !important;
+}
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {
+    background: var(--control-solid) !important;
+    color: var(--control-on-solid) !important;
+    border-color: transparent !important;
+}
+
+
+/* ---- 2D.8  Modal / dialog chrome ---------------------------------------- */
+
+.modal-overlay { background: rgba(9, 10, 13, 0.62); }
+
+.modal-box {
+    background: var(--surface-1);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-xl);
+}
+.modal-overlay .modal-box { box-shadow: var(--shadow-modal); }
+
+.modal-head {
+    padding: 15px 20px 12px;
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--border-soft);
+}
+.modal-head__title { font-size: 16px; font-weight: 600; }
+.modal-box > form,
+.modal-box > .modal-body { padding: 18px 20px 20px; }
+.modal-foot {
+    padding: 13px 20px;
+    gap: 8px;
+    border-top: 1px solid var(--border-soft);
+    background: var(--surface-1);
+}
+.modal-close {
+    width: 30px;
+    height: 30px;
+    border-radius: var(--radius-sm);
+    font-size: 18px;
+    color: var(--text-muted);
+}
+.modal-close:hover { background: var(--surface-3); color: var(--text-main); }
+
+@media (max-width: 480px) {
+    .modal-box { max-height: calc(100vh - 24px - var(--safe-t) - var(--safe-b)); }
+    .modal-head { padding: 14px 16px 11px; }
+    .modal-box > form,
+    .modal-box > .modal-body { padding: 14px 16px 16px; }
+    .modal-foot { padding: 12px 16px; }
+    .modal-foot .btn { flex: 1 1 auto; justify-content: center; }
+}
+
+
+/* ---- 2D.9  Dropdown / menu chrome --------------------------------------- */
+
+.hdr-dd__head {
+    padding: 6px 8px 9px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+.hdr-dd__item {
+    padding: 8px 10px;
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    color: var(--text-main);
+}
+.hdr-dd__item:hover { background: var(--surface-2); color: var(--text-main); }
+.hdr-dd__empty { padding: 14px 8px; font-size: 12px; color: var(--text-muted); }
+
+.profile-menu__head { padding: 12px 10px 9px; }
+.profile-menu__head b { font-size: 13px; }
+.profile-menu__head small { font-size: 11px; color: var(--text-muted); }
+.profile-menu a,
+.profile-menu button {
+    padding: 8px 10px;
+    border-radius: var(--radius-md);
+    font-size: 13px;
+}
+.profile-menu a:hover,
+.profile-menu button:hover { background: var(--surface-2); color: var(--text-main); }
+.profile-menu .menu-danger { color: var(--sem-danger-fg); }
+.profile-menu .menu-danger:hover {
+    background: var(--color-danger-soft);
+    color: var(--sem-danger-fg);
+}
+
+
+/* ---- 2D.10  Generic textual links --------------------------------------
+   The global `a { color: var(--accent) }` rule cannot be contrast-safe: the
+   accent is user-selectable and raw accent text measures as low as 1.00:1
+   (white on white).  Unclassed links therefore use a readable neutral text
+   colour plus a CSS-only underline affordance; the accent appears only as
+   the hover underline, which is a graphic rather than text. */
+
+a { transition: color .14s ease, text-decoration-color .14s ease; }
+a:hover { filter: none; }
+
+a:not([class]) {
+    color: var(--text-main);
+    text-decoration: underline;
+    text-decoration-color: var(--link-underline);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+}
+a:not([class]):hover {
+    color: var(--text-main);
+    text-decoration-color: var(--link-underline-hover);
+    text-decoration-thickness: 2px;
+}
+a:not([class]):focus-visible {
+    outline: none;
+    border-radius: var(--radius-xs);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.text-link {
+    color: var(--text-main);
+    text-decoration: underline;
+    text-decoration-color: var(--link-underline);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+}
+.text-link:hover {
+    color: var(--text-main);
+    text-decoration-color: var(--link-underline-hover);
+}
+/* Accent-coloured TEXT uses --accent-text, not --accent-ink: --accent-ink
+   is only validated against --surface-1, and these three are the shared
+   consumers that can sit on a raised surface.  Fills, borders, focus rings
+   and hover underlines keep --accent-ink / --accent-ring unchanged. */
+.text-accent { color: var(--accent-text); }
+
+.card__title .symbol { color: var(--accent-text); }
+.mc-tooltip b { color: var(--accent-text); }
+
+
+/* ---- 2D.11  Existing empty states --------------------------------------- */
+
+.mdt-empty {
+    padding: 32px 20px !important;
+    color: var(--text-muted) !important;
+    font-size: 13px;
+    font-style: normal;
+}
+
+
+/* ---- 2D.12  Bulk-selection bar (shared component) ----------------------- */
+
+.fx-bulk-badge {
+    background: var(--surface-3);
+    border: 1px solid var(--sem-success-fg);
+    color: var(--sem-success-fg);
+    border-radius: var(--radius-lg);
+    padding: 7px 9px 7px 13px;
+    gap: 7px;
+    font-size: 12.5px;
+}
+.fx-bulk-badge__count {
+    min-width: 20px;
+    height: 20px;
+    border-radius: var(--radius-full);
+    background: var(--sem-success-fg);
+    color: var(--surface-1);
+    font-size: 11.5px;
+}
+.fx-bulk-badge__clear,
+.fx-bulk-badge__delete {
+    padding: 6px 11px;
+    border-radius: var(--radius-md);
+    font-size: 12px;
+    font-weight: 600;
+}
+.fx-bulk-badge__clear {
+    background: var(--sem-warning-fg);
+    color: var(--surface-1);
+}
+.fx-bulk-badge__delete {
+    background: var(--sem-danger-fg);
+    color: var(--surface-1);
+}
+
+
+/* =========================================================================
+   STAGE 3A — DASHBOARD PAGE FAMILY
+   Scope: panel/index.php ONLY.  Presentation only — no PHP/JS/markup change.
+
+   Every rule below is anchored on the dashboard wrapper selector
+       #main-content .wrapper:has(> .dash-row)
+   which cannot match any other page: `.dash-row` exists only in index.php,
+   reports.php has no `.wrapper` at all, and users.php has no `.dash-row`.
+   That keeps shared primitives (`.panel`, `.stat-card`, `.chart-box`,
+   `.panel__title`, `.mdt-*`) from being reopened globally — Stage 2C/2D stay
+   frozen for every other page family.
+
+   Several dashboard rules can safely drop the anchor because the class is
+   dashboard-exclusive (`.chart-toolbar`, `.chart-range-btn`, `.donut-wrap`,
+   `.activity-*`); those are grouped in 3A.5/3A.6.
+   ========================================================================= */
+
+/* ---- 3A.1  Card header hierarchy ---------------------------------------- */
+
+#main-content .wrapper:has(> .dash-row) .panel { padding: 18px; }
+
+#main-content .wrapper:has(> .dash-row) .panel__head {
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+#main-content .wrapper:has(> .dash-row) .panel__title {
+    font-size: var(--fs-section);
+    font-weight: 600;
+}
+#main-content .wrapper:has(> .dash-row) .panel__sub {
+    font-size: var(--fs-caption);
+    margin-top: 3px;
+}
+
+/* ---- 3A.2  KPI row ------------------------------------------------------ */
+
+#main-content .wrapper:has(> .dash-row) .stats-grid {
+    gap: 12px;
+    margin-bottom: 16px;
+}
+#main-content .wrapper:has(> .dash-row) .stat-card {
+    padding: 16px;
+    gap: 10px;
+}
+#main-content .wrapper:has(> .dash-row) .stat-card__trend {
+    padding: 2px 7px;
+    font-size: 11px;
+}
+
+/* ---- 3A.3  Analytics grid rhythm ---------------------------------------- */
+
+#main-content .wrapper:has(> .dash-row) .dash-row {
+    gap: 14px;
+    margin-bottom: 14px;
+}
+#main-content .wrapper:has(> .dash-row) .dash-row > .panel {
+    display: flex;
+    flex-direction: column;
+}
+
+/* ---- 3A.4  Primary analytics: chart proportion + category fill ---------- */
+
+#main-content .wrapper:has(> .dash-row) .chart-box {
+    height: 288px;
+    flex: 0 0 auto;
+}
+#main-content .wrapper:has(> .dash-row) .chart-box.sm { height: 240px; }
+
+/* the doughnut canvas fills the card so the 1/3 column stops leaving a dead
+   band under the legend when the row is stretched by the taller chart card */
+#main-content .wrapper:has(> .dash-row) .donut-wrap {
+    flex: 1 1 auto;
+    min-height: 236px;
+}
+
+/* ---- 3A.5  Range control group (dashboard-exclusive selectors) ---------- */
+/* `.chart-toolbar` / `.chart-range-btn` occur only in index.php, so these four
+   rules cannot affect another page family.  Padding and radius stay owned by
+   the Stage 2D rules (`.chart-toolbar > .chart-range-btn`), which outrank a
+   bare class selector; only the properties 2D does not set are declared here.
+   `font-size` deliberately holds at --fs-label (12px) at every width, which
+   supersedes the legacy <=480px shrink to 11px — the control stays readable
+   on a phone. */
+
+.chart-toolbar {
+    gap: 2px;
+    padding: 3px;
+    margin-bottom: 0;
+}
+.chart-range-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    font-size: var(--fs-label);
+    line-height: 1;
+}
+.chart-toolbar > .chart-range-btn.active {
+    color: var(--accent-text);
+    font-weight: 600;
+}
+.chart-range-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+/* ---- 3A.6  Recent activity --------------------------------------------- */
+
+#main-content .wrapper:has(> .dash-row) .activity-list { gap: 0; }
+#main-content .wrapper:has(> .dash-row) .activity-item {
+    gap: 10px;
+    padding: 10px 8px;
+    border-radius: 0;
+    border-bottom: 1px solid var(--border-soft);
+}
+#main-content .wrapper:has(> .dash-row) .activity-item:last-child { border-bottom: 0; }
+#main-content .wrapper:has(> .dash-row) .activity-item:hover { background: var(--surface-2); }
+
+#main-content .wrapper:has(> .dash-row) .activity-ico {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-md);
+}
+#main-content .wrapper:has(> .dash-row) .activity-ico .svg-icon {
+    width: 17px;
+    height: 17px;
+}
+#main-content .wrapper:has(> .dash-row) .activity-body b {
+    font-size: var(--fs-body);
+    font-weight: 600;
+}
+#main-content .wrapper:has(> .dash-row) .activity-body small { font-size: var(--fs-caption); }
+
+/* pager settles at the bottom of the activity card */
+#main-content .wrapper:has(> .dash-row) .panel:has(.activity-list) .mdt-foot { margin-top: auto; }
+
+/* ---- 3A.7  Full-width orders card -------------------------------------- */
+
+#main-content .wrapper:has(> .dash-row) > .panel { padding: 18px; }
+#main-content .wrapper:has(> .dash-row) > .panel .panel__head { margin-bottom: 12px; }
+#main-content .wrapper:has(> .dash-row) > .panel .table-wrap { border-radius: var(--radius-md); }
+
+/* ---- 3A.8  Dashboard responsive composition ---------------------------- */
+
+@media (max-width: 1100px) {
+    #main-content .wrapper:has(> .dash-row) .stat-card { padding: 15px; }
+}
+
+@media (max-width: 640px) {
+    #main-content .wrapper:has(> .dash-row) .panel { padding: 16px; }
+    #main-content .wrapper:has(> .dash-row) .panel__head { flex-wrap: wrap; }
+    #main-content .wrapper:has(> .dash-row) .chart-toolbar {
+        width: 100%;
+        justify-content: flex-start;
+    }
+    #main-content .wrapper:has(> .dash-row) .chart-box { height: 236px; }
+    #main-content .wrapper:has(> .dash-row) .chart-box.sm { height: 208px; }
+    #main-content .wrapper:has(> .dash-row) .donut-wrap {
+        flex: 0 0 auto;
+        min-height: 208px;
+    }
+    #main-content .wrapper:has(> .dash-row) .stat-card { padding: 14px; gap: 8px; }
+    #main-content .wrapper:has(> .dash-row) > .panel { padding: 16px; }
+}
+
+
+/* =========================================================================
+   STAGE 3B — LIST / CRUD PAGE FAMILY
+   Scope: the seven populated management pages, addressed through an explicit
+   presentation marker on each page's own wrapper:
+
+       #main-content .wrapper.fx-page-list
+
+   users.php · invoice.php · product.php · service.php · payment.php ·
+   category.php · discounts.php carry that marker.
+
+   Why a marker instead of a structural selector: cancelService.php carries the
+   identical search + status + date + `.card > .table-wrap > table.app-table--
+   summary` + pager stack, and tickets.php carries the same stack minus the
+   status/date blocks.  No `:has()` anchor can separate this family from those
+   two pages, so the marker is the only leak-proof anchor.  It also keeps this
+   layer away from the dashboard, reports, appearance and the settings pages.
+
+   The layer composes only: it moves no values, invents no sections and
+   re-opens no Stage 2C/2D primitive.  Every selector below is anchored on the
+   family wrapper, so nothing here can reach another page.
+   ========================================================================= */
+
+/* ---- 3B.1  Page head: one action rhythm --------------------------------- */
+/* Stage 2C page-head geometry is kept.  Only the family rhythm is unified —
+   product/category already ship `btn-sm` (32px) actions while discounts ships
+   full-height `.btn` (38px) ones; the family settles on the 32px action. */
+
+#main-content .wrapper.fx-page-list > .page-head {
+    margin-bottom: 14px;
+    padding: 10px 0;
+}
+#main-content .wrapper.fx-page-list > .page-head .chip-row { gap: 8px; }
+#main-content .wrapper.fx-page-list > .page-head .btn {
+    height: var(--control-h-sm);
+    min-height: var(--control-h-sm);
+}
+
+/* ---- 3B.2  Summary band at list-page density ---------------------------- */
+/* Same four metrics, same markup, same decorative icon palette as Stage 2C —
+   only the card is brought down to list density so the band reads as a compact
+   overview strip instead of a second dashboard KPI row. */
+
+#main-content .wrapper.fx-page-list > .stats-grid {
+    gap: 10px;
+    margin-bottom: 12px;
+}
+#main-content .wrapper.fx-page-list > .stats-grid > .stat-card {
+    gap: 10px;
+    padding: 12px 14px;
+}
+#main-content .wrapper.fx-page-list > .stats-grid .stat-card__top { gap: 10px; }
+#main-content .wrapper.fx-page-list > .stats-grid .stat-card__label { font-size: var(--fs-caption); }
+#main-content .wrapper.fx-page-list > .stats-grid .stat-card__value { font-size: var(--fs-kpi); }
+#main-content .wrapper.fx-page-list > .stats-grid .stat-card__icon {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-md);
+}
+#main-content .wrapper.fx-page-list > .stats-grid .stat-card__icon .svg-icon {
+    width: 16px;
+    height: 16px;
+}
+
+/* ---- 3B.3  One filtering system ----------------------------------------- */
+/* search / status / date stop reading as three unrelated full-width cards.
+   Consecutive filter blocks fuse into a single segmented surface: the upper
+   block drops its own bottom edge, the lower block keeps its top border as the
+   shared divider, and the touching corners are squared so no double border or
+   inner radius remains.
+
+   `.card + .card { margin-top: 22px }` would otherwise hold the fused blocks
+   22px apart, so the lower block's margin-top has to be neutralised too. */
+
+#main-content .wrapper.fx-page-list > .card.fx-search-filter,
+#main-content .wrapper.fx-page-list > .card.fx-status-filter,
+#main-content .wrapper.fx-page-list > .card.fx-date-filter {
+    padding: 10px 14px;
+    margin-bottom: 12px;
+}
+
+#main-content .wrapper.fx-page-list > .card.fx-search-filter:has(+ .card.fx-status-filter),
+#main-content .wrapper.fx-page-list > .card.fx-search-filter:has(+ .card.fx-date-filter),
+#main-content .wrapper.fx-page-list > .card.fx-status-filter:has(+ .card.fx-date-filter) {
+    margin-bottom: 0;
+    border-bottom: 0;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+#main-content .wrapper.fx-page-list > .card.fx-search-filter + .card.fx-status-filter,
+#main-content .wrapper.fx-page-list > .card.fx-search-filter + .card.fx-date-filter,
+#main-content .wrapper.fx-page-list > .card.fx-status-filter + .card.fx-date-filter {
+    margin-top: 0;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+
+/* The block label rides the control line instead of claiming a full-width row
+   of its own.  `align-items: flex-start` keeps the label pinned to the FIRST
+   control row when the pills/presets wrap onto further rows at tablet and
+   mobile widths, and `min-height` matches the pill height so the label's text
+   is optically centred on that row rather than sitting on its baseline. */
+#main-content .wrapper.fx-page-list > .card.fx-status-filter,
+#main-content .wrapper.fx-page-list > .card.fx-date-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px 10px;
+}
+#main-content .wrapper.fx-page-list > .card.fx-status-filter > .fx-status-filter__title,
+#main-content .wrapper.fx-page-list > .card.fx-date-filter > .fx-date-filter__title {
+    flex: 0 0 auto;
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;      /* = .fx-status-filter__pill / .fx-date-filter__preset height (Stage 2D) */
+    margin-bottom: 0;
+}
+#main-content .wrapper.fx-page-list > .card.fx-status-filter > .fx-status-filter__pills,
+#main-content .wrapper.fx-page-list > .card.fx-date-filter > .fx-date-filter__presets {
+    flex: 1 1 auto;
+    margin-bottom: 0;
+}
+#main-content .wrapper.fx-page-list > .card.fx-date-filter > .fx-date-filter__form {
+    flex: 1 1 100%;
+    max-width: 860px;
+    gap: 8px;
+}
+#main-content .wrapper.fx-page-list > .card.fx-date-filter > .fx-date-filter__active {
+    flex: 1 1 100%;
+    margin-top: 0;
+}
+
+#main-content .wrapper.fx-page-list .fx-search-filter__form { gap: 8px; }
+
+/* Below 1100px the pill/preset row is wider than the space left beside the
+   block label, so with the Stage 2D `flex: 1 1 auto` the row is pushed onto a
+   line of its own and the label's row is wasted.  Allowing the row to shrink
+   keeps the label on the first control line.
+
+   Above 1100px the Stage 2D basis already yields the single-row composition;
+   forcing a zero basis there would collapse the date presets, so the rule is
+   deliberately bounded to the widths where it helps.  Measured on invoice.php
+   (filter stack, search + status + date):
+       1440px  239 -> 239   (unchanged, already single-row)
+       1024px  321 -> 279
+        390px  754 -> 710   */
+
+@media (max-width: 1100px) {
+    #main-content .wrapper.fx-page-list > .card.fx-status-filter > .fx-status-filter__pills,
+    #main-content .wrapper.fx-page-list > .card.fx-date-filter > .fx-date-filter__presets {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+}
+
+/* ---- 3B.4  Result area -------------------------------------------------- */
+/* The card stays the only bordered surface around the table (`.table-wrap` is
+   borderless), so the desktop padding simply comes down to list density.
+
+   Guarded by the complement of the Stage 2D mobile condition: inside
+   `(max-width: 768px)` / `(max-width: 992px) and (pointer: coarse)` the mobile
+   table->card conversion deliberately strips the result card's chrome
+   (`.card:has(.app-table--summary) { padding: 0; border: 0 }`), and an
+   unguarded rule here would re-introduce the padding and the border. */
+
+@media (min-width: 993px), (min-width: 769px) and (pointer: fine) {
+    #main-content .wrapper.fx-page-list > .card:has(.table-wrap) { padding: 16px; }
+}
+
+/* ---- 3B.5  Mobile ------------------------------------------------------- */
+/* The mobile table -> card conversion is the protected verified pattern and is
+   not rewritten.  Only the summary band is tightened here.
+
+   The 480px filter rules that make the pills/presets 2-up and the date form
+   single-column are deliberately left alone: they are the original author's
+   touch-target sizing, not a defect.  The filter blocks therefore stack
+   logically at mobile, as the stage brief requires, and the label keeps riding
+   the first control row via 3B.3 rather than claiming a row of its own. */
+
+@media (max-width: 768px), (max-width: 992px) and (pointer: coarse) {
+
+    #main-content .wrapper.fx-page-list > .page-head { margin-bottom: 12px; }
+
+    #main-content .wrapper.fx-page-list > .stats-grid {
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+    #main-content .wrapper.fx-page-list > .stats-grid > .stat-card { padding: 10px 12px; }
+    #main-content .wrapper.fx-page-list > .stats-grid .stat-card__value { font-size: 18px; }
+    #main-content .wrapper.fx-page-list > .stats-grid .stat-card__icon {
+        width: 28px;
+        height: 28px;
+    }
+    #main-content .wrapper.fx-page-list > .stats-grid .stat-card__icon .svg-icon {
+        width: 14px;
+        height: 14px;
+    }
+}
+
+
+/* ============================================================================
+   STAGE 3C — TICKETS & SUPPORT CONVERSATION EXPERIENCE
+   ----------------------------------------------------------------------------
+   Presentation only.  No markup contract, no request parameter, no SQL, no
+   AJAX endpoint, no polling interval and no inline JavaScript is touched.
+
+   SCOPE
+     Every selector below is anchored on the ticket page marker
+       #main-content .wrapper.fx-page-tickets
+     — the single class token added to tickets.php's existing
+     <div class="wrapper">.  Nothing here can match any other panel page.
+
+   TWO SHELLS, TWO ROOTS
+     tickets.php renders ONE wrapper for TWO different experiences, so the
+     shells are separated structurally and never by assumption:
+       inbox  : #main-content .wrapper.fx-page-tickets:has(#ticketsTable)
+       thread : #main-content .wrapper.fx-page-tickets:has(.tk-chat)
+     #ticketsTable exists only in list mode; .tk-chat exists only in thread
+     mode.  Neither selector can reach the other shell.
+
+   INBOX COLUMN MAP (fixed by the protected thead markup, tickets.php L663-671)
+     1 checkbox · 2 tracking · 3 user · 4 department · 5 subject
+     6 status   · 7 updated  · 8 messages · 9 actions
+     Column cells are addressed positionally rather than by their Persian
+     data-label text, so the rules stay ASCII and fail loudly if the column
+     order ever changes.
+
+   The .tk-* component rules live in an inline <style> INSIDE tickets.php,
+   linked AFTER theme.css.  Everything below therefore out-specifies it
+   (id + marker class + class) rather than relying on source order, and that
+   inline block is left byte-identical.
+
+   No !important is used anywhere.  Where a Stage 2D rule already owns a
+   property with !important, the custom property it reads
+   (--table-row-pad-y / --table-cell-pad-x) is re-scoped instead of
+   re-declaring the property.
+
+   Accent contract: accent TEXT uses --accent-text, accent non-text
+   indicators use --accent-ink.  Raw var(--accent) is never used for text.
+   ============================================================================ */
+
+
+/* ---- 3C.1  Shared page head (both shells) --------------------------------- */
+
+#main-content .wrapper.fx-page-tickets > .page-head {
+    margin-bottom: 14px;
+    padding: 10px 0;
+}
+#main-content .wrapper.fx-page-tickets > .page-head .chip-row { gap: 8px; }
+#main-content .wrapper.fx-page-tickets > .page-head .btn {
+    height: var(--control-h-sm);
+    min-height: var(--control-h-sm);
+}
+
+
+/* ---- 3C.2  INBOX — toolbar and result shell ------------------------------- */
+
+#main-content .wrapper.fx-page-tickets:has(#ticketsTable) > .card.fx-search-filter {
+    padding: 10px 14px;
+    margin-bottom: 12px;
+}
+#main-content .wrapper.fx-page-tickets:has(#ticketsTable) > .card.fx-search-filter .fx-search-filter__form {
+    gap: 8px;
+}
+/* the result container: 22px -> 16px buys ~12px of table width on every page */
+#main-content .wrapper.fx-page-tickets .card:has(#ticketsTable) { padding: 16px; }
+/* #tk-bulk-bar holds only the permanently display:none inline delete button —
+   the real bulk UI is the floating #fx-bulk-badge.  Collapse its dead margin. */
+#main-content .wrapper.fx-page-tickets #tk-bulk-bar { margin-bottom: 0; }
+
+
+/* ---- 3C.3  INBOX — the support queue table -------------------------------- */
+
+/* Row padding is driven by --table-row-pad-y, which the Stage 2D td rule reads
+   with !important.  Re-scoping the custom property tunes the row height without
+   re-declaring the property (and without !important).
+   Desktop row height 58px -> ~51px; the action buttons (--control-h-sm, 32px)
+   remain the tallest thing in the row, so nothing is clipped. */
+#main-content .wrapper.fx-page-tickets #ticketsTable {
+    --table-row-pad-y: 9px;
+    --table-cell-pad-x: 10px;
+}
+
+/* Hierarchy: every data cell drops to secondary, so the subject is the one
+   thing that reads first.  Badges, links and buttons keep their own colour. */
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody td { color: var(--text-muted); }
+
+/* 5 — subject: the easiest text in the row to identify. */
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody td:nth-child(5) {
+    color: var(--text-main);
+    font-weight: 600;
+}
+
+/* 2 — tracking code: technical metadata, monospaced numeric rhythm.
+   The value, its LTR isolation and its inline text-align are untouched. */
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody td:nth-child(2) {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', 'Consolas', 'Courier New', monospace;
+    font-size: var(--fs-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    color: var(--text-dim);
+}
+
+/* 7 — updated timestamp and 4 — department must not wrap: wrapping here is
+   what inflated the row to 90px at 1024px. */
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody td:nth-child(7),
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody td:nth-child(4) {
+    white-space: nowrap;
+}
+
+/* 8 — message count: compact quiet metadata, never a call to action. */
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody td:nth-child(8) {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+/* 6 — status and 9 — actions keep their full size on one line. */
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody td:nth-child(6),
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody td.cell-actions {
+    white-space: nowrap;
+}
+
+
+/* ---- 3C.4  INBOX — Unseen / Customerresponse emphasis ----------------------
+   tk_status_badge() renders BOTH 'Unseen' and 'Customerresponse' as the
+   badge-warning badge, so .badge-warning is the exact, class-based hook for
+   "needs a reply" — no Persian text selector is needed.
+
+   Emphasis is deliberately restrained: a soft NEUTRAL surface lift plus a
+   slightly stronger subject weight, on top of the existing status badge.
+   No accent tint, no edge, no animation.  A selected row still wins, because
+   the Stage 2D selection rule owns `background` with !important.            */
+
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody tr:has(.badge-warning) td {
+    background: var(--surface-2);
+}
+#main-content .wrapper.fx-page-tickets #ticketsTable tbody tr:has(.badge-warning) td:nth-child(5) {
+    font-weight: 700;
+}
+
+
+/* ---- 3C.5  THREAD — header and support context band ------------------------ */
+
+#main-content .wrapper.fx-page-tickets:has(.tk-chat) > .page-head { margin-bottom: 14px; }
+
+/* The sub line is already-rendered metadata ("user — department — subject —
+   status").  It is grouped visually into one compact context band; no text is
+   added, duplicated or generated. */
+#main-content .wrapper.fx-page-tickets:has(.tk-chat) .page-head__sub {
+    display: inline-block;
+    max-width: 100%;
+    margin-top: 6px;
+    padding: 6px 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    color: var(--text-muted);
+    line-height: 1.9;
+}
+#main-content .wrapper.fx-page-tickets:has(.tk-chat) .page-head__sub .badge,
+#main-content .wrapper.fx-page-tickets:has(.tk-chat) .page-head__sub .text-link {
+    vertical-align: middle;
+}
+
+
+/* ---- 3C.6  THREAD — conversation canvas ------------------------------------
+   The card keeps --surface-1; the conversation sits on a --surface-2 canvas so
+   that --surface-1 message surfaces read as raised.  Without this the user
+   bubble is exactly the same colour as the card in BOTH themes and has no
+   visible boundary at all.                                                    */
+
+#main-content .wrapper.fx-page-tickets .card:has(.tk-chat) { padding: 16px; }
+#main-content .wrapper.fx-page-tickets .tk-chat {
+    gap: 14px;
+    padding: 14px;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    background: var(--surface-2);
+}
+
+
+/* ---- 3C.7  THREAD — message surfaces ---------------------------------------
+   User  : neutral elevated surface (--surface-1 on the --surface-2 canvas).
+   Admin : the same surface plus an accent-associated border and a 3px accent
+           inline-start edge.  No saturated accent fill — the accent never
+           becomes a large filled region.
+   Radius is a uniform 10px: the old 14px bubbles carried a 4px corner, i.e. a
+   speech-tail device, which this stage removes.                               */
+
+#main-content .wrapper.fx-page-tickets .tk-bubble {
+    border-radius: var(--radius-lg);
+    padding: 10px 13px;
+    border: 1px solid var(--border-mid);
+    background: var(--surface-1);
+}
+#main-content .wrapper.fx-page-tickets .tk-row.user .tk-bubble {
+    background: var(--surface-1);
+    border-color: var(--border-mid);
+}
+#main-content .wrapper.fx-page-tickets .tk-row.admin .tk-bubble {
+    background: var(--surface-1);
+    border-color: var(--accent-mid);
+    border-inline-start: 3px solid var(--accent-ink);
+}
+
+
+/* ---- 3C.8  THREAD — message metadata, quotes, reactions, actions -----------
+   Accent TEXT switches from raw var(--accent) to --accent-text, the only
+   accent token validated for text on all four surfaces.                      */
+
+#main-content .wrapper.fx-page-tickets .tk-who {
+    opacity: 1;
+    color: var(--text-muted);
+}
+#main-content .wrapper.fx-page-tickets .tk-row.admin .tk-who { color: var(--accent-text); }
+#main-content .wrapper.fx-page-tickets .tk-time {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+#main-content .wrapper.fx-page-tickets .tk-quote {
+    border-inline-start-color: var(--accent-ink);
+    background: var(--surface-2);
+    color: var(--text-muted);
+    white-space: normal;
+}
+#main-content .wrapper.fx-page-tickets .tk-receipt.is-seen { color: var(--accent-ink); }
+
+#main-content .wrapper.fx-page-tickets .tk-reaction-chip {
+    background: var(--surface-1);
+    border-color: var(--border-mid);
+}
+#main-content .wrapper.fx-page-tickets .tk-reaction-chip.is-mine {
+    background: var(--accent-soft);
+    border-color: var(--accent-mid);
+}
+#main-content .wrapper.fx-page-tickets .tk-msg-action-btn {
+    background: var(--surface-1);
+    border-color: var(--border-mid);
+}
+#main-content .wrapper.fx-page-tickets .tk-msg-action-btn:hover {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    border-color: var(--accent-mid);
+}
+#main-content .wrapper.fx-page-tickets .tk-reply-preview-who { color: var(--accent-text); }
+#main-content .wrapper.fx-page-tickets .tk-reply-preview-bar {
+    border-inline-start-color: var(--accent-ink);
+    background: var(--surface-2);
+}
+
+
+/* ---- 3C.9  THREAD — reply composer ----------------------------------------
+   The reply form contract is untouched: same action, same method, same
+   enctype, same field names.  Visual integration only.                       */
+
+#main-content .wrapper.fx-page-tickets .tk-reply {
+    margin-top: 14px;
+    padding: 12px;
+    gap: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+}
+#main-content .wrapper.fx-page-tickets .tk-reply textarea.form-control {
+    min-height: 68px;
+    background-color: var(--surface-1);
+    border-color: var(--border-mid);
+}
+#main-content .wrapper.fx-page-tickets .tk-reply .tkup-drop {
+    min-height: 52px;
+    background: var(--surface-1);
+}
+#main-content .wrapper.fx-page-tickets .tkup-drop:hover {
+    border-color: var(--accent-ink);
+    color: var(--accent-text);
+    background: var(--accent-soft);
+}
+#main-content .wrapper.fx-page-tickets .tkup-drop:focus-within {
+    border-color: var(--accent-ink);
+}
+#main-content .wrapper.fx-page-tickets .tkup-slot-rm { background: var(--surface-1); }
+
+
+/* ---- 3C.10  Responsive ----------------------------------------------------- */
+
+/* Touch devices have no hover, so the hover-revealed message actions are
+   unreachable there.  Reveal them permanently on coarse pointers and small
+   screens.  Presentation only — no handler, no interval, no JS is touched. */
+@media (hover: none), (pointer: coarse), (max-width: 768px) {
+    #main-content .wrapper.fx-page-tickets .tk-msg-actions {
+        opacity: 1;
+        pointer-events: auto;
+    }
+    #main-content .wrapper.fx-page-tickets .tk-bubble-wrap { max-width: 88%; }
+}
+
+@media (max-width: 768px), (max-width: 992px) and (pointer: coarse) {
+    #main-content .wrapper.fx-page-tickets > .page-head { margin-bottom: 12px; }
+    #main-content .wrapper.fx-page-tickets .card:has(.tk-chat) { padding: 12px; }
+    #main-content .wrapper.fx-page-tickets .tk-chat {
+        gap: 12px;
+        padding: 10px;
+        border-radius: var(--radius-md);
+    }
+    #main-content .wrapper.fx-page-tickets:has(.tk-chat) .page-head__sub {
+        display: block;
+        line-height: 1.85;
+    }
+}
+/* ============================================================================
+   STAGE 3D-A — APPEARANCE & THEME CONTROL EXPERIENCE
+   ----------------------------------------------------------------------------
+   Presentation only.  No storage key, data-color value, theme-engine method,
+   FOUC bootstrap or request contract is changed.
+
+   SCOPE — every selector is anchored on the appearance page marker
+     #main-content .wrapper.fx-page-appearance
+   the single class token added to appearance.php's existing
+   <div class="wrapper">.  The html[data-theme] / html[data-color="custom"]
+   selectors below still carry that marker, so they are equally bounded.
+
+   The theme-mode control's selected state is painted from html[data-theme]
+   (set during parse by header.php's FOUC bootstrap) rather than from a
+   JS-added class, so it is correct at first paint and cannot disagree with
+   the runtime theme.
+   ============================================================================ */
+
+#main-content .wrapper.fx-page-appearance > .page-head {
+    margin-bottom: 14px;
+    padding: 10px 0;
+}
+#main-content .wrapper.fx-page-appearance .ap-card {
+    max-width: 720px;
+    padding: 18px;
+}
+
+/* --- section rhythm ------------------------------------------------------ */
+#main-content .wrapper.fx-page-appearance .ap-section-title {
+    margin: 0 0 4px;
+    font-size: var(--fs-card);
+    font-weight: 700;
+}
+#main-content .wrapper.fx-page-appearance .ap-lead {
+    margin: 0 0 14px;
+    font-size: var(--fs-td);
+    color: var(--text-muted);
+}
+#main-content .wrapper.fx-page-appearance .ap-modes + .ap-section-title {
+    margin-top: 22px;
+}
+#main-content .wrapper.fx-page-appearance .ap-custom {
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border-soft);
+}
+
+/* --- theme-mode segmented control ---------------------------------------- */
+#main-content .wrapper.fx-page-appearance .ap-modes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+}
+#main-content .wrapper.fx-page-appearance .ap-mode {
+    -webkit-appearance: none;
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: var(--control-h);
+    padding: 0 14px;
+    font: inherit;
+    font-size: var(--fs-card);
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: border-color .15s ease, background-color .15s ease, color .15s ease;
+}
+#main-content .wrapper.fx-page-appearance .ap-mode:hover {
+    color: var(--text-main);
+    border-color: var(--border-mid);
+}
+#main-content .wrapper.fx-page-appearance .ap-mode:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+#main-content .wrapper.fx-page-appearance .ap-mode.active,
+html[data-theme="dark"] #main-content .wrapper.fx-page-appearance .ap-mode[data-theme-mode="dark"],
+html[data-theme="light"] #main-content .wrapper.fx-page-appearance .ap-mode[data-theme-mode="light"] {
+    color: var(--text-main);
+    background: var(--surface-1);
+    border-color: var(--accent-ink);
+    box-shadow: inset 0 0 0 1px var(--accent-ink);
+}
+#main-content .wrapper.fx-page-appearance .ap-mode.active::after,
+html[data-theme="dark"] #main-content .wrapper.fx-page-appearance .ap-mode[data-theme-mode="dark"]::after,
+html[data-theme="light"] #main-content .wrapper.fx-page-appearance .ap-mode[data-theme-mode="light"]::after {
+    content: "";
+    flex: 0 0 auto;
+    width: 5px;
+    height: 9px;
+    margin-top: -3px;
+    border: solid var(--accent-ink);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+/* --- accent preset grid -------------------------------------------------- */
+/* The preset tiles carry data-color="<preset>" as their OWN attribute (it is
+   the click payload read by the page script), so the frozen Stage 2A
+   preset-token blocks `[data-color="x"] { ... --accent-ink: ... }` - written
+   for <html> - ALSO match the tile and re-declare --accent-ink / --accent-ring
+   with that preset's DARK-theme value on the tile itself.  The original page
+   never consumed --accent-ink inside a tile, so the collision was invisible;
+   the selected-state ring below is the first consumer and would otherwise
+   paint the dark ink in light theme (#A78BFA on #FFFFFF = 2.71:1, below 3:1).
+   Alias the ROOT values on the grid (which has no data-color of its own) and
+   consume the aliases inside the tile, so the tile inherits the theme-correct
+   ink rather than its own colliding re-declaration.  No token value is
+   duplicated and no frozen file is touched. */
+#main-content .wrapper.fx-page-appearance #ap-grid {
+    --fx-ink: var(--accent-ink);
+    --fx-ring: var(--accent-ring);
+    gap: 10px;
+    margin-top: 12px;
+}
+#main-content .wrapper.fx-page-appearance .ap-swatch {
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 48px;
+    padding: 10px 14px;
+    padding-inline-start: 32px;
+    font: inherit;
+    font-size: var(--fs-card);
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: border-color .15s ease, background-color .15s ease, color .15s ease;
+}
+#main-content .wrapper.fx-page-appearance .ap-swatch:hover {
+    transform: none;
+    color: var(--text-main);
+    background: var(--surface-3);
+    border-color: var(--border-mid);
+}
+#main-content .wrapper.fx-page-appearance .ap-swatch:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--fx-ring);
+}
+#main-content .wrapper.fx-page-appearance .ap-swatch.active {
+    color: var(--text-main);
+    font-weight: 700;
+    background: var(--surface-1);
+    border-color: var(--fx-ink);
+    box-shadow: inset 0 0 0 1px var(--fx-ink);
+}
+#main-content .wrapper.fx-page-appearance .ap-swatch.active::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    inset-inline-start: 11px;
+    width: 6px;
+    height: 11px;
+    margin-top: -7px;
+    border: solid var(--fx-ink);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+#main-content .wrapper.fx-page-appearance .ap-dot {
+    width: 22px;
+    height: 22px;
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.18), 0 0 0 1px var(--border-mid);
+}
+
+/* --- custom colour ------------------------------------------------------- */
+#main-content .wrapper.fx-page-appearance .ap-hexrow {
+    gap: 10px;
+    margin-top: 12px;
+}
+#main-content .wrapper.fx-page-appearance .ap-hexrow input[type="text"] {
+    padding: 10px 12px;
+    border-radius: var(--radius-lg);
+    border-color: var(--border-mid);
+    font-size: var(--fs-card);
+}
+#main-content .wrapper.fx-page-appearance .ap-hexrow input[type="text"]:focus {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+#main-content .wrapper.fx-page-appearance .ap-hexrow input[type="color"],
+#main-content .wrapper.fx-page-appearance .ap-preview {
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--border-mid);
+    border-radius: var(--radius-lg);
+}
+#main-content .wrapper.fx-page-appearance .ap-hexrow input[type="color"] {
+    background: var(--surface-1);
+}
+#main-content .wrapper.fx-page-appearance .ap-note {
+    margin-top: 10px;
+    font-size: var(--fs-caption);
+    color: var(--text-dim);
+}
+#main-content .wrapper.fx-page-appearance .ap-actions {
+    margin-top: 18px;
+}
+/* while a custom colour is live the custom block reads as the active control */
+html[data-color="custom"] #main-content .wrapper.fx-page-appearance .ap-custom {
+    border-top-color: var(--accent-ink);
+}
+html[data-color="custom"] #main-content .wrapper.fx-page-appearance .ap-preview {
+    box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+/* --- narrow viewports ---------------------------------------------------- */
+@media (max-width: 560px) {
+    #main-content .wrapper.fx-page-appearance .ap-card {
+        padding: 14px;
+    }
+    #main-content .wrapper.fx-page-appearance .ap-swatch {
+        padding-inline-start: 28px;
+    }
+    #main-content .wrapper.fx-page-appearance .ap-swatch.active::after {
+        inset-inline-start: 9px;
+    }
+}
+
+/* ============================================================================
+   STAGE 3D-B2 — THEME-ONLY SETTINGS FAMILY
+   ----------------------------------------------------------------------------
+   seeting_x_ui.php · broadcast.php · textbot.php
+
+   Presentation only.  No <form> action, method, enctype, field name, hidden
+   field, CSRF token, AJAX endpoint, listener, storage key, theme-engine
+   method, SQL statement or redirect target is changed by this layer.
+
+   SCOPE — every selector below is anchored on the family marker
+     #main-content .wrapper.fx-page-settings-theme
+   the single class token added to the existing <div class="wrapper"> /
+   <section class="wrapper"> of the three pages.  None of the three loads
+   admin-extra.css, so this is the only stage layer that reaches them.
+
+   The three pages ship page-local <style> blocks.  Those blocks follow
+   theme.css in document order and their selectors match at (0,1,0), so every
+   rule below is written at (1,2,0) or higher and wins without !important.
+
+   Accent TEXT uses --accent-text (the Stage 2B/2D rule): raw --accent is not
+   contrast-safe as text — for the yellow preset on a light surface it
+   measures 1.53:1.  Fills, borders, icons and focus rings use --accent-ink /
+   --accent-ring.  Semantic states use --sem-*-bg / --sem-*-fg, which have a
+   light-theme definition; the legacy --color-*-soft pair is declared only in
+   the dark :root and therefore never adapted to the light theme.
+
+   No new custom property, no hard-coded colour, no !important.
+   ============================================================================ */
+
+
+/* ---- 3D-B2.1  Page rhythm ----------------------------------------------- */
+
+#main-content .wrapper.fx-page-settings-theme > .page-head {
+    margin-bottom: var(--gap-section);
+}
+#main-content .wrapper.fx-page-settings-theme > .alert {
+    margin-bottom: var(--gap-section);
+}
+#main-content .wrapper.fx-page-settings-theme .card {
+    padding: var(--space-6);
+}
+
+
+/* ---- 3D-B2.2  Accent text and accent icons ------------------------------
+   Same migration Stage 2D.10 performed for .card__title .symbol; the
+   page-head symbol and the family's own accent-coloured text were missed. */
+
+#main-content .wrapper.fx-page-settings-theme .page-head__title .symbol,
+#main-content .wrapper.fx-page-settings-theme .xui-field label::before,
+#main-content .wrapper.fx-page-settings-theme .bc-stat__value,
+#main-content .wrapper.fx-page-settings-theme .text-key,
+#main-content .wrapper.fx-page-settings-theme .search-scope__btn.active,
+#main-content .wrapper.fx-page-settings-theme .cat-select__item:hover,
+#main-content .wrapper.fx-page-settings-theme .cat-select__item.active,
+#main-content .wrapper.fx-page-settings-theme .fmt-btn:hover {
+    color: var(--accent-text);
+}
+
+#main-content .wrapper.fx-page-settings-theme .page-head__title .svg-icon,
+#main-content .wrapper.fx-page-settings-theme .card__title .svg-icon,
+#main-content .wrapper.fx-page-settings-theme .card__title i {
+    color: var(--accent-ink);
+}
+
+
+/* ---- 3D-B2.3  Field contract --------------------------------------------
+   Every family field lands on the shared control contract: --input-h tall,
+   --input-bg surface, --control-radius corners, --accent-ink border and
+   --accent-ring focus.  These are the same declarations Stage 2D gives
+   .form-control; nothing new is invented.  Heights are deliberately NOT
+   re-declared for the multi-line fields, so each keeps the page's own
+   content-driven sizing (rows="22" for the JSON editor, min-height for the
+   broadcast composer, autogrow for the bot-text rows). */
+
+#main-content .wrapper.fx-page-settings-theme .xui-input,
+#main-content .wrapper.fx-page-settings-theme .xui-select,
+#main-content .wrapper.fx-page-settings-theme .filter-bar input {
+    width: 100%;
+    min-width: 0;
+    height: var(--input-h);
+    min-height: var(--input-h);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--control-radius);
+    background: var(--input-bg);
+    color: var(--text-main);
+    font-family: 'Vazirmatn', system-ui, sans-serif;
+    font-size: var(--fs-body);
+    line-height: 1.4;
+    outline: none;
+    transition: border-color .14s ease, box-shadow .14s ease,
+                background-color .14s ease;
+}
+
+#main-content .wrapper.fx-page-settings-theme .xui-textarea,
+#main-content .wrapper.fx-page-settings-theme .bc-msg,
+#main-content .wrapper.fx-page-settings-theme .text-row textarea {
+    width: 100%;
+    min-width: 0;
+    padding: var(--space-3);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--control-radius);
+    background: var(--input-bg);
+    color: var(--text-main);
+    font-size: var(--fs-body);
+    line-height: 1.7;
+    outline: none;
+    transition: border-color .14s ease, box-shadow .14s ease,
+                background-color .14s ease;
+}
+
+[data-theme="light"] #main-content .wrapper.fx-page-settings-theme .xui-input,
+[data-theme="light"] #main-content .wrapper.fx-page-settings-theme .xui-select,
+[data-theme="light"] #main-content .wrapper.fx-page-settings-theme .filter-bar input,
+[data-theme="light"] #main-content .wrapper.fx-page-settings-theme .xui-textarea,
+[data-theme="light"] #main-content .wrapper.fx-page-settings-theme .bc-msg,
+[data-theme="light"] #main-content .wrapper.fx-page-settings-theme .text-row textarea {
+    border-color: var(--border-mid);
+}
+
+#main-content .wrapper.fx-page-settings-theme .xui-input::placeholder,
+#main-content .wrapper.fx-page-settings-theme .bc-msg::placeholder,
+#main-content .wrapper.fx-page-settings-theme .filter-bar input::placeholder,
+#main-content .wrapper.fx-page-settings-theme .text-row textarea::placeholder {
+    color: var(--text-placeholder);
+}
+
+#main-content .wrapper.fx-page-settings-theme .xui-input:focus,
+#main-content .wrapper.fx-page-settings-theme .xui-select:focus,
+#main-content .wrapper.fx-page-settings-theme .xui-textarea:focus,
+#main-content .wrapper.fx-page-settings-theme .bc-msg:focus,
+#main-content .wrapper.fx-page-settings-theme .filter-bar input:focus,
+#main-content .wrapper.fx-page-settings-theme .text-row textarea:focus {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+    background: var(--input-bg);
+}
+
+/* The bot-text source rows are read-only and open a modal on click.  The
+   page's own rules make them non-resizable and show a pointer; the field
+   contract above would otherwise win on specificity and re-enable resizing,
+   so the intent is restated here. */
+#main-content .wrapper.fx-page-settings-theme .text-row textarea[readonly] {
+    cursor: pointer;
+    resize: none;
+}
+#main-content .wrapper.fx-page-settings-theme .text-row textarea[readonly]:hover {
+    border-color: var(--accent-ink);
+}
+
+
+/* ---- 3D-B2.4  Semantic state --------------------------------------------
+   --color-*-soft / --color-* exist only in the dark :root, so in the light
+   theme an alert or badge kept a dark-hue text colour (measured as low as
+   1.9:1).  --sem-*-bg / --sem-*-fg are defined for both themes. */
+
+#main-content .wrapper.fx-page-settings-theme .text-row textarea.changed {
+    border-color: var(--sem-warning-fg);
+    background: var(--sem-warning-bg);
+}
+#main-content .wrapper.fx-page-settings-theme .text-key__badge {
+    background: var(--sem-warning-bg);
+    border-color: var(--sem-warning-fg);
+    color: var(--sem-warning-fg);
+    font-size: var(--fs-eyebrow);
+}
+#main-content .wrapper.fx-page-settings-theme .alert-success {
+    background: var(--sem-success-bg);
+    border-color: var(--sem-success-fg);
+    color: var(--sem-success-fg);
+}
+#main-content .wrapper.fx-page-settings-theme .alert-warning {
+    background: var(--sem-warning-bg);
+    border-color: var(--sem-warning-fg);
+    color: var(--sem-warning-fg);
+}
+#main-content .wrapper.fx-page-settings-theme .alert-danger {
+    background: var(--sem-danger-bg);
+    border-color: var(--sem-danger-fg);
+    color: var(--sem-danger-fg);
+}
+#main-content .wrapper.fx-page-settings-theme .alert-info {
+    background: var(--sem-info-bg);
+    border-color: var(--sem-info-fg);
+    color: var(--sem-info-fg);
+}
+#main-content .wrapper.fx-page-settings-theme .progress-summary__ok {
+    color: var(--sem-success-fg);
+}
+#main-content .wrapper.fx-page-settings-theme .progress-summary__fail {
+    color: var(--sem-danger-fg);
+}
+
+
+/* ---- 3D-B2.5  Broadcast composition ------------------------------------- */
+
+/* minmax(0, 1fr) instead of 1fr: the automatic min-content minimum of a
+   1fr track is a horizontal-overflow hazard the moment a child grows a
+   wider intrinsic minimum. */
+#main-content .wrapper.fx-page-settings-theme .bc-grid {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: var(--gap-section);
+}
+
+/* A media query contributes no specificity, so the (1,2,0) rule above
+   outranks the page's own `@media (max-width: 900px) { .bc-grid {
+   grid-template-columns: 1fr; } }` *inside that very breakpoint* — the
+   composer would stay in two columns on a phone, crushing the message
+   card to a sliver and pushing the audience column off-screen.  The
+   collapse is restated at the same breakpoint, anchored the same way,
+   so the page's responsive intent survives. */
+@media (max-width: 900px) {
+    #main-content .wrapper.fx-page-settings-theme .bc-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+#main-content .wrapper.fx-page-settings-theme .bc-stat {
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-4);
+    margin-bottom: var(--space-3);
+}
+#main-content .wrapper.fx-page-settings-theme .bc-stat__label {
+    font-size: var(--fs-field-label);
+    margin-bottom: var(--space-1);
+}
+#main-content .wrapper.fx-page-settings-theme .bc-stat__value {
+    font-size: var(--fs-kpi);
+    line-height: 1.25;
+}
+#main-content .wrapper.fx-page-settings-theme .progress-bar {
+    background: var(--input-bg);
+    border-color: var(--border-soft);
+}
+#main-content .wrapper.fx-page-settings-theme .progress-bar__fill {
+    background: var(--accent-ink);
+}
+#main-content .wrapper.fx-page-settings-theme .progress-info {
+    font-size: var(--fs-caption);
+    margin-top: var(--space-2);
+}
+
+
+/* ---- 3D-B2.6  Bot-texts composition ------------------------------------- */
+
+#main-content .wrapper.fx-page-settings-theme .filter-bar {
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+}
+#main-content .wrapper.fx-page-settings-theme .search-scope {
+    border-radius: var(--control-radius);
+    padding: var(--space-1);
+}
+#main-content .wrapper.fx-page-settings-theme .search-scope__btn {
+    border-radius: var(--radius-sm);
+    font-size: var(--fs-td);
+}
+#main-content .wrapper.fx-page-settings-theme .search-scope__btn:hover {
+    background: var(--surface-3);
+}
+#main-content .wrapper.fx-page-settings-theme .search-scope__btn.active {
+    box-shadow: inset 0 0 0 1px var(--accent-ink);
+}
+#main-content .wrapper.fx-page-settings-theme .cat-select {
+    margin-bottom: var(--space-5);
+}
+#main-content .wrapper.fx-page-settings-theme .cat-select__box {
+    min-height: var(--input-h);
+    padding: 0 var(--space-4);
+    border-radius: var(--control-radius);
+    font-size: var(--fs-body);
+}
+#main-content .wrapper.fx-page-settings-theme .cat-select__box:hover,
+#main-content .wrapper.fx-page-settings-theme .cat-select.open .cat-select__box {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+#main-content .wrapper.fx-page-settings-theme .cat-select__dd {
+    border-radius: var(--radius-lg);
+    padding: var(--space-2);
+}
+#main-content .wrapper.fx-page-settings-theme .cat-select__item {
+    border-radius: var(--radius-sm);
+    font-size: var(--fs-td);
+}
+
+/* The category panel becomes the settings card.  Without it 985 editor rows
+   float directly on the page background with no grouping and, in the light
+   theme, with almost no definition against --bg-body.  display is NOT
+   declared here, so the page's own active / search-mode / search-empty
+   tab-switching rules keep working. */
+#main-content .wrapper.fx-page-settings-theme .text-tabpanel {
+    background: var(--surface-1);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    padding: var(--space-1) var(--space-4) var(--space-4);
+}
+#main-content .wrapper.fx-page-settings-theme .text-tabpanel__searchhead {
+    font-size: var(--fs-section);
+    padding: var(--space-3) var(--space-1);
+    margin-bottom: var(--space-1);
+}
+
+/* Rows become hairline-separated entries inside the card rather than
+   individually bordered boxes.  The separator is kept on EVERY row: a search
+   or a category switch can hide any row, so a :last-child reset would leave
+   the visible list without a closing rule.  The middle track is minmax(0,1fr)
+   for the same overflow reason as .bc-grid. */
+#main-content .wrapper.fx-page-settings-theme .text-row {
+    grid-template-columns: 220px minmax(0, 1fr) auto;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-1);
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--border-soft);
+    border-radius: 0;
+}
+#main-content .wrapper.fx-page-settings-theme .text-row:hover {
+    border-bottom-color: var(--border-mid);
+}
+/* The row that owns the focused editor is marked with an accent bar on the
+   inline-start edge, the same affordance Stage 2D gives a selected table
+   row.  It replaces a hover rule that only nudged a border colour. */
+#main-content .wrapper.fx-page-settings-theme .text-row:focus-within {
+    background: var(--accent-soft);
+    border-bottom-color: var(--accent-ink);
+    box-shadow: inset -3px 0 0 var(--accent-ink);
+}
+#main-content .wrapper.fx-page-settings-theme .text-key {
+    padding-top: var(--space-2);
+    font-size: var(--fs-mono);
+}
+
+/* Action bar — the same contract Stage 3D-B1 gave .save-bar.  Sticky
+   positioning and z-index are inherited from the page's own rule. */
+#main-content .wrapper.fx-page-settings-theme .save-bar {
+    margin-top: var(--gap-section);
+    padding: var(--space-4) 0;
+    gap: var(--space-3);
+    background: linear-gradient(180deg, transparent, var(--bg-body) 45%);
+}
+
+
+/* ---- 3D-B2.7  Narrow viewports ------------------------------------------
+   At 360–390px the JSON editor's 380px floor and the broadcast composer's
+   220px floor each take most of the screen; both become content-sized. */
+
+@media (max-width: 768px) {
+    #main-content .wrapper.fx-page-settings-theme .xui-textarea {
+        min-height: 220px;
+    }
+    #main-content .wrapper.fx-page-settings-theme .bc-msg {
+        min-height: 160px;
+    }
+    #main-content .wrapper.fx-page-settings-theme .text-tabpanel {
+        padding: var(--space-1) var(--space-3) var(--space-3);
+    }
+    #main-content .wrapper.fx-page-settings-theme .text-row {
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--space-2);
+    }
+    #main-content .wrapper.fx-page-settings-theme .text-key {
+        padding-top: 0;
+        font-size: var(--fs-caption);
+    }
+}
+/* ==========================================================================
+   STAGE 3D-B3 — STANDALONE KEYBOARD EDITORS
+   panel/keyboard.php  ·  panel/service_keyboard.php
+   --------------------------------------------------------------------------
+   Both pages are complete documents with no panel shell: neither contains
+   `#main-content` nor `.wrapper`, and neither includes the shared header.
+   They share no container either — keyboard.php roots its content at
+   `.kb-page`, service_keyboard.php at `.skb-page` — and on both pages the
+   toast and the editor modal are SIBLINGS of that root, not descendants.
+   A marker on the page root would therefore miss them.
+
+   The scope marker therefore lives on `<body>`:
+
+       body.fx-keyboard-editor    →  keyboard.php
+       body.fx-service-keyboard   →  service_keyboard.php
+
+   Both names are unused anywhere else in panel/, and `theme.js` never
+   assigns `document.body.className` (it only toggles the named classes
+   `sidebar-open` / `sidebar-collapsed`), so the marker cannot be clobbered.
+   `body.lb-modal-open` is the existing precedent for this pattern.
+
+   Pure append.  Nothing above this banner is modified, moved or deleted.
+   Every selector below is anchored on one of the two markers, so each rule
+   matches exactly one page and zero elements on the other 27 pages.
+   No `!important`, no hardcoded colour, no bare `direction`, and no
+   `display`/`opacity` on any class that JavaScript toggles
+   (`open` `show` `dragging` `drag-over` `active` `hidden` `sel` `is-auto`
+   `span2` `scroll-left` `scroll-right` `all-default` `no-default`).
+
+   Token discipline:
+     accent as TEXT        →  var(--accent-text)   (validated on all 4 surfaces)
+     accent as INDICATOR   →  var(--accent-ink)
+     focus ring            →  var(--shadow-focus)  /  var(--accent-ring)
+     state foreground      →  var(--sem-*-fg)
+     state surface         →  var(--sem-*-bg)
+     text on a solid fill  →  var(--control-on-solid)
+
+   Two selectors that look like defects are deliberately left alone:
+   the Telegram button-colour gradients on `.kb-btn[data-style=…]`,
+   `.btn-prev[data-style=…]`, `.ph-btn[data-style=…]`,
+   `.sw[data-style=…]` and `.kb-color-opt__swatch` are literal previews of
+   what the button will look like inside Telegram, so they must NOT track
+   the panel accent — the same reasoning as the 2A `PRESET_HEX` table and
+   the six KPI icon colours.
+   ========================================================================== */
+
+
+/* ==========================================================================
+   A.  keyboard.php  —  body.fx-keyboard-editor
+   ========================================================================== */
+
+/* --- A.1  Accent used as TEXT ------------------------------------------- */
+/* `--accent` is the raw hue; as a text colour it fails AA on --surface-2/-3
+   in light mode.  `--accent-text` is the design system's validated accent
+   text token.  K1–K4 plus the page-local topbar brand. */
+body.fx-keyboard-editor .kb-topbar__brand { color: var(--accent-text); }
+body.fx-keyboard-editor .kb-hero__text h1 .svg-icon { color: var(--accent-text); }
+body.fx-keyboard-editor .kb-modal__head .svg-icon { color: var(--accent-text); }
+body.fx-keyboard-editor .kb-field > label::before { color: var(--accent-text); }
+body.fx-keyboard-editor .kb-select optgroup { color: var(--accent-text); }
+body.fx-keyboard-editor .kb-row__handle:hover { color: var(--accent-text); }
+body.fx-keyboard-editor .kb-add-btn:hover { color: var(--accent-text); }
+body.fx-keyboard-editor .kb-add-row:hover { color: var(--accent-text); }
+body.fx-keyboard-editor .kb-icon-btn:hover { color: var(--accent-text); }
+
+/* --- A.2  Accent as INDICATOR + focus rings ------------------------------ */
+/* The original focus rings used `--accent-glow`, a flat 50%-alpha halo that
+   is tuned for dark surfaces and smears in light mode.  `--accent-ring` is
+   the theme-aware variant (0.45 dark / 0.40 light) and `--shadow-focus` is
+   the token the 2D component system defines for exactly this purpose.  K5–K8. */
+body.fx-keyboard-editor .kb-btn:hover { border-color: var(--accent-ink); }
+body.fx-keyboard-editor .kb-add-btn:hover { border-color: var(--accent-ink); }
+body.fx-keyboard-editor .kb-add-row:hover { border-color: var(--accent-ink); }
+body.fx-keyboard-editor .kb-icon-btn:hover { border-color: var(--accent-ink); }
+body.fx-keyboard-editor .kb-topbar .btn:hover {
+    border-color: color-mix(in srgb, var(--accent-ink) 55%, transparent);
+}
+body.fx-keyboard-editor .kb-row.drag-over {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+}
+body.fx-keyboard-editor .kb-field input[type="text"]:focus {
+    border-color: var(--accent-ink);
+    box-shadow: var(--shadow-focus);
+}
+body.fx-keyboard-editor .kb-select:focus {
+    border-color: var(--accent-ink);
+    box-shadow: var(--shadow-focus);
+}
+body.fx-keyboard-editor .kb-color-opt input:checked + .kb-color-opt__card {
+    border-color: var(--accent-ink);
+    box-shadow: 0 0 0 2px var(--accent-ring);
+}
+body.fx-keyboard-editor .kb-color-opt input:focus-visible + .kb-color-opt__card {
+    border-color: var(--accent-ink);
+    box-shadow: var(--shadow-focus);
+}
+
+/* --- A.3  Semantic state colours ---------------------------------------- */
+/* `--color-success` / `--color-danger` / `--color-danger-soft` are the DARK
+   values, declared once and used unconditionally, so on light surfaces these
+   read as washed-out pills.  `--sem-*-fg` / `--sem-*-bg` are theme-aware.
+   K9–K14. */
+body.fx-keyboard-editor .kb-toast.success {
+    border-color: var(--sem-success-fg);
+    color: var(--sem-success-fg);
+}
+body.fx-keyboard-editor .kb-toast.error {
+    border-color: var(--sem-danger-fg);
+    color: var(--sem-danger-fg);
+}
+body.fx-keyboard-editor .kb-preview-head .dot { background: var(--sem-success-fg); }
+body.fx-keyboard-editor .kb-icon-btn.danger:hover {
+    border-color: var(--sem-danger-fg);
+    color: var(--sem-danger-fg);
+    background: var(--sem-danger-bg);
+}
+body.fx-keyboard-editor .kb-btn .kb-btn__remove:hover {
+    background: var(--sem-danger-fg);
+    color: var(--control-on-solid);
+}
+
+/* --- A.4  Help card + preview path -------------------------------------- */
+/* The nine presentational inline styles on the help card and the monospace
+   preview path are removed from the markup and re-expressed here.  The two
+   functional inline styles — `#kb-custom-wrap{display:none}` and the
+   service page's `.pagination{display:none}` — are untouched. */
+body.fx-keyboard-editor .kb-page > .card { margin-top: 20px; }
+body.fx-keyboard-editor .kb-page > .card > .card__head + div {
+    padding: 0 4px;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.9;
+}
+body.fx-keyboard-editor .kb-page > .card > .card__head + div > p { margin: 0 0 10px; }
+body.fx-keyboard-editor .kb-page > .card > .card__head + div > ul {
+    margin: 0;
+    padding-inline-start: 18px;
+    line-height: 2;
+}
+body.fx-keyboard-editor .kb-page > .card > .card__head + div > ul > li > b {
+    color: var(--text-main);
+}
+body.fx-keyboard-editor .kb-page > .card > .card__head + div > ul > li:nth-child(2) > b {
+    color: var(--accent-text);
+}
+body.fx-keyboard-editor .kb-page > .card > .card__head + div > ul > li:nth-child(3) > b {
+    color: var(--sem-success-fg);
+}
+body.fx-keyboard-editor .kb-page > .card > .card__head + div > ul > li:nth-child(4) > b {
+    color: var(--sem-danger-fg);
+}
+body.fx-keyboard-editor .kb-preview-head > span:last-child {
+    font-family: monospace;
+    font-size: 11px;
+}
+
+/* --- A.5  Surfaces and geometry ----------------------------------------- */
+/* The page inherited 8–10px radii and a hardcoded dark modal footer; both
+   are brought onto the current surface/radius scale. */
+body.fx-keyboard-editor .kb-hero { border-radius: 16px; }
+body.fx-keyboard-editor .kb-preview-wrap { border-radius: 16px; }
+body.fx-keyboard-editor .kb-row { border-radius: 12px; }
+body.fx-keyboard-editor .kb-row:hover { background: var(--surface-3); }
+body.fx-keyboard-editor .kb-btn { border-radius: 9px; }
+body.fx-keyboard-editor .kb-add-row { border-radius: 12px; }
+body.fx-keyboard-editor .kb-modal__box { border-radius: 16px; }
+body.fx-keyboard-editor .kb-modal__foot { background: var(--surface-3); }
+
+/* --- A.6  Responsive restatement ---------------------------------------- */
+/* A media query contributes NO specificity, so the base rules above outrank
+   the page's own `@media (max-width: 600px)` collapse inside that very
+   breakpoint.  The modal box is the only element whose radius the page
+   re-declares responsively, so it is the only one restated. */
+@media (max-width: 600px) {
+    body.fx-keyboard-editor .kb-modal__box { border-radius: 18px 18px 14px 14px; }
+}
+
+
+/* ==========================================================================
+   B.  service_keyboard.php  —  body.fx-service-keyboard
+   ========================================================================== */
+
+/* --- B.1  Accent used as TEXT ------------------------------------------- */
+/* This page's <style> uses the raw `--accent` as a text colour in eight
+   places.  Same defect class as A.1. */
+body.fx-service-keyboard .skb-brand { color: var(--accent-text); }
+body.fx-service-keyboard .g-tab.active { color: var(--accent-text); }
+body.fx-service-keyboard .s-tab.active { color: var(--accent-text); }
+body.fx-service-keyboard .s-tabs-arrow:hover:not(:disabled) { color: var(--accent-text); }
+body.fx-service-keyboard .btn-auto-tag { color: var(--accent-text); }
+body.fx-service-keyboard .pg-btn:hover:not(:disabled) { color: var(--accent-text); }
+body.fx-service-keyboard .sv-more.open .sv-more-btn { color: var(--accent-text); }
+body.fx-service-keyboard .sv-more-chk { color: var(--accent-text); }
+
+/* --- B.2  Accent as INDICATOR ------------------------------------------- */
+body.fx-service-keyboard .g-tab.active { border-bottom-color: var(--accent-ink); }
+body.fx-service-keyboard .s-tab.active { border-bottom-color: var(--accent-ink); }
+body.fx-service-keyboard .pg-btn:hover:not(:disabled) { border-color: var(--accent-ink); }
+body.fx-service-keyboard .sv-more.open .sv-more-btn { border-color: var(--accent-ink); }
+body.fx-service-keyboard .s-mselect:focus { border-color: var(--accent-ink); }
+body.fx-service-keyboard .s-tabs-wrap::-webkit-scrollbar-thumb:hover { background: var(--accent-ink); }
+body.fx-service-keyboard .btn-auto-tag {
+    border-color: color-mix(in srgb, var(--accent-ink) 35%, transparent);
+}
+/* `--accent-fg` exists, so the hardcoded `#fff` fallback was dead weight. */
+body.fx-service-keyboard .s-tabs-arrow:active:not(:disabled) { color: var(--accent-fg); }
+body.fx-service-keyboard .pg-btn.active { color: var(--accent-fg); }
+
+/* --- B.3  Semantic state colours ---------------------------------------- */
+/* K19 — `--text-strong` is defined NOWHERE in panel/, so this declaration
+   always fell back to `#fff`: white text on `--accent-soft`, i.e. invisible
+   in light mode.  K22 / K30 / K32 — six hardcoded state colours. */
+body.fx-service-keyboard .sv-counter-text b { color: var(--accent-text); }
+body.fx-service-keyboard .sv-counter.all-default b { color: var(--sem-warning-fg); }
+body.fx-service-keyboard .sv-counter.no-default b { color: var(--sem-success-fg); }
+body.fx-service-keyboard .sv-badge.saving { color: var(--sem-warning-fg); }
+body.fx-service-keyboard .sv-badge.saved { color: var(--sem-success-fg); }
+body.fx-service-keyboard .skb-toast.success {
+    border-color: var(--sem-success-fg);
+    color: var(--sem-success-fg);
+}
+body.fx-service-keyboard .skb-toast.error {
+    border-color: var(--sem-danger-fg);
+    color: var(--sem-danger-fg);
+}
+/* --- INERT OVERRIDES (pre-existing dead markup) -------------------------- */
+/* `reply-badge`, `inline-badge` and `reply-warn-banner` are declared in this
+   page's own <style> but are never emitted by any markup or script anywhere
+   in panel/ — a project-wide grep finds them only as CSS declarations, with
+   zero `class="…"` occurrences.  The four rules below therefore render
+   nothing today.  They are kept, deliberately, as the token-backed
+   counterpart of the hardcoded `#ef4444` / `#22c55e` /
+   `rgba(239,68,68,.18)` declarations in that <style>: if the warning banner
+   is ever re-enabled it lands on the design system instead of on the
+   dark-only palette.  They are excluded from the contrast gate's live-target
+   list, so no accessibility claim rests on them. */
+body.fx-service-keyboard .reply-badge {
+    background: var(--sem-danger-bg);
+    color: var(--sem-danger-fg);
+    border-color: color-mix(in srgb, var(--sem-danger-fg) 40%, transparent);
+}
+body.fx-service-keyboard .inline-badge {
+    background: var(--sem-success-bg);
+    color: var(--sem-success-fg);
+    border-color: color-mix(in srgb, var(--sem-success-fg) 40%, transparent);
+}
+body.fx-service-keyboard .reply-warn-banner {
+    background: var(--sem-danger-bg);
+    border-color: color-mix(in srgb, var(--sem-danger-fg) 40%, transparent);
+}
+body.fx-service-keyboard .reply-warn-banner .svg-icon { color: var(--sem-danger-fg); }
+body.fx-service-keyboard .reply-warn-banner b { color: var(--sem-danger-fg); }
+body.fx-service-keyboard .reply-warn-banner u { color: var(--sem-danger-fg); }
+/* --- end inert overrides ------------------------------------------------- */
+body.fx-service-keyboard .sv-more-danger { color: var(--sem-danger-fg); }
+body.fx-service-keyboard .sv-more-danger .svg-icon { color: var(--sem-danger-fg); }
+
+/* --- B.4  Surfaces and geometry ----------------------------------------- */
+/* K28 — the swatch tooltip was a hardcoded dark chip, wrong on light.
+   The counter's hover tint was a hardcoded indigo that ignored the preset.
+   The mobile "more" button used a near-invisible white-alpha fill. */
+body.fx-service-keyboard .sw-tip {
+    background: var(--surface-3);
+    color: var(--text-main);
+    border-color: var(--border-mid);
+}
+body.fx-service-keyboard .sv-counter:hover {
+    background: color-mix(in srgb, var(--accent-ink) 12%, transparent);
+}
+body.fx-service-keyboard .sv-more-btn { background: var(--surface-2); }
+body.fx-service-keyboard .sv-more-btn:hover { background: var(--surface-3); }
+body.fx-service-keyboard .m-body { border-radius: 0 0 16px 16px; }
+body.fx-service-keyboard .g-tabs { border-radius: 14px 14px 0 0; }
+body.fx-service-keyboard .btn-card { border-radius: 14px; }
+body.fx-service-keyboard .phone { border-radius: 18px; }
+body.fx-service-keyboard .sv-more-menu { border-radius: 14px; }
+
+/* --- B.5  Responsive restatement ---------------------------------------- */
+/* The page re-declares `border-radius` for `.g-tabs`, `.btn-card` and
+   `.phone` inside its own `@media (max-width: 600px)`.  Because a media
+   query adds no specificity, the base rules in B.4 would otherwise win
+   inside that breakpoint and flatten the page's mobile sizing.  Each is
+   restated here at the same breakpoint, anchored the same way. */
+@media (max-width: 600px) {
+    body.fx-service-keyboard .g-tabs { border-radius: 8px 8px 0 0; }
+    body.fx-service-keyboard .btn-card { border-radius: 10px; }
+    body.fx-service-keyboard .phone { border-radius: 12px; }
+}
+/* =========================================================================
+   STAGE 4C-1A — USER LEGACY COMPONENT OWNERSHIP
+   panel/user.php only.  The eight components below were authored before the
+   Stage 2A token layer existed and were never migrated: every one of their
+   rules lives at L1268-L1325 and not one is re-declared anywhere in the
+   redesign region.  This block gives them token-based ownership so the
+   redesign layer, not the pre-2A layer, owns their final computed styles.
+
+   Presentation only.  This is a pure append: no markup, script, form,
+   route, database or Telegram contract is touched, and nothing above this
+   banner is edited, moved or removed.
+
+   Scope safety: these eight class names are emitted by panel/user.php and by
+   no other file in the panel (verified by grep across *.php, css/*.css and
+   js/), so this block cannot reach another surface.
+
+   Deliberate non-migrations, recorded so they are not "corrected" later:
+     * .tg-btn keeps its Telegram brand blue (#229ED9, and the
+       rgba(34,158,217,...) hover shadow).  Those declarations stay with the
+       legacy rule at L1294/L1301 and no colour literal is re-declared here —
+       only shape and spacing are tokenised.  Its :hover state is likewise
+       left entirely to L1301 so the brand interaction is preserved exactly.
+     * .avatar-circle keeps font-size: 36px.  The avatar renders an SVG whose
+       size comes from .svg-icon (18px), not from font-size, and the --fs-*
+       scale has no counterpart above --fs-kpi (22px).
+     * .info-grid > .card { margin: 0 } stays legacy: it depends on .card,
+       which is outside this stage's approved class set.
+     * .info-value declares NO color.  .text-accent (L5464) owns color for
+       <span class="info-value text-accent">, and an equal-specificity color
+       declaration appended after it would win and silently drop the accent
+       from the wallet-balance and discount-percent rows.
+     * .info-row gets no align-items: the legacy row stretches its children
+       and adding `center` would re-seat the status badge.
+   ========================================================================= */
+
+/* ---- 4C-1A.1  Profile header card --------------------------------------- */
+
+.profile-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-6);
+    margin-bottom: var(--gap-section);
+    background: var(--surface-1);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    text-align: center;
+}
+
+.profile-card h1 {
+    font-size: var(--fs-kpi);
+    font-weight: 700;
+}
+
+.profile-card p {
+    font-size: var(--fs-body);
+    color: var(--text-muted);
+}
+
+.avatar-circle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 92px;
+    height: 92px;
+    border-radius: var(--radius-full);
+    background: linear-gradient(135deg, var(--accent), var(--accent-mid));
+    color: var(--accent-fg);
+}
+
+/* ---- 4C-1A.2  Telegram deep-link button ---------------------------------
+   Shape and spacing only — the brand fill and its hover treatment remain
+   owned by the legacy rule, per the stage brief. */
+
+.tg-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-full);
+    font-size: var(--fs-btn);
+    text-decoration: none;
+    transition: 0.2s;
+}
+
+/* ---- 4C-1A.3  Info grid and definition rows -----------------------------
+   The dashed separator is the one piece of pre-2A debt with a direct
+   precedent: Stage 3D-B1 converted .setting-row from dashed to solid.  These
+   rows follow it so the two row families read alike. */
+
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+    gap: var(--space-4);
+    margin-bottom: var(--gap-section);
+    align-items: stretch;
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--border-soft);
+    font-size: var(--fs-body);
+}
+
+.info-row:last-child { border-bottom: 0; }
+
+.info-label { color: var(--text-muted); }
+
+.info-value { font-weight: 600; }
+
+/* ---- 4C-1A.4  Management action grid ------------------------------------ */
+
+.actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr));
+    gap: var(--space-3);
+}
+/* =========================================================================
+   STAGE 4C-1C — PRODUCTEDIT PAGE SCOPE
+   panel/productedit.php only.  The edit form's card carried
+   `style="max-width:820px; margin: 0 auto"` inline, so its width was owned by
+   markup rather than by the stylesheet.  The page now carries a marker and the
+   layout is owned here.
+
+   Values are reproduced EXACTLY, so this is an ownership migration with no
+   visual delta: the card must still measure 820px wide, centred, with zero
+   vertical margin.  `margin: 0 auto` is kept verbatim rather than converted to
+   `margin-inline`, so the computed box is bit-for-bit what the inline
+   declaration produced.
+
+   The marker is a new name: no other rule in the panel selects
+   `fx-page-productedit`, so this block cannot reach another surface and it
+   enables no other stage's CSS.  `productedit.php` links `theme.css` only, so
+   this block must live in this sheet.
+
+   Deliberately NOT done here: the page's five `color:var(--text-muted)` hints
+   and the three classless action `<div>`s.  Three of those hints are
+   load-bearing (measured: rgb(161,161,170) -> rgb(244,244,245)) and every
+   classless div has no selector hook, so migrating them would change rendering
+   and require a further markup change.
+   ========================================================================= */
+
+#main-content .wrapper.fx-page-productedit > .card {
+    max-width: 820px;
+    margin: 0 auto;
 }

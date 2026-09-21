@@ -91,9 +91,9 @@ function faoxima_trust_toggle_on($cur, $on, $off) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>تنظیم کانال اعتماد | پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat47">
+    <link rel="stylesheet" href="css/theme.css?v=flat50">
     <link rel="stylesheet" href="css/admin-extra.css?v=flat32">
-    <script src="js/theme.js?v=flat5" defer></script>
+    <script src="js/theme.js?v=flat50" defer></script>
     <style>
         .tc-card { max-width: 720px; margin: 0 auto; }
         .tc-savebar { max-width: 720px; margin: 0 auto; justify-content: flex-end; }
@@ -105,7 +105,7 @@ function faoxima_trust_toggle_on($cur, $on, $off) {
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper">
+        <div class="wrapper fx-page-settings">
 
             <div class="page-head">
                 <div>

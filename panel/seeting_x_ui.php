@@ -143,9 +143,9 @@ $settingsValueForTextarea = htmlspecialchars($settingsValue, ENT_NOQUOTES, 'UTF-
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>تنظیمات X-UI — پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat47">
+    <link rel="stylesheet" href="css/theme.css?v=flat50">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-    <script src="js/theme.js?v=flat5" defer>
+    <script src="js/theme.js?v=flat50" defer>
 
 </script>
     <style>
@@ -199,7 +199,7 @@ $settingsValueForTextarea = htmlspecialchars($settingsValue, ENT_NOQUOTES, 'UTF-
   <section id="container">
     <?php include("header.php"); ?>
     <section id="main-content">
-      <section class="wrapper">
+      <section class="wrapper fx-page-settings-theme">
         <div class="page-head">
           <div>
             <div class="page-head__title">
@@ -217,9 +217,9 @@ $settingsValueForTextarea = htmlspecialchars($settingsValue, ENT_NOQUOTES, 'UTF-
               <span class="chip">step 1 / 2</span>
             </div>
             <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 18px; line-height: 1.9;">
-              <span style="color: var(--accent);">&gt;</span> در این صفحه می‌توانید تعیین کنید چه تنظیماتی برای کانفیگ ساخته شود در پنل x-ui.
+              <span class="text-accent">&gt;</span> در این صفحه می‌توانید تعیین کنید چه تنظیماتی برای کانفیگ ساخته شود در پنل x-ui.
               <br>
-              <span style="color: var(--accent);">&gt;</span> ابتدا پنل مورد نظر را انتخاب کنید، سپس تنظیمات JSON را ویرایش نمایید.
+              <span class="text-accent">&gt;</span> ابتدا پنل مورد نظر را انتخاب کنید، سپس تنظیمات JSON را ویرایش نمایید.
             </p>
 
             <form class="xui-form" role="form" method="POST" action="seeting_x_ui.php?action=change">
@@ -255,7 +255,7 @@ $settingsValueForTextarea = htmlspecialchars($settingsValue, ENT_NOQUOTES, 'UTF-
               <span class="chip">step 2 / 2</span>
             </div>
             <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
-              <span style="color: var(--accent);">&gt;</span> یکی از پیش‌تنظیم‌های آماده را انتخاب کنید یا تنظیمات سفارشی خود را وارد نمایید.
+              <span class="text-accent">&gt;</span> یکی از پیش‌تنظیم‌های آماده را انتخاب کنید یا تنظیمات سفارشی خود را وارد نمایید.
             </p>
 
             <div class="xui-preset-row">

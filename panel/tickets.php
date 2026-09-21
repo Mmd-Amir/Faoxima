@@ -519,8 +519,8 @@ if ($viewT === '') {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>تیکت‌ها | ربات فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat47">
-    <script src="js/theme.js?v=flat5" defer></script>
+    <link rel="stylesheet" href="css/theme.css?v=flat50">
+    <script src="js/theme.js?v=flat50" defer></script>
     <style>
         .tk-chat { display:flex; flex-direction:column; gap:12px; max-height:60vh; overflow-y:auto; padding:6px 2px; }
         .tk-row { display:flex; }
@@ -629,7 +629,7 @@ if ($viewT === '') {
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper">
+        <div class="wrapper fx-page-tickets">
 
             <?php if ($viewT === ''): ?>
 

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>404 — صفحه یافت نشد</title>
-    <link rel="stylesheet" href="css/theme.css">
+    <link rel="stylesheet" href="css/theme.css?v=flat50">
 </head>
 <body class="errpage">
     <div class="terminal" style="max-width: 560px; width: 100%;">
