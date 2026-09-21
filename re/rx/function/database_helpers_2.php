@@ -2871,7 +2871,7 @@ $textonebuy
         $__paidAmount = intval($Payment_report['price']);
         $__creditAmount = $__paidAmount + $__chargeBonus;
         $Balance_confrim = intval($Balance_id['Balance']) + $__creditAmount;
-        $rxClaimCharge = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'paid' WHERE id_order = :o AND payment_Status <> 'paid'");
+        $rxClaimCharge = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'paid', direct_payment_done = 1 WHERE id_order = :o AND direct_payment_done IS NULL");
         $rxClaimCharge->execute([':o' => $Payment_report['id_order']]);
         if ($rxClaimCharge->rowCount() < 1) {
             return;
