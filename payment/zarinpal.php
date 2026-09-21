@@ -122,7 +122,7 @@ $response = json_decode($response,true);
 
     $atomic = $pdo->prepare(
         "UPDATE Payment_report SET payment_Status = 'paid' "
-        . "WHERE id_order = :id AND payment_Status <> 'paid'"
+        . "WHERE id_order = :id AND payment_Status NOT IN ('paid', 'cancelled')"
     );
     $atomic->bindValue(':id', $invoice_id, PDO::PARAM_STR);
     $atomic->execute();

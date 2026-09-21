@@ -79,7 +79,7 @@ function tonpay_process_webhook()
         http_response_code(404);
         exit('Order not found');
     }
-    if ($Payment_report['payment_Status'] == "expire") {
+    if ($Payment_report['payment_Status'] == "expire" || $Payment_report['payment_Status'] == "cancelled") {
         return;
     }
 
@@ -129,7 +129,7 @@ function tonpay_process_webhook()
     $creditAmount = $finalAmount;
 
     $atomic = $connect->prepare(
-        "UPDATE Payment_report SET payment_Status = ? WHERE id_order = ? AND payment_Status <> 'paid'"
+        "UPDATE Payment_report SET payment_Status = ? WHERE id_order = ? AND payment_Status NOT IN ('paid', 'cancelled')"
     );
     $statusPaid = 'paid';
     $atomic->bind_param('ss', $statusPaid, $orderId);

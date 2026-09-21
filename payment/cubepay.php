@@ -27,7 +27,7 @@ function cubepay_finalize_paid_order($orderId, $Payment_report, $methodLabel)
     global $connect;
 
     $atomic = $connect->prepare(
-        "UPDATE Payment_report SET payment_Status = ? WHERE id_order = ? AND payment_Status <> 'paid'"
+        "UPDATE Payment_report SET payment_Status = ? WHERE id_order = ? AND payment_Status NOT IN ('paid', 'cancelled')"
     );
     $statusPaid = 'paid';
     $atomic->bind_param('ss', $statusPaid, $orderId);
@@ -174,7 +174,7 @@ function cubepay_process_card_callback($authority, $orderIdHint)
         http_response_code(404);
         exit('Order not found');
     }
-    if ($Payment_report['payment_Status'] == "expire") {
+    if ($Payment_report['payment_Status'] == "expire" || $Payment_report['payment_Status'] == "cancelled") {
         return;
     }
     if ($orderIdHint !== null && (string) $orderIdHint !== (string) $Payment_report['id_order']) {
@@ -244,7 +244,7 @@ function cubepay_process_crypto_callback($orderId, $status, $amount, $sig, $paym
         http_response_code(404);
         exit('Order not found');
     }
-    if ($Payment_report['payment_Status'] == "expire") {
+    if ($Payment_report['payment_Status'] == "expire" || $Payment_report['payment_Status'] == "cancelled") {
         return;
     }
     if ($Payment_report['payment_Status'] == "paid") {

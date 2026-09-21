@@ -3417,6 +3417,32 @@ $textonebuy
         }
         $message_id = rx_send_banner_message($from_id, 'cart', $textcart, $sendresidcart, "html");
         updatePaymentMessageId($message_id, $randomString);
+    } elseif (preg_match('/^rxpgw_cancel_(zarinpal|plisio|nowpayment|iranpay2|tonpay|blupal|atlaspay|cubepay|variza|abangateway)_(\w+)$/', (string) $datain, $rxPgwMatch)) {
+        $rxPgwGatewayKey = $rxPgwMatch[1];
+        $rxPgwOrderId = $rxPgwMatch[2];
+        $rxPgwMethodMap = rx_gateway_payment_method_map();
+        $rxPgwMethod = $rxPgwMethodMap[$rxPgwGatewayKey] ?? $rxPgwGatewayKey;
+
+        $rxPgwCancelled = cancelPendingGatewayInvoice($from_id, $rxPgwMethod, $rxPgwOrderId);
+        if (!$rxPgwCancelled) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => '❌ این فاکتور دیگر قابل لغو نیست.',
+                'show_alert' => true,
+                'cache_time' => 0,
+            ]);
+            return;
+        }
+
+        $rxPgwLabel = rx_gateway_display_name($rxPgwGatewayKey);
+        $rxPgwText = "✅ فاکتور قبلی لغو شد.\n\nبرای دریافت فاکتور جدید، دکمه زیر را بزنید.";
+        $rxPgwKb = json_encode([
+            'inline_keyboard' => [
+                [['text' => "🔄 دریافت فاکتور جدید {$rxPgwLabel}", 'callback_data' => $rxPgwGatewayKey]],
+                [['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'backuser']],
+            ],
+        ], JSON_UNESCAPED_UNICODE);
+        Editmessagetext($from_id, $message_id, $rxPgwText, $rxPgwKb, 'HTML');
     } elseif ($datain == "zarinpal") {
         if ($user['Processing_value'] < 5000) {
             sendmessage($from_id, $textbotlang['users']['Balance']['zarinpal'], null, 'HTML');
@@ -3428,6 +3454,11 @@ $textonebuy
             $mainbalance = number_format($mainbalance);
             $maxbalance = number_format($maxbalance);
             sendmessage($from_id, sprintf($datatextbot['dyn_errors_min_max_deposit_amount'] ?? "❌ حداقل مبلغ واریزی این روش پرداخت باید %s و حداکثر %s تومان باشد", $mainbalance, $maxbalance), null, 'HTML');
+            return;
+        }
+        $rxPendingGw = findPendingGatewayInvoice($from_id, 'zarinpal');
+        if ($rxPendingGw !== null) {
+            rx_send_pending_gateway_invoice_notice($from_id, $message_id, $rxPendingGw, 'zarinpal');
             return;
         }
         deletemessage($from_id, $message_id);
@@ -3518,6 +3549,11 @@ $textonebuy
             $mainbalanceplisio = number_format($mainbalanceplisio);
             $maxbalanceplisio = number_format($maxbalanceplisio);
             sendmessage($from_id, sprintf($datatextbot['dyn_errors_min_max_deposit_amount'] ?? "❌ حداقل مبلغ واریزی این روش پرداخت باید %s و حداکثر %s تومان باشد", $mainbalanceplisio, $maxbalanceplisio), null, 'HTML');
+            return;
+        }
+        $rxPendingGw = findPendingGatewayInvoice($from_id, 'plisio');
+        if ($rxPendingGw !== null) {
+            rx_send_pending_gateway_invoice_notice($from_id, $message_id, $rxPendingGw, 'plisio');
             return;
         }
         deletemessage($from_id, $message_id);
@@ -3617,6 +3653,11 @@ $textonebuy
             sendmessage($from_id, sprintf($datatextbot['dyn_errors_min_max_deposit_amount'] ?? "❌ حداقل مبلغ واریزی این روش پرداخت باید %s و حداکثر %s تومان باشد", $mainbalanceplisio, $maxbalanceplisio), null, 'HTML');
             return;
         }
+        $rxPendingGw = findPendingGatewayInvoice($from_id, 'nowpayment');
+        if ($rxPendingGw !== null) {
+            rx_send_pending_gateway_invoice_notice($from_id, $message_id, $rxPendingGw, 'nowpayment');
+            return;
+        }
         deletemessage($from_id, $message_id);
         sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
         $dateacc = date('Y/m/d H:i:s');
@@ -3699,6 +3740,11 @@ $textonebuy
             $mainbalanceplisio = number_format($mainbalanceplisio);
             $maxbalanceplisio = number_format($maxbalanceplisio);
             sendmessage($from_id, sprintf($datatextbot['dyn_errors_min_max_deposit_amount'] ?? "❌ حداقل مبلغ واریزی این روش پرداخت باید %s و حداکثر %s تومان باشد", $mainbalanceplisio, $maxbalanceplisio), null, 'HTML');
+            return;
+        }
+        $rxPendingGw = findPendingGatewayInvoice($from_id, 'Currency Rial 2');
+        if ($rxPendingGw !== null) {
+            rx_send_pending_gateway_invoice_notice($from_id, $message_id, $rxPendingGw, 'iranpay2');
             return;
         }
         deletemessage($from_id, $message_id);
@@ -3834,6 +3880,11 @@ $textonebuy
             sendmessage($from_id, sprintf($datatextbot['dyn_errors_min_max_deposit_amount'] ?? "❌ حداقل مبلغ واریزی این روش پرداخت باید %s و حداکثر %s تومان باشد", $mainbalancetonpay, $maxbalancetonpay), null, 'HTML');
             return;
         }
+        $rxPendingGw = findPendingGatewayInvoice($from_id, 'tonpay');
+        if ($rxPendingGw !== null) {
+            rx_send_pending_gateway_invoice_notice($from_id, $message_id, $rxPendingGw, 'tonpay');
+            return;
+        }
         deletemessage($from_id, $message_id);
         sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
         $dateacc = date('Y/m/d H:i:s');
@@ -3954,6 +4005,11 @@ $textonebuy
             sendmessage($from_id, sprintf($datatextbot['dyn_errors_min_max_deposit_amount'] ?? "❌ حداقل مبلغ واریزی این روش پرداخت باید %s و حداکثر %s تومان باشد", $mainbalanceblupal, $maxbalanceblupal), null, 'HTML');
             return;
         }
+        $rxPendingGw = findPendingGatewayInvoice($from_id, 'blupal');
+        if ($rxPendingGw !== null) {
+            rx_send_pending_gateway_invoice_notice($from_id, $message_id, $rxPendingGw, 'blupal');
+            return;
+        }
         deletemessage($from_id, $message_id);
         sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
         $dateacc = date('Y/m/d H:i:s');
@@ -4072,6 +4128,11 @@ $textonebuy
             $mainbalanceatlaspay = number_format($mainbalanceatlaspay);
             $maxbalanceatlaspay = number_format($maxbalanceatlaspay);
             sendmessage($from_id, sprintf($datatextbot['dyn_errors_min_max_deposit_amount'] ?? "❌ حداقل مبلغ واریزی این روش پرداخت باید %s و حداکثر %s تومان باشد", $mainbalanceatlaspay, $maxbalanceatlaspay), null, 'HTML');
+            return;
+        }
+        $rxPendingGw = findPendingGatewayInvoice($from_id, 'atlaspay');
+        if ($rxPendingGw !== null) {
+            rx_send_pending_gateway_invoice_notice($from_id, $message_id, $rxPendingGw, 'atlaspay');
             return;
         }
         deletemessage($from_id, $message_id);
@@ -4196,6 +4257,11 @@ $textonebuy
             $mainbalancecubepay = number_format($mainbalancecubepay);
             $maxbalancecubepay = number_format($maxbalancecubepay);
             sendmessage($from_id, sprintf($datatextbot['dyn_errors_min_max_deposit_amount'] ?? "❌ حداقل مبلغ واریزی این روش پرداخت باید %s و حداکثر %s تومان باشد", $mainbalancecubepay, $maxbalancecubepay), null, 'HTML');
+            return;
+        }
+        $rxPendingGw = findPendingGatewayInvoice($from_id, 'cubepay');
+        if ($rxPendingGw !== null) {
+            rx_send_pending_gateway_invoice_notice($from_id, $message_id, $rxPendingGw, 'cubepay');
             return;
         }
         deletemessage($from_id, $message_id);
@@ -4336,6 +4402,11 @@ $textonebuy
             sendmessage($from_id, sprintf($datatextbot['dyn_errors_min_max_deposit_amount'] ?? "❌ حداقل مبلغ واریزی این روش پرداخت باید %s و حداکثر %s تومان باشد", $mainbalancevariza, $maxbalancevariza), null, 'HTML');
             return;
         }
+        $rxPendingGw = findPendingGatewayInvoice($from_id, 'variza');
+        if ($rxPendingGw !== null) {
+            rx_send_pending_gateway_invoice_notice($from_id, $message_id, $rxPendingGw, 'variza');
+            return;
+        }
         deletemessage($from_id, $message_id);
         sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
         $dateacc = date('Y/m/d H:i:s');
@@ -4453,6 +4524,11 @@ $textonebuy
             $mainbalanceabangateway = number_format($mainbalanceabangateway);
             $maxbalanceabangateway = number_format($maxbalanceabangateway);
             sendmessage($from_id, sprintf($datatextbot['dyn_errors_min_max_deposit_amount'] ?? "❌ حداقل مبلغ واریزی این روش پرداخت باید %s و حداکثر %s تومان باشد", $mainbalanceabangateway, $maxbalanceabangateway), null, 'HTML');
+            return;
+        }
+        $rxPendingGw = findPendingGatewayInvoice($from_id, 'abangateway');
+        if ($rxPendingGw !== null) {
+            rx_send_pending_gateway_invoice_notice($from_id, $message_id, $rxPendingGw, 'abangateway');
             return;
         }
         deletemessage($from_id, $message_id);

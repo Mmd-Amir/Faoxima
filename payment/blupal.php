@@ -78,7 +78,7 @@ function blupal_process_webhook()
 
     $orderId = (string) $Payment_report['id_order'];
 
-    if ($Payment_report['payment_Status'] == "expire") {
+    if ($Payment_report['payment_Status'] == "expire" || $Payment_report['payment_Status'] == "cancelled") {
         http_response_code(200);
         exit(json_encode(['received' => true]));
     }

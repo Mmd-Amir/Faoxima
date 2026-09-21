@@ -855,6 +855,219 @@ function requireTronRates(array $keys = [])
     return $result;
 }
 
+if (!function_exists('rx_gateway_payment_method_map')) {
+    function rx_gateway_payment_method_map()
+    {
+        return [
+            'zarinpal'    => 'zarinpal',
+            'plisio'      => 'plisio',
+            'nowpayment'  => 'nowpayment',
+            'iranpay2'    => 'Currency Rial 2',
+            'tonpay'      => 'tonpay',
+            'blupal'      => 'blupal',
+            'atlaspay'    => 'atlaspay',
+            'cubepay'     => 'cubepay',
+            'variza'      => 'variza',
+            'abangateway' => 'abangateway',
+        ];
+    }
+}
+
+if (!function_exists('rx_gateway_stale_minutes')) {
+    function rx_gateway_stale_minutes($paymentMethod)
+    {
+        if ($paymentMethod === 'tonpay') {
+            return 1440;
+        }
+        return 30;
+    }
+}
+
+if (!function_exists('rx_purge_stale_gateway_invoices')) {
+    function rx_purge_stale_gateway_invoices($userId, $paymentMethod)
+    {
+        global $pdo;
+        if (!($pdo instanceof PDO)) {
+            return;
+        }
+        try {
+            $rows = $pdo->prepare(
+                "SELECT id_order, time FROM Payment_report
+                  WHERE id_user = :u
+                    AND Payment_Method = :m
+                    AND payment_Status IN ('Unpaid','pending','waiting')"
+            );
+            $rows->execute([':u' => (string) $userId, ':m' => $paymentMethod]);
+            $result = $rows->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            error_log('[rx_purge_stale_gateway_invoices] fetch failed: ' . $e->getMessage());
+            return;
+        }
+        if (empty($result)) {
+            return;
+        }
+
+        $cutoff = time() - (rx_gateway_stale_minutes($paymentMethod) * 60);
+        $stale = [];
+        foreach ($result as $row) {
+            $ts = isValidDate((string) ($row['time'] ?? '')) ? strtotime(str_replace('/', '-', (string) $row['time'])) : false;
+            if ($ts === false || $ts <= $cutoff) {
+                $stale[] = (string) $row['id_order'];
+            }
+        }
+        if (empty($stale)) {
+            return;
+        }
+
+        try {
+            $placeholders = implode(',', array_fill(0, count($stale), '?'));
+            $sql = "UPDATE Payment_report
+                       SET payment_Status = 'expire'
+                     WHERE id_user = ?
+                       AND Payment_Method = ?
+                       AND payment_Status IN ('Unpaid','pending','waiting')
+                       AND id_order IN ($placeholders)";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute(array_merge([(string) $userId, $paymentMethod], $stale));
+        } catch (Throwable $e) {
+            error_log('[rx_purge_stale_gateway_invoices] update failed: ' . $e->getMessage());
+        }
+    }
+}
+
+if (!function_exists('findPendingGatewayInvoice')) {
+    function findPendingGatewayInvoice($userId, $paymentMethod)
+    {
+        global $pdo;
+        if (!($pdo instanceof PDO)) {
+            return null;
+        }
+
+        rx_purge_stale_gateway_invoices($userId, $paymentMethod);
+
+        try {
+            $stmt = $pdo->prepare(
+                "SELECT id_order, Payment_Method, payment_Status, price, time
+                   FROM Payment_report
+                  WHERE id_user = :u
+                    AND Payment_Method = :m
+                    AND payment_Status IN ('Unpaid','pending','waiting')
+                  ORDER BY id DESC LIMIT 1"
+            );
+            $stmt->execute([':u' => (string) $userId, ':m' => $paymentMethod]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            error_log('[findPendingGatewayInvoice] query failed: ' . $e->getMessage());
+            return null;
+        }
+
+        return is_array($row) ? $row : null;
+    }
+}
+
+if (!function_exists('cancelPendingGatewayInvoice')) {
+    function cancelPendingGatewayInvoice($userId, $paymentMethod, $orderId)
+    {
+        global $pdo;
+        if (!($pdo instanceof PDO)) {
+            return false;
+        }
+
+        try {
+            $report = $pdo->prepare(
+                "SELECT id_order, Payment_Method, payment_Status, atlaspay_order_id
+                   FROM Payment_report
+                  WHERE id_order = :o
+                    AND id_user = :u
+                    AND Payment_Method = :m
+                    AND payment_Status IN ('Unpaid','pending','waiting')
+                  LIMIT 1"
+            );
+            $report->execute([':o' => $orderId, ':u' => (string) $userId, ':m' => $paymentMethod]);
+            $row = $report->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            error_log('[cancelPendingGatewayInvoice] lookup failed: ' . $e->getMessage());
+            return false;
+        }
+        if (!is_array($row)) {
+            return false;
+        }
+
+        if ($paymentMethod === 'atlaspay' && function_exists('atlaspayCancelOrder')) {
+            $atlaspayOrderId = trim((string) ($row['atlaspay_order_id'] ?? ''));
+            if ($atlaspayOrderId !== '') {
+                try {
+                    atlaspayCancelOrder($atlaspayOrderId);
+                } catch (Throwable $e) {
+                    error_log('[cancelPendingGatewayInvoice] atlaspayCancelOrder failed: ' . $e->getMessage());
+                }
+            }
+        }
+
+        try {
+            $stmt = $pdo->prepare(
+                "UPDATE Payment_report
+                    SET payment_Status = 'cancelled'
+                  WHERE id_order = :o
+                    AND id_user = :u
+                    AND Payment_Method = :m
+                    AND payment_Status IN ('Unpaid','pending','waiting')"
+            );
+            $stmt->execute([':o' => $orderId, ':u' => (string) $userId, ':m' => $paymentMethod]);
+            return $stmt->rowCount() > 0;
+        } catch (Throwable $e) {
+            error_log('[cancelPendingGatewayInvoice] update failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+}
+
+if (!function_exists('rx_gateway_display_name')) {
+    function rx_gateway_display_name($gatewayKey)
+    {
+        $labels = [
+            'zarinpal'    => 'زرین‌پال',
+            'plisio'      => 'Plisio',
+            'nowpayment'  => 'NowPayments',
+            'iranpay2'    => 'ایران‌پی',
+            'tonpay'      => 'تون‌پی',
+            'blupal'      => 'بلوپال',
+            'atlaspay'    => 'اطلس‌پی',
+            'cubepay'     => 'کیوب‌پی',
+            'variza'      => 'واریزا',
+            'abangateway' => 'آبان گیت‌وی',
+        ];
+        return $labels[$gatewayKey] ?? $gatewayKey;
+    }
+}
+
+if (!function_exists('rx_send_pending_gateway_invoice_notice')) {
+    function rx_send_pending_gateway_invoice_notice($from_id, $message_id, array $pending, $gatewayKey)
+    {
+        global $datatextbot;
+
+        $orderId = (string) ($pending['id_order'] ?? '');
+        $priceFmt = number_format((int) ($pending['price'] ?? 0));
+        $text = sprintf(
+            $datatextbot['dyn_pending_gateway_invoice_notice'] ?? "⏳ شما یک فاکتور پرداخت‌نشده در همین درگاه دارید.\n\n🛒 کد فاکتور: <code>%s</code>\n💰 مبلغ: %s تومان\n\nمی‌توانید منتظر بررسی همین فاکتور بمانید یا آن را لغو کرده و فاکتور جدید بسازید.",
+            htmlspecialchars($orderId, ENT_QUOTES, 'UTF-8'),
+            $priceFmt
+        );
+        $kb = json_encode([
+            'inline_keyboard' => [
+                [['text' => '♻️ لغو و دریافت فاکتور جدید', 'callback_data' => 'rxpgw_cancel_' . $gatewayKey . '_' . $orderId]],
+                [['text' => '🔙 بازگشت به منوی اصلی', 'callback_data' => 'backuser']],
+            ],
+        ], JSON_UNESCAPED_UNICODE);
+
+        if (intval($message_id) > 0) {
+            Editmessagetext($from_id, $message_id, $text, $kb, 'HTML');
+        } else {
+            sendmessage($from_id, $text, $kb, 'HTML');
+        }
+    }
+}
+
 function updatePaymentMessageId($response, $orderId)
 {
     if (!is_array($response)) {

@@ -48,12 +48,12 @@ if (!function_exists('payment_confirm_paid')) {
 
         $atomic = $pdo->prepare(
             "UPDATE Payment_report SET payment_Status = 'paid' "
-            . "WHERE id_order = :id AND payment_Status <> 'paid'"
+            . "WHERE id_order = :id AND payment_Status NOT IN ('paid', 'cancelled')"
         );
         $atomic->bindValue(':id', $orderId, PDO::PARAM_STR);
         $atomic->execute();
         if ($atomic->rowCount() < 1) {
-            return ['ok' => false, 'reason' => 'already paid or missing'];
+            return ['ok' => false, 'reason' => 'already paid, cancelled, or missing'];
         }
 
         $report = select('Payment_report', '*', 'id_order', $orderId, 'select');
@@ -173,7 +173,7 @@ if (!function_exists('payment_notify_user_failed')) {
         $report = select('Payment_report', '*', 'id_order', $orderId, 'select');
         if (!is_array($report)) return false;
         $status = strtolower((string)($report['payment_Status'] ?? ''));
-        if ($status === 'paid') return false;
+        if ($status === 'paid' || $status === 'cancelled') return false;
 
         update('Payment_report', 'payment_Status', 'reject', 'id_order', $orderId);
 
@@ -207,7 +207,7 @@ if (!function_exists('payment_mark_expired')) {
         $report = select('Payment_report', '*', 'id_order', $orderId, 'select');
         if (!is_array($report)) return false;
         $status = strtolower((string)($report['payment_Status'] ?? ''));
-        if ($status === 'paid') return false;
+        if ($status === 'paid' || $status === 'cancelled') return false;
 
         update('Payment_report', 'payment_Status', 'expire', 'id_order', $orderId);
         if (function_exists('rx_redis_del') && isset($report['id_user'])) {
