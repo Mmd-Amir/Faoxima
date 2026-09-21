@@ -222,7 +222,7 @@ $savedNum  = isset($_GET['saved']) ? (int)$_GET['saved'] : 0;
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper">
+        <div class="wrapper fx-page-settings">
 
             <div class="page-head">
                 <div>

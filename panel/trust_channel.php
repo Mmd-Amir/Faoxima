@@ -105,7 +105,7 @@ function faoxima_trust_toggle_on($cur, $on, $off) {
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper">
+        <div class="wrapper fx-page-settings">
 
             <div class="page-head">
                 <div>

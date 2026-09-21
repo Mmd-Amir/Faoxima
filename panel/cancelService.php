@@ -299,7 +299,7 @@ $rows = array_slice($rows, ($reqPage - 1) * $reqPerPage, $reqPerPage);
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper">
+        <div class="wrapper fx-page-list">
 
             <div class="page-head">
                 <div>
