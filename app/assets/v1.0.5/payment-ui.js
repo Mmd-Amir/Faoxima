@@ -11,6 +11,7 @@ export function iconForMethod(m) {
     if (id === 'cubepay')              return 'tronado';
     if (id === 'blupal')               return 'tronado';
     if (id === 'variza')               return 'tronado';
+    if (id === 'abangateway')          return 'tronado';
     if (id === 'atlaspay')             return 'tronado';
     if (id === 'tetrapay')             return 'tronado';
     if (id.startsWith('iranpay'))      return 'flower';
@@ -35,6 +36,7 @@ export function methodLabel(m) {
     if (id === 'cubepay')                   return 'کیوب‌پی';
     if (id === 'blupal')                    return 'بلوپال';
     if (id === 'variza')                    return 'واریزا';
+    if (id === 'abangateway')               return 'آبان گیت وی';
     if (id === 'atlaspay')                  return 'اطلس‌پی';
     if (id === 'tetrapay')                  return 'تتراپی';
     if (id === 'zarinpal')                  return 'زرین‌پال';
@@ -408,7 +410,7 @@ function isAutoConfirmGateway(methodId) {
     return (
         id === 'plisio' || id === 'nowpayment' || id === 'digitaltron' ||
         id.startsWith('iranpay') || id === 'tonpay' || id === 'cubepay' ||
-        id === 'zarinpal' || id === 'blupal' || id === 'variza' || id === 'atlaspay' || id === 'tetrapay'
+        id === 'zarinpal' || id === 'blupal' || id === 'variza' || id === 'abangateway' || id === 'atlaspay' || id === 'tetrapay'
     );
 }
 

@@ -29,6 +29,9 @@ final class PaymentMethodsHandler extends BaseHandler
         $cubepayActive  = $get('statuscubepay');
         $blupalActive   = $get('statusblupal');
         $varizaActive   = $get('statusvariza');
+        $abangatewayActive = $get('statusabangateway');
+        $abangatewayUrl    = trim((string) $get('urlabangateway'));
+        $abangatewayKey    = trim((string) $get('apiabangateway'));
         $atlaspayActive = $get('statusatlaspay');
         $tetrapayActive = $get('statustetrapay');
         $plisio         = $get('nowpaymentstatus');
@@ -57,6 +60,7 @@ final class PaymentMethodsHandler extends BaseHandler
             'cubepay'       => ['minbalancecubepay',       'maxbalancecubepay'],
             'blupal'        => ['minbalanceblupal',        'maxbalanceblupal'],
             'variza'        => ['minbalancevariza',        'maxbalancevariza'],
+            'abangateway'   => ['minbalanceabangateway',   'maxbalanceabangateway'],
             'atlaspay'      => ['minbalanceatlaspay',      'maxbalanceatlaspay'],
             'tetrapay'      => ['minbalancetetrapay',      'maxbalancetetrapay'],
         ];
@@ -205,6 +209,15 @@ final class PaymentMethodsHandler extends BaseHandler
             $methods[] = [
                 'id'    => 'variza',
                 'label' => $L('variza', '💳 واریزا'),
+                'icon'  => '💳',
+                'kind'  => 'form',
+            ];
+        }
+        // Listed only when it can take money: on, with an https address and a key.
+        if ($abangatewayActive === 'onabangateway' && stripos($abangatewayUrl, 'https://') === 0 && $abangatewayKey !== '' && $abangatewayKey !== '0') {
+            $methods[] = [
+                'id'    => 'abangateway',
+                'label' => $L('abangateway', '💳 آبان گیت وی'),
                 'icon'  => '💳',
                 'kind'  => 'form',
             ];

@@ -239,8 +239,8 @@ function applyStartParam() {
             : '';
         if (!sp) return;
 
-        if (sp.startsWith('plisiopaid_') || sp.startsWith('plisiofail_')) {
-            const order = sp.replace(/^plisio(paid|fail)_/, '');
+        if (sp.startsWith('plisiopaid_') || sp.startsWith('plisiofail_') || sp.startsWith('abangatewaypaid_')) {
+            const order = sp.replace(/^(plisio(paid|fail)|abangatewaypaid)_/, '');
             if (order) {
                 const want = '#/watch/' + encodeURIComponent(order);
                 if (window.location.hash !== want) {
