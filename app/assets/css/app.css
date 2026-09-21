@@ -484,6 +484,10 @@ img, svg { display: block; max-width: 100%; }
     flex-direction: column;
     gap: 2px;
     font-size: 13px;
+    min-width: 0;
+}
+.pending-remaining {
+    white-space: nowrap;
 }
 .pending-banner-grid .muted { font-size: 11px; }
 .pending-banner-actions {
@@ -563,6 +567,7 @@ img, svg { display: block; max-width: 100%; }
     font-weight: 700;
     color: var(--gold-bright);
     letter-spacing: 1px;
+    white-space: nowrap;
 }
 .watch-countdown .glyph { font-size: 18px; }
 

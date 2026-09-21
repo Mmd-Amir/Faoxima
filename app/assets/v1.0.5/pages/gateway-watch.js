@@ -32,6 +32,13 @@ function fmtMmSs(totalSec) {
     const s = Math.max(0, Math.floor(totalSec));
     return pad2(Math.floor(s / 60)) + ':' + pad2(s % 60);
 }
+function fmtHhMmSs(totalSec) {
+    const s = Math.max(0, Math.floor(totalSec));
+    const hours = Math.floor(s / 3600);
+    const minutes = Math.floor((s % 3600) / 60);
+    const secs = s % 60;
+    return pad2(hours) + ':' + pad2(minutes) + ':' + pad2(secs);
+}
 
 
 function _gwGetActive() {
@@ -58,6 +65,7 @@ export function startGatewayWatch(view, opts) {
         keepMiniAppOpen = false,
         isCrypto = false,
         mode = 'direct_buy',
+        method = '',
         timeoutSec = 1800,
         expiresAtSec = 0,
         pollEverySec = 5,
@@ -66,6 +74,8 @@ export function startGatewayWatch(view, opts) {
         onTimeout,
         onCancel,
     } = opts || {};
+
+    const fmtCountdown = String(method || '').toLowerCase() === 'tonpay' ? fmtHhMmSs : fmtMmSs;
 
 
     const finalizingMessages = {
@@ -127,7 +137,7 @@ export function startGatewayWatch(view, opts) {
 
                     <div class="watch-countdown mt-md" id="watch-countdown">
                         <span class="glyph">${icon('hourglass', 'class="ico"')}</span>
-                        <span class="mono" id="watch-time">${fmtMmSs(Math.max(0, Math.floor((deadline - Date.now()) / 1000)))}</span>
+                        <span class="mono" id="watch-time">${fmtCountdown(Math.max(0, Math.floor((deadline - Date.now()) / 1000)))}</span>
                         <span class="muted" style="font-size:12px">باقی‌مانده</span>
                     </div>
 
@@ -155,7 +165,7 @@ export function startGatewayWatch(view, opts) {
         const $time = view.querySelector('#watch-time');
         if (!$time) return;
         const remain = Math.max(0, Math.floor((deadline - Date.now()) / 1000));
-        $time.textContent = fmtMmSs(remain);
+        $time.textContent = fmtCountdown(remain);
         if (remain <= 0 && !deadlineReached) {
             enterDeadlineState();
         }
@@ -173,7 +183,7 @@ export function startGatewayWatch(view, opts) {
         if ($sub) $sub.textContent = 'زمان انتظار تمام شد — برای دریافت نتیجه قطعی روی «بررسی نهایی» بزنید.';
 
         const $time = view.querySelector('#watch-time');
-        if ($time) $time.textContent = '00:00';
+        if ($time) $time.textContent = fmtCountdown(0);
 
 
         const $check = view.querySelector('#watch-check');

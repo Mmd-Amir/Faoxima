@@ -4,7 +4,7 @@ import { setUser } from '../state.js';
 import { icon } from '../icons.js?v=0.0.52';
 import { hapticImpact, showConfirm, getInitDataUnsafe } from '../telegram.js?v=0.0.52';
 import { mountHomeBell } from '../notifications.js?v=0.0.52';
-import { methodLabel } from '../payment-ui.js?v=0.0.56';
+import { methodLabel } from '../payment-ui.js?v=0.0.57';
 
 function greetingName() {
     try {
@@ -284,6 +284,16 @@ function fmtRemainMmSs(remainSec) {
     return (mm < 10 ? '0' + mm : '' + mm) + ':' + (ss < 10 ? '0' + ss : '' + ss);
 }
 
+function fmtRemainHhMmSs(remainSec) {
+    const s = Math.max(0, Math.floor(remainSec));
+    if (s <= 0) return 'منقضی';
+    const pad2 = (n) => n < 10 ? '0' + n : String(n);
+    const hh = Math.floor(s / 3600);
+    const mm = Math.floor((s % 3600) / 60);
+    const ss = s % 60;
+    return pad2(hh) + ':' + pad2(mm) + ':' + pad2(ss);
+}
+
 
 function startPendingTicker(host) {
     const nodes = host.querySelectorAll('.pending-remaining[data-expires-at]');
@@ -293,7 +303,8 @@ function startPendingTicker(host) {
         nodes.forEach((el) => {
             const exp = Number(el.getAttribute('data-expires-at')) || 0;
             if (exp <= 0) return;
-            el.textContent = fmtRemainMmSs(exp - nowSec);
+            const fmt = el.getAttribute('data-method') === 'tonpay' ? fmtRemainHhMmSs : fmtRemainMmSs;
+            el.textContent = fmt(exp - nowSec);
         });
     }
     tick();
@@ -304,9 +315,11 @@ function startPendingTicker(host) {
 
 function renderPendingCard(p) {
     const expiresAt = Number(p.expires_at) || 0;
+    const isTonpay = String(p.method || '').toLowerCase() === 'tonpay';
+    const fmtRemain = isTonpay ? fmtRemainHhMmSs : fmtRemainMmSs;
     const initialRemain = expiresAt > 0
-        ? fmtRemainMmSs(expiresAt - Math.floor(Date.now() / 1000))
-        : fmtRemainMmSs(p.remaining_sec || 0);
+        ? fmtRemain(expiresAt - Math.floor(Date.now() / 1000))
+        : fmtRemain(p.remaining_sec || 0);
     const methodFa = p.method_label || methodLabel(p.method);
     const cur = p.currency_code ? ` (${escapeHtml(p.currency_code)})` : '';
     return `
@@ -318,7 +331,7 @@ function renderPendingCard(p) {
             <div class="pending-banner-grid">
                 <div><span class="muted">کد فاکتور</span><span class="mono">${escapeHtml(p.order_id)}</span></div>
                 <div><span class="muted">مبلغ</span><span class="mono accent">${escapeHtml(fmtPrice(p.amount))}</span></div>
-                <div><span class="muted">باقی‌مانده</span><span class="mono pending-remaining" data-expires-at="${expiresAt}">${escapeHtml(initialRemain)}</span></div>
+                <div><span class="muted">باقی‌مانده</span><span class="mono pending-remaining" data-expires-at="${expiresAt}" data-method="${escapeHtml(p.method || '')}">${escapeHtml(initialRemain)}</span></div>
             </div>
             <div class="pending-banner-actions">
                 <button type="button" class="btn btn-primary btn-block" data-resume="${escapeHtml(p.order_id)}">

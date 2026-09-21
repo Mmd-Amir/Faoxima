@@ -541,6 +541,7 @@ export function startUrlGatewayFlow(rootView, methodId, obj, opts = {}) {
             gatewayUrl: url,
             isCrypto: isCryptoMethod(methodId),
             mode: opts.purchaseUsername ? 'direct_buy' : 'recharge',
+            method: methodId,
             timeoutSec: gatewayTimeoutSec(methodId),
             pollEverySec: 5,
             onSuccess: (statusObj) => renderGatewaySuccess(watchHost, statusObj, opts),

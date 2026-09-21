@@ -5,7 +5,7 @@ import {
 } from '../utils.js?v=0.0.52';
 import { hapticImpact, hapticNotify, showConfirm, openLink, supportsNativeDownload, downloadFileNative } from '../telegram.js?v=0.0.52';
 import { icon } from '../icons.js?v=0.0.52';
-import { renderMethodCard, handleInitResult } from '../payment-ui.js?v=0.0.56';
+import { renderMethodCard, handleInitResult } from '../payment-ui.js?v=0.0.57';
 
 const ALL_ACTIONS = [
     { id: 'renew',           label: 'تمدید سرویس',            ico: 'rotate',     cls: '', inline: true  },

@@ -7,7 +7,7 @@ import { getBuyDraft, setBuyDraft, clearBuyDraft } from '../state.js';
 import { icon } from '../icons.js?v=0.0.52';
 import {
     fmtNum, renderMethodCard, handleInitResult,
-} from '../payment-ui.js?v=0.0.56';
+} from '../payment-ui.js?v=0.0.57';
 
 
 let _successModulePromise = null;
