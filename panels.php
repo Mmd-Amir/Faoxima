@@ -114,7 +114,7 @@ class ManagePanel
         if ($Get_Data_Panel['type'] == "marzban") {
 
             $ConnectToPanel = adduser($Get_Data_Panel['name_panel'], $data_limit, $usernameC, $expire, $note, $Get_Data_Product['data_limit_reset'], $Get_Data_Product['name_product']);
-            if (!empty($ConnectToPanel['status']) && $ConnectToPanel['status'] == 500) {
+            if (!empty($ConnectToPanel['status']) && !in_array((int)$ConnectToPanel['status'], [200, 201, 202], true)) {
                 return array(
                     'status' => 'Unsuccessful',
                     'msg' => $ConnectToPanel['status']
@@ -155,7 +155,7 @@ class ManagePanel
             }
         } elseif ($Get_Data_Panel['type'] == "pasarguard") {
             $ConnectToPanel = pasarguardAddUser($Get_Data_Panel['name_panel'], $data_limit, $usernameC, $expire, $note, $Get_Data_Product['data_limit_reset'], $Get_Data_Product['name_product']);
-            if (!empty($ConnectToPanel['status']) && $ConnectToPanel['status'] == 500) {
+            if (!empty($ConnectToPanel['status']) && !in_array((int)$ConnectToPanel['status'], [200, 201, 202], true)) {
                 return array(
                     'status' => 'Unsuccessful',
                     'msg' => $ConnectToPanel['status']
@@ -1439,7 +1439,7 @@ class ManagePanel
                     'status' => false,
                     'msg' => $modify['error']
                 );
-            } elseif (!empty($modify['status']) && $modify['status'] == 500) {
+            } elseif (!empty($modify['status']) && $modify['status'] != 200) {
                 return array(
                     'status' => false,
                     'msg' => 'error code : ' . $modify['status']
@@ -1463,7 +1463,7 @@ class ManagePanel
                     'status' => false,
                     'msg' => $modify['error']
                 );
-            } elseif (!empty($modify['status']) && $modify['status'] == 500) {
+            } elseif (!empty($modify['status']) && $modify['status'] != 200) {
                 return array(
                     'status' => false,
                     'msg' => 'error code : ' . $modify['status']
