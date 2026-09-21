@@ -1744,6 +1744,28 @@ function abangatewayIsReady()
     return $status === 'onabangateway' && abangatewayEndpoint() !== null && abangatewayApiKey() !== '';
 }
 
+/**
+ * The buyer's payment page for an authority this bot was given, or null.
+ *
+ * The page lives on the gateway's own origin at /pay/{invoice}, and the
+ * authority is "abn_" + that invoice id, so the link can be rebuilt from the
+ * stored authority without keeping a second column for it.
+ */
+function abangatewayPayUrlFor($authority)
+{
+    $authority = trim((string) $authority);
+    $endpoint = abangatewayEndpoint();
+    if ($endpoint === null || !preg_match('/^abn_([A-Za-z0-9_]{6,64})$/', $authority, $match)) {
+        return null;
+    }
+    $parts = parse_url($endpoint);
+    if (!is_array($parts) || empty($parts['host'])) {
+        return null;
+    }
+    $origin = 'https://' . $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '');
+    return $origin . '/pay/' . $match[1];
+}
+
 function abangatewayRequest($path, array $payload)
 {
     $endpoint = abangatewayEndpoint();

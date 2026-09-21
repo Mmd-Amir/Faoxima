@@ -127,6 +127,16 @@ final class PaymentStatusHandler extends BaseHandler
         }
         $flow = $hasPurchaseTarget ? 'direct_buy' : ($pendingActionTag !== '' ? 'pending_action' : 'recharge');
 
+        // AbanGateway keeps no link column: the page address follows from the
+        // authority stored at create time, so a buyer who comes back to a
+        // pending order can reopen it.
+        $abangatewayUrl = null;
+        if ((string)($report['Payment_Method'] ?? '') === 'abangateway'
+            && $paymentStatus !== 'paid'
+            && function_exists('abangatewayPayUrlFor')) {
+            $abangatewayUrl = abangatewayPayUrlFor((string)($report['dec_not_confirmed'] ?? ''));
+        }
+
         $payload = [
             'order_id'         => $orderId,
             'payment_status'   => $paymentStatus,
@@ -144,7 +154,7 @@ final class PaymentStatusHandler extends BaseHandler
             'currency_code'    => trim((string)($report['crypto_currency'] ?? '')) ?: null,
             'crypto_amount'    => trim((string)($report['crypto_amount']   ?? '')) ?: null,
             'wallet_to'        => trim((string)($report['crypto_wallet_to'] ?? '')) ?: null,
-            'gateway_url'      => trim((string)($report['tronado_payment_url'] ?? '')) ?: (trim((string)($report['tonpay_invoice_url'] ?? '')) ?: (trim((string)($report['cubepay_payment_link'] ?? '')) ?: (trim((string)($report['blupal_payment_link'] ?? '')) ?: (trim((string)($report['atlaspay_payment_url'] ?? '')) ?: (trim((string)($report['tetrapay_payment_link'] ?? '')) ?: null))))),
+            'gateway_url'      => trim((string)($report['tronado_payment_url'] ?? '')) ?: (trim((string)($report['tonpay_invoice_url'] ?? '')) ?: (trim((string)($report['cubepay_payment_link'] ?? '')) ?: (trim((string)($report['blupal_payment_link'] ?? '')) ?: (trim((string)($report['atlaspay_payment_url'] ?? '')) ?: (trim((string)($report['tetrapay_payment_link'] ?? '')) ?: $abangatewayUrl))))),
         ];
 
         FaoximaResponse::ok($payload);
