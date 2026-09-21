@@ -233,7 +233,7 @@ async function loadPendingBanner(view) {
     } catch (_) { return () => {}; }
     if (!pending.length) return () => {};
 
-    const externalGatewayPending = pending.find(p => p.method === 'iranpay2' || p.method === 'tonpay' || p.method === 'cubepay' || p.method === 'blupal' || p.method === 'atlaspay' || p.method === 'tetrapay');
+    const externalGatewayPending = pending.find(p => p.method === 'iranpay2' || p.method === 'tonpay' || p.method === 'cubepay' || p.method === 'blupal' || p.method === 'variza' || p.method === 'atlaspay' || p.method === 'tetrapay');
     if (externalGatewayPending) {
         const autoJumpKey = 'faoxima_extgw_autojump_' + externalGatewayPending.order_id;
         let alreadyJumped = false;

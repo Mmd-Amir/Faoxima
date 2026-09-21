@@ -255,6 +255,9 @@ final class PaymentStatusHandler extends BaseHandler
         if ((string)($report['Payment_Method'] ?? '') === 'cubepay') {
             return 3600;
         }
+        if ((string)($report['Payment_Method'] ?? '') === 'variza') {
+            return 3600;
+        }
         if ((string)($report['Payment_Method'] ?? '') === 'atlaspay') {
             return 1200;
         }

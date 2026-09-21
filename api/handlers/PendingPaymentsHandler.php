@@ -25,7 +25,7 @@ final class PendingPaymentsHandler extends BaseHandler
                    FROM Payment_report
                   WHERE id_user = :u
                     AND payment_Status IN ('Unpaid','waiting','AwaitingHash','pending','expire')
-                    AND Payment_Method IN ('plisio','nowpayment','digitaltron','arze digital offline','cart to cart','carttocart_pv','iranpay2','tonpay','cubepay','blupal','atlaspay','tetrapay')
+                     AND Payment_Method IN ('plisio','nowpayment','digitaltron','arze digital offline','cart to cart','carttocart_pv','iranpay2','tonpay','cubepay','blupal','variza','atlaspay','tetrapay')
                     AND source = 'miniapp'
                   ORDER BY id DESC
                   LIMIT 8",
@@ -70,6 +70,8 @@ final class PendingPaymentsHandler extends BaseHandler
                     return !empty($labels['cubepay']) ? $labels['cubepay'] : 'کیوب‌پی';
                 case 'blupal':
                     return !empty($labels['blupal']) ? $labels['blupal'] : 'بلوپال';
+                case 'variza':
+                    return !empty($labels['variza']) ? $labels['variza'] : 'واریزا';
                 case 'atlaspay':
                     return !empty($labels['atlaspay']) ? $labels['atlaspay'] : 'اطلس‌پی';
                 case 'tetrapay':
@@ -118,7 +120,7 @@ final class PendingPaymentsHandler extends BaseHandler
                 if (trim((string)($r['atlaspay_order_id'] ?? '')) === '') continue;
             } elseif ($methodLc === 'tetrapay') {
                 if (trim((string)($r['tetrapay_token'] ?? '')) === '') continue;
-            } elseif (in_array($methodLc, ['plisio', 'nowpayment', 'digitaltron', 'iranpay2'], true)) {
+            } elseif (in_array($methodLc, ['plisio', 'nowpayment', 'digitaltron', 'iranpay2', 'variza'], true)) {
                 if ($decVal === '') continue;
             }
 
@@ -154,6 +156,9 @@ final class PendingPaymentsHandler extends BaseHandler
     private function methodWindow(string $method, bool $iranian): int
     {
         if (strtolower($method) === 'cubepay') {
+            return 3600;
+        }
+        if (strtolower($method) === 'variza') {
             return 3600;
         }
         if (strtolower($method) === 'atlaspay') {

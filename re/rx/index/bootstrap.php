@@ -504,6 +504,7 @@ $datatextbot = array(
     'tonpay' => '',
     'cubepay' => '',
     'blupal' => '',
+    'variza' => '',
     'atlaspay' => '',
     'tetrapay' => '',
     'zarinpal' => '',

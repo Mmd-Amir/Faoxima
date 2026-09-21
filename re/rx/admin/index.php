@@ -147,9 +147,9 @@ if (
 
     if (function_exists('rx_collectKeyboardLabels')) {
         $rx_kb_vars = [
-            'setting_panel', 'shopkeyboard', 'keyboardhelpadmin',
-            'Feature_status', 'keyboard_Category_manage', 'keyboard_shop_manage',
-            'CartManage', 'trnado', 'tonpay', 'cubepay', 'blupal', 'atlaspay', 'tetrapay', 'keyboardzarinpal',
+            'keyboardadmin', 'setting_panel', 'shopkeyboard', 'keyboardhelpadmin',
+            'Feature_status', 'channelkeyboard', 'keyboard_Category_manage', 'keyboard_shop_manage',
+            'CartManage', 'trnado', 'tonpay', 'cubepay', 'blupal', 'variza', 'atlaspay', 'tetrapay', 'keyboardzarinpal',
             'NowPaymentsManage', 'nowpayment_setting_keyboard', 'tronnowpayments', 'Startelegram',
             'iranpaykeyboard', 'supportcenter', 'backadmin',
             'adminPanelsMenu', 'adminChannelMenu', 'adminUsersMenu',

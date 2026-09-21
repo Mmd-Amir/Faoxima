@@ -588,6 +588,21 @@ $blupal = rx_kb_encode([
             ['text' => $textbotlang['Admin']['backmenu'], 'callback_data' => 'blupal_backmenu']
         ]
     ]);
+$variza = rx_kb_encode([
+        [rx_kb_style(['text' => "🏷️ نام نمایشی درگاه واریزا", 'callback_data' => 'variza_name'], 'variza_name', $_rx_gw_styles)],
+        [rx_kb_style(['text' => "🔑 ثبت توکن API واریزا", 'callback_data' => 'variza_apikey'], 'variza_apikey', $_rx_gw_styles)],
+        [rx_kb_style(['text' => "🔐 ثبت کلید وب‌هوک واریزا", 'callback_data' => 'variza_webhooksecret'], 'variza_webhooksecret', $_rx_gw_styles)],
+        [rx_kb_style(['text' => "💰 کش بک واریزا", 'callback_data' => 'variza_cashback'], 'variza_cashback', $_rx_gw_styles)],
+        [
+            rx_kb_style(['text' => "⬇️ کف واریزا", 'callback_data' => 'variza_min'], 'variza_min', $_rx_gw_styles),
+            rx_kb_style(['text' => "⬆️ سقف واریزا", 'callback_data' => 'variza_max'], 'variza_max', $_rx_gw_styles)
+        ],
+        [rx_kb_style(['text' => "📚 آموزش واریزا", 'callback_data' => 'variza_edu'], 'variza_edu', $_rx_gw_styles)],
+        [
+            rx_kb_style(['text' => $textbotlang['Admin']['backadmin'], 'callback_data' => 'variza_back'], 'variza_back', $_rx_gw_styles),
+            ['text' => $textbotlang['Admin']['backmenu'], 'callback_data' => 'variza_backmenu']
+        ]
+    ]);
 $atlaspay = rx_kb_encode([
         [rx_kb_style(['text' => "🏷️ نام نمایشی درگاه اطلس‌پی", 'callback_data' => 'atlaspay_name'], 'atlaspay_name', $_rx_gw_styles)],
         [rx_kb_style(['text' => "🔑 ثبت API Key اطلس‌پی", 'callback_data' => 'atlaspay_apikey'], 'atlaspay_apikey', $_rx_gw_styles)],
@@ -710,6 +725,7 @@ $trnadoo = getPaySettingValue("statustarnado");
 $tonpayStatus = getPaySettingValue("statustonpay");
 $cubepayStatus = getPaySettingValue("statuscubepay");
 $blupalStatus = getPaySettingValue("statusblupal");
+$varizaStatus = getPaySettingValue("statusvariza");
 $atlaspayStatus = getPaySettingValue("statusatlaspay");
 $tetrapayStatus = getPaySettingValue("statustetrapay");
 $paymentverify = getPaySettingValue("checkpaycartfirst");
@@ -769,6 +785,11 @@ $step_payment = [
    if($blupalStatus == "onblupal"){
         $step_payment['inline_keyboard'][] = [
             rx_kb_style(['text' => $datatextbot['blupal'] ?: '💙 بلوپال', 'callback_data' => "blupal"], 'blupal', $_rx_pay_styles)
+    ];
+    }
+   if($varizaStatus == "onvariza"){
+        $step_payment['inline_keyboard'][] = [
+            rx_kb_style(['text' => $datatextbot['variza'] ?: '💳 واریزا', 'callback_data' => "variza"], 'variza', $_rx_pay_styles)
     ];
     }
    if($atlaspayStatus == "onatlaspay"){

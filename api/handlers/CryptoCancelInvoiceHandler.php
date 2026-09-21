@@ -26,7 +26,7 @@ final class CryptoCancelInvoiceHandler extends BaseHandler
             FaoximaResponse::notFound('Payment not found');
         }
         $method = trim((string)($report['Payment_Method'] ?? ''));
-        $cancellable = ['arze digital offline', 'plisio', 'nowpayment', 'digitaltron', 'cart to cart', 'carttocart_pv', 'iranpay2', 'tonpay', 'cubepay', 'blupal', 'atlaspay', 'tetrapay'];
+        $cancellable = ['arze digital offline', 'plisio', 'nowpayment', 'digitaltron', 'cart to cart', 'carttocart_pv', 'iranpay2', 'tonpay', 'cubepay', 'blupal', 'variza', 'atlaspay', 'tetrapay'];
         if (!in_array($method, $cancellable, true)) {
             FaoximaResponse::fail(422, 'این فاکتور قابل لغو از این طریق نیست');
         }

@@ -885,6 +885,8 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $cubepay, 'HTML');
 } elseif ($datain == "blupalsetting" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $blupal, 'HTML');
+} elseif ($datain == "varizasetting" && $adminrulecheck['rule'] == "administrator") {
+    nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $variza, 'HTML');
 } elseif ($datain == "atlaspaysetting" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $atlaspay, 'HTML');
 } elseif ($datain == "tetrapaysetting" && $adminrulecheck['rule'] == "administrator") {
@@ -1074,6 +1076,29 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     nm_adminInstantReply($from_id, $textbotlang['Admin']['SettingnowPayment']['Savaapi'], $cubepay, 'HTML');
     update("PaySetting", "ValuePay", $text, "NamePay", "apicubepay");
     step('home', $from_id);
+} elseif ($text == "🔑 ثبت توکن API واریزا" && $adminrulecheck['rule'] == "administrator") {
+    $PaySetting = select("PaySetting", "ValuePay", "NamePay", "apivariza", "select");
+    $currentKey = $PaySetting['ValuePay'] ?? 'ثبت نشده';
+    $varizaWebhookUrl = 'https://' . $domainhosts . '/payment/variza_webhook.php';
+    $textvariza = "🔑 توکن API واریزا خود را اینجا وارد کنید.\n\nتوکن فعلی شما: {$currentKey}\n\n";
+    $textvariza .= "⚠️ پیش از ادامه، آدرس زیر را در پنل واریزا (بخش وب‌هوک پروفایل) ثبت کنید تا تأیید خودکار پرداخت‌ها کار کند:\n\n";
+    $textvariza .= "🔗 درگاه Webhook:\n<code>{$varizaWebhookUrl}</code>";
+    nm_adminInstantReply($from_id, $textvariza, $backadmin, 'HTML');
+    step('apivariza', $from_id);
+} elseif ($user['step'] == "apivariza") {
+    nm_adminInstantReply($from_id, $textbotlang['Admin']['SettingnowPayment']['Savaapi'], $variza, 'HTML');
+    update("PaySetting", "ValuePay", trim($text), "NamePay", "apivariza");
+    step('home', $from_id);
+} elseif ($text == "🔐 ثبت کلید وب‌هوک واریزا" && $adminrulecheck['rule'] == "administrator") {
+    $PaySetting = select("PaySetting", "ValuePay", "NamePay", "variza_webhook_secret", "select");
+    $currentSecret = $PaySetting['ValuePay'] ?? 'ثبت نشده';
+    $textvariza = "🔐 کلید وب‌هوک واریزا خود را اینجا وارد کنید (همان کلیدی که در پنل واریزا، بخش وب‌هوک به شما نمایش داده شد).\n\nکلید فعلی شما: {$currentSecret}";
+    nm_adminInstantReply($from_id, $textvariza, $backadmin, 'HTML');
+    step('variza_webhook_secret', $from_id);
+} elseif ($user['step'] == "variza_webhook_secret") {
+    nm_adminInstantReply($from_id, $textbotlang['Admin']['SettingnowPayment']['Savaapi'], $variza, 'HTML');
+    update("PaySetting", "ValuePay", trim($text), "NamePay", "variza_webhook_secret");
+    step('home', $from_id);
 } elseif ($datain == "affilnecurrencysetting") {
     nm_adminInstantReply($from_id, "یک گزینه را انتخاب کنید", $tronnowpayments, 'HTML');
 } elseif ($text == "🗂 نام درگاه کارت به کارت" || $text == "🏷️ نام نمایشی درگاه کارت به کارت") {
@@ -1146,6 +1171,14 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
 } elseif ($user['step'] == "gettextcubepay") {
     nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $cubepay, 'HTML');
     update("textbot", "text", $text, "id_text", "cubepay");
+    step("home", $from_id);
+} elseif ($text == "🏷️ نام نمایشی درگاه واریزا") {
+    $prompt = "🏷️ نام نمایشی دلخواه برای درگاه واریزا را ارسال کنید.";
+    nm_adminInstantReply($from_id, $prompt, $backadmin, 'HTML');
+    step("gettextvariza", $from_id);
+} elseif ($user['step'] == "gettextvariza") {
+    nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $variza, 'HTML');
+    update("textbot", "text", $text, "id_text", "variza");
     step("home", $from_id);
 } elseif ($text == "🏷️ نام نمایشی درگاه بلوپال") {
     $prompt = "🏷️ نام نمایشی دلخواه برای درگاه بلوپال را ارسال کنید.";
@@ -2196,6 +2229,13 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
             $valuenew = "oncubepay";
         }
         update("PaySetting", "ValuePay", $valuenew, "NamePay", "statuscubepay");
+    } elseif ($type == "variza") {
+        if ($value == "onvariza") {
+            $valuenew = "offvariza";
+        } else {
+            $valuenew = "onvariza";
+        }
+        update("PaySetting", "ValuePay", $valuenew, "NamePay", "statusvariza");
     } elseif ($type == "blupal") {
         if ($value == "onblupal") {
             $valuenew = "offblupal";
@@ -2272,6 +2312,19 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     savedata("clear", "cashback_percent", $text);
     savedata("save", "cashback_key", "chashbackblupal");
     savedata("save", "cashback_menu", "blupal");
+    nm_adminInstantReply($from_id, "📌 جامعه هدف این کش‌بک را انتخاب نمایید", rx_cashbackTargetKeyboard(), 'HTML');
+    step("getcashtarget", $from_id);
+} elseif ($text == "💰 کش بک واریزا") {
+    nm_adminInstantReply($from_id, "📌 در این بخش می توانید تعیین کنید کاربر پس از پرداخت چه درصدی به عنوان هدیه به حسابش واریز شود. ( برای غیرفعال کردن این قابلیت عدد صفر ارسال کنید)", $backadmin, 'HTML');
+    step("getcashvariza", $from_id);
+} elseif ($user['step'] == "getcashvariza") {
+    if (!ctype_digit($text)) {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
+        return;
+    }
+    savedata("clear", "cashback_percent", $text);
+    savedata("save", "cashback_key", "chashbackvariza");
+    savedata("save", "cashback_menu", "variza");
     nm_adminInstantReply($from_id, "📌 جامعه هدف این کش‌بک را انتخاب نمایید", rx_cashbackTargetKeyboard(), 'HTML');
     step("getcashtarget", $from_id);
 } elseif ($text == "💰 کش بک اطلس‌پی") {
@@ -3185,6 +3238,28 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی تنظیم گردید.", $blupal, 'HTML');
     step("home", $from_id);
     update("PaySetting", "ValuePay", $text, "NamePay", "maxbalanceblupal");
+} elseif ($text == "⬇️ کف واریزا") {
+    nm_adminInstantReply($from_id, "📌 حداقل مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
+    step("getmainvariza", $from_id);
+} elseif ($user['step'] == "getmainvariza") {
+    if (!ctype_digit($text)) {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
+        return;
+    }
+    nm_adminInstantReply($from_id, "✅ حداقل مبلغ واریزی تنظیم گردید.", $variza, 'HTML');
+    step("home", $from_id);
+    update("PaySetting", "ValuePay", $text, "NamePay", "minbalancevariza");
+} elseif ($text == "⬆️ سقف واریزا") {
+    nm_adminInstantReply($from_id, "📌 حداکثر مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
+    step("getmaxvariza", $from_id);
+} elseif ($user['step'] == "getmaxvariza") {
+    if (!ctype_digit($text)) {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
+        return;
+    }
+    nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی تنظیم گردید.", $variza, 'HTML');
+    step("home", $from_id);
+    update("PaySetting", "ValuePay", $text, "NamePay", "maxbalancevariza");
 } elseif ($text == "⬇️ کف اطلس‌پی") {
     nm_adminInstantReply($from_id, "📌 حداقل مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
     step("getmainatlaspay", $from_id);
@@ -4215,6 +4290,42 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     }
     step('home', $from_id);
     nm_adminInstantReply($from_id, "✅ آموزش با موفقیت ذخیره گردید.", $blupal, 'HTML');
+} elseif ($text == "📚 آموزش واریزا" && $adminrulecheck['rule'] == "administrator") {
+    nm_adminInstantReply($from_id, "📌آموزش خود را ارسال نمایید .
+۱ - در صورتی که میخواید اموزشی نشان داده نشود عدد 2 را ارسال کنید
+۲ - شما می توانید آموزش بصورت فیلم ُ  متن ُ تصویر ارسال نمایید", $backadmin, 'HTML');
+    step("helpvariza", $from_id);
+} elseif ($user['step'] == "helpvariza") {
+    if ($text) {
+        if (intval($text) == 2) {
+            update("PaySetting", "ValuePay", "0", "NamePay", "helpvariza");
+        } else {
+            $data = json_encode(array(
+                'type' => "text",
+                'text' => $text
+            ));
+            update("PaySetting", "ValuePay", $data, "NamePay", "helpvariza");
+        }
+    } elseif ($photo) {
+        $data = json_encode(array(
+            'type' => "photo",
+            'text' => $caption,
+            'photoid' => $photoid
+        ));
+        update("PaySetting", "ValuePay", $data, "NamePay", "helpvariza");
+    } elseif ($video) {
+        $data = json_encode(array(
+            'type' => "video",
+            'text' => $caption,
+            'videoid' => $videoid
+        ));
+        update("PaySetting", "ValuePay", $data, "NamePay", "helpvariza");
+    } else {
+        nm_adminInstantReply($from_id, "❌ محتوای ارسال نامعتبر است.", $backadmin, 'HTML');
+        return;
+    }
+    step('home', $from_id);
+    nm_adminInstantReply($from_id, "✅ آموزش با موفقیت ذخیره گردید.", $variza, 'HTML');
 } elseif ($text == "📚 آموزش اطلس‌پی" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, "📌آموزش خود را ارسال نمایید .
 ۱ - در صورتی که میخواید اموزشی نشان داده نشود عدد 2 را ارسال کنید
