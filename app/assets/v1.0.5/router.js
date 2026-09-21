@@ -98,7 +98,7 @@ async function watchResumePage(view, encodedOrderId) {
 
     const isCryptoFlow = methodStr.includes('digital') || methodStr.includes('arze') || methodStr.includes('crypto');
     const isDirectBuy = flowStr === 'direct_buy';
-    const isExternalBotGateway = methodStr === 'iranpay2' || methodStr === 'tonpay' || methodStr === 'cubepay' || methodStr === 'blupal' || methodStr === 'variza' || methodStr === 'atlaspay' || methodStr === 'tetrapay';
+    const isExternalBotGateway = methodStr === 'iranpay2' || methodStr === 'tonpay' || methodStr === 'cubepay' || methodStr === 'blupal' || methodStr === 'variza' || methodStr === 'abangateway' || methodStr === 'atlaspay' || methodStr === 'tetrapay';
     const resolvedMode = isCryptoFlow
         ? (isDirectBuy ? 'crypto_offline' : 'recharge')
         : 'recharge';

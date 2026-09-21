@@ -887,6 +887,8 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $blupal, 'HTML');
 } elseif ($datain == "varizasetting" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $variza, 'HTML');
+} elseif ($datain == "abangatewaysetting" && $adminrulecheck['rule'] == "administrator") {
+    nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $abangateway, 'HTML');
 } elseif ($datain == "atlaspaysetting" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $atlaspay, 'HTML');
 } elseif ($datain == "tetrapaysetting" && $adminrulecheck['rule'] == "administrator") {
@@ -1099,6 +1101,34 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     nm_adminInstantReply($from_id, $textbotlang['Admin']['SettingnowPayment']['Savaapi'], $variza, 'HTML');
     update("PaySetting", "ValuePay", trim($text), "NamePay", "variza_webhook_secret");
     step('home', $from_id);
+} elseif ($text == "🔗 ثبت آدرس درگاه آبان گیت وی" && $adminrulecheck['rule'] == "administrator") {
+    $currentUrl = trim((string) (select("PaySetting", "ValuePay", "NamePay", "urlabangateway", "select")['ValuePay'] ?? ''));
+    $textabangateway = "🔗 آدرس درگاه آبان گیت وی را اینجا بفرستید.\n\n";
+    $textabangateway .= "این آدرس و «کلید اتصال» را ربات آبان گیت وی (@Abangw_bot) به شما میدهد: تنظیمات ← اتصال به ربات ها ← اتصال ربات جدید ← فاکسیما آپدیت شده.\n\n";
+    $textabangateway .= "آدرس فعلی: " . ($currentUrl !== '' ? "<code>" . htmlspecialchars($currentUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>" : "ثبت نشده");
+    nm_adminInstantReply($from_id, $textabangateway, $backadmin, 'HTML');
+    step('urlabangateway', $from_id);
+} elseif ($user['step'] == "urlabangateway") {
+    $abangatewayUrl = rtrim(trim((string) $text), '/');
+    if (stripos($abangatewayUrl, 'https://') !== 0 || filter_var($abangatewayUrl, FILTER_VALIDATE_URL) === false) {
+        nm_adminInstantReply($from_id, "❌ آدرس درگاه باید با https:// شروع شود. همان آدرسی را بفرستید که ربات آبان گیت وی به شما داده است.", $backadmin, 'HTML');
+        return;
+    }
+    nm_adminInstantReply($from_id, $textbotlang['Admin']['SettingnowPayment']['Savaapi'], $abangateway, 'HTML');
+    update("PaySetting", "ValuePay", $abangatewayUrl, "NamePay", "urlabangateway");
+    step('home', $from_id);
+} elseif ($text == "🔑 ثبت کلید اتصال آبان گیت وی" && $adminrulecheck['rule'] == "administrator") {
+    $currentKey = trim((string) (select("PaySetting", "ValuePay", "NamePay", "apiabangateway", "select")['ValuePay'] ?? ''));
+    // Shown masked: this screen can be open in a chat somebody else can see.
+    $maskedKey = ($currentKey === '' || $currentKey === '0') ? 'ثبت نشده' : ('••••' . substr($currentKey, -4));
+    $textabangateway = "🔑 کلید اتصال آبان گیت وی را اینجا بفرستید.\n\nکلید فعلی: {$maskedKey}\n\n";
+    $textabangateway .= "این کلید فقط یک بار در ربات آبان گیت وی نشان داده میشود. اگر آن را ندارید، اتصال را آنجا حذف کنید و دوباره بسازید.";
+    nm_adminInstantReply($from_id, $textabangateway, $backadmin, 'HTML');
+    step('apiabangateway', $from_id);
+} elseif ($user['step'] == "apiabangateway") {
+    nm_adminInstantReply($from_id, $textbotlang['Admin']['SettingnowPayment']['Savaapi'], $abangateway, 'HTML');
+    update("PaySetting", "ValuePay", trim((string) $text), "NamePay", "apiabangateway");
+    step('home', $from_id);
 } elseif ($datain == "affilnecurrencysetting") {
     nm_adminInstantReply($from_id, "یک گزینه را انتخاب کنید", $tronnowpayments, 'HTML');
 } elseif ($text == "🗂 نام درگاه کارت به کارت" || $text == "🏷️ نام نمایشی درگاه کارت به کارت") {
@@ -1179,6 +1209,14 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
 } elseif ($user['step'] == "gettextvariza") {
     nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $variza, 'HTML');
     update("textbot", "text", $text, "id_text", "variza");
+    step("home", $from_id);
+} elseif ($text == "🏷️ نام نمایشی درگاه آبان گیت وی") {
+    $prompt = "🏷️ نام نمایشی دلخواه برای درگاه آبان گیت وی را ارسال کنید.";
+    nm_adminInstantReply($from_id, $prompt, $backadmin, 'HTML');
+    step("gettextabangateway", $from_id);
+} elseif ($user['step'] == "gettextabangateway") {
+    nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $abangateway, 'HTML');
+    update("textbot", "text", $text, "id_text", "abangateway");
     step("home", $from_id);
 } elseif ($text == "🏷️ نام نمایشی درگاه بلوپال") {
     $prompt = "🏷️ نام نمایشی دلخواه برای درگاه بلوپال را ارسال کنید.";
@@ -2236,6 +2274,13 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
             $valuenew = "onvariza";
         }
         update("PaySetting", "ValuePay", $valuenew, "NamePay", "statusvariza");
+    } elseif ($type == "abangateway") {
+        if ($value == "onabangateway") {
+            $valuenew = "offabangateway";
+        } else {
+            $valuenew = "onabangateway";
+        }
+        update("PaySetting", "ValuePay", $valuenew, "NamePay", "statusabangateway");
     } elseif ($type == "blupal") {
         if ($value == "onblupal") {
             $valuenew = "offblupal";
@@ -2325,6 +2370,19 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     savedata("clear", "cashback_percent", $text);
     savedata("save", "cashback_key", "chashbackvariza");
     savedata("save", "cashback_menu", "variza");
+    nm_adminInstantReply($from_id, "📌 جامعه هدف این کش‌بک را انتخاب نمایید", rx_cashbackTargetKeyboard(), 'HTML');
+    step("getcashtarget", $from_id);
+} elseif ($text == "💰 کش بک آبان گیت وی") {
+    nm_adminInstantReply($from_id, "📌 در این بخش می توانید تعیین کنید کاربر پس از پرداخت چه درصدی به عنوان هدیه به حسابش واریز شود. ( برای غیرفعال کردن عدد صفر ارسال کنید )", $backadmin, 'HTML');
+    step("getcashabangateway", $from_id);
+} elseif ($user['step'] == "getcashabangateway") {
+    if (!ctype_digit($text)) {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
+        return;
+    }
+    savedata("clear", "cashback_percent", $text);
+    savedata("save", "cashback_key", "chashbackabangateway");
+    savedata("save", "cashback_menu", "abangateway");
     nm_adminInstantReply($from_id, "📌 جامعه هدف این کش‌بک را انتخاب نمایید", rx_cashbackTargetKeyboard(), 'HTML');
     step("getcashtarget", $from_id);
 } elseif ($text == "💰 کش بک اطلس‌پی") {
@@ -2478,6 +2536,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         'trnado' => $trnado,
         'tonpay' => $tonpay,
         'blupal' => $blupal,
+        'abangateway' => $abangateway,
         'cubepay' => $cubepay,
         'NowPaymentsManage' => $NowPaymentsManage,
         'nowpayment_setting_keyboard' => $nowpayment_setting_keyboard,
@@ -3260,6 +3319,28 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی تنظیم گردید.", $variza, 'HTML');
     step("home", $from_id);
     update("PaySetting", "ValuePay", $text, "NamePay", "maxbalancevariza");
+} elseif ($text == "⬇️ کف آبان گیت وی") {
+    nm_adminInstantReply($from_id, "📌 حداقل مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
+    step("getmainabangateway", $from_id);
+} elseif ($user['step'] == "getmainabangateway") {
+    if (!ctype_digit($text)) {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
+        return;
+    }
+    nm_adminInstantReply($from_id, "✅ حداقل مبلغ واریزی تنظیم گردید.", $abangateway, 'HTML');
+    step("home", $from_id);
+    update("PaySetting", "ValuePay", $text, "NamePay", "minbalanceabangateway");
+} elseif ($text == "⬆️ سقف آبان گیت وی") {
+    nm_adminInstantReply($from_id, "📌 حداکثر مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
+    step("getmaxabangateway", $from_id);
+} elseif ($user['step'] == "getmaxabangateway") {
+    if (!ctype_digit($text)) {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
+        return;
+    }
+    nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی تنظیم گردید.", $abangateway, 'HTML');
+    step("home", $from_id);
+    update("PaySetting", "ValuePay", $text, "NamePay", "maxbalanceabangateway");
 } elseif ($text == "⬇️ کف اطلس‌پی") {
     nm_adminInstantReply($from_id, "📌 حداقل مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
     step("getmainatlaspay", $from_id);
@@ -4326,6 +4407,42 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     }
     step('home', $from_id);
     nm_adminInstantReply($from_id, "✅ آموزش با موفقیت ذخیره گردید.", $variza, 'HTML');
+} elseif ($text == "📚 آموزش آبان گیت وی" && $adminrulecheck['rule'] == "administrator") {
+    nm_adminInstantReply($from_id, "📌آموزش خود را ارسال نمایید .
+۱ - در صورتی که میخواید اموزشی نشان داده نشود عدد 2 را ارسال کنید
+۲ - شما می توانید آموزش بصورت فیلم ُ  متن ُ تصویر ارسال نمایید", $backadmin, 'HTML');
+    step("helpabangateway", $from_id);
+} elseif ($user['step'] == "helpabangateway") {
+    if ($text) {
+        if (intval($text) == 2) {
+            update("PaySetting", "ValuePay", "2", "NamePay", "helpabangateway");
+        } else {
+            $data = json_encode(array(
+                'type' => "text",
+                'text' => $text
+            ));
+            update("PaySetting", "ValuePay", $data, "NamePay", "helpabangateway");
+        }
+    } elseif ($photo) {
+        $data = json_encode(array(
+            'type' => "photo",
+            'text' => $caption,
+            'photoid' => $photoid
+        ));
+        update("PaySetting", "ValuePay", $data, "NamePay", "helpabangateway");
+    } elseif ($video) {
+        $data = json_encode(array(
+            'type' => "video",
+            'text' => $caption,
+            'videoid' => $videoid
+        ));
+        update("PaySetting", "ValuePay", $data, "NamePay", "helpabangateway");
+    } else {
+        nm_adminInstantReply($from_id, "❌ محتوای ارسال نامعتبر است.", $backadmin, 'HTML');
+        return;
+    }
+    step('home', $from_id);
+    nm_adminInstantReply($from_id, "✅ آموزش با موفقیت ذخیره گردید.", $abangateway, 'HTML');
 } elseif ($text == "📚 آموزش اطلس‌پی" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, "📌آموزش خود را ارسال نمایید .
 ۱ - در صورتی که میخواید اموزشی نشان داده نشود عدد 2 را ارسال کنید

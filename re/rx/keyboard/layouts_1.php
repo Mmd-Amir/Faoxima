@@ -132,6 +132,7 @@ $datatextbot = array(
     'tonpay' => '',
     'cubepay' => '',
     'blupal' => '',
+    'abangateway' => '',
     'atlaspay' => '',
     'tetrapay' => '',
     'zarinpal' => '',
@@ -603,6 +604,21 @@ $variza = rx_kb_encode([
             ['text' => $textbotlang['Admin']['backmenu'], 'callback_data' => 'variza_backmenu']
         ]
     ]);
+$abangateway = rx_kb_encode([
+        [rx_kb_style(['text' => "🏷️ نام نمایشی درگاه آبان گیت وی", 'callback_data' => 'abangateway_name'], 'abangateway_name', $_rx_gw_styles)],
+        [rx_kb_style(['text' => "🔗 ثبت آدرس درگاه آبان گیت وی", 'callback_data' => 'abangateway_url'], 'abangateway_url', $_rx_gw_styles)],
+        [rx_kb_style(['text' => "🔑 ثبت کلید اتصال آبان گیت وی", 'callback_data' => 'abangateway_apikey'], 'abangateway_apikey', $_rx_gw_styles)],
+        [rx_kb_style(['text' => "💰 کش بک آبان گیت وی", 'callback_data' => 'abangateway_cashback'], 'abangateway_cashback', $_rx_gw_styles)],
+        [
+            rx_kb_style(['text' => "⬇️ کف آبان گیت وی", 'callback_data' => 'abangateway_min'], 'abangateway_min', $_rx_gw_styles),
+            rx_kb_style(['text' => "⬆️ سقف آبان گیت وی", 'callback_data' => 'abangateway_max'], 'abangateway_max', $_rx_gw_styles)
+        ],
+        [rx_kb_style(['text' => "📚 آموزش آبان گیت وی", 'callback_data' => 'abangateway_edu'], 'abangateway_edu', $_rx_gw_styles)],
+        [
+            rx_kb_style(['text' => $textbotlang['Admin']['backadmin'], 'callback_data' => 'abangateway_back'], 'abangateway_back', $_rx_gw_styles),
+            ['text' => $textbotlang['Admin']['backmenu'], 'callback_data' => 'abangateway_backmenu']
+        ]
+    ]);
 $atlaspay = rx_kb_encode([
         [rx_kb_style(['text' => "🏷️ نام نمایشی درگاه اطلس‌پی", 'callback_data' => 'atlaspay_name'], 'atlaspay_name', $_rx_gw_styles)],
         [rx_kb_style(['text' => "🔑 ثبت API Key اطلس‌پی", 'callback_data' => 'atlaspay_apikey'], 'atlaspay_apikey', $_rx_gw_styles)],
@@ -726,6 +742,9 @@ $tonpayStatus = getPaySettingValue("statustonpay");
 $cubepayStatus = getPaySettingValue("statuscubepay");
 $blupalStatus = getPaySettingValue("statusblupal");
 $varizaStatus = getPaySettingValue("statusvariza");
+$abangatewayStatus = getPaySettingValue("statusabangateway");
+$abangatewayUrl = trim((string) getPaySettingValue("urlabangateway"));
+$abangatewayKey = trim((string) getPaySettingValue("apiabangateway"));
 $atlaspayStatus = getPaySettingValue("statusatlaspay");
 $tetrapayStatus = getPaySettingValue("statustetrapay");
 $paymentverify = getPaySettingValue("checkpaycartfirst");
@@ -790,6 +809,12 @@ $step_payment = [
    if($varizaStatus == "onvariza"){
         $step_payment['inline_keyboard'][] = [
             rx_kb_style(['text' => $datatextbot['variza'] ?: '💳 واریزا', 'callback_data' => "variza"], 'variza', $_rx_pay_styles)
+    ];
+    }
+   // Offered only when it can take money: on, with an https address and a key.
+   if($abangatewayStatus == "onabangateway" && stripos($abangatewayUrl, 'https://') === 0 && $abangatewayKey !== '' && $abangatewayKey !== '0'){
+        $step_payment['inline_keyboard'][] = [
+            rx_kb_style(['text' => $datatextbot['abangateway'] ?: '💳 آبان گیت وی', 'callback_data' => "abangateway"], 'abangateway', $_rx_pay_styles)
     ];
     }
    if($atlaspayStatus == "onatlaspay"){
