@@ -60,7 +60,8 @@ if (false) {
     step('GetNameNew', $from_id);
 } elseif ($user['step'] == "GetNameNew") {
     if (!isset($update['message']) && empty($text)) { return; }
-    if (in_array($text, $marzban_list)) {
+    $marzban_list = is_array($marzban_list) ? $marzban_list : [];
+    if (in_array($text, $marzban_list, true)) {
         nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['Repeatpanel'], $backadmin, 'HTML');
         return;
     }
