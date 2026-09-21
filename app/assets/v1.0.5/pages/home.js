@@ -4,7 +4,7 @@ import { setUser } from '../state.js';
 import { icon } from '../icons.js?v=0.0.52';
 import { hapticImpact, showConfirm, getInitDataUnsafe } from '../telegram.js?v=0.0.52';
 import { mountHomeBell } from '../notifications.js?v=0.0.52';
-import { methodLabel } from '../payment-ui.js?v=0.0.54';
+import { methodLabel } from '../payment-ui.js?v=0.0.55';
 
 function greetingName() {
     try {

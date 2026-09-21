@@ -4,9 +4,9 @@ import { services as servicesPage } from './pages/services.js?v=0.0.52';
 import { buy as buyPage } from './pages/buy.js?v=0.0.54';
 import { account as accountPage } from './pages/account.js?v=0.0.52';
 import { settings as settingsPage } from './pages/settings.js?v=0.0.52';
-import { recharge as rechargePage } from './pages/recharge.js?v=0.0.54';
+import { recharge as rechargePage } from './pages/recharge.js?v=0.0.55';
 import { icon } from './icons.js?v=0.0.52';
-import { methodLabel } from './payment-ui.js?v=0.0.54';
+import { methodLabel } from './payment-ui.js?v=0.0.55';
 
 
 let _watchModulePromise = null;
@@ -46,7 +46,7 @@ async function watchResumePage(view, encodedOrderId) {
         gatewayUrl = String(obj.gateway_url || '');
         paymentStatus = String(obj.payment_status || '');
 
-        const WATCH_WINDOW_SEC = methodStr === 'cubepay' ? 3600 : (methodStr === 'atlaspay' ? 1200 : (methodStr === 'tetrapay' ? 600 : 1800));
+        const WATCH_WINDOW_SEC = methodStr === 'cubepay' ? 3600 : (methodStr === 'atlaspay' ? 1200 : (methodStr === 'tetrapay' ? 600 : (methodStr === 'tonpay' ? 86400 : 1800)));
         const nowSec = Math.floor(Date.now() / 1000);
         const hashAt = Number(obj.hash_at || 0);
         const expiresAtFromServer = Number(obj.expires_at || 0);
@@ -112,7 +112,7 @@ async function watchResumePage(view, encodedOrderId) {
         gatewayUrl,
         keepMiniAppOpen: isExternalBotGateway,
         expiresAtSec,
-        timeoutSec: (methodStr === 'cubepay' || methodStr === 'variza') ? 3600 : (methodStr === 'atlaspay' ? 1200 : (methodStr === 'tetrapay' ? 600 : 1800)),
+        timeoutSec: (methodStr === 'cubepay' || methodStr === 'variza') ? 3600 : (methodStr === 'atlaspay' ? 1200 : (methodStr === 'tetrapay' ? 600 : (methodStr === 'tonpay' ? 86400 : 1800))),
         pollEverySec: 5,
         onSuccess: (st) => {
             const amount = Number(st.amount || 0).toLocaleString('en-US');

@@ -169,6 +169,9 @@ final class PendingPaymentsHandler extends BaseHandler
         if (strtolower($method) === 'tetrapay') {
             return 600;
         }
+        if (strtolower($method) === 'tonpay') {
+            return 86400;
+        }
         return 1800;
     }
 

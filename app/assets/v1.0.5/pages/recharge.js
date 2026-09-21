@@ -1045,7 +1045,7 @@ async function startGatewayWatchForRecharge(view, methodId, obj) {
             gatewayUrl: obj.url,
             isCrypto,
             mode: 'recharge',
-            timeoutSec: methodId === 'cubepay' ? 3600 : (methodId === 'atlaspay' ? 1200 : (methodId === 'tetrapay' ? 600 : 1800)),
+            timeoutSec: methodId === 'cubepay' ? 3600 : (methodId === 'atlaspay' ? 1200 : (methodId === 'tetrapay' ? 600 : (methodId === 'tonpay' ? 86400 : 1800))),
             pollEverySec: 5,
             onSuccess: (st) => {
                 const amount = Number(st.amount || 0).toLocaleString('en-US');

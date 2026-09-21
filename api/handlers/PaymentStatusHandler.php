@@ -274,6 +274,9 @@ final class PaymentStatusHandler extends BaseHandler
         if ((string)($report['Payment_Method'] ?? '') === 'tetrapay') {
             return 600;
         }
+        if ((string)($report['Payment_Method'] ?? '') === 'tonpay') {
+            return 86400;
+        }
         return 1800;
     }
 }

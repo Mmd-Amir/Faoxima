@@ -425,6 +425,7 @@ function gatewayTimeoutSec(methodId) {
     if (id === 'variza') return 3600;
     if (id === 'atlaspay') return 1200;
     if (id === 'tetrapay') return 600;
+    if (id === 'tonpay') return 86400;
     return 1800;
 }
 
