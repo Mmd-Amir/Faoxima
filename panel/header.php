@@ -174,7 +174,7 @@ $__hdr_notif_total = $__hdr_new_orders + $__hdr_open_tickets;
     background: var(--surface-2);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-lg);
-    box-shadow: 0 1px 3px rgba(20, 20, 30, 0.12), 0 10px 28px -8px rgba(20, 20, 30, 0.35);
+    box-shadow: var(--shadow-1);
     height: 38px;
 }
 [data-theme="dark"] .profile-trigger.brand-pill,
@@ -188,13 +188,13 @@ $__hdr_notif_total = $__hdr_new_orders + $__hdr_open_tickets;
 }
 .profile-trigger.brand-pill .logo {
     width: 30px; height: 30px;
-    border-radius: 50%;
+    border-radius: var(--radius-md);
     display: grid; place-items: center;
     overflow: hidden;
     flex-shrink: 0;
     background: #fff;
     margin: 0;
-    box-shadow: 0 1px 3px rgba(20, 20, 30, 0.18), 0 3px 8px rgba(20, 20, 30, 0.14);
+    box-shadow: var(--shadow-1);
 }
 [data-theme="dark"] .profile-trigger.brand-pill .logo,
 :root:not([data-theme="light"]) .profile-trigger.brand-pill .logo {
@@ -203,7 +203,7 @@ $__hdr_notif_total = $__hdr_new_orders + $__hdr_open_tickets;
 .profile-trigger.brand-pill .logo img {
     width: 100%; height: 100%;
     object-fit: contain; object-position: center;
-    transform: scale(1.35);
+    transform: scale(1.2);
     display: block;
 }
 .profile-trigger.brand-pill .profile-info {
@@ -217,27 +217,27 @@ $__hdr_notif_total = $__hdr_new_orders + $__hdr_open_tickets;
     background: transparent;
     border: 1px solid transparent;
     border-radius: var(--radius-md);
-    box-shadow: 0 1px 3px rgba(20, 20, 30, 0.12), 0 10px 28px -8px rgba(20, 20, 30, 0.35);
+    box-shadow: var(--shadow-1);
     height: 28px;
 }
 [data-theme="dark"] .version-pill,
 :root:not([data-theme="light"]) .version-pill { box-shadow: none; }
 .version-pill .logo {
     width: 20px; height: 20px;
-    border-radius: 50%;
+    border-radius: var(--radius-sm);
     display: grid; place-items: center;
     overflow: hidden;
     flex-shrink: 0;
     background: #fff;
     margin: 0;
-    box-shadow: 0 1px 3px rgba(20, 20, 30, 0.18), 0 3px 8px rgba(20, 20, 30, 0.14);
+    box-shadow: var(--shadow-1);
 }
 [data-theme="dark"] .version-pill .logo,
 :root:not([data-theme="light"]) .version-pill .logo { box-shadow: none; }
 .version-pill .logo img {
     width: 100%; height: 100%;
     object-fit: contain; object-position: center;
-    transform: scale(1.35);
+    transform: scale(1.2);
     display: block;
 }
 .version-pill__label {
@@ -322,7 +322,7 @@ $__hdr_notif_total = $__hdr_new_orders + $__hdr_open_tickets;
 .hdr-search input {
     border-radius: var(--radius-md);
     padding: 0 14px;
-    box-shadow: 0 1px 3px rgba(20, 20, 30, 0.12), 0 10px 28px -8px rgba(20, 20, 30, 0.35);
+    box-shadow: var(--shadow-1);
 }
 [data-theme="dark"] .hdr-search input,
 :root:not([data-theme="light"]) .hdr-search input {
