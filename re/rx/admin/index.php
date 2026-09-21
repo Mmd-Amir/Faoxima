@@ -145,18 +145,13 @@ if (
         }
     }
 
-    // Enumerate every label from the admin keyboards that were actually rendered
-    // this request, so pressing ANY menu button (reply/non-glassy) while mid-step
-    // resets the step instead of the press being swallowed as step input. This is
-    // far more reliable than the regex above (which only catches handlers ending
-    // in `&& administrator`, missing many sub-menu reply buttons).
     if (function_exists('rx_collectKeyboardLabels')) {
         $rx_kb_vars = [
-            'keyboardadmin', 'setting_panel', 'shopkeyboard', 'keyboardhelpadmin',
-            'Feature_status', 'channelkeyboard', 'keyboard_Category_manage', 'keyboard_shop_manage',
+            'setting_panel', 'shopkeyboard', 'keyboardhelpadmin',
+            'Feature_status', 'keyboard_Category_manage', 'keyboard_shop_manage',
             'CartManage', 'trnado', 'tonpay', 'cubepay', 'blupal', 'atlaspay', 'tetrapay', 'keyboardzarinpal',
             'NowPaymentsManage', 'nowpayment_setting_keyboard', 'tronnowpayments', 'Startelegram',
-            'iranpaykeyboard', 'supportcenter', 'departemanslist', 'backadmin',
+            'iranpaykeyboard', 'supportcenter', 'backadmin',
             'adminPanelsMenu', 'adminChannelMenu', 'adminUsersMenu',
         ];
         $rx_kb_labels = [];
@@ -173,8 +168,6 @@ if (
         }
         foreach ($rx_kb_labels as $rx_kb_label) {
             $rx_nav_targets[] = $rx_kb_label;
-            // Upstream strips the reply-style emoji prefix from $text before this
-            // guard runs, so add the stripped form too to guarantee a match.
             if (function_exists('stripReplyStyleEmoji')) {
                 $rx_stripped_label = stripReplyStyleEmoji($rx_kb_label);
                 if ($rx_stripped_label !== '' && $rx_stripped_label !== $rx_kb_label) {
@@ -183,22 +176,6 @@ if (
             }
         }
         unset($rx_kb_vars, $rx_kb_var, $rx_kb_json, $rx_kb_labels, $rx_kb_label, $rx_stripped_label);
-    }
-
-    if (isset($datatextbot) && is_array($datatextbot)) {
-        foreach ($datatextbot as $rx_dtb_value) {
-            if (!is_string($rx_dtb_value) || $rx_dtb_value === '') {
-                continue;
-            }
-            $rx_nav_targets[] = $rx_dtb_value;
-            if (function_exists('stripReplyStyleEmoji')) {
-                $rx_dtb_stripped = stripReplyStyleEmoji($rx_dtb_value);
-                if ($rx_dtb_stripped !== '' && $rx_dtb_stripped !== $rx_dtb_value) {
-                    $rx_nav_targets[] = $rx_dtb_stripped;
-                }
-            }
-        }
-        unset($rx_dtb_value, $rx_dtb_stripped);
     }
 
     $rx_nav_targets = array_values(array_unique($rx_nav_targets));
