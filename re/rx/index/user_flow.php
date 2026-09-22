@@ -124,7 +124,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         $stmt->execute();
         $configexits = $stmt->rowCount();
         if (intval($configexits) == 0) {
-            sendmessage($from_id, "❌ موجودی این سرویس به پایان رسیده.", null, 'HTML');
+            sendmessage($from_id, faoxima_textbot_get('dyn_testaccount_manualsale_stock_depleted', "❌ موجودی این سرویس به پایان رسیده."), null, 'HTML');
             return;
         }
     }
@@ -1077,7 +1077,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     if ($user['number'] == "none" && (($setting['get_number'] == "onAuthenticationphone") || ($setting['iran_number'] == "onAuthenticationiran")) && !rx_auth_skip_user($user))
         return;
     if (!check_active_btn($setting['keyboardmain'], "text_sell")) {
-        sendmessage($from_id, "❌ این دکمه غیرفعال می باشد", null, 'HTML');
+        sendmessage($from_id, $datatextbot['dyn_errors_button_disabled'] ?? "❌ این دکمه غیرفعال می باشد", null, 'HTML');
         return;
     }
     if ($datain == "buy") {
@@ -1092,7 +1092,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     return;
 } elseif (($text !== '' && $text == $datatextbot['text_sell']) || $datain == "buy" || $datain == "buybacktow" || $datain == "buyback" || $text == "/buy" || $text == "buy" || $user['step'] == "statusnamecustom") {
     if (!check_active_btn($setting['keyboardmain'], "text_sell")) {
-        sendmessage($from_id, "❌ این دکمه غیرفعال می باشد", null, 'HTML');
+        sendmessage($from_id, $datatextbot['dyn_errors_button_disabled'] ?? "❌ این دکمه غیرفعال می باشد", null, 'HTML');
         return;
     }
     $locationproduct = mysqli_query($connect, "SELECT * FROM marzban_panel  WHERE status = 'active'");
@@ -1959,9 +1959,9 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
                 $stmtAffComm1->execute();
                 $result = number_format($result);
                 $dateacc = date('Y/m/d H:i:s');
-                $textadd = "🎁  پرداخت پورسانت
+                $textadd = faoxima_render_text(faoxima_textbot_get('dyn_purchase_affiliate_commission_user_tpl', "🎁  پرداخت پورسانت
 
-        مبلغ $result تومان به حساب شما از طرف  زیر مجموعه تان به کیف پول شما واریز گردید";
+        مبلغ {amount} تومان به حساب شما از طرف  زیر مجموعه تان به کیف پول شما واریز گردید"), ['amount' => $result]);
                 $textreportport = "
 مبلغ $result به کاربر {$user['affiliates']} برای پورسانت از کاربر $from_id واریز گردید
 <blockquote>تایم : $dateacc</blockquote>";
@@ -1992,9 +1992,9 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
             $stmtAffComm2->execute();
             $result = number_format($result);
             $dateacc = date('Y/m/d H:i:s');
-            $textadd = "🎁  پرداخت پورسانت
+            $textadd = faoxima_render_text(faoxima_textbot_get('dyn_purchase_affiliate_commission_user_tpl', "🎁  پرداخت پورسانت
 
-        مبلغ $result تومان به حساب شما از طرف  زیر مجموعه تان به کیف پول شما واریز گردید";
+        مبلغ {amount} تومان به حساب شما از طرف  زیر مجموعه تان به کیف پول شما واریز گردید"), ['amount' => $result]);
             $textreportport = "
 مبلغ $result به کاربر {$user['affiliates']} برای پورسانت از کاربر $from_id واریز گردید
 <blockquote>تایم : $dateacc</blockquote>";
@@ -2018,7 +2018,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     $balanceformatsell = number_format(select("user", "Balance", "id", $from_id, "select")['Balance'], 0);
     $textonebuy = "";
     if ($countinvoice == 1) {
-        $textonebuy = "📌 خرید اول کاربر";
+        $textonebuy = faoxima_textbot_get('dyn_purchase_first_buy_flag', "📌 خرید اول کاربر");
     }
     $balanceformatsellbefore = number_format($user['Balance'], 0);
     $rxFmtInfoProductPrice = rxFormatToman($info_product['price_product']);
@@ -2120,7 +2120,7 @@ $textonebuy
     $__dvt = $__dv['value_type'];
     $__dval = (float)$__dv['value'];
     $__dlabel = $__dv['label'];
-    sendmessage($from_id, "🤩 کد تخفیف شما درست بود و تخفیف {$__dlabel} روی فاکتور شما اعمال شد.", null, 'HTML');
+    sendmessage($from_id, sprintf($datatextbot['dyn_errors_discount_applied'] ?? "🤩 کد تخفیف شما درست بود و تخفیف %s روی فاکتور شما اعمال شد.", $__dlabel), null, 'HTML');
     step('payment', $from_id);
     $parts = explode("_", $user['Processing_value_one']);
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);

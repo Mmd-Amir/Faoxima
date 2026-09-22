@@ -111,7 +111,7 @@ try {
     if (is_array($datatxtbot)) {
         foreach ($datatxtbot as $row) {
             $idText = isset($row['id_text']) ? (string) $row['id_text'] : '';
-            if ($idText !== '' && array_key_exists($idText, $datatextbot)) {
+            if ($idText !== '' && (array_key_exists($idText, $datatextbot) || trim((string) ($row['text'] ?? '')) !== '')) {
                 $datatextbot[$idText] = (string) ($row['text'] ?? '');
             }
         }

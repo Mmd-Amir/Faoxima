@@ -164,7 +164,7 @@ function tonpay_process_webhook()
         'text_wgdashboard' => ''
     );
     foreach ($datatxtbot as $item) {
-        if (isset($datatextbot[$item['id_text']])) {
+        if (array_key_exists($item['id_text'], $datatextbot) || (is_string($item['text']) && trim($item['text']) !== '')) {
             $datatextbot[$item['id_text']] = $item['text'];
         }
     }

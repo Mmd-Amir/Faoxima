@@ -438,7 +438,7 @@ if (!function_exists('rx_cron_load_payment_context')) {
         if (is_array($datatextbotget)) {
             foreach ($datatextbotget as $row) {
                 $key = $row['id_text'] ?? '';
-                if (isset($datatextbot[$key])) {
+                if ($key !== '' && (array_key_exists($key, $datatextbot) || trim((string) ($row['text'] ?? '')) !== '')) {
                     $datatextbot[$key] = $row['text'] ?? '';
                 }
             }

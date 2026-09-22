@@ -310,7 +310,7 @@ if (!function_exists('nm_validateSellDiscount')) {
         }
 
         if ($section !== 'charge' && intval($user['pricediscount'] ?? 0) != 0) {
-            $res['reason'] = '❌ شما تخفیف اختصاصی دارید و امکان استفاده از کد تخفیف وجود ندارد.';
+            $res['reason'] = faoxima_textbot_get('dyn_errors_exclusive_discount_conflict', '❌ شما تخفیف اختصاصی دارید و امکان استفاده از کد تخفیف وجود ندارد.');
             return $res;
         }
 
@@ -352,7 +352,7 @@ if (!function_exists('nm_validateSellDiscount')) {
         }
 
         if (intval($row['time']) != 0 && time() >= intval($row['time'])) {
-            $res['reason'] = '❌ زمان کد تخفیف به پایان رسیده است.';
+            $res['reason'] = faoxima_textbot_get('dyn_errors_discount_expired', '❌ زمان کد تخفیف به پایان رسیده است.');
             return $res;
         }
 
@@ -592,13 +592,13 @@ if (!function_exists('payAffiliateCommissionForPurchase')) {
             $stmt->execute([':d' => $commission, ':u' => $referrerId]);
         }
         if (function_exists('wallet_ledger_record')) {
-            wallet_ledger_record($referrerId, 'credit', $commission, 'affiliate_commission', 'پورسانت خرید زیرمجموعه', null, 'user', (string) $buyerId);
+            wallet_ledger_record($referrerId, 'credit', $commission, 'affiliate_commission', faoxima_textbot_get('dyn_purchase_affiliate_commission_ledger_note', 'پورسانت خرید زیرمجموعه'), null, 'user', (string) $buyerId);
         }
 
         if ((int) ($setting['scorestatus'] ?? 0) === 1 && function_exists('sendmessage')) {
             $admin_ids = $GLOBALS['admin_ids'] ?? [];
             if (!in_array($referrerId, $admin_ids)) {
-                sendmessage($referrerId, "📌شما 2 امتیاز جدید کسب کردید.", null, 'html');
+                sendmessage($referrerId, faoxima_textbot_get('dyn_purchase_score_earned_2', "📌شما 2 امتیاز جدید کسب کردید."), null, 'html');
                 update('user', 'score', (int) $referrer['score'] + 2, 'id', $referrerId);
             }
         }
@@ -2111,6 +2111,8 @@ if (!function_exists('rxEnsurePaymentRuntime')) {
                     $rxId = (string) ($rxRow['id_text'] ?? '');
                     if (in_array($rxId, $rxMissingKeys, true)) {
                         $datatextbot[$rxId] = (string) ($rxRow['text'] ?? '');
+                    } elseif ($rxId !== '' && !array_key_exists($rxId, $datatextbot) && trim((string) ($rxRow['text'] ?? '')) !== '') {
+                        $datatextbot[$rxId] = (string) $rxRow['text'];
                     }
                 }
             }
@@ -2504,9 +2506,9 @@ function DirectPayment($order_id, $image = 'images.jpg')
         if ($affiliateCommissionPaid !== null) {
             $result = number_format($affiliateCommissionPaid);
             $dateacc = date('Y/m/d H:i:s');
-            $textadd = "🎁  پرداخت پورسانت
+            $textadd = faoxima_render_text(faoxima_textbot_get('dyn_purchase_affiliate_commission_user_tpl', "🎁  پرداخت پورسانت
 
-        مبلغ $result تومان به حساب شما از طرف  زیر مجموعه تان به کیف پول شما واریز گردید";
+        مبلغ {amount} تومان به حساب شما از طرف  زیر مجموعه تان به کیف پول شما واریز گردید"), ['amount' => $result]);
             $textreportport = "
 مبلغ $result به کاربر {$Balance_id['affiliates']} برای پورسانت از کاربر {$Balance_id['id']} واریز گردید
 <blockquote>تایم : $dateacc</blockquote>";
@@ -2546,7 +2548,7 @@ function DirectPayment($order_id, $image = 'images.jpg')
         $timejalali = jdate('Y/m/d H:i:s');
         $textonebuy = "";
         if ($countinvoice == 1) {
-            $textonebuy = "📌 خرید اول کاربر";
+            $textonebuy = faoxima_textbot_get('dyn_purchase_first_buy_flag', "📌 خرید اول کاربر");
         }
         // [fallback] اگه textbotlang در cron context کامل لود نشده، text رو با مقدار default پر کن تا تلگرام reject نکنه
         $__mngBtnText = '👤 مدیریت کاربر';
@@ -2597,7 +2599,7 @@ $textonebuy
             ], $setting);
         }
         if (intval($setting['scorestatus']) == 1 and !in_array($Balance_id['id'], $admin_ids)) {
-            sendmessage($Balance_id['id'], "📌شما 1 امتیاز جدید کسب کردید.", null, 'html');
+            sendmessage($Balance_id['id'], faoxima_textbot_get('dyn_purchase_score_earned_1', "📌شما 1 امتیاز جدید کسب کردید."), null, 'html');
             $scorenew = $Balance_id['score'] + 1;
             update("user", "score", $scorenew, "id", $Balance_id['id']);
         }
@@ -2714,7 +2716,7 @@ $textonebuy
 <blockquote>نام پنل : {$marzban_list_get['name_panel']}</blockquote>
 <blockquote>نام کاربری سرویس : {$nameloc['username']}</blockquote>
 <blockquote>دلیل خطا : {$extend['msg']}</blockquote>";
-            $rxTopupExtendMsg = "❌خطایی در تمدید سرویس رخ داده با پشتیبانی در ارتباط باشید";
+            $rxTopupExtendMsg = faoxima_textbot_get('dyn_errors_renewal_support_error', "❌خطایی در تمدید سرویس رخ داده با پشتیبانی در ارتباط باشید");
             if (($extend['code'] ?? '') === 'manual_stock_empty') {
                 $rxTopupExtendMsg = "❌ موجودی انبار برای این محصول تمام شده است.";
             } elseif (($extend['code'] ?? '') === 'queued_renewal_exists') {
@@ -2809,7 +2811,7 @@ $textonebuy
         }
         sendmessage($Balance_id['id'], $textextend, $keyboardextendfnished, 'HTML');
         if (intval($setting['scorestatus']) == 1 and !in_array($Balance_id['id'], $admin_ids)) {
-            sendmessage($Balance_id['id'], "📌شما 2 امتیاز جدید کسب کردید.", null, 'html');
+            sendmessage($Balance_id['id'], faoxima_textbot_get('dyn_purchase_score_earned_2', "📌شما 2 امتیاز جدید کسب کردید."), null, 'html');
             $scorenew = $Balance_id['score'] + 2;
             update("user", "score", $scorenew, "id", $Balance_id['id']);
         }
@@ -2895,7 +2897,7 @@ $textonebuy
 <blockquote>نام پنل : {$marzban_list_get['name_panel']}</blockquote>
 <blockquote>نام کاربری سرویس : {$nameloc['username']}</blockquote>
 <blockquote>دلیل خطا : {$extra_volume['msg']}</blockquote>";
-            sendmessage($nameloc['id_user'], "❌خطایی در خرید حجم اضافه سرویس رخ داده با پشتیبانی در ارتباط باشید", null, 'HTML');
+            sendmessage($nameloc['id_user'], faoxima_textbot_get('dyn_errors_extra_volume_purchase_error', "❌خطایی در خرید حجم اضافه سرویس رخ داده با پشتیبانی در ارتباط باشید"), null, 'HTML');
             if (strlen($setting['Channel_Report']) > 0) {
                 telegram('sendmessage', [
                     'chat_id' => $setting['Channel_Report'],
@@ -2935,7 +2937,7 @@ $textonebuy
         $volumesformat = number_format($Payment_report['price'], 0);
         $rxFmtBalanceBeforeVolume = rxFormatToman($Balance_id['Balance']);
         if (intval($setting['scorestatus']) == 1 and !in_array($Balance_id['id'], $admin_ids)) {
-            sendmessage($Balance_id['id'], "📌شما 1 امتیاز جدید کسب کردید.", null, 'html');
+            sendmessage($Balance_id['id'], faoxima_textbot_get('dyn_purchase_score_earned_1', "📌شما 1 امتیاز جدید کسب کردید."), null, 'html');
             $scorenew = $Balance_id['score'] + 1;
             update("user", "score", $scorenew, "id", $Balance_id['id']);
         }
@@ -3018,7 +3020,7 @@ $textonebuy
 <blockquote>نام پنل : {$marzban_list_get['name_panel']}</blockquote>
 <blockquote>نام کاربری سرویس : {$nameloc['username']}</blockquote>
 <blockquote>دلیل خطا : {$extra_time['msg']}</blockquote>";
-            sendmessage($from_id, "❌خطایی در خرید حجم اضافه سرویس رخ داده با پشتیبانی در ارتباط باشید", null, 'HTML');
+            sendmessage($from_id, faoxima_textbot_get('dyn_errors_extra_volume_purchase_error', "❌خطایی در خرید حجم اضافه سرویس رخ داده با پشتیبانی در ارتباط باشید"), null, 'HTML');
             if (strlen($setting['Channel_Report']) > 0) {
                 telegram('sendmessage', [
                     'chat_id' => $setting['Channel_Report'],
@@ -3058,7 +3060,7 @@ $textonebuy
         $volumesformat = number_format($Payment_report['price']);
         $rxFmtBalanceBeforeTime = rxFormatToman($Balance_id['Balance']);
         if (intval($setting['scorestatus']) == 1 and !in_array($Balance_id['id'], $admin_ids)) {
-            sendmessage($Balance_id['id'], "📌شما 1 امتیاز جدید کسب کردید.", null, 'html');
+            sendmessage($Balance_id['id'], faoxima_textbot_get('dyn_purchase_score_earned_1', "📌شما 1 امتیاز جدید کسب کردید."), null, 'html');
             $scorenew = $Balance_id['score'] + 1;
             update("user", "score", $scorenew, "id", $Balance_id['id']);
         }

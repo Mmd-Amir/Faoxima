@@ -180,7 +180,7 @@ final class MiniDiscount
     {
         $expiry = (int)($row['time'] ?? 0);
         if ($expiry !== 0 && time() >= $expiry) {
-            return ['ok' => false, 'reason' => '❌ زمان کد تخفیف به پایان رسیده است.'];
+            return ['ok' => false, 'reason' => faoxima_textbot_get('dyn_errors_discount_expired', '❌ زمان کد تخفیف به پایان رسیده است.')];
         }
 
         $limitTotal = (int)($row['limitDiscount'] ?? 0);

@@ -48,7 +48,7 @@ $datatextbot = [
 ];
 if (is_array($datatextbotget)) {
     foreach ($datatextbotget as $row) {
-        if (isset($row['id_text'], $datatextbot[$row['id_text']])) {
+        if (isset($row['id_text']) && (array_key_exists($row['id_text'], $datatextbot) || trim((string) ($row['text'] ?? '')) !== '')) {
             $datatextbot[$row['id_text']] = (string)($row['text'] ?? '');
         }
     }

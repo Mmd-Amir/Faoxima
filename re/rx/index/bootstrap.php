@@ -181,6 +181,12 @@ if (!function_exists('rx_send_forced_miniapp_redirect')) {
     {
         global $domainhosts;
         $text = '📱 برای استفاده از خدمات ما، مینی‌اپ را باز کنید.';
+        if (function_exists('faoxima_textbot_get')) {
+            $rxSuggestText = trim((string) faoxima_textbot_get('miniapp_suggest_1', ''));
+            if ($rxSuggestText !== '') {
+                $text = $rxSuggestText;
+            }
+        }
         $first = trim((string)($user['first_name'] ?? ''));
         $text = str_replace('{first_name}', $first !== '' ? $first : 'کاربر', $text);
         $host = isset($domainhosts) ? rtrim(preg_replace('#^https?://#', '', (string)$domainhosts), '/') : '';
@@ -517,8 +523,13 @@ $datatextbot = array(
     'miniapp_suggest_1' => '',
 );
 foreach ($datatxtbot as $item) {
-    if (isset($datatextbot[$item['id_text']])) {
+    if (array_key_exists($item['id_text'], $datatextbot) || (is_string($item['text']) && trim($item['text']) !== '')) {
         $datatextbot[$item['id_text']] = $item['text'];
+    }
+}
+foreach ($datatextbot as $rxTbKey => $rxTbVal) {
+    if (strpos((string) $rxTbKey, 'dyn_') === 0 && trim((string) $rxTbVal) === '') {
+        unset($datatextbot[$rxTbKey]);
     }
 }
 $time_Start = jdate('Y/m/d');
@@ -1483,7 +1494,7 @@ if ($text == "version") {
                         . htmlspecialchars($note_qv, ENT_QUOTES, 'UTF-8');
             $__qvRow = [['text' => '🔧 مدیریت سرویس', 'callback_data' => 'product_' . $nameloc_qv['id_invoice']]];
             if (!(function_exists('isQrDisabled') && isQrDisabled())) {
-                $__qvRow[] = ['text' => '📷 دریافت QR Code', 'callback_data' => 'infocard_qr_' . $nameloc_qv['id_invoice']];
+                $__qvRow[] = ['text' => faoxima_textbot_get('dyn_purchase_qr_code_btn', '📷 دریافت QR Code'), 'callback_data' => 'infocard_qr_' . $nameloc_qv['id_invoice']];
             }
             $kb_qv = json_encode([
                 'inline_keyboard' => [
@@ -2902,7 +2913,7 @@ $nameconfig";
         return;
     }
     if ($nameloc == false) {
-        sendmessage($from_id, "❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.", null, 'HTML');
+        sendmessage($from_id, $datatextbot['dyn_errors_renewal_failed_restart'] ?? "❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.", null, 'HTML');
         return;
     }
     if (function_exists('nmMaybeShowStockInvoiceDetails') && nmMaybeShowStockInvoiceDetails($from_id, $message_id ?? null, $nameloc)) { step('home', $from_id); return; }
@@ -3269,7 +3280,7 @@ $nameconfig";
     $id_invoice = $userdata['id_invoice'];
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
     if ($nameloc == false) {
-        sendmessage($from_id, "❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.", null, 'HTML');
+        sendmessage($from_id, $datatextbot['dyn_errors_renewal_failed_restart'] ?? "❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.", null, 'HTML');
         return;
     }
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
@@ -3300,7 +3311,7 @@ $nameconfig";
     }
     $pricelastextend = $prodcut['price_product'];
     if ($prodcut == false || !in_array($nameloc['Status'], ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold'])) {
-        sendmessage($from_id, "❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.", null, 'HTML');
+        sendmessage($from_id, $datatextbot['dyn_errors_renewal_failed_restart'] ?? "❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.", null, 'HTML');
         return;
     }
     if ($datain == "confirmserdiscount") {
@@ -3774,7 +3785,7 @@ $nameconfig";
     }
     $nameloc = select("invoice", "*", "id_invoice", $user['Processing_value'], "select");
     if (!in_array($nameloc['Status'], ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold'])) {
-        sendmessage($from_id, "❌ خرید با خطا مواجه گردید مراحل را مجدد انجام  دهید.", null, 'HTML');
+        sendmessage($from_id, $datatextbot['dyn_errors_purchase_failed_restart'] ?? "❌ خرید با خطا مواجه گردید مراحل را مجدد انجام  دهید.", null, 'HTML');
         return;
     }
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
@@ -3954,7 +3965,7 @@ $nameconfig";
     $id_invoice = $dataget[1];
     $limitchangeloc = json_decode($setting['limitnumber'], true);
     if ($user['limitchangeloc'] > $limitchangeloc['all'] and intval($setting['statuslimitchangeloc']) == 1) {
-        sendmessage($from_id, "❌ محدودیت تغییر لوکیشن شما به پایان رسیده  است", null, 'html');
+        sendmessage($from_id, $datatextbot['dyn_errors_location_change_limit_reached'] ?? "❌ محدودیت تغییر لوکیشن شما به پایان رسیده  است", null, 'html');
         return;
     }
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
@@ -4023,7 +4034,7 @@ $nameconfig";
         $limitfree = false;
     }
     if ($user['limitchangeloc'] >= $limitchangeloc['all'] and intval($setting['statuslimitchangeloc']) == 1) {
-        sendmessage($from_id, "❌ محدودیت تغییر لوکیشن شما به پایان رسیده  است", null, 'html');
+        sendmessage($from_id, $datatextbot['dyn_errors_location_change_limit_reached'] ?? "❌ محدودیت تغییر لوکیشن شما به پایان رسیده  است", null, 'html');
         return;
     }
     if ($marzban_list_get_new['changeloc'] == "offchangeloc") {
@@ -4543,7 +4554,7 @@ $nameconfig";
     $pricelasttime = $__timeCharge;
     $nameloc = select("invoice", "*", "id_invoice", $user['Processing_value'], "select");
     if (!in_array($nameloc['Status'], ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold'])) {
-        sendmessage($from_id, "❌ خرید با خطا مواجه گردید مراحل را مجدد انجام  دهید.", null, 'HTML');
+        sendmessage($from_id, $datatextbot['dyn_errors_purchase_failed_restart'] ?? "❌ خرید با خطا مواجه گردید مراحل را مجدد انجام  دهید.", null, 'HTML');
         return;
     }
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");

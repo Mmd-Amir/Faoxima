@@ -151,7 +151,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     if ($datain === 'cv_new') {
         step('card_photo_step', $from_id);
         deletemessage($from_id, $message_id);
-        sendmessage($from_id, "⚠️ احراز هویت کارت به کارت فعال است
+        sendmessage($from_id, $datatextbot['dyn_wallet_card_auth_active_notice'] ?? "⚠️ احراز هویت کارت به کارت فعال است
 
 📸 لطفا تصویر کارت فیزیکی خود را که قصد واریز با آن را دارید، ارسال کنید.
 
@@ -542,7 +542,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     }
     $receiptRow = select("Payment_report", "*", "id_order", $orderId, "select");
     if (!$receiptRow || (string) ($receiptRow['id_user'] ?? '') !== (string) $from_id) {
-        sendmessage($from_id, "❌ فاکتور یافت نشد.", $keyboard, 'HTML');
+        sendmessage($from_id, $datatextbot['dyn_wallet_invoice_not_found'] ?? "❌ فاکتور یافت نشد.", $keyboard, 'HTML');
         step('home', $from_id);
         return;
     }
@@ -1208,6 +1208,25 @@ $text_porsant
 
 <b>📢 دعوت کن، هدیه بگیر، رشد کن!</b>
 ";
+    $rxAffiliateInfoTpl = (string) ($textbotlang['users']['affiliates']['affiliateinfo'] ?? '');
+    if (trim($rxAffiliateInfoTpl) !== '') {
+        try {
+            $rxAffiliateInfoText = vsprintf($rxAffiliateInfoTpl, [
+                rxFormatToman($affiliatescommission['price_Discount'] ?? 0),
+                $Percent_porsant,
+                $user['affiliatescount'],
+                $orders_count,
+                $sum_order,
+                $rxCommissionEarned,
+                $rxPendingGiftCount,
+            ]);
+        } catch (\Throwable $rxAffiliateInfoErr) {
+            $rxAffiliateInfoText = false;
+        }
+        if (is_string($rxAffiliateInfoText) && trim($rxAffiliateInfoText) !== '') {
+            $textaffiliates = $rxAffiliateInfoText;
+        }
+    }
 
     sendmessage($from_id, $textaffiliates, $keyboard_share, 'HTML');
 } elseif ($datain == "get_gift_start") {
@@ -1464,7 +1483,7 @@ $text_porsant
         $__allowNegEv = ($user['agent'] === 'n2') ? (int)($user['maxbuyagent'] ?? 0) : 0;
         $__chargeEv = balance_atomic_charge($from_id, (float)$volume, $__allowNegEv);
         if (empty($__chargeEv['ok'])) {
-            sendmessage($from_id, "❌ موجودی کافی نیست (تلاش هم‌زمان شناسایی شد). یک بار دیگر تلاش کنید.", null, 'HTML');
+            sendmessage($from_id, $datatextbot['dyn_errors_concurrency_insufficient_stock'] ?? "❌ موجودی کافی نیست (تلاش هم‌زمان شناسایی شد). یک بار دیگر تلاش کنید.", null, 'HTML');
             return;
         }
         $Balance_Low_user = $__chargeEv['new_balance'];
