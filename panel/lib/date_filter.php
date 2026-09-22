@@ -97,7 +97,7 @@ if (!function_exists('fx_date_filter_matches_ts')) {
 
 if (!function_exists('fx_date_filter_ui')) {
 
-    function fx_date_filter_ui(string $baseUrl, string $suffix = '', array $keepParams = [], string $expiryLabel = ''): string
+    function fx_date_filter_ui(string $baseUrl, string $suffix = '', array $keepParams = [], string $expiryLabel = '', string $actionsExtra = '', string $cardExtra = ''): string
     {
         $df = fx_date_filter_resolve($suffix);
         $title = $expiryLabel !== '' ? 'فیلتر بر اساس تاریخ ' . $expiryLabel : 'فیلتر بر اساس تاریخ';
@@ -143,8 +143,10 @@ if (!function_exists('fx_date_filter_ui')) {
             $qs = fx_qs($keepParams, ['dpreset' . $suffix => null, 'ddays' . $suffix => null, 'dfrom' . $suffix => null, 'dto' . $suffix => null]);
             $html .= '<a class="btn btn-outline" href="' . htmlspecialchars($baseUrl . '?' . $qs, ENT_QUOTES, 'UTF-8') . '">حذف فیلتر</a>';
         }
+        $html .= $actionsExtra;
         $html .= '</div>';
         $html .= '</form>';
+        $html .= $cardExtra;
 
         if ($df['active']) {
             $html .= '<div class="fx-date-filter__active">فیلتر فعال: ' . htmlspecialchars($df['label'], ENT_QUOTES, 'UTF-8') . '</div>';

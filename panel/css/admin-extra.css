@@ -677,12 +677,6 @@
     font-weight: 700;
 }
 
-.receipt-page .receipt-bulk-actions {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: var(--space-3, 12px);
-}
-
 #modal-rx-view .receipt-detail-photo-label {
     margin-top: 16px;
     padding-top: 11px;
@@ -746,16 +740,6 @@
 @media (max-width: 480px) {
     .receipt-page .receipt-summary-grid {
         grid-template-columns: 1fr;
-    }
-    .receipt-page .receipt-bulk-actions {
-        justify-content: stretch;
-    }
-    .receipt-page .receipt-bulk-actions form {
-        width: 100%;
-    }
-    .receipt-page .receipt-bulk-actions .btn {
-        width: 100%;
-        justify-content: center;
     }
 }
 

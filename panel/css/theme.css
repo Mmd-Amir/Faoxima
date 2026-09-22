@@ -5873,6 +5873,20 @@ a:not([class]):focus-visible {
     }
 }
 
+@media (min-width: 993px), (min-width: 769px) and (orientation: portrait) {
+    #main-content .wrapper.fx-page-list > .card.fx-date-filter > .fx-date-filter__form:has(.fx-filter-delete__btn) {
+        max-width: none;
+    }
+    .fx-date-filter__form:has(.fx-filter-delete__btn) > .fx-date-filter__actions {
+        grid-column: span 2;
+    }
+}
+
+.fx-date-filter__actions:has(.fx-filter-delete__btn) > .btn {
+    min-width: 104px;
+    justify-content: center;
+}
+
 /* ---- 3B.4  Result area -------------------------------------------------- */
 /* The card stays the only bordered surface around the table (`.table-wrap` is
    borderless), so the desktop padding simply comes down to list density.

@@ -52,6 +52,16 @@ if ($payQ !== '') {
 $whereSql .= fx_date_filter_sql_mixed_named('time', $df['from'], $df['to'], $whereParams, 'd');
 $whereSql .= fx_status_filter_sql('payment_Status', $payStatus, $payStatusOptions, $whereParams, ':statusVal');
 
+$payStatusActive = $payStatus !== '' && isset($payStatusOptions[$payStatus]);
+$payFilterActive = $payQ !== '' || $df['active'] || $payStatusActive;
+$payDateKeep = fx_filter_delete_date_params('', $df['active']);
+$payFilterParams = array_merge(['q' => $payQ !== '' ? $payQ : null, 'status' => $payStatusActive ? $payStatus : null], $payDateKeep);
+$payFilterCriteria = fx_filter_delete_criteria($payStatusActive ? $payStatusOptions[$payStatus] : '', $df, $payQ);
+if (fx_filter_delete_requested()) {
+    [$fdMatched, $fdDeleted] = $payFilterActive ? fx_filter_delete_where($pdo, 'Payment_report', $whereSql, $whereParams) : [0, 0];
+    fx_filter_delete_redirect('payment.php', $payFilterParams, $fdMatched, $fdDeleted);
+}
+
 $pg = fx_paginate($pdo, "SELECT COUNT(*) FROM Payment_report WHERE $whereSql", $whereParams, 5);
 
 $query = $pdo->prepare("SELECT * FROM Payment_report WHERE $whereSql ORDER BY time DESC LIMIT :perPage OFFSET :offset");
@@ -92,11 +102,14 @@ $listpayment = $query->fetchAll();
 
             <?php echo fx_bulk_delete_flash_html(); ?>
 
-            <?php echo fx_search_ui('payment.php', $payQ, ['status' => $payStatus !== '' ? $payStatus : null], 'جستجو در آیدی کاربر یا کد پیگیری…'); ?>
+            <?php echo fx_filter_delete_flash_html(); ?>
 
-            <?php echo fx_status_filter_ui('payment.php', $payStatusOptions, $payStatus, ['q' => $payQ !== '' ? $payQ : null]); ?>
+            <?php echo fx_search_ui('payment.php', $payQ, array_merge(['status' => $payStatus !== '' ? $payStatus : null], $payDateKeep), 'جستجو در آیدی کاربر یا کد پیگیری…'); ?>
 
-            <?php echo fx_date_filter_ui('payment.php', '', ['q' => $payQ !== '' ? $payQ : null, 'status' => $payStatus !== '' ? $payStatus : null]); ?>
+            <?php echo fx_status_filter_ui('payment.php', $payStatusOptions, $payStatus, array_merge(['q' => $payQ !== '' ? $payQ : null], $payDateKeep)); ?>
+
+            <?php $fxFd = fx_filter_delete_parts('payment.php', $payFilterParams, $payFilterActive ? (int)$pg['total'] : 0, $payFilterCriteria); ?>
+            <?php echo fx_date_filter_ui('payment.php', '', ['q' => $payQ !== '' ? $payQ : null, 'status' => $payStatus !== '' ? $payStatus : null], '', $fxFd['button'], $fxFd['form']); ?>
 
             <div class="card">
                 <form method="POST" action="payment.php" id="bulk-form">

@@ -51,6 +51,16 @@ if ($svcQ !== '') {
 $whereSql .= fx_date_filter_sql_mixed_named('time', $df['from'], $df['to'], $whereParams, 'd');
 $whereSql .= fx_status_filter_sql('type', $svcStatus, $svcTypeOptions, $whereParams, ':typeVal');
 
+$svcStatusActive = $svcStatus !== '' && isset($svcTypeOptions[$svcStatus]);
+$svcFilterActive = $svcQ !== '' || $df['active'] || $svcStatusActive;
+$svcDateKeep = fx_filter_delete_date_params('', $df['active']);
+$svcFilterParams = array_merge(['q' => $svcQ !== '' ? $svcQ : null, 'status' => $svcStatusActive ? $svcStatus : null], $svcDateKeep);
+$svcFilterCriteria = fx_filter_delete_criteria($svcStatusActive ? $svcTypeOptions[$svcStatus] : '', $df, $svcQ, 'نوع خدمت');
+if (fx_filter_delete_requested()) {
+    [$fdMatched, $fdDeleted] = $svcFilterActive ? fx_filter_delete_where($pdo, 'service_other', $whereSql, $whereParams) : [0, 0];
+    fx_filter_delete_redirect('service.php', $svcFilterParams, $fdMatched, $fdDeleted);
+}
+
 $pg = fx_paginate($pdo, "SELECT COUNT(*) FROM service_other WHERE $whereSql", $whereParams, 5);
 
 $query = $pdo->prepare("SELECT * FROM service_other WHERE $whereSql ORDER BY id DESC LIMIT :perPage OFFSET :offset");
@@ -91,11 +101,14 @@ $listservices = $query->fetchAll();
 
             <?php echo fx_bulk_delete_flash_html(); ?>
 
-            <?php echo fx_search_ui('service.php', $svcQ, ['status' => $svcStatus !== '' ? $svcStatus : null], 'جستجو در شناسه، آیدی کاربر یا نام کانفیگ…'); ?>
+            <?php echo fx_filter_delete_flash_html(); ?>
 
-            <?php echo fx_status_filter_ui('service.php', $svcTypeOptions, $svcStatus, ['q' => $svcQ !== '' ? $svcQ : null], 'status', 'فیلتر بر اساس نوع خدمت'); ?>
+            <?php echo fx_search_ui('service.php', $svcQ, array_merge(['status' => $svcStatus !== '' ? $svcStatus : null], $svcDateKeep), 'جستجو در شناسه، آیدی کاربر یا نام کانفیگ…'); ?>
 
-            <?php echo fx_date_filter_ui('service.php', '', ['q' => $svcQ !== '' ? $svcQ : null, 'status' => $svcStatus !== '' ? $svcStatus : null]); ?>
+            <?php echo fx_status_filter_ui('service.php', $svcTypeOptions, $svcStatus, array_merge(['q' => $svcQ !== '' ? $svcQ : null], $svcDateKeep), 'status', 'فیلتر بر اساس نوع خدمت'); ?>
+
+            <?php $fxFd = fx_filter_delete_parts('service.php', $svcFilterParams, $svcFilterActive ? (int)$pg['total'] : 0, $svcFilterCriteria); ?>
+            <?php echo fx_date_filter_ui('service.php', '', ['q' => $svcQ !== '' ? $svcQ : null, 'status' => $svcStatus !== '' ? $svcStatus : null], '', $fxFd['button'], $fxFd['form']); ?>
 
             <div class="card">
                 <form method="POST" action="service.php" id="bulk-form">

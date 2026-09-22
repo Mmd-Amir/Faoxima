@@ -9,6 +9,7 @@ require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/lib/pagination.php';
+require_once __DIR__ . '/lib/bulk_delete.php';
 require_once __DIR__ . '/lib/date_filter.php';
 require_once __DIR__ . '/lib/status_filter.php';
 require_once __DIR__ . '/lib/search_filter.php';
@@ -145,9 +146,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_rx_action'])) {
         $rxFlash = $ok
             ? ['type' => 'ok', 'text' => 'رسید با موفقیت حذف شد.']
             : ['type' => 'err', 'text' => 'حذف رسید ممکن نشد.'];
-    } elseif ($rxAction === 'delete_all_waiting') {
-        $n = rxReceiptSoftDeleteAll();
-        $rxFlash = ['type' => 'ok', 'text' => 'تعداد ' . number_format($n) . ' رسید در انتظار حذف شد.'];
     }
 
     $_SESSION['_rx_flash'] = $rxFlash;
@@ -184,6 +182,26 @@ if ($rxQ !== '') {
 }
 $rxWhereSql .= fx_date_filter_sql_mixed_named('time', $rxDf['from'], $rxDf['to'], $rxWhereParams, 'd');
 $rxWhereSql .= fx_status_filter_sql('payment_Status', $rxStatus, $rxStatusOptions, $rxWhereParams, ':statusVal');
+
+$rxStatusActive = $rxStatus !== '' && isset($rxStatusOptions[$rxStatus]);
+$rxFilterActive = $rxQ !== '' || $rxDf['active'] || $rxStatusActive;
+$rxDateKeep = fx_filter_delete_date_params('', $rxDf['active']);
+$rxFilterParams = array_merge(['q' => $rxQ !== '' ? $rxQ : null, 'status' => $rxStatusActive ? $rxStatus : null], $rxDateKeep);
+$rxFilterCriteria = fx_filter_delete_criteria($rxStatusActive ? $rxStatusOptions[$rxStatus] : '', $rxDf, $rxQ);
+if (fx_filter_delete_requested()) {
+    $fdMatched = 0;
+    $fdDeleted = 0;
+    if ($rxFilterActive) {
+        $fdOrderIds = fx_filter_delete_collect($pdo, 'Payment_report', 'id_order', $rxWhereSql, $rxWhereParams);
+        $fdMatched = count($fdOrderIds);
+        foreach ($fdOrderIds as $fdOrderId) {
+            if (rxReceiptHardDelete($fdOrderId)) {
+                $fdDeleted++;
+            }
+        }
+    }
+    fx_filter_delete_redirect('receipts.php', $rxFilterParams, $fdMatched, $fdDeleted);
+}
 
 $rxPg = fx_paginate($pdo, "SELECT COUNT(*) FROM Payment_report WHERE $rxWhereSql", $rxWhereParams, 20);
 
@@ -262,6 +280,8 @@ $rxKeepQsString = http_build_query(array_filter($rxKeepQsArr, function ($v) { re
                 </div>
             <?php endif; ?>
 
+            <?php echo fx_filter_delete_flash_html(); ?>
+
             <div class="receipt-summary-grid">
                 <div class="card receipt-summary-card">
                     <div class="receipt-summary-card__label"><?php echo icon('hourglass', 'svg-icon svg-sm'); ?> در انتظار بررسی</div>
@@ -281,25 +301,12 @@ $rxKeepQsString = http_build_query(array_filter($rxKeepQsArr, function ($v) { re
                 </div>
             </div>
 
-            <?php echo fx_search_ui('receipts.php', $rxQ, ['status' => $rxStatus !== '' ? $rxStatus : null], 'جستجو در کد پیگیری، آیدی کاربر یا ۴ رقم آخر کارت…'); ?>
+            <?php echo fx_search_ui('receipts.php', $rxQ, array_merge(['status' => $rxStatus !== '' ? $rxStatus : null], $rxDateKeep), 'جستجو در کد پیگیری، آیدی کاربر یا ۴ رقم آخر کارت…'); ?>
 
-            <?php echo fx_status_filter_ui('receipts.php', $rxStatusOptions, $rxStatus, ['q' => $rxQ !== '' ? $rxQ : null]); ?>
+            <?php echo fx_status_filter_ui('receipts.php', $rxStatusOptions, $rxStatus, array_merge(['q' => $rxQ !== '' ? $rxQ : null], $rxDateKeep)); ?>
 
-            <?php echo fx_date_filter_ui('receipts.php', '', ['q' => $rxQ !== '' ? $rxQ : null, 'status' => $rxStatus !== '' ? $rxStatus : null]); ?>
-
-            <?php if ($rxPendingCount > 0): ?>
-            <div class="receipt-bulk-actions">
-                <form method="POST" action="receipts.php" onsubmit="return confirm('آیا از حذف تمامی رسیدهای در انتظار بررسی مطمئن هستید؟ این عملیات بدون اطلاع به کاربران انجام می‌شود.');">
-                    <?php echo fx_csrf_field(); ?>
-                    <input type="hidden" name="_rx_action" value="delete_all_waiting">
-                    <input type="hidden" name="id_order" value="-">
-                    <input type="hidden" name="_keep_qs" value="<?php echo htmlspecialchars($rxKeepQsString, ENT_QUOTES, 'UTF-8'); ?>">
-                    <button type="submit" class="btn btn-soft-danger btn-sm">
-                        <?php echo icon('trash', 'svg-icon svg-sm'); ?> حذف همه رسیدهای در انتظار
-                    </button>
-                </form>
-            </div>
-            <?php endif; ?>
+            <?php $fxFd = fx_filter_delete_parts('receipts.php', $rxFilterParams, $rxFilterActive ? (int)$rxPg['total'] : 0, $rxFilterCriteria); ?>
+            <?php echo fx_date_filter_ui('receipts.php', '', ['q' => $rxQ !== '' ? $rxQ : null, 'status' => $rxStatus !== '' ? $rxStatus : null], '', $fxFd['button'], $fxFd['form']); ?>
 
             <div class="card">
                 <form method="POST" action="receipts.php" id="rx-bulk-form">

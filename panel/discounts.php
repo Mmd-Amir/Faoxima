@@ -466,6 +466,12 @@ $df1 = fx_date_filter_resolve('1');
 $df2 = fx_date_filter_resolve('2');
 $discQ = fx_search_current('q1');
 $giftQ = fx_search_current('q2');
+$discDateKeep = fx_filter_delete_date_params('1', $df1['active']);
+$giftDateKeep = fx_filter_delete_date_params('2', $df2['active']);
+$discFilterActive = $discQ !== '' || $df1['active'];
+$giftFilterActive = $giftQ !== '' || $df2['active'];
+$discFilterCriteria = fx_filter_delete_criteria('', $df1, $discQ);
+$giftFilterCriteria = fx_filter_delete_criteria('', $df2, $giftQ);
 
 $list = [];
 $pg1 = ['page' => 1, 'perPage' => 5, 'offset' => 0, 'total' => 0, 'pages' => 1];
@@ -481,6 +487,11 @@ try {
         $where1 .= ' AND (codeDiscount LIKE :dq1 OR target_user LIKE :dq2)';
         $params1[':dq1'] = '%' . $discQ . '%';
         $params1[':dq2'] = '%' . $discQ . '%';
+    }
+    if (fx_filter_delete_requested('1')) {
+        [$fdMatched, $fdDeleted] = $discFilterActive ? fx_filter_delete_where($pdo, 'DiscountSell', $where1, $params1) : [0, 0];
+        $fdParams = array_merge(['q1' => $discQ !== '' ? $discQ : null, 'q2' => $giftQ !== '' ? $giftQ : null, 'p2' => isset($_GET['p2']) && (int)$_GET['p2'] > 1 ? (string)(int)$_GET['p2'] : null], $discDateKeep, $giftDateKeep);
+        fx_filter_delete_redirect('discounts.php', $fdParams, $fdMatched, $fdDeleted, '1');
     }
     $pg1 = fx_paginate($pdo, "SELECT COUNT(*) FROM DiscountSell WHERE $where1", $params1, 5, 'p1');
     $r = $pdo->prepare("SELECT * FROM DiscountSell WHERE $where1 ORDER BY id DESC LIMIT :perPage OFFSET :offset");
@@ -507,6 +518,11 @@ try {
         $where2 .= ' AND (code LIKE :gq1 OR target_user LIKE :gq2)';
         $params2[':gq1'] = '%' . $giftQ . '%';
         $params2[':gq2'] = '%' . $giftQ . '%';
+    }
+    if (fx_filter_delete_requested('2')) {
+        [$fdMatched, $fdDeleted] = $giftFilterActive ? fx_filter_delete_where($pdo, 'Discount', $where2, $params2) : [0, 0];
+        $fdParams = array_merge(['q1' => $discQ !== '' ? $discQ : null, 'q2' => $giftQ !== '' ? $giftQ : null, 'p1' => $pg1['page'] > 1 ? (string)$pg1['page'] : null], $discDateKeep, $giftDateKeep);
+        fx_filter_delete_redirect('discounts.php', $fdParams, $fdMatched, $fdDeleted, '2');
     }
     $pg2 = fx_paginate($pdo, "SELECT COUNT(*) FROM Discount WHERE $where2", $params2, 5, 'p2');
     $rg = $pdo->prepare("SELECT * FROM Discount WHERE $where2 ORDER BY id DESC LIMIT :perPage OFFSET :offset");
@@ -628,10 +644,13 @@ function faoxima_d_label_section($s) {
 
             <?php echo fx_bulk_delete_flash_html('1', 'کدهای تخفیف'); ?>
             <?php echo fx_bulk_delete_flash_html('2', 'کدهای هدیه'); ?>
+            <?php echo fx_filter_delete_flash_html('1', 'کدهای تخفیف'); ?>
+            <?php echo fx_filter_delete_flash_html('2', 'کدهای هدیه'); ?>
 
-            <?php echo fx_search_ui('discounts.php', $discQ, ['p2' => $pg2['page'] > 1 ? $pg2['page'] : null], 'جستجو در کد تخفیف یا کاربر هدف…', 'q1'); ?>
+            <?php echo fx_search_ui('discounts.php', $discQ, array_merge(['p2' => $pg2['page'] > 1 ? $pg2['page'] : null, 'q2' => $giftQ !== '' ? $giftQ : null], $discDateKeep, $giftDateKeep), 'جستجو در کد تخفیف یا کاربر هدف…', 'q1'); ?>
 
-            <?php echo fx_date_filter_ui('discounts.php', '1', ['p2' => $pg2['page'] > 1 ? $pg2['page'] : null, 'q1' => $discQ !== '' ? $discQ : null], 'انقضا'); ?>
+            <?php $fxFd = fx_filter_delete_parts('discounts.php', array_merge(['q1' => $discQ !== '' ? $discQ : null, 'q2' => $giftQ !== '' ? $giftQ : null, 'p2' => $pg2['page'] > 1 ? $pg2['page'] : null], $discDateKeep, $giftDateKeep), $discFilterActive ? (int)$pg1['total'] : 0, $discFilterCriteria, '1'); ?>
+            <?php echo fx_date_filter_ui('discounts.php', '1', array_merge(['p2' => $pg2['page'] > 1 ? $pg2['page'] : null, 'q1' => $discQ !== '' ? $discQ : null, 'q2' => $giftQ !== '' ? $giftQ : null], $giftDateKeep), 'انقضا', $fxFd['button'], $fxFd['form']); ?>
 
             <div class="card">
                 <div id="bulk-scope-1">
@@ -774,9 +793,10 @@ function faoxima_d_label_section($s) {
                 </div>
             </div>
 
-            <?php echo fx_search_ui('discounts.php', $giftQ, ['p1' => $pg1['page'] > 1 ? $pg1['page'] : null], 'جستجو در کد هدیه یا کاربر هدف…', 'q2'); ?>
+            <?php echo fx_search_ui('discounts.php', $giftQ, array_merge(['p1' => $pg1['page'] > 1 ? $pg1['page'] : null, 'q1' => $discQ !== '' ? $discQ : null], $discDateKeep, $giftDateKeep), 'جستجو در کد هدیه یا کاربر هدف…', 'q2'); ?>
 
-            <?php echo fx_date_filter_ui('discounts.php', '2', ['p1' => $pg1['page'] > 1 ? $pg1['page'] : null, 'q2' => $giftQ !== '' ? $giftQ : null], 'انقضا'); ?>
+            <?php $fxFd2 = fx_filter_delete_parts('discounts.php', array_merge(['q1' => $discQ !== '' ? $discQ : null, 'q2' => $giftQ !== '' ? $giftQ : null, 'p1' => $pg1['page'] > 1 ? $pg1['page'] : null], $discDateKeep, $giftDateKeep), $giftFilterActive ? (int)$pg2['total'] : 0, $giftFilterCriteria, '2'); ?>
+            <?php echo fx_date_filter_ui('discounts.php', '2', array_merge(['p1' => $pg1['page'] > 1 ? $pg1['page'] : null, 'q2' => $giftQ !== '' ? $giftQ : null, 'q1' => $discQ !== '' ? $discQ : null], $discDateKeep), 'انقضا', $fxFd2['button'], $fxFd2['form']); ?>
 
             <div class="card" style="margin-top:18px">
                 <div style="padding:14px 16px; font-weight:700; display:flex; align-items:center; gap:8px;">

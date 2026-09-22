@@ -99,8 +99,7 @@ function fx_invoice_username($idInvoice): string {
 
 $flash = ['ok' => '', 'err' => ''];
 
-if (!empty($_POST['action']) && $_POST['action'] === 'bulk_delete') {
-    $requestedTokens = $_POST['ids'] ?? [];
+function fx_req_delete_tokens(PDO $pdo, array $requestedTokens): int {
     $prIds = []; $csIds = [];
     foreach ($requestedTokens as $token) {
         if (preg_match('/^pr:(\d+)$/', (string)$token, $m)) $prIds[] = (int)$m[1];
@@ -120,6 +119,12 @@ if (!empty($_POST['action']) && $_POST['action'] === 'bulk_delete') {
         if ($allowedPr) $deletedCount += fx_bulk_delete_ids($pdo, 'Payment_report', 'id', $allowedPr);
     }
     if ($csIds) $deletedCount += fx_bulk_delete_ids($pdo, 'cancel_service', 'id', $csIds);
+    return $deletedCount;
+}
+
+if (!empty($_POST['action']) && $_POST['action'] === 'bulk_delete') {
+    $requestedTokens = $_POST['ids'] ?? [];
+    $deletedCount = fx_req_delete_tokens($pdo, is_array($requestedTokens) ? $requestedTokens : []);
     fx_bulk_delete_redirect('cancelService.php', count($requestedTokens), $deletedCount);
 }
 
@@ -187,6 +192,7 @@ try {
             'stLabel' => $stLabel, 'stClass' => $stClass, 'stKey' => $stKey,
             'del'     => in_array($stKey, ['reject','expire'], true) ? ('cancelService.php?delpr=' . (int)($r['id'] ?? 0)) : '',
             'pk'      => 'pr:' . (int)($r['id'] ?? 0),
+            'fdok'    => in_array(strtolower((string)($r['payment_Status'] ?? '')), ['reject', 'rejected', 'expire', 'expired'], true),
         ];
     }
 } catch (\Throwable $e) { $flash['err'] = 'بارگذاری درخواست‌های پرداخت ناموفق: ' . $e->getMessage(); }
@@ -214,6 +220,7 @@ try {
             'stLabel' => $stLabel, 'stClass' => $stClass, 'stKey' => $stKey,
             'del'     => 'cancelService.php?removeid=' . (int)($r['id'] ?? 0),
             'pk'      => 'cs:' . (int)($r['id'] ?? 0),
+            'fdok'    => true,
         ];
     }
 } catch (\Throwable $e) {}
@@ -273,6 +280,27 @@ if ($reqStatus !== '') {
     }));
 }
 
+$reqStatusActive = $reqStatus !== '' && isset($reqStatusOptions[$reqStatus]);
+$reqFilterActive = $reqQ !== '' || $df['active'] || $reqStatusActive;
+$reqDateKeep = fx_filter_delete_date_params('', $df['active']);
+$reqFilterParams = array_merge(['q' => $reqQ !== '' ? $reqQ : null, 'status' => $reqStatusActive ? $reqStatus : null], $reqDateKeep);
+$reqFilterCriteria = fx_filter_delete_criteria($reqStatusActive ? $reqStatusOptions[$reqStatus] : '', $df, $reqQ);
+$reqFilterTokens = [];
+$reqFilterDeletable = 0;
+foreach ($rows as $r) {
+    if ((string)($r['pk'] ?? '') === '') continue;
+    $reqFilterTokens[] = (string)$r['pk'];
+    if (!empty($r['fdok'])) $reqFilterDeletable++;
+}
+if (fx_filter_delete_requested()) {
+    $fdMatched = $reqFilterActive ? count($rows) : 0;
+    $fdDeleted = ($reqFilterActive && $reqFilterTokens) ? fx_req_delete_tokens($pdo, $reqFilterTokens) : 0;
+    fx_filter_delete_redirect('cancelService.php', $reqFilterParams, $fdMatched, $fdDeleted);
+}
+$reqFilterNote = $reqFilterDeletable < count($rows)
+    ? 'از ' . number_format(count($rows)) . ' نتیجه فیلترشده فقط ' . number_format($reqFilterDeletable) . ' مورد طبق قوانین فعلی قابل حذف است و بقیه حذف نمی‌شوند.'
+    : '';
+
 foreach ($rows as $i => $r) {
     $rows[$i]['idlabel'] = (string)($i + 1);
 }
@@ -317,11 +345,14 @@ $rows = array_slice($rows, ($reqPage - 1) * $reqPerPage, $reqPerPage);
 
             <?php echo fx_bulk_delete_flash_html(); ?>
 
-            <?php echo fx_search_ui('cancelService.php', $reqQ, ['status' => $reqStatus !== '' ? $reqStatus : null], 'جستجو در آیدی کاربر، شناسه سفارش یا کد پیگیری…'); ?>
+            <?php echo fx_filter_delete_flash_html(); ?>
 
-            <?php echo fx_status_filter_ui('cancelService.php', $reqStatusOptions, $reqStatus, ['q' => $reqQ !== '' ? $reqQ : null]); ?>
+            <?php echo fx_search_ui('cancelService.php', $reqQ, array_merge(['status' => $reqStatus !== '' ? $reqStatus : null], $reqDateKeep), 'جستجو در آیدی کاربر، شناسه سفارش یا کد پیگیری…'); ?>
 
-            <?php echo fx_date_filter_ui('cancelService.php', '', ['q' => $reqQ !== '' ? $reqQ : null, 'status' => $reqStatus !== '' ? $reqStatus : null]); ?>
+            <?php echo fx_status_filter_ui('cancelService.php', $reqStatusOptions, $reqStatus, array_merge(['q' => $reqQ !== '' ? $reqQ : null], $reqDateKeep)); ?>
+
+            <?php $fxFd = fx_filter_delete_parts('cancelService.php', $reqFilterParams, $reqFilterActive ? $reqFilterDeletable : 0, $reqFilterCriteria, '', $reqFilterNote); ?>
+            <?php echo fx_date_filter_ui('cancelService.php', '', ['q' => $reqQ !== '' ? $reqQ : null, 'status' => $reqStatus !== '' ? $reqStatus : null], '', $fxFd['button'], $fxFd['form']); ?>
 
             <div class="card">
                 <form method="POST" action="cancelService.php" id="bulk-form">
