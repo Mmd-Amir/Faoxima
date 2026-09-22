@@ -4767,13 +4767,8 @@ $caption";
 } elseif ($text == "🏬 تنظیمات فروشگاه" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $shopkeyboard, 'HTML');
 } elseif ($text == "🛍 افزودن محصول" && $adminrulecheck['rule'] == "administrator") {
-    $locationproduct = select("marzban_panel", "*", null, null, "count");
-    if ($locationproduct == 0) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['nullpaneladmin'], null, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, $textbotlang['Admin']['Product']['AddProductStepOne'], $backadmin, 'HTML');
-    step('get_limit', $from_id);
+    nm_adminInstantReply($from_id, "⚠️ افزودن محصول از طریق ربات غیرفعال است.\n\nبرای ساخت محصول جدید و دسترسی به تمام تنظیمات محصول، لطفاً از پنل مدیریت وب استفاده کنید.", $keyboard_shop_manage, 'HTML');
+    step('home', $from_id);
 } elseif ($user['step'] == "get_limit") {
     if (strlen($text) > 150) {
         nm_adminInstantReply($from_id, "❌ نام محصول باید کمتر از 150 کاراکتر باشد", $backadmin, 'HTML');
