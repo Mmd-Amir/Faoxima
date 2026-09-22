@@ -146,8 +146,22 @@ if (!function_exists('rxReceiptConfirm')) {
 
         if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
 
-        if (function_exists('DirectPayment')) {
-            DirectPayment($orderId);
+        if (function_exists('DirectPayment') && intval($report['direct_payment_done'] ?? 0) !== 1) {
+            try {
+                DirectPayment($orderId);
+            } catch (Throwable $e) {
+                if (function_exists('rx_log_event')) {
+                    rx_log_event('RECEIPT_CONFIRM_FULFILL_THROWABLE', $e->getMessage(), [
+                        'id_order' => $orderId,
+                        'actor_id' => $actorId,
+                        'payment_type' => (string) ($report['Payment_Method'] ?? ''),
+                        'operation' => (string) ($typePay[0] ?? ''),
+                        'class' => get_class($e),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                    ]);
+                }
+            }
         }
 
         $reportAfter = rxReceiptGet($orderId, false);

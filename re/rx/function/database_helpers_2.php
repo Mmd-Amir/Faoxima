@@ -2022,10 +2022,118 @@ function normalizeServiceConfigs($configs, $subscriptionUrl = null)
 
     return array_values($normalized);
 }
+if (!function_exists('rxEnsureManagePanel')) {
+    function rxEnsureManagePanel()
+    {
+        global $ManagePanel;
+
+        if (isset($ManagePanel) && is_object($ManagePanel)) {
+            return $ManagePanel;
+        }
+
+        if (!class_exists('ManagePanel', false)) {
+            $rxPanelsFile = REFACTORED_LEGACY_ROOT . '/panels.php';
+            if (!is_file($rxPanelsFile)) {
+                if (function_exists('rx_log_event')) {
+                    rx_log_event('MANAGE_PANEL_UNAVAILABLE', 'panels.php not found', ['path' => $rxPanelsFile]);
+                }
+                return null;
+            }
+            $rxPrevErrorLog = ini_get('error_log');
+            try {
+                require_once $rxPanelsFile;
+            } catch (Throwable $e) {
+                if (function_exists('rx_log_event')) {
+                    rx_log_event('MANAGE_PANEL_UNAVAILABLE', 'Loading panels.php threw', [
+                        'class' => get_class($e),
+                        'err' => $e->getMessage(),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                    ]);
+                }
+            }
+            if ($rxPrevErrorLog !== false) {
+                ini_set('error_log', $rxPrevErrorLog);
+            }
+        }
+
+        if (!class_exists('ManagePanel', false)) {
+            return null;
+        }
+
+        try {
+            $ManagePanel = new ManagePanel();
+        } catch (Throwable $e) {
+            if (function_exists('rx_log_event')) {
+                rx_log_event('MANAGE_PANEL_UNAVAILABLE', 'ManagePanel construction threw', [
+                    'class' => get_class($e),
+                    'err' => $e->getMessage(),
+                ]);
+            }
+            return null;
+        }
+
+        return $ManagePanel;
+    }
+}
+if (!function_exists('rxEnsurePaymentRuntime')) {
+    function rxEnsurePaymentRuntime()
+    {
+        global $setting, $textbotlang, $datatextbot;
+
+        try {
+            if (!is_array($setting) && function_exists('select')) {
+                $rxSetting = select("setting", "*");
+                if (is_array($rxSetting)) {
+                    $setting = $rxSetting;
+                }
+            }
+
+            if ((!is_array($textbotlang) || $textbotlang === []) && function_exists('languagechange')) {
+                $rxLang = languagechange(REFACTORED_LEGACY_ROOT . '/text.json');
+                if (is_array($rxLang) && $rxLang !== []) {
+                    $textbotlang = $rxLang;
+                }
+            }
+
+            if (!is_array($datatextbot)) {
+                $datatextbot = [];
+            }
+            $rxMissingKeys = array_diff(['textafterpay', 'textaftertext', 'textmanual', 'textselectlocation', 'text_wgdashboard'], array_keys($datatextbot));
+            if ($rxMissingKeys !== []) {
+                $rxTextRows = isset($GLOBALS['_rx_textbot_rows']) && is_array($GLOBALS['_rx_textbot_rows'])
+                    ? $GLOBALS['_rx_textbot_rows']
+                    : (function_exists('select') ? select("textbot", "*", null, null, "fetchAll") : []);
+                foreach ($rxMissingKeys as $rxKey) {
+                    $datatextbot[$rxKey] = '';
+                }
+                foreach ((array) $rxTextRows as $rxRow) {
+                    $rxId = (string) ($rxRow['id_text'] ?? '');
+                    if (in_array($rxId, $rxMissingKeys, true)) {
+                        $datatextbot[$rxId] = (string) ($rxRow['text'] ?? '');
+                    }
+                }
+            }
+
+            if (!function_exists('createServiceInfoCard') && is_file(REFACTORED_LEGACY_ROOT . '/infocard.php')) {
+                require_once REFACTORED_LEGACY_ROOT . '/infocard.php';
+            }
+        } catch (Throwable $e) {
+            if (function_exists('rx_log_event')) {
+                rx_log_event('PAYMENT_RUNTIME_INIT_FAILED', $e->getMessage(), [
+                    'class' => get_class($e),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                ]);
+            }
+        }
+    }
+}
 function DirectPayment($order_id, $image = 'images.jpg')
 {
     global $pdo, $ManagePanel, $textbotlang, $keyboardextendfnished, $keyboard, $Confirm_pay, $from_id, $message_id, $datatextbot, $update;
-    $buyreport = select("topicid", "idreport", "report", "buyreport", "select")['idreport'];
+    rxEnsurePaymentRuntime();
+    $buyreport =select("topicid", "idreport", "report", "buyreport", "select")['idreport'];
     $admin_ids = select("admin", "id_admin", null, null, "FETCH_COLUMN");
     $otherservice = select("topicid", "idreport", "report", "otherservice", "select")['idreport'];
     $otherreport = select("topicid", "idreport", "report", "otherreport", "select")['idreport'];
@@ -2236,6 +2344,13 @@ function DirectPayment($order_id, $image = 'images.jpg')
         // [zombie-rescue] قبل از تلاش جدید، اگه قبلاً تو panel یوزری برای این کاربر ساخته شده (zombie)،
         // اول بررسی کن: شاید createUser تو call قبلی موفق بوده فقط response نرسیده. اگه پیدا کردیم،
         // از همون استفاده کن (بدون ساختن یوزر جدید) — این جلوی تولید بیشتر zombie رو می‌گیره.
+        $ManagePanel = rxEnsureManagePanel();
+        if (!is_object($ManagePanel)) {
+            if (function_exists('rx_log_event')) {
+                rx_log_event('DIRECT_PAYMENT_NO_MANAGE_PANEL', 'ManagePanel unavailable; buy aborted without side effects', ['id_order' => $order_id]);
+            }
+            return;
+        }
         $__isRetryCall = false;
         try {
             $__pr2 = select("Payment_report", "crypto_check_count", "id_order", $order_id, "select");
@@ -2288,6 +2403,7 @@ function DirectPayment($order_id, $image = 'images.jpg')
                 $__early = $pdo->prepare("UPDATE invoice SET Status = 'active' WHERE id_invoice = :i");
                 $__early->execute([':i' => $get_invoice['id_invoice']]);
             } catch (Throwable $__e) { /* fail-open */ }
+            update("Payment_report", "direct_payment_done", 1, "id_order", $order_id);
             // و dec_not_confirmed را با علامت موفقیت بگذار تا retry cron این رو پیدا نکنه
             try {
                 $__doneNote = '[service-created at ' . date('Y-m-d H:i:s') . ' username=' . $dataoutput['username'] . ']';
@@ -2345,18 +2461,21 @@ function DirectPayment($order_id, $image = 'images.jpg')
             }
         }
         $output_config_link = $marzban_list_get['sublink'] == "onsublink" ? rxResolveConnectionLink($marzban_list_get, $dataoutput['subscription_url'], $dataoutput['file_ext'] ?? null) : "";
-        $datatextbot['textafterpay'] = $marzban_list_get['type'] == "Manualsale" ? $datatextbot['textmanual'] : $datatextbot['textafterpay'];
-        $datatextbot['textafterpay'] = $marzban_list_get['type'] == "WGDashboard" ? $datatextbot['text_wgdashboard'] : $datatextbot['textafterpay'];
+        $rxAfterPayTpl = $marzban_list_get['type'] == "Manualsale" ? $datatextbot['textmanual'] : $datatextbot['textafterpay'];
+        $rxAfterPayTpl = $marzban_list_get['type'] == "WGDashboard" ? $datatextbot['text_wgdashboard'] : $rxAfterPayTpl;
         if (intval($get_invoice['Service_time']) == 0)
             $get_invoice['Service_time'] = $textbotlang['users']['stateus']['Unlimited'];
         if (intval($get_invoice['Volume']) == 0)
             $get_invoice['Volume'] = $textbotlang['users']['stateus']['Unlimited'];
-        $textcreatuser = str_replace('{username}', $dataoutput['username'], $datatextbot['textafterpay']);
+        $textcreatuser = str_replace('{username}', "<code>{$dataoutput['username']}</code>", $rxAfterPayTpl);
         $textcreatuser = str_replace('{name_service}', $get_invoice['name_product'], $textcreatuser);
         $textcreatuser = str_replace('{location}', $marzban_list_get['name_panel'], $textcreatuser);
         $textcreatuser = str_replace('{day}', $get_invoice['Service_time'], $textcreatuser);
         $textcreatuser = str_replace('{volume}', $get_invoice['Volume'], $textcreatuser);
         $textcreatuser = applyConnectionPlaceholders($textcreatuser, $output_config_link, $config);
+        if (intval($get_invoice['Volume']) == 0) {
+            $textcreatuser = str_replace('گیگابایت', "", $textcreatuser);
+        }
         if ($marzban_list_get['type'] == "Manualsale") {
             $textcreatuser = str_replace('{password}', $dataoutput['subscription_url'], $textcreatuser);
             update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $get_invoice['id_invoice']);
@@ -2570,6 +2689,13 @@ $textonebuy
             if (function_exists('nmStockDeliverConfig')) nmStockDeliverConfig($stockNew, $invoiceNew, '✅ تمدید سرویس از انبار شبکه‌ملی با موفقیت انجام شد');
             $extend = ['status' => true, 'stock' => true];
         } else {
+            $ManagePanel = rxEnsureManagePanel();
+            if (!is_object($ManagePanel)) {
+                if (function_exists('rx_log_event')) {
+                    rx_log_event('DIRECT_PAYMENT_NO_MANAGE_PANEL', 'ManagePanel unavailable; extend aborted without side effects', ['id_order' => $order_id]);
+                }
+                return;
+            }
             $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
             $Balance_Low_user = 0;
             update("user", "Balance", $Balance_Low_user, "id", $Balance_id['id']);
@@ -2606,6 +2732,7 @@ $textonebuy
             return;
         }
         }
+        update("Payment_report", "direct_payment_done", 1, "id_order", $order_id);
 
         MiniDiscount::logSale([
             'id_user' => $Balance_id['id'],
@@ -2745,6 +2872,13 @@ $textonebuy
         if ($nameloc['inboundid'] != null) {
             $inboundid = $nameloc['inboundid'];
         }
+        $ManagePanel = rxEnsureManagePanel();
+        if (!is_object($ManagePanel)) {
+            if (function_exists('rx_log_event')) {
+                rx_log_event('DIRECT_PAYMENT_NO_MANAGE_PANEL', 'ManagePanel unavailable; extra volume aborted without side effects', ['id_order' => $order_id]);
+            }
+            return;
+        }
         update("user", "Balance", $Balance_Low_user, "id", $Balance_id['id']);
         $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $steppay[0]);
         $data_for_database = json_encode(array(
@@ -2772,6 +2906,7 @@ $textonebuy
             }
             return;
         }
+        update("Payment_report", "direct_payment_done", 1, "id_order", $order_id);
         MiniDiscount::logSale([
             'id_user' => $Balance_id['id'],
             'id_invoice' => $nameloc['id_invoice'] ?? null,
@@ -2858,6 +2993,13 @@ $textonebuy
         if ($nameloc['inboundid'] != false) {
             $inboundid = $nameloc['inboundid'];
         }
+        $ManagePanel = rxEnsureManagePanel();
+        if (!is_object($ManagePanel)) {
+            if (function_exists('rx_log_event')) {
+                rx_log_event('DIRECT_PAYMENT_NO_MANAGE_PANEL', 'ManagePanel unavailable; extra time aborted without side effects', ['id_order' => $order_id]);
+            }
+            return;
+        }
         update("user", "Balance", $Balance_Low_user, "id", $nameloc['id_user']);
         $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $steppay[0]);
         $data_for_database = json_encode(array(
@@ -2887,6 +3029,7 @@ $textonebuy
             }
             return;
         }
+        update("Payment_report", "direct_payment_done", 1, "id_order", $order_id);
         MiniDiscount::logSale([
             'id_user' => $Balance_id['id'],
             'id_invoice' => $nameloc['id_invoice'] ?? null,
