@@ -563,6 +563,7 @@ try {
         statusterffh varchar(200)  NULL,
         volumewarn varchar(200)  NULL,
         inlinebtnmain varchar(200)  NULL,
+        auto_remove_reply_keyboard varchar(20) NULL DEFAULT 'on',
         verifystart varchar(200)  NULL,
         id_support varchar(200)  NULL,
         statusnamecustom varchar(100)  NULL,

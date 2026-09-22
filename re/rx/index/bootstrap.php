@@ -1071,6 +1071,12 @@ if ($text == "/start" || $datain == "start" || $text == "start") {
     if (function_exists('removeReplyKeyboardOnStartIfNeeded')) {
         removeReplyKeyboardOnStartIfNeeded($from_id);
     }
+    if (!empty($callback_query_id)) {
+        @telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'cache_time' => 0,
+        ]);
+    }
     rx_send_banner_message($from_id, 'start', $datatextbot['text_start'], $keyboard, "html");
     return;
 }

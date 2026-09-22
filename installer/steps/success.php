@@ -1,32 +1,15 @@
-<section class="step-section is-active">
-    <div class="card">
-        <div class="alert alert-success">
-            <svg><use href="#i-check-circle"/></svg>
-            <div><?php echo implode('<br>', array_map('rx_escape_html', $successMessages)); ?></div>
-        </div>
-        <a class="btn btn-primary btn-grow" style="width:100%;padding:16px;font-size:16px;margin-top:10px;" href="https://t.me/<?php echo rx_escape_html($botUsername); ?>">
-            <svg><use href="#i-bot"/></svg>
-            رفتن به ربات @<?php echo rx_escape_html($botUsername); ?>
-            <svg><use href="#i-arrow-left"/></svg>
-        </a>
-        <div style="text-align:center;margin-top:22px;color:var(--text-muted);">
-            <p><strong style="color:var(--text-main);">نصب با موفقیت تکمیل شد!</strong></p>
-            <p style="font-size:13px;margin-top:4px;">پوشه‌ی <code>installer</code> به‌صورت خودکار در حال حذف است — برای امنیت هاست.</p>
-        </div>
+<section class="view-panel success-panel is-active" data-cleanup-url="index.php" data-cleanup-token="<?php echo rx_escape_html($csrfToken); ?>">
+    <div class="success-mark"><svg><use href="#i-check"/></svg></div>
+    <span class="panel-kicker">راه‌اندازی کامل شد</span>
+    <h2>نصب با موفقیت تکمیل شد</h2>
+    <p><?php echo $botUsername !== '' ? '@' . rx_escape_html($botUsername) . ' آماده استفاده است.' : 'ربات شما آماده استفاده است.'; ?></p>
+    <div class="result-list">
+        <?php foreach ($successMessages as $message): ?>
+            <div><span><svg><use href="#i-check"/></svg></span><?php echo rx_escape_html($message); ?></div>
+        <?php endforeach; ?>
     </div>
+    <div class="cleanup-state" id="cleanup-state"><svg><use href="#i-cog"/></svg><span>در حال پاک‌سازی امن فایل‌های اینستالر…</span></div>
+    <?php if ($botUsername !== ''): ?>
+        <a class="btn btn-primary success-action" href="https://t.me/<?php echo rawurlencode($botUsername); ?>" rel="noopener"><svg><use href="#i-telegram"/></svg>باز کردن ربات</a>
+    <?php endif; ?>
 </section>
-<script>
-window.addEventListener('load', function () {
-    var body = 'rx_action=cleanup';
-    if (navigator.sendBeacon) {
-        navigator.sendBeacon('index.php', new Blob([body], { type: 'application/x-www-form-urlencoded' }));
-    } else {
-        fetch('index.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: body,
-            keepalive: true,
-        }).catch(function () {});
-    }
-});
-</script>
