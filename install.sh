@@ -730,6 +730,35 @@ cache_set() {
     printf '%s' "$value" > "${CACHE_DIR}/${key}"
 }
 
+prepare_host_apt() {
+    if ! command -v apt-get >/dev/null 2>&1; then
+        ui_err "Automatic host preparation requires an apt-based Debian/Ubuntu system."
+        return 1
+    fi
+
+    ui_action "Refreshing host package indexes..."
+    local attempt
+    for attempt in 1 2 3; do
+        if DEBIAN_FRONTEND=noninteractive apt-get update -o APT::Update::Error-Mode=any; then
+            break
+        fi
+        if [ "$attempt" -eq 3 ]; then
+            ui_err "apt-get update failed after 3 attempts. Check the server's internet/DNS connection and try again."
+            return 1
+        fi
+        ui_warn "apt-get update failed (attempt ${attempt}/3); retrying in 5 seconds..."
+        sleep 5
+    done
+
+    ui_action "Upgrading installed host packages..."
+    DEBIAN_FRONTEND=noninteractive apt-get upgrade -y || {
+        ui_err "apt-get upgrade failed while preparing the host."
+        return 1
+    }
+
+    ui_ok "Host package indexes and installed packages are up to date."
+}
+
 ensure_host_prerequisites() {
     local missing_packages=()
     local cmd package
@@ -1415,6 +1444,7 @@ install_bot() {
         "${C_WHITE}Installing nginx + php-fpm + MySQL as a Docker Compose stack.${C_RESET}" \
         "${C_DIM}The stack will be deployed from ${PROJECT_DIR}${C_RESET}"
 
+    prepare_host_apt || { ui_err "Host package preparation failed."; exit 1; }
     ensure_host_prerequisites || { ui_err "Host prerequisites could not be installed."; exit 1; }
     install_docker
 
