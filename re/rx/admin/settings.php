@@ -4993,9 +4993,13 @@ elseif ($text == "🫣 مخفی پنل برای کاربر" && $adminrulecheck['
 } elseif ($datain == "removeresid") {
     deletemessage($from_id, $message_id);
     nm_adminInstantReply($from_id, "✅  تمامی رسید ها با موفقیت حذف شدند ", null, 'HTML');
-    $sql = "UPDATE Payment_report SET payment_Status = 'reject',dec_not_confirmed = 'remove_all' WHERE Payment_Method = 'cart to cart' AND payment_Status = 'waiting'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute();
+    if (function_exists('rxReceiptSoftDeleteAll')) {
+        rxReceiptSoftDeleteAll();
+    } else {
+        $sql = "UPDATE Payment_report SET payment_Status = 'reject',dec_not_confirmed = 'remove_all' WHERE Payment_Method = 'cart to cart' AND payment_Status = 'waiting'";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute();
+    }
 } elseif (preg_match('/showinfopay_(\w+)/', $datain, $dataget)) {
     $idorder = $dataget[1];
     $paymentUser = select("Payment_report", "*", "id_order", $idorder, "select");
@@ -5356,8 +5360,12 @@ elseif ($text == "🫣 مخفی پنل برای کاربر" && $adminrulecheck['
     }
 } elseif (preg_match('/removeresid_(\w+)/', $datain, $dataget)) {
     $idorder = $dataget[1];
-    $stmt = $pdo->prepare("DELETE FROM Payment_report WHERE id_order = :id_order");
-    $stmt->bindParam(':id_order', $idorder, PDO::PARAM_STR);
-    $stmt->execute();
+    if (function_exists('rxReceiptHardDelete')) {
+        rxReceiptHardDelete($idorder);
+    } else {
+        $stmt = $pdo->prepare("DELETE FROM Payment_report WHERE id_order = :id_order");
+        $stmt->bindParam(':id_order', $idorder, PDO::PARAM_STR);
+        $stmt->execute();
+    }
     nm_adminInstantReply($from_id, "✅ رسید با موفقیت حذف شد.", null, 'HTML');
 }

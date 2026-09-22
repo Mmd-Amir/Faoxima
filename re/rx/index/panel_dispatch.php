@@ -1040,14 +1040,24 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
         }
     }
     $dateacc = date('Y/m/d H:i:s');
-    $stmt = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'waiting', dec_not_confirmed = 'receipt-submitted', at_updated = :at_updated WHERE id_order = :id_order AND payment_Status = 'pending' AND dec_not_confirmed = 'receipt-uploading'");
+    $stmt = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'waiting', dec_not_confirmed = 'receipt-submitted', card_photo_file_id = :card_photo_file_id, at_updated = :at_updated WHERE id_order = :id_order AND payment_Status = 'pending' AND dec_not_confirmed = 'receipt-uploading'");
     $stmt->execute([
+        ':card_photo_file_id' => $photoid,
         ':at_updated' => $dateacc,
         ':id_order' => $PaymentReport['id_order'],
     ]);
     if ($stmt->rowCount() !== 1) {
         sendmessage($from_id, faoxima_textbot_get('dyn_errors_data_fetch_restart', '❌ خطایی در هنگام دریافت اطلاعات رخ داده است لطفا مراحل را از اول انجام دهید'), $keyboard, 'HTML');
         return;
+    }
+    if (function_exists('clearSelectCache')) {
+        clearSelectCache('Payment_report');
+    }
+    $_verifyReceiptCard = select('Payment_report', 'card_photo_file_id', 'id_order', $PaymentReport['id_order'], 'select', ['cache' => false]);
+    if (empty($_verifyReceiptCard['card_photo_file_id']) && function_exists('rx_log_event')) {
+        rx_log_event('RECEIPT_PHOTO_SAVE_VERIFY_FAILED', 'card_photo_file_id still empty right after commit', [
+            'id_order' => $PaymentReport['id_order'],
+        ]);
     }
 } elseif ($datain == "Discount") {
     $bakinfos = json_encode([

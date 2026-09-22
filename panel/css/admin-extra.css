@@ -630,6 +630,136 @@
    Sticky behaviour is unchanged; the backdrop is re-pointed at the page
    background token so it blends with the surface it floats over. */
 
+/* ---- Receipts page (panel/receipts.php) --------------------------------
+   Scoped under .receipt-page so nothing here can bleed into other pages. */
+
+.receipt-page .page-head__title i,
+.receipt-page .page-head__title .svg-icon,
+.receipt-page .page-head__title .page-head__icon {
+    width: 20px !important;
+    height: 20px !important;
+    padding: 4px;
+}
+
+.receipt-page > .page-head {
+    margin-bottom: 28px !important;
+}
+
+.receipt-page .receipt-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-3, 12px);
+    margin-bottom: var(--space-4, 16px);
+}
+
+.receipt-page .receipt-summary-grid > .card + .card {
+    margin-top: 0;
+}
+
+.receipt-page .receipt-summary-card {
+    padding: 14px 16px;
+    min-width: 0;
+}
+
+.receipt-page .receipt-summary-card__label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-secondary, #94a3b8);
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.receipt-page .receipt-summary-card__value {
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.receipt-page .receipt-bulk-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: var(--space-3, 12px);
+}
+
+#modal-rx-view .receipt-detail-photo-label {
+    margin-top: 16px;
+    padding-top: 11px;
+    border-top: 1px dashed var(--border-soft);
+}
+
+#modal-rx-view .receipt-detail-photo {
+    margin-top: 8px;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    background: var(--surface-2);
+    padding: 8px;
+    text-align: center;
+}
+
+#modal-rx-view .receipt-detail-photo img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    display: block;
+    margin: 0 auto;
+    cursor: zoom-in;
+}
+
+#modal-rx-view .receipt-detail-photo--empty,
+#modal-rx-view .receipt-detail-photo__fallback {
+    color: var(--text-muted);
+    font-size: 12.5px;
+    padding: 18px 8px;
+}
+
+#modal-rx-photo-preview .modal-box.receipt-photo-preview-box {
+    max-width: min(720px, 96vw);
+}
+
+#modal-rx-photo-preview .receipt-photo-preview-body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px !important;
+}
+
+#modal-rx-photo-preview .receipt-photo-preview-body img {
+    max-width: 100%;
+    max-height: calc(92vh - 90px);
+    height: auto;
+    width: auto;
+    border-radius: 8px;
+    display: block;
+}
+
+@media (max-width: 768px) {
+    .receipt-page .receipt-summary-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    #modal-rx-photo-preview .modal-box.receipt-photo-preview-box {
+        max-width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .receipt-page .receipt-summary-grid {
+        grid-template-columns: 1fr;
+    }
+    .receipt-page .receipt-bulk-actions {
+        justify-content: stretch;
+    }
+    .receipt-page .receipt-bulk-actions form {
+        width: 100%;
+    }
+    .receipt-page .receipt-bulk-actions .btn {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+
 #main-content .wrapper.fx-page-settings .save-bar {
     margin-top: var(--gap-section);
     padding: var(--space-4) 0;
