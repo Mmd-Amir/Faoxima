@@ -7,6 +7,9 @@ require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/lib/pagination.php';
 require_once __DIR__ . '/lib/search_filter.php';
+require_once __DIR__ . '/lib/status_filter.php';
+require_once __DIR__ . '/lib/date_filter.php';
+require_once __DIR__ . '/lib/bulk_delete.php';
 require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/../jdf.php';
@@ -64,6 +67,27 @@ function tk_status_badge($s)
     if ($s === 'Unseen' || $s === 'Customerresponse') return ['پاسخ‌نداده', 'badge-warning'];
     if ($s === 'Answered') return ['پاسخ‌داده', 'badge-active'];
     return ['باز', 'badge-gray'];
+}
+
+function tk_delete_trackings(PDO $pdo, array $trackings): int
+{
+    $deleted = 0;
+    $trackings = array_values(array_unique(array_map('strval', $trackings)));
+    foreach (array_chunk($trackings, 500) as $chunk) {
+        $ph = implode(',', array_fill(0, count($chunk), '?'));
+        $idStmt = $pdo->prepare("SELECT id, Tracking FROM support_message WHERE Tracking IN ($ph)");
+        $idStmt->execute($chunk);
+        $rows = $idStmt->fetchAll(PDO::FETCH_ASSOC);
+        $ids = array_map(function ($r) { return (int)$r['id']; }, $rows);
+        if ($ids) {
+            $idPh = implode(',', array_fill(0, count($ids), '?'));
+            $pdo->prepare("DELETE FROM support_message_reaction WHERE message_id IN ($idPh)")->execute($ids);
+        }
+        $del = $pdo->prepare("DELETE FROM support_message WHERE Tracking IN ($ph)");
+        $del->execute($chunk);
+        $deleted += count(array_unique(array_column($rows, 'Tracking')));
+    }
+    return $deleted;
 }
 
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'mark_ticket_seen') {
@@ -137,16 +161,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'bulk_delete') {
         if (count($trackings) === 0) { echo json_encode(['ok' => false, 'error' => 'invalid']); exit; }
         if (count($trackings) > 500) $trackings = array_slice($trackings, 0, 500);
 
-        $ph = implode(',', array_fill(0, count($trackings), '?'));
-        $idStmt = $pdo->prepare("SELECT id FROM support_message WHERE Tracking IN ($ph)");
-        $idStmt->execute($trackings);
-        $ids = array_map(function ($r) { return (int)$r['id']; }, $idStmt->fetchAll(PDO::FETCH_ASSOC));
-        if ($ids) {
-            $idPh = implode(',', array_fill(0, count($ids), '?'));
-            $pdo->prepare("DELETE FROM support_message_reaction WHERE message_id IN ($idPh)")->execute($ids);
-        }
-        $del = $pdo->prepare("DELETE FROM support_message WHERE Tracking IN ($ph)");
-        $del->execute($trackings);
+        tk_delete_trackings($pdo, $trackings);
         echo json_encode(['ok' => true, 'deleted' => count($trackings)]);
     } catch (\Throwable $e) {
         echo json_encode(['ok' => false, 'error' => 'server']);
@@ -493,6 +508,47 @@ if ($viewT === '') {
         $tkParams[':tq2'] = $tkLike;
         $tkParams[':tq3'] = $tkLike;
     }
+    $tkDf = fx_date_filter_resolve();
+    if ($tkDf['active']) {
+        $tkDateSql = fx_date_filter_sql_mixed_named('tk_last', $tkDf['from'], $tkDf['to'], $tkParams, 'tkd');
+        $tkWhereSql .= ' AND Tracking IN (SELECT Tracking FROM (SELECT Tracking, MAX(time) tk_last FROM support_message GROUP BY Tracking) tkl WHERE 1=1' . $tkDateSql . ')';
+    }
+    $tkStatusOptions = [
+        'unanswered' => 'پاسخ‌نداده',
+        'answered'   => 'پاسخ‌داده',
+        'open'       => 'باز',
+        'close'      => 'بسته',
+    ];
+    $tkStatusSql = [
+        'unanswered' => "IN ('Unseen','Customerresponse')",
+        'answered'   => "= 'Answered'",
+        'open'       => "NOT IN ('close','Unseen','Customerresponse','Answered')",
+        'close'      => "= 'close'",
+    ];
+    $tkStatus = fx_status_filter_current();
+    $tkStatusActive = $tkStatus !== '' && isset($tkStatusOptions[$tkStatus]);
+    if ($tkStatusActive) {
+        $tkWhereSql .= ' AND Tracking IN (SELECT Tracking FROM support_message GROUP BY Tracking HAVING MAX(status) ' . $tkStatusSql[$tkStatus] . ')';
+    }
+
+    $tkFilterActive = $tkQ !== '' || $tkDf['active'] || $tkStatusActive;
+    $tkDateKeep = fx_filter_delete_date_params('', $tkDf['active']);
+    $tkFilterParams = array_merge(['q' => $tkQ !== '' ? $tkQ : null, 'status' => $tkStatusActive ? $tkStatus : null], $tkDateKeep);
+    $tkFilterCriteria = fx_filter_delete_criteria($tkStatusActive ? $tkStatusOptions[$tkStatus] : '', $tkDf, $tkQ);
+    if (fx_filter_delete_requested()) {
+        $fdMatched = 0;
+        $fdDeleted = 0;
+        if ($tkFilterActive) {
+            $fdTrackings = fx_filter_delete_collect($pdo, 'support_message', 'Tracking', $tkWhereSql, $tkParams);
+            $fdMatched = count($fdTrackings);
+            try {
+                $fdDeleted = tk_delete_trackings($pdo, $fdTrackings);
+            } catch (\Throwable $e) {
+                $fdDeleted = 0;
+            }
+        }
+        fx_filter_delete_redirect('tickets.php', $tkFilterParams, $fdMatched, $fdDeleted);
+    }
 
     $tkPg = fx_paginate($pdo, "SELECT COUNT(*) FROM (SELECT 1 FROM support_message WHERE $tkWhereSql GROUP BY Tracking, iduser, name_departman) t", $tkParams, 5);
     $tkStmt = $pdo->prepare("SELECT Tracking, iduser, name_departman, MAX(id) last_id, MAX(time) last_time, MAX(status) status, COUNT(*) cnt FROM support_message WHERE $tkWhereSql GROUP BY Tracking, iduser, name_departman ORDER BY last_id DESC LIMIT :perPage OFFSET :offset");
@@ -629,7 +685,7 @@ if ($viewT === '') {
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper fx-page-tickets">
+        <div class="wrapper fx-page-tickets<?php echo $viewT === '' ? ' fx-page-list' : ''; ?>">
 
             <?php if ($viewT === ''): ?>
 
@@ -650,7 +706,14 @@ if ($viewT === '') {
             <div class="alert alert-error"><?php echo htmlspecialchars($adminCreateError, ENT_QUOTES, 'UTF-8'); ?></div>
             <?php endif; ?>
 
-            <?php echo fx_search_ui('tickets.php', $tkQ, [], 'جستجو در کد پیگیری، آیدی کاربر یا متن پیام…'); ?>
+            <?php echo fx_filter_delete_flash_html(); ?>
+
+            <?php echo fx_search_ui('tickets.php', $tkQ, array_merge(['status' => $tkStatus !== '' ? $tkStatus : null], $tkDateKeep), 'جستجو در کد پیگیری، آیدی کاربر یا متن پیام…'); ?>
+
+            <?php echo fx_status_filter_ui('tickets.php', $tkStatusOptions, $tkStatus, array_merge(['q' => $tkQ !== '' ? $tkQ : null], $tkDateKeep)); ?>
+
+            <?php $fxFd = fx_filter_delete_parts('tickets.php', $tkFilterParams, $tkFilterActive ? (int)$tkPg['total'] : 0, $tkFilterCriteria); ?>
+            <?php echo fx_date_filter_ui('tickets.php', '', ['q' => $tkQ !== '' ? $tkQ : null, 'status' => $tkStatus !== '' ? $tkStatus : null], '', $fxFd['button'], $fxFd['form']); ?>
 
             <div class="card">
                 <div class="tk-bulk-bar" id="tk-bulk-bar">
@@ -699,7 +762,7 @@ if ($viewT === '') {
                         <?php endforeach; ?>
                         </tbody>
                     </table>
-                    <?php echo fx_pager_html($tkPg['page'], $tkPg['pages'], $tkPg['total'], count($tickets), 'tickets.php', ['q' => $tkQ !== '' ? $tkQ : null]); ?>
+                    <?php echo fx_pager_html($tkPg['page'], $tkPg['pages'], $tkPg['total'], count($tickets), 'tickets.php', array_merge(['q' => $tkQ !== '' ? $tkQ : null, 'status' => $tkStatus !== '' ? $tkStatus : null], $tkDateKeep)); ?>
                 </div>
             </div>
 

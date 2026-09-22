@@ -5985,6 +5985,9 @@ a:not([class]):focus-visible {
     padding: 10px 14px;
     margin-bottom: 12px;
 }
+#main-content .wrapper.fx-page-tickets:has(#ticketsTable) > .card.fx-search-filter:has(+ .card.fx-status-filter) {
+    margin-bottom: 0;
+}
 #main-content .wrapper.fx-page-tickets:has(#ticketsTable) > .card.fx-search-filter .fx-search-filter__form {
     gap: 8px;
 }
