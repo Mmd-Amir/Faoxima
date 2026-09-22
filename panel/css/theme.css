@@ -5860,6 +5860,19 @@ a:not([class]):focus-visible {
     }
 }
 
+@media (max-width: 768px) and (orientation: portrait) {
+    #main-content .wrapper.fx-page-list > .card.fx-status-filter > .fx-status-filter__title,
+    #main-content .wrapper.fx-page-list > .card.fx-date-filter > .fx-date-filter__title {
+        flex: 1 1 100%;
+        min-height: 0;
+    }
+    #main-content .wrapper.fx-page-list > .card.fx-status-filter > .fx-status-filter__pills,
+    #main-content .wrapper.fx-page-list > .card.fx-date-filter > .fx-date-filter__presets {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+}
+
 /* ---- 3B.4  Result area -------------------------------------------------- */
 /* The card stays the only bordered surface around the table (`.table-wrap` is
    borderless), so the desktop padding simply comes down to list density.
