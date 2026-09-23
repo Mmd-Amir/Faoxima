@@ -2627,8 +2627,8 @@ $textonebuy
             $prodcut['Service_time'] = $service_other['Service_time'];
             $prodcut['Volume_constraint'] = $service_other['volumebuy'];
         } else {
-            $stmt = $pdo->prepare("SELECT * FROM product WHERE (Location = '{$nameloc['Service_location']}' OR Location = '/all') AND (agent = '{$Balance_id['agent']}' OR agent = 'all') AND code_product = '$codeproduct'");
-            $stmt->execute();
+            $stmt = $pdo->prepare("SELECT * FROM product WHERE (FIND_IN_SET(:loc, Location) > 0 OR Location = '/all') AND (agent = '{$Balance_id['agent']}' OR agent = 'all') AND code_product = '$codeproduct'");
+            $stmt->execute([':loc' => (string) $nameloc['Service_location']]);
             $prodcut = $stmt->fetch(PDO::FETCH_ASSOC);
         }
         if (!is_array($prodcut)) {

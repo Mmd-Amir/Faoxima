@@ -299,7 +299,7 @@ if (!function_exists('rxRenderWizardStep')) {
                 $userdata = json_decode($user['Processing_value'] ?? '{}', true);
                 $panelName = $userdata['namepanel'] ?? '';
                 $product = [];
-                $stmt = $GLOBALS['pdo']->prepare("SELECT * FROM product WHERE Location = :text or Location = '/all' ");
+                $stmt = $GLOBALS['pdo']->prepare("SELECT * FROM product WHERE FIND_IN_SET(:text, Location) > 0 or Location = '/all' ");
                 $stmt->bindParam(':text', $panelName, PDO::PARAM_STR);
                 $stmt->execute();
                 while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {

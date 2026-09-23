@@ -66,11 +66,12 @@ if (false) {
         return;
     }
     $typepanel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
+    if (!rxPanelNameCascade($pdo, (string) $user['Processing_value'], (string) $text)) {
+        outtypepanel($typepanel['type'], $textbotlang['users']['stateus']['error']);
+        step('PanelMenu', $from_id);
+        return;
+    }
     outtypepanel($typepanel['type'], $textbotlang['Admin']['managepanel']['ChangedNmaePanel']);
-    update("user", "Processing_value", $text, "id", $from_id);
-    update("marzban_panel", "name_panel", $text, "name_panel", $user['Processing_value']);
-    update("invoice", "Service_location", $text, "Service_location", $user['Processing_value']);
-    update("product", "Location", $text, "Location", $user['Processing_value']);
     update("user", "Processing_value", $text, "id", $from_id);
     step('PanelMenu', $from_id);
 } elseif (($text == "⁉️ تست اتصال به پنل" || $text == "🔄 تست اتصال مجدد") && $adminrulecheck['rule'] == "administrator") {
@@ -893,11 +894,13 @@ if (false) {
     if (!isset($update['message']) && empty($text)) { return; }
     if ($text == "تایید") {
         $rxPanelsHubKb = isset($adminPanelsMenu) ? $adminPanelsMenu : $keyboardadmin;
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['RemovedPanel'], $rxPanelsHubKb, 'HTML');
         $marzban = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
-        $stmt = $pdo->prepare("DELETE FROM marzban_panel WHERE name_panel = :name_panel");
-        $stmt->bindParam(':name_panel', $user['Processing_value'], PDO::PARAM_STR);
-        $stmt->execute();
+        if (!rxPanelNameCascade($pdo, (string) $user['Processing_value'], null)) {
+            nm_adminInstantReply($from_id, $textbotlang['users']['stateus']['error'], $rxPanelsHubKb, 'HTML');
+            step('home', $from_id);
+            return;
+        }
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['RemovedPanel'], $rxPanelsHubKb, 'HTML');
         update("user", "Processing_value", "0", "id", $from_id);
     }
     step('home', $from_id);

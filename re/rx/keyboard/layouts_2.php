@@ -494,7 +494,7 @@ $result = $stmt->fetchAll();
 $table_exists = count($result) > 0;
 if ($table_exists) {
     $product = [];
-    $stmt = $pdo->prepare("SELECT * FROM product WHERE Location = :text or Location = '/all' ");
+    $stmt = $pdo->prepare("SELECT * FROM product WHERE FIND_IN_SET(:text, Location) > 0 or Location = '/all' ");
     $stmt->bindParam(':text', $text  , PDO::PARAM_STR);
     $stmt->execute();
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {

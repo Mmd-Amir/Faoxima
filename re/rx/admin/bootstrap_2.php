@@ -5439,7 +5439,7 @@ $caption";
         nm_adminInstantReply($from_id, $textbotlang['users']['sell']['error-product'], null, 'HTML');
         return;
     }
-    $stmt = $pdo->prepare("DELETE FROM product WHERE name_product =:name_product AND (Location= :Location or Location= '/all')");
+    $stmt = $pdo->prepare("DELETE FROM product WHERE name_product =:name_product AND (FIND_IN_SET(:Location, Location) > 0 or Location= '/all')");
     $stmt->bindParam(':name_product', $text, PDO::PARAM_STR);
     $stmt->bindParam(':Location', $user['Processing_value'], PDO::PARAM_STR);
     $stmt->execute();
@@ -5473,7 +5473,7 @@ $caption";
     $escapedText = mysqli_real_escape_string($connect, $user['Processing_value_one']);
     $panel = select("marzban_panel", "*", "code_panel", $user['Processing_value_one'], "select");
     $_loc = $panel['name_panel'];
-    $_stmt = $connect->prepare("SELECT * FROM product WHERE (Location = ? OR Location = '/all') AND agent = ?");
+    $_stmt = $connect->prepare("SELECT * FROM product WHERE (FIND_IN_SET(?, Location) > 0 OR Location = '/all') AND agent = ?");
     $_stmt->bind_param("ss", $_loc, $typeagent);
     $_stmt->execute();
     $getdataproduct = $_stmt->get_result();
@@ -5500,7 +5500,7 @@ $caption";
     update("user", "Processing_value", $id_product, "id", $from_id);
     $panel = select("marzban_panel", "*", "code_panel", $user['Processing_value_one'], "select");
     $_loc2 = $panel['name_panel']; $_pv2 = $user['Processing_value_tow'];
-    $_stmt = $connect->prepare("SELECT * FROM product WHERE id = ? AND agent = ? AND (Location = ? OR Location = '/all') LIMIT 1");
+    $_stmt = $connect->prepare("SELECT * FROM product WHERE id = ? AND agent = ? AND (FIND_IN_SET(?, Location) > 0 OR Location = '/all') LIMIT 1");
     $_stmt->bind_param("sss", $id_product, $_pv2, $_loc2);
     $_stmt->execute();
     $info_product = $_stmt->get_result()->fetch_assoc();
@@ -5531,7 +5531,7 @@ $caption";
         return;
     }
     $panel = select("marzban_panel", "*", "code_panel", $user['Processing_value_one'], "select");
-    $stmt = $pdo->prepare("UPDATE product SET price_product = :price_product WHERE id = :name_product AND (Location = :Location OR Location = '/all') AND agent = :agent");
+    $stmt = $pdo->prepare("UPDATE product SET price_product = :price_product WHERE id = :name_product AND (FIND_IN_SET(:Location, Location) > 0 OR Location = '/all') AND agent = :agent");
     $stmt->bindParam(':price_product', $text);
     $stmt->bindParam(':name_product', $user['Processing_value']);
     $stmt->bindParam(':Location', $panel['name_panel']);
@@ -5545,7 +5545,7 @@ $caption";
 } elseif ($user['step'] == "change_note") {
     if (!isset($update['message']) && empty($text)) { return; }
     $panel = select("marzban_panel", "*", "code_panel", $user['Processing_value_one'], "select");
-    $stmt = $pdo->prepare("UPDATE product SET note = :notes WHERE id = :name_product AND (Location = :Location OR Location = '/all') AND agent = :agent");
+    $stmt = $pdo->prepare("UPDATE product SET note = :notes WHERE id = :name_product AND (FIND_IN_SET(:Location, Location) > 0 OR Location = '/all') AND agent = :agent");
     $stmt->bindParam(':notes', $text);
     $stmt->bindParam(':name_product', $user['Processing_value']);
     $stmt->bindParam(':Location', $panel['name_panel']);
@@ -5564,7 +5564,7 @@ $caption";
         return;
     }
     $panel = select("marzban_panel", "*", "code_panel", $user['Processing_value_one'], "select");
-    $stmt = $pdo->prepare("UPDATE product SET category = :categroy WHERE id = :name_product AND (Location = :Location OR Location = '/all') AND agent = :agent");
+    $stmt = $pdo->prepare("UPDATE product SET category = :categroy WHERE id = :name_product AND (FIND_IN_SET(:Location, Location) > 0 OR Location = '/all') AND agent = :agent");
     $stmt->bindParam(':categroy', $text);
     $stmt->bindParam(':name_product', $user['Processing_value']);
     $stmt->bindParam(':Location', $panel['name_panel']);
@@ -5586,7 +5586,7 @@ $caption";
         return;
     }
     $panel = select("marzban_panel", "*", "code_panel", $user['Processing_value_one'], "select");
-    $stmt = $pdo->prepare("UPDATE product SET name_product = :name_products WHERE id = :name_product AND (Location = :Location OR Location = '/all') AND agent = :agent");
+    $stmt = $pdo->prepare("UPDATE product SET name_product = :name_products WHERE id = :name_product AND (FIND_IN_SET(:Location, Location) > 0 OR Location = '/all') AND agent = :agent");
     $stmt->bindParam(':name_products', $text);
     $stmt->bindParam(':name_product', $user['Processing_value']);
     $stmt->bindParam(':Location', $panel['name_panel']);
@@ -5607,7 +5607,7 @@ $caption";
     }
     $text = $grp;
     $panel = select("marzban_panel", "*", "code_panel", $user['Processing_value_one'], "select");
-    $stmt = $pdo->prepare("UPDATE product SET agent = :agents WHERE id = :name_product AND (Location = :Location OR Location = '/all') AND agent = :agent");
+    $stmt = $pdo->prepare("UPDATE product SET agent = :agents WHERE id = :name_product AND (FIND_IN_SET(:Location, Location) > 0 OR Location = '/all') AND agent = :agent");
     $stmt->bindParam(':agents', $text);
     $stmt->bindParam(':name_product', $user['Processing_value']);
     $stmt->bindParam(':Location', $panel['name_panel']);
@@ -5621,7 +5621,7 @@ $caption";
 } elseif ($user['step'] == "change_reset_data") {
     if (!isset($update['message']) && empty($text)) { return; }
     $panel = select("marzban_panel", "*", "code_panel", $user['Processing_value_one'], "select");
-    $stmt = $pdo->prepare("UPDATE product SET data_limit_reset = :data_limit_reset WHERE id = :name_product AND (Location = :Location OR Location = '/all') AND agent = :agent");
+    $stmt = $pdo->prepare("UPDATE product SET data_limit_reset = :data_limit_reset WHERE id = :name_product AND (FIND_IN_SET(:Location, Location) > 0 OR Location = '/all') AND agent = :agent");
     $stmt->bindParam(':data_limit_reset', $text);
     $stmt->bindParam(':name_product', $user['Processing_value']);
     $stmt->bindParam(':Location', $panel['name_panel']);
@@ -5642,7 +5642,7 @@ $caption";
     $targetLocation = is_array($panelResolved) && !empty($panelResolved['name_panel']) ? $panelResolved['name_panel'] : $text;
     $product = select("product", "*", "name_product", $user['Processing_value']);
     $panel = select("marzban_panel", "*", "code_panel", $user['Processing_value_one'], "select");
-    $stmt = $pdo->prepare("UPDATE product SET Location = :Location2 WHERE id = :name_product AND (Location = :Location OR Location = '/all') AND agent = :agent");
+    $stmt = $pdo->prepare("UPDATE product SET Location = :Location2 WHERE id = :name_product AND (FIND_IN_SET(:Location, Location) > 0 OR Location = '/all') AND agent = :agent");
     $stmt->bindParam(':Location2', $targetLocation);
     $stmt->bindParam(':name_product', $user['Processing_value']);
     $stmt->bindParam(':Location', $panel['name_panel']);
@@ -5666,7 +5666,7 @@ $caption";
     }
     $product = select("product", "*", "id", $user['Processing_value']);
     $panel = select("marzban_panel", "*", "code_panel", $user['Processing_value_one']);
-    $stmt = $pdo->prepare("UPDATE product SET Volume_constraint = :Volume_constraint WHERE id = :name_product AND (Location = :Location OR Location = '/all') AND agent = :agent");
+    $stmt = $pdo->prepare("UPDATE product SET Volume_constraint = :Volume_constraint WHERE id = :name_product AND (FIND_IN_SET(:Location, Location) > 0 OR Location = '/all') AND agent = :agent");
     $stmt->bindParam(':Volume_constraint', $text);
     $stmt->bindParam(':name_product', $product['id']);
     $stmt->bindParam(':Location', $panel['name_panel']);
@@ -5684,7 +5684,7 @@ $caption";
         return;
     }
     $panel = select("marzban_panel", "*", "code_panel", $user['Processing_value_one'], "select");
-    $stmt = $pdo->prepare("UPDATE product SET Service_time = :Service_time WHERE id = :id_product AND (Location = :Location OR Location = '/all') AND agent = :agent");
+    $stmt = $pdo->prepare("UPDATE product SET Service_time = :Service_time WHERE id = :id_product AND (FIND_IN_SET(:Location, Location) > 0 OR Location = '/all') AND agent = :agent");
     $stmt->bindParam(':Service_time', $text);
     $stmt->bindParam(':id_product', $user['Processing_value']);
     $stmt->bindParam(':Location', $panel['name_panel']);

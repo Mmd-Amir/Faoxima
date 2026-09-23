@@ -424,7 +424,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     nm_adminInstantReply($from_id, $textbotlang['Admin']['addorder']['fourstep'], $json_list_product_list_admin, 'HTML');
     step('stependforaddorder', $from_id);
 } elseif ($user['step'] == "stependforaddorder") {
-    $sql = "SELECT * FROM product  WHERE name_product = :name_product AND (Location = :location OR Location = '/all') LIMIT 1";
+    $sql = "SELECT * FROM product  WHERE name_product = :name_product AND (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') LIMIT 1";
     $stmt = $pdo->prepare($sql);
     $stmt->bindParam(':name_product', $text, PDO::PARAM_STR);
     $stmt->bindParam(':location', $user['Processing_value_tow'], PDO::PARAM_STR);
@@ -2566,7 +2566,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     $userdata = json_decode($user['Processing_value'], true);
     $product = [];
     savedata("save", "namerecord", $text);
-    $stmt = $pdo->prepare("SELECT * FROM product WHERE Location = :text or Location = '/all' ");
+    $stmt = $pdo->prepare("SELECT * FROM product WHERE FIND_IN_SET(:text, Location) > 0 or Location = '/all' ");
     $stmt->bindParam(':text', $userdata['namepanel'], PDO::PARAM_STR);
     $stmt->execute();
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -3047,8 +3047,8 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         return;
     }
     $userdata = json_decode($user['Processing_value'], true);
-    $stmt = $pdo->prepare("SELECT * FROM product WHERE Location = '{$userdata['namepanel']}' AND agent = '{$userdata['agent']}'");
-    $stmt->execute();
+    $stmt = $pdo->prepare("SELECT * FROM product WHERE FIND_IN_SET(:loc, Location) > 0 AND agent = :agent");
+    $stmt->execute([':loc' => (string) $userdata['namepanel'], ':agent' => (string) $userdata['agent']]);
     $product = $stmt->fetchAll();
     if ($product == false) {
         nm_adminInstantReply($from_id, "❌ محصولی برای تغییر قیمت یافت نشد", $shopkeyboard, 'HTML');
@@ -3056,13 +3056,18 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         return;
     }
     if ($userdata['type_price'] == "static") {
-        $stmt = $pdo->prepare("UPDATE  product set price_product = price_product + :price WHERE Location = '{$userdata['namepanel']}' AND agent = '{$userdata['agent']}'");
+        $stmt = $pdo->prepare("UPDATE  product set price_product = price_product + :price WHERE FIND_IN_SET(:loc, Location) > 0 AND agent = :agent");
         $stmt->bindParam(':price', $text, PDO::PARAM_STR);
     } else {
-        $stmt = $pdo->prepare("UPDATE  product set price_product = price_product + (price_product * :price / 100)  WHERE Location = '{$userdata['namepanel']}' AND agent = '{$userdata['agent']}'");
+        $stmt = $pdo->prepare("UPDATE  product set price_product = price_product + (price_product * :price / 100)  WHERE FIND_IN_SET(:loc, Location) > 0 AND agent = :agent");
         $stmt->bindParam(':price', $text, PDO::PARAM_STR);
     }
+    $rxBulkLoc = (string) $userdata['namepanel'];
+    $rxBulkAgent = (string) $userdata['agent'];
+    $stmt->bindParam(':loc', $rxBulkLoc, PDO::PARAM_STR);
+    $stmt->bindParam(':agent', $rxBulkAgent, PDO::PARAM_STR);
     $stmt->execute();
+    clearSelectCache('product');
     nm_adminInstantReply($from_id, "✅ مبلغ با موفقیت برای تمامی محصولات اعمال شد", $shopkeyboard, 'HTML');
     step("home", $from_id);
 } elseif ($text == "⬇️ کاهش گروهی قیمت") {
@@ -3092,8 +3097,8 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         return;
     }
     $userdata = json_decode($user['Processing_value'], true);
-    $stmt = $pdo->prepare("SELECT * FROM product WHERE Location = '{$userdata['namepanel']}' AND agent = '{$userdata['agent']}'");
-    $stmt->execute();
+    $stmt = $pdo->prepare("SELECT * FROM product WHERE FIND_IN_SET(:loc, Location) > 0 AND agent = :agent");
+    $stmt->execute([':loc' => (string) $userdata['namepanel'], ':agent' => (string) $userdata['agent']]);
     $product = $stmt->fetchAll();
     if ($product == false) {
         nm_adminInstantReply($from_id, "❌ محصولی برای تغییر قیمت یافت نشد", $shopkeyboard, 'HTML');
@@ -5063,7 +5068,7 @@ elseif ($text == "🫣 مخفی پنل برای کاربر" && $adminrulecheck['
                 $DataUserOut['proxies'][$key] = new stdClass();
             }
         }
-        $stmt = $pdo->prepare("UPDATE product SET proxies = :proxies WHERE id = :name_product AND (Location = :Location OR Location = '/all') AND agent = :agent");
+        $stmt = $pdo->prepare("UPDATE product SET proxies = :proxies WHERE id = :name_product AND (FIND_IN_SET(:Location, Location) > 0 OR Location = '/all') AND agent = :agent");
         $proxies_json = json_encode($DataUserOut['proxies']);
         $stmt->bindParam(':proxies', $proxies_json);
         $stmt->bindParam(':name_product', $user['Processing_value']);
@@ -5077,7 +5082,7 @@ elseif ($text == "🫣 مخفی پنل برای کاربر" && $adminrulecheck['
         nm_adminInstantReply($from_id, "❌ برای این پنل قابلیت تعریف اینباند وجود ندارد", $shopkeyboard, 'HTML');
         return;
     }
-    $stmt = $pdo->prepare("UPDATE product SET inbounds = :inbounds WHERE id = :name_product AND (Location = :Location OR Location = '/all') AND agent = :agent");
+    $stmt = $pdo->prepare("UPDATE product SET inbounds = :inbounds WHERE id = :name_product AND (FIND_IN_SET(:Location, Location) > 0 OR Location = '/all') AND agent = :agent");
     $stmt->bindParam(':inbounds', $datainbound);
     $stmt->bindParam(':name_product', $user['Processing_value']);
     $stmt->bindParam(':Location', $marzban_list_get['name_panel']);
