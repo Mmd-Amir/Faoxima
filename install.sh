@@ -38,6 +38,7 @@ readonly NGINX_TEMPLATE="${PROJECT_DIR}/docker/nginx/nginx.conf.template"
 readonly BOT_NGINX_TEMPLATE="${PROJECT_DIR}/docker/nginx/bot.conf.template"
 readonly NGINX_BOTS_CONF_DIR="${PROJECT_DIR}/nginx/conf.d/bots"
 readonly BOTS_DIR="$(dirname "$PROJECT_DIR")/bots"
+readonly CONTAINER_APP_DIR="/var/www/faoxima"
 readonly BOT_COMPOSE_PREFIX="${PROJECT_DIR}/docker-compose.bot-"
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -1306,36 +1307,163 @@ grant_file_permissions() {
         return 1
     fi
 
+    local php_owner
+    php_owner=$(resolve_php_fpm_owner "$service")
+
     ui_action "Re-applying file permissions inside the ${service} container..."
+    log_action "Normalizing runtime permissions inside ${service} (owner ${php_owner})"
     local output
-    if output=$(dc exec -T "$service" sh -c '
-        set -e
-        app_dir=/var/www/faoxima
-        chown -R www-data:www-data "$app_dir" 2>/dev/null || true
-        find "$app_dir" -path "$app_dir/installer" -prune -o -type d -exec chmod 775 {} \; 2>/dev/null || true
-        find "$app_dir" -path "$app_dir/installer" -prune -o -type f -exec chmod 664 {} \; 2>/dev/null || true
-        if [ -d "$app_dir/installer" ]; then
-            chmod 555 "$app_dir/installer"
-            find "$app_dir/installer" -type f -exec chmod 444 {} \;
-        fi
-        if [ -f "$app_dir/config.php" ]; then
-            chown www-data:www-data "$app_dir/config.php"
-            chmod 600 "$app_dir/config.php"
-        fi
-        if [ -f "$app_dir/.env" ]; then
-            chmod 600 "$app_dir/.env"
-        fi
-        if [ -d "$app_dir/storage/private" ]; then
-            chmod 700 "$app_dir/storage/private"
-            find "$app_dir/storage/private" -type f -exec chmod 600 {} \;
-        fi
-    ' 2>&1); then
+    if output=$(dc exec -T "$service" sh -c "$(permission_normalize_script)" _ "$CONTAINER_APP_DIR" "$php_owner" 2>&1); then
         ui_ok "File permissions re-applied."
     else
         ui_err "Failed to re-apply file permissions inside the ${service} container."
+        log_error "Permission normalization failed inside ${service}"
         printf '%s\n' "$output"
         return 1
     fi
+
+    verify_runtime_permissions "$service"
+}
+
+permission_normalize_script() {
+    cat <<'EOF'
+set -e
+app_dir="$1"
+owner="$2"
+mkdir -p "$app_dir/cron" "$app_dir/cronbot/.runtime" "$app_dir/logs" 2>/dev/null || true
+chown -R "$owner" "$app_dir" 2>/dev/null || true
+find "$app_dir" -path "$app_dir/installer" -prune -o -type d -exec chmod 775 {} + 2>/dev/null || true
+find "$app_dir" -path "$app_dir/installer" -prune -o -type f -exec chmod 664 {} + 2>/dev/null || true
+if [ -d "$app_dir/installer" ]; then
+    chmod 555 "$app_dir/installer"
+    find "$app_dir/installer" -type f -exec chmod 444 {} +
+fi
+if [ -f "$app_dir/config.php" ]; then
+    chown "$owner" "$app_dir/config.php"
+    chmod 600 "$app_dir/config.php"
+fi
+if [ -f "$app_dir/.env" ]; then
+    chmod 600 "$app_dir/.env"
+fi
+if [ -d "$app_dir/storage/private" ]; then
+    chmod 700 "$app_dir/storage/private"
+    find "$app_dir/storage/private" -type f -exec chmod 600 {} +
+fi
+if [ -f "$app_dir/install.sh" ]; then
+    chmod 755 "$app_dir/install.sh"
+fi
+EOF
+}
+
+normalize_source_permissions() {
+    local host_dir="$1" puid pgid
+    if [ -z "$host_dir" ] || [ ! -d "$host_dir" ]; then
+        log_error "Permission normalization skipped: source directory '${host_dir}' does not exist"
+        return 1
+    fi
+    puid=$(file_env_get "${host_dir}/.env" PUID 2>/dev/null)
+    [ -z "$puid" ] && puid=$(env_get PUID 2>/dev/null)
+    [[ "$puid" =~ ^[0-9]+$ ]] || puid=33
+    pgid=$(file_env_get "${host_dir}/.env" PGID 2>/dev/null)
+    [ -z "$pgid" ] && pgid=$(env_get PGID 2>/dev/null)
+    [[ "$pgid" =~ ^[0-9]+$ ]] || pgid=33
+
+    log_action "Normalizing runtime permissions on ${host_dir} (owner ${puid}:${pgid})"
+    local output
+    if ! output=$(sh -c "$(permission_normalize_script)" _ "$host_dir" "${puid}:${pgid}" 2>&1); then
+        log_error "Permission normalization failed on ${host_dir}"
+        printf '%s\n' "$output"
+        return 1
+    fi
+
+    local rel owner_mode bad=0
+    for rel in cron cronbot cronbot/.runtime logs; do
+        owner_mode=$(stat -c '%u:%g %a' "${host_dir}/${rel}" 2>/dev/null)
+        if [ "$owner_mode" != "${puid}:${pgid} 775" ]; then
+            log_error "Runtime permission check failed for ${rel}: expected ${puid}:${pgid} 775, found '${owner_mode:-missing}' on ${host_dir}/${rel}"
+            bad=1
+        fi
+    done
+    [ "$bad" -eq 0 ] || return 1
+    log_info "Source permissions normalized on ${host_dir} (cron, cronbot, cronbot/.runtime, logs = ${puid}:${pgid} 775)"
+}
+
+resolve_php_fpm_owner() {
+    local service="${1:-app}" resolved
+    resolved=$(dc exec -T "$service" sh -c '
+        u=$(grep -hE "^[[:space:]]*user[[:space:]]*=" /usr/local/etc/php-fpm.d/*.conf 2>/dev/null | tail -n1 | sed -E "s/^[^=]*=[[:space:]]*//; s/[[:space:]]*(;.*)?$//")
+        g=$(grep -hE "^[[:space:]]*group[[:space:]]*=" /usr/local/etc/php-fpm.d/*.conf 2>/dev/null | tail -n1 | sed -E "s/^[^=]*=[[:space:]]*//; s/[[:space:]]*(;.*)?$//")
+        [ -n "$u" ] || u=www-data
+        [ -n "$g" ] || g=$u
+        id -u "$u" >/dev/null 2>&1 || u=www-data
+        printf "%s:%s" "$u" "$g"
+    ' 2>/dev/null | tr -d '\r')
+    [[ "$resolved" =~ ^[A-Za-z0-9._-]+:[A-Za-z0-9._-]+$ ]] || resolved="www-data:www-data"
+    printf '%s' "$resolved"
+}
+
+verify_runtime_permissions() {
+    local service="${1:-app}"
+    if [ -z "$(dc ps -q "$service" 2>/dev/null)" ]; then
+        ui_err "Runtime permission check failed: the ${service} container is not running."
+        log_error "Runtime permission check failed: ${service} container is not running"
+        return 1
+    fi
+
+    local php_owner php_user
+    php_owner=$(resolve_php_fpm_owner "$service")
+    php_user="${php_owner%%:*}"
+    log_info "Runtime permission check: PHP-FPM user in ${service} resolved to ${php_owner}"
+
+    local output
+    output=$(dc exec -T -u "$php_user" "$service" sh -c '
+        cd "$1" || { echo "FAIL . cannot-enter"; exit 0; }
+        check() {
+            f="$1/.permission-test.$$"
+            if [ ! -d "$1" ]; then
+                echo "FAIL $1 missing"
+            elif ( : > "$f" ) 2>/dev/null && rm -f "$f" 2>/dev/null && [ ! -e "$f" ]; then
+                echo "OK $1"
+            else
+                rm -f "$f" 2>/dev/null
+                echo "FAIL $1 not-writable"
+            fi
+        }
+        for d in cron cronbot cronbot/.runtime logs; do check "$d"; done
+        for m in re/rx/*/manifest.php; do [ -f "$m" ] && check "${m%/manifest.php}"; done
+        [ -d storage/private ] && check storage/private
+        check .
+    ' _ "$CONTAINER_APP_DIR" 2>&1 | tr -d '\r')
+
+    local line state rel failed=0 others_ok=0
+    while IFS= read -r line; do
+        state="${line%% *}"
+        rel="${line#* }"
+        rel="${rel%% *}"
+        case "$state" in
+            OK)
+                case "$rel" in
+                    cron|cronbot|cronbot/.runtime|logs) log_info "Runtime permission check: ${rel} OK" ;;
+                    *) others_ok=$((others_ok + 1)) ;;
+                esac
+                ;;
+            FAIL)
+                failed=1
+                ui_err "Runtime permission check failed: ${php_user} cannot write to ${CONTAINER_APP_DIR}/${rel} (${line##* })"
+                log_error "Runtime permission check failed for ${rel} as ${php_user} (${line##* })"
+                ;;
+        esac
+    done <<< "$output"
+
+    if [ "$failed" -eq 0 ] && ! grep -q '^OK cronbot$' <<< "$output"; then
+        failed=1
+        ui_err "Runtime permission check could not run as ${php_user} inside ${service}."
+        log_error "Runtime permission check did not run as ${php_user} in ${service}: $(printf '%s' "$output" | head -n3 | tr '\n' ' ')"
+    fi
+    [ "$failed" -eq 0 ] || return 1
+
+    log_info "Runtime permission check: ${others_ok} additional runtime directories OK"
+    ui_ok "Runtime write access verified for ${php_user} in ${service}."
 }
 
 prompt_version_selection() {
@@ -1456,6 +1584,7 @@ install_bot() {
         ui_action "Relocating Faoxima source from ${STAGING_SOURCE_DIR} to ${PROJECT_DIR}..."
         mkdir -p "$PROJECT_DIR" || { ui_err "Failed to create project directory ${PROJECT_DIR}."; exit 1; }
         cp -a "${STAGING_SOURCE_DIR}/." "${PROJECT_DIR}/" || { ui_err "Failed to copy Faoxima source into ${PROJECT_DIR}."; exit 1; }
+        normalize_source_permissions "$PROJECT_DIR" || { ui_err "Runtime permission normalization failed on ${PROJECT_DIR}."; exit 1; }
         cd "$PROJECT_DIR" || { ui_err "Failed to switch into ${PROJECT_DIR}."; exit 1; }
         rm -rf "$STAGING_SOURCE_DIR" || ui_warn "Failed to remove the staging directory ${STAGING_SOURCE_DIR} — you can delete it manually."
         ui_ok "Faoxima source relocated to ${PROJECT_DIR}."
@@ -1490,6 +1619,7 @@ install_bot() {
 
         mkdir -p "$PROJECT_DIR" || { ui_err "Failed to create project directory ${PROJECT_DIR}."; exit 1; }
         cp -a "${extracted_dir}/." "${PROJECT_DIR}/" || { ui_err "Failed to copy Faoxima source into ${PROJECT_DIR}."; exit 1; }
+        normalize_source_permissions "$PROJECT_DIR" || { ui_err "Runtime permission normalization failed on ${PROJECT_DIR}."; exit 1; }
         rm -rf "$TMP_DOWNLOAD"
         ui_ok "Faoxima source downloaded to ${PROJECT_DIR}."
     fi
@@ -1822,6 +1952,7 @@ install_additional_bot() {
         cp -a "${PROJECT_DIR}/." "${bot_dir}/" || { ui_err "Failed to copy Faoxima source into ${bot_dir}."; return 1; }
         rm -rf "${bot_dir}/.env" "${bot_dir}/bots" "${bot_dir}/nginx/conf.d" "${bot_dir}"/docker-compose.bot-*.yml
     fi
+    normalize_source_permissions "$bot_dir" || { ui_err "Runtime permission normalization failed on ${bot_dir}."; return 1; }
 
     find "${bot_dir}/re/rx" -mindepth 2 -maxdepth 2 \( -name '.compiled.php' -o -name '.compiled.map' \) -delete 2>/dev/null || true
     if [ -f "${bot_dir}/config.php" ]; then
@@ -1922,9 +2053,15 @@ EOF
 
     ui_action "Initialising database tables via table.php..."
     if ! run_table_migrations_until_ready "app_${botname}" "$db_name" "$db_user" "$db_pass" "$bot_dir" "${botname}"; then
+        grant_file_permissions "app_${botname}" || true
         return 1
     fi
     ui_ok "Database tables initialised for '${botname}'."
+
+    if ! grant_file_permissions "app_${botname}"; then
+        ui_err "'${botname}' was installed, but PHP cannot write to its runtime directories."
+        return 1
+    fi
 
     ui_action "Registering Telegram webhook for '${botname}'..."
     local secret_token
@@ -2583,9 +2720,25 @@ update_bot_source() {
 
     ui_action "Extracting update onto ${code_dir}..."
     if ! cp -a "${extracted_dir}/." "${code_dir}/"; then
+        normalize_source_permissions "$code_dir" || true
         rm -rf "$work_dir" "$temp_config" "$temp_env"
         ui_err "File transfer failed for '${label}'."
         return 1
+    fi
+
+    if ! normalize_source_permissions "$code_dir"; then
+        rm -rf "$work_dir" "$temp_config" "$temp_env"
+        ui_err "Runtime permission normalization failed for '${label}' after replacing the source."
+        return 1
+    fi
+    if [ -n "$(dc ps -q "$app_service" 2>/dev/null)" ]; then
+        if ! verify_runtime_permissions "$app_service"; then
+            rm -rf "$work_dir" "$temp_config" "$temp_env"
+            ui_err "Update aborted for '${label}': PHP cannot write to its runtime directories."
+            return 1
+        fi
+    else
+        log_warn "Runtime permission check deferred for ${app_service}: container not running yet"
     fi
 
     if [ -s "$temp_env" ]; then
@@ -2631,20 +2784,22 @@ update_bot_source() {
         dc build "$app_service" || ui_warn "Rebuilding the app image for '${label}' failed — continuing with the existing image."
     fi
     ui_action "Restarting services for '${label}' with the updated source..."
-    dc up -d --no-deps "$app_service" || { ui_err "Failed to bring '${label}' services back up."; return 1; }
+    dc up -d --no-deps "$app_service" || { normalize_source_permissions "$code_dir" || true; ui_err "Failed to bring '${label}' services back up."; return 1; }
 
     ui_action "Waiting for the '${label}' database user to accept connections..."
     if ! wait_for_db_ready 60 "$app_service" "db" "$db_name" "$db_user" "$db_pass"; then
         ui_err "The '${label}' database user could not connect after the update."
         diagnose_db_failure "$app_service" "db" "$db_name" "$db_user" "$db_pass"
+        grant_file_permissions "$app_service" || normalize_source_permissions "$code_dir" || true
         return 1
     fi
 
     if ! run_table_migrations_until_ready "$app_service" "$db_name" "$db_user" "$db_pass" "$code_dir" "${label}"; then
+        grant_file_permissions "$app_service" || normalize_source_permissions "$code_dir" || true
         return 1
     fi
 
-    dc restart "$app_service" || { ui_err "Failed to restart the '${app_service}' container after the update."; return 1; }
+    dc restart "$app_service" || { normalize_source_permissions "$code_dir" || true; ui_err "Failed to restart the '${app_service}' container after the update."; return 1; }
     sleep 2
     if ! grant_file_permissions "$app_service"; then
         return 1

@@ -53,6 +53,15 @@ foreach ($__required_files as $__f) {
 unset($__required_files, $__f);
 
 if (!rx_cron_db_ready('sendmessage')) {
+    if (function_exists('rx_broadcast_info_update') && is_file($baseDir . '/info')) {
+        rx_broadcast_info_update($baseDir . '/info', null, static function (array &$c) {
+            $st = (string) ($c['status'] ?? '');
+            if ($st === 'cancelled' || $st === 'finished') {
+                return false;
+            }
+            rx_broadcast_apply_pause($c, ['class' => 'temporary_database', 'temporary' => true, 'code' => 0, 'retry_after' => 0, 'detail' => 'db_unavailable', 'manual' => false]);
+        });
+    }
     return;
 }
 
@@ -97,6 +106,21 @@ if ($lockFh === false) {
     });
 }
 
+$rxBcActive = null;
+register_shutdown_function(static function () use (&$rxBcActive): void {
+    $err = error_get_last();
+    if (!is_array($rxBcActive) || !is_array($err) || !in_array((int) ($err['type'] ?? 0), [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true)) {
+        return;
+    }
+    rx_broadcast_info_update($rxBcActive['info'], $rxBcActive['token'], static function (array &$c) {
+        if (($c['status'] ?? '') !== 'running') {
+            return false;
+        }
+        rx_broadcast_apply_pause($c, ['class' => 'system_error', 'temporary' => true, 'code' => 0, 'retry_after' => 0, 'detail' => 'worker_fatal', 'manual' => false]);
+    });
+    @error_log('[sendmessage.php] broadcast paused after worker fatal error: ' . basename((string) ($err['file'] ?? '')) . ':' . (int) ($err['line'] ?? 0));
+});
+
 try {
 
     $datatxtbot  = select("textbot", "*", null, null, "fetchAll");
@@ -130,10 +154,30 @@ try {
     $info = json_decode($infoContent, true);
     if (!is_array($info)) { $rxBcLog('ERROR — info نامعتبر (JSON خراب)'); @unlink($lockFile); exit; }
 
-    $bcToken = substr(md5(
-        ($info['id_admin'] ?? '') . '|' . ($info['id_message'] ?? '') . '|' .
-        ($info['type'] ?? '') . '|' . ($info['message'] ?? '')
-    ), 0, 12);
+    $bcToken = rx_broadcast_token($info);
+    $rxGate = 'run';
+    $rxGateInfo = rx_broadcast_info_update($infoFile, $bcToken, static function (array &$c) use (&$rxGate) {
+        $st = (string) ($c['status'] ?? '');
+        if ($st === 'cancelled' || $st === 'finished') {
+            $rxGate = 'stop';
+            return false;
+        }
+        if (!rx_broadcast_is_paused($st)) {
+            return false;
+        }
+        $until = (int) ($c['pause_until'] ?? 0);
+        if (!empty($c['manual_resume']) || $until <= 0 || $until > time()) {
+            $rxGate = 'wait';
+            return false;
+        }
+        rx_broadcast_resume_now($c, false);
+    });
+    if ($rxGate !== 'run' || !is_array($rxGateInfo)) {
+        @unlink($lockFile);
+        exit;
+    }
+    $info = $rxGateInfo;
+    $rxBcActive = ['info' => $infoFile, 'token' => $bcToken];
     $inflightFile = $usersFileTxt . '.w' . $workerId . '.' . $bcToken . '.inflight';
     $sentFile     = $usersFileTxt . '.w' . $workerId . '.' . $bcToken . '.sent';
 
@@ -144,19 +188,16 @@ try {
     $reportLockFile = $usersFileTxt . '.' . $bcToken . '.report';
     $infoLockFile   = $infoFile . '.wlock';
 
-    $rxInfoUpdate = static function (callable $mutator) use ($infoFile, $infoLockFile) {
-        $lf = @fopen($infoLockFile, 'c');
-        if ($lf) { @flock($lf, LOCK_EX); }
-        $cur = json_decode((string) @file_get_contents($infoFile), true);
-        if (is_array($cur)) {
-            $mutator($cur);
-            $tmp = $infoFile . '.tmp';
-            if (@file_put_contents($tmp, json_encode($cur, JSON_UNESCAPED_UNICODE)) !== false) {
-                @rename($tmp, $infoFile);
-            }
+    $rxInfoUpdate = static function (callable $mutator) use ($infoFile, $bcToken) {
+        return rx_broadcast_info_update($infoFile, $bcToken, $mutator);
+    };
+
+    $rxBroadcastState = static function () use ($infoFile, $bcToken): string {
+        $c = is_file($infoFile) ? json_decode((string) @file_get_contents($infoFile), true) : null;
+        if (!is_array($c) || rx_broadcast_token($c) !== $bcToken || ($c['status'] ?? '') === 'cancelled') {
+            return 'cancelled';
         }
-        if ($lf) { @flock($lf, LOCK_UN); @fclose($lf); }
-        return is_array($cur) ? $cur : null;
+        return rx_broadcast_is_paused($c['status'] ?? '') ? 'paused' : 'running';
     };
 
     $rxAllInflight = static function () use ($usersFileTxt, $bcToken): int {
@@ -169,10 +210,14 @@ try {
 
     $rxTryFinish = static function () use (
         $usersFileTxt, $usersFileJson, $claimLockFile, $reportLockFile, $infoFile, $infoLockFile,
-        &$info, $rxBcLog, $rxAllInflight
+        &$info, $rxBcLog, $rxAllInflight, $rxBroadcastState
     ): bool {
         $clf = @fopen($claimLockFile, 'c');
         if ($clf) { @flock($clf, LOCK_EX); }
+        if ($rxBroadcastState() !== 'running') {
+            if ($clf) { @flock($clf, LOCK_UN); @fclose($clf); }
+            return false;
+        }
         $remain = (is_file($usersFileTxt) ? countLines($usersFileTxt) : 0) + $rxAllInflight();
         $done = ($remain === 0);
         if ($done) {
@@ -196,6 +241,14 @@ try {
                 }
             } else {
                 $rxBcLog('DONE — این worker تمام شد؛ گزارش نهایی را worker دیگری می‌فرستد');
+                @unlink($infoFile);
+                @unlink($usersFileTxt);
+                @unlink($usersFileJson);
+                @unlink($infoLockFile);
+                foreach (glob($usersFileTxt . '.*') ?: [] as $f) {
+                    if ($f === $reportLockFile) continue;
+                    @unlink($f);
+                }
             }
         }
         if ($clf) { @flock($clf, LOCK_UN); @fclose($clf); }
@@ -242,6 +295,15 @@ try {
     $softTimeLimit   = 27;
     $checkpointEvery = 1;
     $batch = [];
+    if (is_file($usersFileTxt) || !is_file($usersFileJson)) {
+        $clf = @fopen($claimLockFile, 'c');
+        if ($clf) { @flock($clf, LOCK_EX); }
+        $rxRecovered = recoverBroadcastInflight($baseDir, $usersFileTxt, $bcToken, $workerId, loadBroadcastSentSet($usersFileTxt, $bcToken));
+        if ($clf) { @flock($clf, LOCK_UN); @fclose($clf); }
+        if ($rxRecovered > 0) {
+            $rxBcLog('RECOVER — ' . $rxRecovered . ' users returned from inflight to queue');
+        }
+    }
     $usingTxtMode = is_file($usersFileTxt);
     $usingJsonMode = !$usingTxtMode && is_file($usersFileJson);
 
@@ -254,6 +316,7 @@ try {
         $clf = @fopen($claimLockFile, 'c');
         if ($clf) { @flock($clf, LOCK_EX); }
         $rxInfoUpdate(function (array &$c) use ($usersFileTxt, $rxAllInflight) {
+            if (empty($c['status']) || $c['status'] === 'queued') $c['status'] = 'running';
             if (!isset($c['stats']) || !is_array($c['stats'])) $c['stats'] = [];
             if ((int) ($c['stats']['total'] ?? 0) > 0) return;
             $c['stats']['total'] = (is_file($usersFileTxt) ? countLines($usersFileTxt) : 0) + $rxAllInflight();
@@ -307,6 +370,15 @@ try {
         . ' | total=' . (int) $totals['total']);
 
     if (count($batch) === 0) {
+        if ($usingTxtMode && is_file($usersFileTxt) && countLines($usersFileTxt) > 0) {
+            $rxInfoUpdate(static function (array &$c) {
+                if (($c['status'] ?? '') !== 'running') return false;
+                rx_broadcast_apply_pause($c, ['class' => 'system_error', 'temporary' => true, 'code' => 0, 'retry_after' => 0, 'detail' => 'queue_unavailable', 'manual' => false]);
+            });
+            @error_log('[sendmessage.php] broadcast paused: queue could not be claimed from ' . $usersFileTxt);
+            @unlink($lockFile);
+            exit;
+        }
         $rxTryFinish();
         @unlink($inflightFile);
         @unlink($sentFile);
@@ -341,6 +413,7 @@ try {
         ];
         if (!array_filter($d)) return;
         $rxInfoUpdate(function (array &$c) use ($d) {
+            $c['temp_streak'] = 0;
             if (!isset($c['stats']) || !is_array($c['stats'])) $c['stats'] = [];
             foreach ($d as $k => $v) {
                 $c['stats'][$k] = (int) ($c['stats'][$k] ?? 0) + $v;
@@ -355,14 +428,22 @@ try {
          FROM user WHERE id = :id2 LIMIT 1"
     );
 
-    $sentSet = loadSentSet($sentFile);
+    $sentSet = loadBroadcastSentSet($usersFileTxt, $bcToken) + loadSentSet($sentFile);
 
+    $rxStop = 'running';
     $idx = 0;
     foreach ($batch as $userId) {
         if ((microtime(true) - $batchStart) >= $softTimeLimit) {
             $unprocessedSlice = array_slice($batch, $idx);
             if ($usingJsonMode && !empty($unprocessedSlice)) {
                 prependEntriesToJson($usersFileJson, $unprocessedSlice);
+            }
+            break;
+        }
+        $rxStop = $rxBroadcastState();
+        if ($rxStop !== 'running') {
+            if ($usingJsonMode && $rxStop === 'paused') {
+                prependEntriesToJson($usersFileJson, array_slice($batch, $idx));
             }
             break;
         }
@@ -382,6 +463,7 @@ try {
         $processed++;
 
         $resp = null;
+        $rxAttempted = true;
         if ($info['type'] === 'unpinmessage') {
             $unpinResult = runRateLimitedUnpin($userId, $baseDir, $batchStart, $softTimeLimit, $rxBcLog);
             if (!empty($unpinResult['deferred'])) {
@@ -393,35 +475,70 @@ try {
                 break;
             }
             $resp = $unpinResult['response'];
-            handleResponse($resp, $userId, $info, $orphanCheckStmt, $deleteStmt,
-                $bSuccess, $bBlocked, $bDeleted, $bFailed, $bChatNotFound, $rxBcLog);
         } elseif ($info['type'] === 'sendmessage' || $info['type'] === 'xdaynotmessage') {
             $kb = $keyboards[$info['btnmessage'] ?? 'none'] ?? null;
             $resp = sendmessage($userId, $info['message'], $kb, 'HTML');
-            handleResponse($resp, $userId, $info, $orphanCheckStmt, $deleteStmt,
-                $bSuccess, $bBlocked, $bDeleted, $bFailed, $bChatNotFound, $rxBcLog);
         } elseif ($info['type'] === 'forwardmessage') {
             $resp = forwardMessage($info['id_admin'], $info['message'], $userId);
-            handleResponse($resp, $userId, $info, $orphanCheckStmt, $deleteStmt,
-                $bSuccess, $bBlocked, $bDeleted, $bFailed, $bChatNotFound, $rxBcLog);
+        } else {
+            $rxAttempted = false;
+        }
+
+        if ($rxAttempted) {
+            $rxCls = rx_broadcast_classify($resp);
+            if (!empty($rxCls['temporary'])) {
+                $idx--;
+                $processed--;
+                if ($usingJsonMode) {
+                    prependEntriesToJson($usersFileJson, array_slice($batch, $idx));
+                }
+                $rxInfoUpdate(static function (array &$c) use ($rxCls) {
+                    rx_broadcast_apply_pause($c, $rxCls);
+                });
+                $rxStop = 'paused';
+                break;
+            }
         }
 
         @file_put_contents($sentFile, $userId . "\n", FILE_APPEND | LOCK_EX);
         $sentSet[$userId] = true;
 
+        if ($rxAttempted) {
+            handleResponse($resp, $userId, $info, $orphanCheckStmt, $deleteStmt,
+                $bSuccess, $bBlocked, $bDeleted, $bFailed, $bChatNotFound, $rxBcLog);
+        }
+
         if (!$usingJsonMode && ($processed % $checkpointEvery) === 0) {
-            syncInflight($inflightFile, array_slice($batch, $idx));
             $rxApplyStatsDelta();
+            syncInflight($inflightFile, array_slice($batch, $idx));
         }
     }
 
+    if ($rxStop === 'cancelled') {
+        @unlink($inflightFile);
+        @unlink($inflightFile . '.tmp');
+        @unlink($sentFile);
+        @unlink($lockFile);
+        exit;
+    }
 
     if (!$usingJsonMode) {
         syncInflight($inflightFile, array_slice($batch, $idx));
     }
 
     $rxApplyStatsDelta();
-    $rxAgg = json_decode((string) @file_get_contents($infoFile), true);
+    if ($rxStop === 'running') {
+        $rxStop = $rxBroadcastState();
+    }
+    if ($rxStop === 'cancelled') {
+        @unlink($inflightFile);
+        @unlink($inflightFile . '.tmp');
+        @unlink($sentFile);
+        @unlink($lockFile);
+        exit;
+    }
+    $rxInfoNow = json_decode((string) @file_get_contents($infoFile), true);
+    $rxAgg = $rxInfoNow;
     $rxAgg = (is_array($rxAgg) && isset($rxAgg['stats']) && is_array($rxAgg['stats'])) ? $rxAgg['stats'] : $totals;
 
     $batchExecutionTime = microtime(true) - $batchStart;
@@ -441,7 +558,7 @@ try {
         . ' | باقی‌مانده=' . $countRemain . ' (inflight=' . $inflightRemain . ')'
         . ' | مجموع ارسال‌شده تاکنون=' . $totalSent . ' از ' . (int) ($rxAgg['total'] ?? 0));
 
-    if ($countRemain === 0) {
+    if ($countRemain === 0 && $rxStop === 'running') {
         if ($usingJsonMode) {
             $rxBcLog('FINISHED — کل عملیات تمام شد | total=' . (int) ($rxAgg['total'] ?? 0));
             if (isset($info['id_admin'], $info['id_message'])) {
@@ -467,12 +584,33 @@ try {
     if ((int) ($rxAgg['failed'] ?? 0)         > 0) $textprocces .= " | ❌ خطا: "       . number_format((int) $rxAgg['failed']);
     $textprocces .= "\n\n⏱ این بچ: " . round($batchExecutionTime, 1) . "s | 🔥 سرعت: " . round($messagesPerSecond, 1) . " پیام/ثانیه";
 
-    if ($workerId === 0 && isset($info['id_admin'], $info['id_message'])) {
+    if ($rxStop === 'paused' && is_array($rxInfoNow)) {
+        $textprocces = "⏸️ عملیات ارسال پیام موقتاً متوقف شده است\n\n"
+            . substr($textprocces, (int) strpos($textprocces, "📊"))
+            . "\n" . rx_broadcast_pause_text($rxInfoNow);
+        $rxPauseKb = json_encode(['inline_keyboard' => [
+            [rx_broadcast_resume_button($bcToken)],
+            [['text' => "لغو عملیات", 'callback_data' => 'cancel_sendmessage']],
+        ]]);
+        if (isset($info['id_admin'], $info['id_message'])) {
+            Editmessagetext($info['id_admin'], $info['id_message'], $textprocces, $rxPauseKb);
+        }
+    } elseif ($workerId === 0 && isset($info['id_admin'], $info['id_message'])) {
         Editmessagetext($info['id_admin'], $info['id_message'], $textprocces, $cancelmessage);
     }
 } catch (Throwable $e) {
     error_log('[sendmessage.php] ' . $e->getMessage());
     $rxBcLog('EXCEPTION — ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+    if (function_exists('rx_broadcast_info_update')) {
+        $rxExCls = rx_broadcast_classify_exception($e);
+        rx_broadcast_info_update($baseDir . '/info', $bcToken ?? null, static function (array &$c) use ($rxExCls) {
+            $st = (string) ($c['status'] ?? '');
+            if ($st !== '' && $st !== 'queued' && $st !== 'running') {
+                return false;
+            }
+            rx_broadcast_apply_pause($c, $rxExCls);
+        });
+    }
 } finally {
     @unlink($lockFile);
 }
@@ -723,6 +861,84 @@ function loadSentSet(string $path): array
     }
     fclose($in);
     return $set;
+}
+
+function loadBroadcastSentSet(string $usersFileTxt, string $token): array
+{
+    $set = [];
+    foreach (glob($usersFileTxt . '.w*.' . $token . '.sent') ?: [] as $f) {
+        $set += loadSentSet($f);
+    }
+    return $set;
+}
+
+function recoverBroadcastInflight(string $baseDir, string $usersFileTxt, string $token, int $selfWorker, array $sentSet): int
+{
+    $files = [];
+    $held = [];
+    $recovered = [];
+    $seen = [];
+    foreach (glob($usersFileTxt . '.w*.' . $token . '.inflight') ?: [] as $inf) {
+        if (!preg_match('/\.w(\d+)\.' . preg_quote($token, '/') . '\.inflight$/', $inf, $m)) {
+            continue;
+        }
+        $w = (int) $m[1];
+        if ($w !== $selfWorker) {
+            $lh = @fopen($baseDir . '/broadcast' . ($w > 0 ? "_w{$w}" : '') . '.lock', 'c');
+            if ($lh === false) {
+                continue;
+            }
+            if (!@flock($lh, LOCK_EX | LOCK_NB)) {
+                @fclose($lh);
+                continue;
+            }
+            $held[] = $lh;
+        }
+        foreach (loadLinesFromTxt($inf, PHP_INT_MAX) as $id) {
+            if ($id !== '' && !isset($sentSet[$id]) && !isset($seen[$id])) {
+                $seen[$id] = true;
+                $recovered[] = $id;
+            }
+        }
+        $files[] = $inf;
+    }
+
+    $ok = true;
+    if (!empty($recovered)) {
+        $tmp = $usersFileTxt . '.recover.tmp';
+        $out = @fopen($tmp, 'w');
+        $ok = ($out !== false);
+        if ($ok) {
+            foreach ($recovered as $id) {
+                fwrite($out, $id . "\n");
+            }
+            $in = is_file($usersFileTxt) ? @fopen($usersFileTxt, 'r') : false;
+            if ($in) {
+                while (($line = fgets($in)) !== false) {
+                    $line = trim($line);
+                    if ($line !== '' && !isset($seen[$line])) {
+                        fwrite($out, $line . "\n");
+                    }
+                }
+                fclose($in);
+            }
+            fclose($out);
+            $ok = @rename($tmp, $usersFileTxt);
+            if (!$ok) {
+                @unlink($tmp);
+            }
+        }
+    }
+    if ($ok) {
+        foreach ($files as $f) {
+            @unlink($f);
+        }
+    }
+    foreach ($held as $lh) {
+        @flock($lh, LOCK_UN);
+        @fclose($lh);
+    }
+    return $ok ? count($recovered) : 0;
 }
 
 function loadLinesFromTxt(string $path, int $max): array

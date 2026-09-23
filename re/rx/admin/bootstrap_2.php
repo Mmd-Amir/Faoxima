@@ -2555,7 +2555,7 @@ elseif ($datain == "systemsms") {
             $from_id,
             $message_id,
             nm_buildBroadcastStatusText($broadcastStatus),
-            nm_buildBroadcastStatusKeyboard(),
+            nm_buildBroadcastStatusKeyboard($broadcastStatus),
             'HTML'
         );
         return;
@@ -2614,7 +2614,7 @@ elseif ($datain == "systemsms") {
         $from_id,
         $message_id,
         nm_buildBroadcastStatusText($broadcastStatus),
-        nm_buildBroadcastStatusKeyboard(),
+        nm_buildBroadcastStatusKeyboard($broadcastStatus),
         'HTML'
     );
     if (!empty($callback_query_id)) {
@@ -2628,6 +2628,43 @@ elseif ($datain == "systemsms") {
         ]);
     }
     return;
+} elseif (preg_match('/^broadcast_resume_([0-9a-f]{12})$/', $datain, $rxResumeMatch)) {
+    $rxResumeResult = 'not_found';
+    if (function_exists('rx_broadcast_info_update')) {
+        rx_broadcast_info_update('cronbot/info', $rxResumeMatch[1], static function (array &$c) use (&$rxResumeResult) {
+            if (!rx_broadcast_resume_now($c, true)) {
+                $rxResumeResult = 'not_paused';
+                return false;
+            }
+            $rxResumeResult = 'resumed';
+        });
+    }
+    $rxResumeToast = [
+        'resumed'    => '▶️ عملیات از همان نقطه ادامه می‌یابد (حداکثر تا یک دقیقه دیگر).',
+        'not_paused' => 'این عملیات در حالت توقف نیست.',
+        'not_found'  => 'این عملیات دیگر وجود ندارد یا لغو شده است.',
+    ][$rxResumeResult];
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text'              => $rxResumeToast,
+            'show_alert'        => $rxResumeResult !== 'resumed',
+            'cache_time'        => 0,
+        ]);
+    }
+    $broadcastStatus = function_exists('nm_getBroadcastStatus') ? nm_getBroadcastStatus() : null;
+    if ($broadcastStatus !== null) {
+        Editmessagetext(
+            $from_id,
+            $message_id,
+            nm_buildBroadcastStatusText($broadcastStatus),
+            nm_buildBroadcastStatusKeyboard($broadcastStatus),
+            'HTML'
+        );
+    } else {
+        Editmessagetext($from_id, $message_id, "❌ عملیات ارسال پیامی برای ادامه وجود ندارد.", null, 'HTML');
+    }
+    return;
 } elseif (preg_match('/^typeservice-(\w+)/', $datain, $dataget)) {
 
     $broadcastStatus = function_exists('nm_getBroadcastStatus') ? nm_getBroadcastStatus() : null;
@@ -2636,7 +2673,7 @@ elseif ($datain == "systemsms") {
             $from_id,
             $message_id,
             nm_buildBroadcastStatusText($broadcastStatus),
-            nm_buildBroadcastStatusKeyboard(),
+            nm_buildBroadcastStatusKeyboard($broadcastStatus),
             'HTML'
         );
         if (!empty($callback_query_id)) {
@@ -3194,13 +3231,17 @@ $textday
     }
 } elseif ($datain == "cancel_sendmessage") {
     @file_put_contents('users.json', json_encode(array()));
-    @unlink('cronbot/users.json');
-    @unlink('cronbot/users.txt');
-    @unlink('cronbot/users.txt.new');
-    @unlink('cronbot/users.txt.tail.tmp');
-    @unlink('cronbot/info');
+    if (function_exists('rx_broadcast_cancel')) {
+        rx_broadcast_cancel('cronbot');
+    } else {
+        @unlink('cronbot/users.json');
+        @unlink('cronbot/users.txt');
+        @unlink('cronbot/users.txt.new');
+        @unlink('cronbot/users.txt.tail.tmp');
+        @unlink('cronbot/info');
+    }
     deletemessage($from_id, $message_id);
-    nm_adminInstantReply($from_id, "📌 ارسال پیام لغو گردید.", null, 'HTML');
+    nm_adminInstantReply($from_id, "❌ عملیات ارسال پیام لغو شد و قابل ادامه نیست.", null, 'HTML');
 }
 
 elseif ($text == "📝 تنظیم متن ربات" && $adminrulecheck['rule'] == "administrator") {
