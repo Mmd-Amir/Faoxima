@@ -868,11 +868,12 @@ if ($rxAntispamStatus === '1' && !in_array((string)$from_id, $admin_ids_str, tru
     }
 }
 
+$rxStartLanding = false;
 if (strpos($text, "/start ") !== false && $user['step'] != "gettextSystemMessage") {
     $affiliatesid = explode(" ", $text)[1];
     if (!in_array($affiliatesid, ['start', "usertest", "/start", "buy", "help"])) {
         isValidInvitationCode($setting, $from_id, $user['verify']);
-        if ($setting['affiliatesstatus'] == "offaffiliates") {
+        if (is_numeric($affiliatesid) && $setting['affiliatesstatus'] == "offaffiliates") {
             sendmessage($from_id, $textbotlang['users']['affiliates']['offaffiliates'], $keyboard, 'HTML');
             return;
         }
@@ -908,12 +909,22 @@ if (strpos($text, "/start ") !== false && $user['step'] != "gettextSystemMessage
                 clearSelectCache('reagent_report');
             }
         } else {
-            rx_send_banner_message($from_id, 'start', $datatextbot['text_start'], $keyboard, 'html');
-            update("user", "Processing_value", "0", "id", $from_id);
-            update("user", "Processing_value_one", "0", "id", $from_id);
-            update("user", "Processing_value_tow", "0", "id", $from_id);
-            update("user", "Processing_value_four", "0", "id", $from_id);
-            step('home', $from_id);
+            if (!is_numeric($affiliatesid) && preg_match('/^[A-Za-z0-9_-]{1,64}$/', (string)$affiliatesid) && strpos((string)$affiliatesid, 'manageuser_') !== 0) {
+                try {
+                    $stmtSourceInv = $pdo->prepare("SELECT 1 FROM user WHERE codeInvitation = ? LIMIT 1");
+                    $stmtSourceInv->execute([$affiliatesid]);
+                    if (!$stmtSourceInv->fetchColumn()) {
+                        $stmtSource = $pdo->prepare("UPDATE user SET `source` = ? WHERE id = ? AND (`source` IS NULL OR `source` = '')");
+                        $stmtSource->execute([$affiliatesid, $from_id]);
+                        if ($stmtSource->rowCount() > 0 && function_exists('clearSelectCache')) {
+                            clearSelectCache('user');
+                        }
+                    }
+                } catch (Throwable $e) {
+                    error_log('[start_source] ' . $e->getMessage());
+                }
+            }
+            $rxStartLanding = true;
         }
     } else {
         $text = $affiliatesid;
@@ -933,6 +944,9 @@ if ($setting['roll_Status'] == "rolleon" && $user['roll_Status'] == 0 && ($text 
     return;
 }
 if ($text == "✅ قوانین را می پذیرم" or $datain == "acceptrule") {
+    if ($setting['roll_Status'] == "rolleon" && intval($user['roll_Status']) == 0) {
+        $rxStartLanding = true;
+    }
     deletemessage($from_id, $message_id);
     sendmessage($from_id, $textbotlang['users']['Rules'], $keyboard, 'html');
     $confrim = true;
@@ -944,7 +958,7 @@ if ($setting['Bot_Status'] == "botstatusoff" && !in_array($from_id, $admin_ids))
     return;
 }
 
-$isStartRequest = ($text == "/start" || $datain == "start" || $text == "start" || (is_string($text) && strpos($text, "/start ") === 0));
+$isStartRequest = ($text == "/start" || $datain == "start" || $text == "start" || (is_string($text) && strpos($text, "/start ") === 0) || $rxStartLanding);
 $isConfirmChannel = ($datain == "confirmchannel");
 $shouldCheckChannel = true;
 
@@ -1073,7 +1087,7 @@ if ($shouldCheckChannel && !in_array($from_id, $admin_ids)) {
         }
     }
 }
-if ($text == "/start" || $datain == "start" || $text == "start") {
+if ($text == "/start" || $datain == "start" || $text == "start" || $rxStartLanding) {
     update("user", "Processing_value", "0", "id", $from_id);
     update("user", "Processing_value_one", "0", "id", $from_id);
     update("user", "Processing_value_tow", "0", "id", $from_id);

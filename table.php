@@ -475,6 +475,7 @@ try {
         addFieldToTable($tableName, 'nav_state', 'home', "VARCHAR(64)");
         addFieldToTable($tableName, 'reply_kb_cleared', '0', "VARCHAR(1)");
         addFieldToTable($tableName, 'reply_kb_cleanup_msg_id', '0', "VARCHAR(20)");
+        addFieldToTable($tableName, 'source', null, "VARCHAR(64) NULL");
     }
 } catch (PDOException $e) {
     error_log('[panels] ' . $e->getMessage());
