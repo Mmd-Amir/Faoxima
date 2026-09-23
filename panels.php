@@ -332,6 +332,12 @@ class ManagePanel
             $statement = $pdo->prepare("SELECT * FROM manualsell WHERE codepanel = :code_panel AND status = 'active' AND codeproduct = '$code_product' ORDER BY RAND() LIMIT 1");
             $statement->execute(array(':code_panel' => $Get_Data_Panel['code_panel']));
             $configman = $statement->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($configman) || empty($configman['id'])) {
+                return array(
+                    'status' => 'Unsuccessful',
+                    'msg' => 'Manualsale stock not found'
+                );
+            }
             $Output['status'] = 'successful';
             $Output['username'] = $usernameC;
             $Output['subscription_url'] = $configman['contentrecord'];
@@ -917,6 +923,12 @@ class ManagePanel
                 }
             }
             $service = select("invoice", "*", "username", $username, "select");
+            if (!is_array($service)) {
+                return array(
+                    'status' => 'Unsuccessful',
+                    'msg' => 'User not found'
+                );
+            }
             $volumeValue = (float) ($service['Volume'] ?? 0);
             $volumeUnit = function_exists('rxInvoiceVolumeUnit') ? rxInvoiceVolumeUnit($service) : ((($service['name_product'] ?? '') === 'سرویس تست') ? 'MB' : 'GB');
             $data_limit = $volumeValue == 0 ? null : (function_exists('rxVolumeToBytes') ? rxVolumeToBytes($volumeValue, $volumeUnit) : $volumeValue * ($volumeUnit === 'MB' ? pow(1024, 2) : pow(1024, 3)));

@@ -1904,21 +1904,27 @@ function faoxima_ms_status_label(string $s): array
             var productSel = document.getElementById('ms-product-select');
             if (panelSel && productSel) {
                 var allOptions = Array.prototype.slice.call(productSel.options);
+                var productPicked = false;
+                productSel.addEventListener('change', function() { productPicked = true; });
 
                 function filterProducts() {
                     var opt = panelSel.options[panelSel.selectedIndex];
                     var panelName = opt ? (opt.getAttribute('data-name-panel') || '') : '';
                     var firstVisible = null;
+                    var firstProduct = null;
                     allOptions.forEach(function(o) {
                         var loc = o.getAttribute('data-location') || '';
-                        var show = (loc === '/all' || loc === panelName);
+                        var locParts = loc.split(',').map(function(s) { return s.trim(); });
+                        var show = (loc === '/all' || (panelName !== '' && locParts.indexOf(panelName) !== -1));
                         o.hidden = !show;
                         o.disabled = !show;
                         if (show && firstVisible === null) firstVisible = o;
+                        if (show && firstProduct === null && o.value !== 'usertest') firstProduct = o;
                     });
                     var cur = productSel.options[productSel.selectedIndex];
-                    if (!cur || cur.hidden) {
-                        if (firstVisible) firstVisible.selected = true;
+                    if (!cur || cur.hidden || (!productPicked && cur.value === 'usertest' && firstProduct)) {
+                        var pick = firstProduct || firstVisible;
+                        if (pick) pick.selected = true;
                     }
                 }
                 panelSel.addEventListener('change', filterProducts);

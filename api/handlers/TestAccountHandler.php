@@ -199,7 +199,10 @@ final class TestAccountHandler extends BaseHandler
             'SELECT 1 FROM invoice WHERE username = :u LIMIT 1',
             [':u' => $usernameAc]
         );
-        $remoteCheck = $managePanel->DataUser($panel['name_panel'], $usernameAc);
+        $remoteCheck = null;
+        if (($panel['type'] ?? '') !== 'Manualsale') {
+            $remoteCheck = $managePanel->DataUser($panel['name_panel'], $usernameAc);
+        }
         if ($existsLocal || (is_array($remoteCheck) && isset($remoteCheck['username']))) {
             $usernameAc = rand(1000000, 9999999) . '-' . $usernameAc;
         }

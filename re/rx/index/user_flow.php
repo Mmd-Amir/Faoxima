@@ -136,7 +136,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     $text = strtolower($text);
     $username_ac = generateUsername($from_id, $marzban_list_get['MethodUsername'], $user['username'], $randomString, $text, $marzban_list_get['namecustom'], $user['namecustom']);
     $username_ac = strtolower($username_ac);
-    $DataUserOut = $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_ac);
+    $DataUserOut = $marzban_list_get['type'] != "Manualsale" ? $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_ac) : null;
     $random_number = rand(1000000, 9999999);
     if (isset($DataUserOut['username']) || rxTableValueExists('invoice', 'username', $username_ac)) {
         $username_ac = $random_number . "-" . $username_ac;
@@ -1608,7 +1608,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     $username_ac = generateUsername($from_id, $marzban_list_get['MethodUsername'], $username, $randomString, $text, $marzban_list_get['namecustom'], $user['namecustom']);
     $username_ac = strtolower($username_ac);
     $requestedUsername_ac = $username_ac;
-    $DataUserOut = $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_ac);
+    $DataUserOut = $marzban_list_get['type'] != "Manualsale" ? $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_ac) : null;
     $random_number = rand(1000000, 9999999);
     $usernameWasRenamed = isset($DataUserOut['username']) || rxTableValueExists('invoice', 'username', $username_ac);
     if ($usernameWasRenamed) {
@@ -1734,7 +1734,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         $priceproduct = $info_product['price_product'];
     }
     $username_ac = strtolower($user['Processing_value_tow']);
-    $DataUserOut = $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_ac);
+    $DataUserOut = $marzban_list_get['type'] != "Manualsale" ? $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_ac) : null;
     if (isset($DataUserOut['username']) || rxTableValueExists('invoice', 'username', $username_ac)) {
         sendmessage($from_id, $datatextbot['dyn_errors_restart_buy_process_short'] ?? "❌ لطفا مراحل خرید را مجددا انجام دهید", null, 'HTML');
         return;
@@ -2600,7 +2600,7 @@ $textonebuy
             $__bulkChargedTotal += $__bulkItemCharge;
             continue;
         }
-        $get_username_Check = $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_acc);
+        $get_username_Check = $marzban_list_get['type'] != "Manualsale" ? $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_acc) : null;
         if (isset($get_username_Check['username']) || rxTableValueExists('invoice', 'username', $username_acc)) {
             $username_acc = $random_number . "-" . $username_acc;
         }

@@ -138,7 +138,10 @@ final class PurchaseHandler extends BaseHandler
             'SELECT 1 FROM invoice WHERE username = :u LIMIT 1',
             [':u' => $usernameAc]
         );
-        $remoteCheck = $managePanel->DataUser($panel['name_panel'], $usernameAc);
+        $remoteCheck = null;
+        if (($panel['type'] ?? '') !== 'Manualsale') {
+            $remoteCheck = $managePanel->DataUser($panel['name_panel'], $usernameAc);
+        }
         $usernameWasRenamed = $existsLocal || (is_array($remoteCheck) && isset($remoteCheck['username']));
         if ($usernameWasRenamed) {
             $usernameAc = rand(1000000, 9999999) . '-' . $usernameAc;
