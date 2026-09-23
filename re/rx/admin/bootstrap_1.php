@@ -807,6 +807,9 @@ if (!empty($datain) && in_array($from_id, $admin_ids ?? [])) {
         'admin_channelhub'   => "📢 کانال و اطلاع‌رسانی",
         'admin_usershub'     => "👥 مدیریت کاربران",
         'adm_hub_main'       => $textbotlang['Admin']['backadmin'],
+        'panelshub_backmenu'  => $textbotlang['Admin']['backmenu'],
+        'channelhub_backmenu' => $textbotlang['Admin']['backmenu'],
+        'usershub_backmenu'   => $textbotlang['Admin']['backmenu'],
 
         'seller_status'     => $textbotlang['Admin']['Status']['btn'],
         'seller_users'      => "👤 مدیریت کاربر",
@@ -1029,6 +1032,9 @@ if (!empty($datain) && in_array($from_id, $admin_ids ?? [])) {
         'ch_backmenu'     => 'channelhub',
         'ch_back'         => 'home',
         'feat_backmenu'   => 'settings',
+        'panelshub_backmenu'  => 'home',
+        'channelhub_backmenu' => 'home',
+        'usershub_backmenu'   => 'home',
         'adm_backmenu'    => null,
     ];
     if (array_key_exists((string) $datain, $_rx_back_origin_map)) {

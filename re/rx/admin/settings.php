@@ -182,7 +182,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         ];
     }
     $webpanelListKeyboard['inline_keyboard'][] = [
-        ['text' => "🔙 بازگشت به منوی قبل", 'callback_data' => "set_backadmin"],
+        ['text' => "🔙 بازگشت به منوی قبل", 'callback_data' => "feat_backmenu"],
         ['text' => "🏠 منوی مدیریت", 'callback_data' => "adm_hub_main"],
     ];
     $webpanelListKeyboardJson = json_encode($webpanelListKeyboard);

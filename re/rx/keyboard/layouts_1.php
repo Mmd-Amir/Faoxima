@@ -693,7 +693,7 @@ $adminPanelsMenu = rx_kb_encode([
         rx_kb_style(['text' => "🔋 قیمت سریع حجم", 'callback_data' => 'admin_volprice'], 'admin_volprice', $_rx_adm_styles)
     ],
     [
-        rx_kb_style(['text' => "🔙 بازگشت به منوی قبل", 'callback_data' => 'adm_hub_main'], 'panelshub_backmenu', $_rx_adm_styles),
+        rx_kb_style(['text' => "🔙 بازگشت به منوی قبل", 'callback_data' => 'panelshub_backmenu'], 'panelshub_backmenu', $_rx_adm_styles),
         rx_kb_style(['text' => "🏠 منوی مدیریت", 'callback_data' => 'adm_hub_main'], 'panelshub_backadmin', $_rx_adm_styles)
     ],
 ]);
@@ -702,7 +702,7 @@ $adminChannelMenu = rx_kb_encode([
     [rx_kb_style(['text' => "📯 تنظیمات کانال", 'callback_data' => 'set_channel'], 'set_channel', $_rx_set_styles)],
     [rx_kb_style(['text' => "📣 گزارشات ربات", 'callback_data' => 'set_reports'], 'set_reports', $_rx_set_styles)],
     [
-        rx_kb_style(['text' => "🔙 بازگشت به منوی قبل", 'callback_data' => 'adm_hub_main'], 'channelhub_backmenu', $_rx_set_styles),
+        rx_kb_style(['text' => "🔙 بازگشت به منوی قبل", 'callback_data' => 'channelhub_backmenu'], 'channelhub_backmenu', $_rx_set_styles),
         rx_kb_style(['text' => "🏠 منوی مدیریت", 'callback_data' => 'adm_hub_main'], 'channelhub_backadmin', $_rx_set_styles)
     ],
 ]);
@@ -713,7 +713,7 @@ $adminUsersMenu = rx_kb_encode([
     [rx_kb_style(['text' => "➕ محدودیت تست برای همه", 'callback_data' => 'set_testlimit'], 'set_testlimit', $_rx_set_styles)],
     [rx_kb_style(['text' => "💵 رسید های تایید نشده", 'callback_data' => 'admin_invoices'], 'admin_invoices', $_rx_adm_styles)],
     [
-        rx_kb_style(['text' => "🔙 بازگشت به منوی قبل", 'callback_data' => 'adm_hub_main'], 'usershub_backmenu', $_rx_adm_styles),
+        rx_kb_style(['text' => "🔙 بازگشت به منوی قبل", 'callback_data' => 'usershub_backmenu'], 'usershub_backmenu', $_rx_adm_styles),
         rx_kb_style(['text' => "🏠 منوی مدیریت", 'callback_data' => 'adm_hub_main'], 'usershub_backadmin', $_rx_adm_styles)
     ],
 ]);

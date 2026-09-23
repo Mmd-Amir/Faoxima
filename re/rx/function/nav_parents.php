@@ -632,6 +632,25 @@ if (!function_exists('rxNavTrackKeyboard')) {
         if ($keyboard === null || $keyboard === '') {
             return null;
         }
+        if (is_string($keyboard)) {
+            static $hubKeyboards = [
+                'adminPanelsMenu'          => 'panels',
+                'adminUsersMenu'           => 'usershub',
+                'adminChannelMenu'         => 'channelhub',
+                'shopkeyboard'             => 'shop',
+                'keyboard_shop_manage'     => 'products',
+                'keyboard_Category_manage' => 'categories',
+                'setting_panel'            => 'settings',
+                'keyboardhelpadmin'        => 'help',
+                'supportcenter'            => 'support',
+            ];
+            foreach ($hubKeyboards as $var => $state) {
+                if (isset($GLOBALS[$var]) && is_string($GLOBALS[$var]) && $GLOBALS[$var] === $keyboard) {
+                    rxNavSetState($from_id, $state);
+                    return $state;
+                }
+            }
+        }
         $decoded = is_array($keyboard) ? $keyboard : (is_string($keyboard) ? json_decode($keyboard, true) : null);
         if (!is_array($decoded)) {
             return null;
