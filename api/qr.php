@@ -112,14 +112,14 @@ try {
     if (!$disableBg) {
         $projectRoot = dirname(__DIR__);
         $bgCandidates = [
+            $projectRoot . '/custom.jpg',
             $projectRoot . '/images.jpeg',
             $projectRoot . '/images.jpg',
-            $projectRoot . '/custom.jpg',
             $projectRoot . '/custom.jpeg',
         ];
         $bgPath = null;
         foreach ($bgCandidates as $cand) {
-            if (is_file($cand) && is_readable($cand)) { $bgPath = $cand; break; }
+            if (is_file($cand) && is_readable($cand) && (int) @filesize($cand) > 0 && @getimagesize($cand) !== false) { $bgPath = $cand; break; }
         }
         if ($bgPath !== null) {
             $qrImg = @imagecreatefromstring($qrBinary);

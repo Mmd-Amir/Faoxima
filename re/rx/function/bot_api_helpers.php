@@ -521,12 +521,18 @@ function addBackgroundImage($urlimage, $qrCodeResult, $backgroundPath)
         : 'images.jpeg';
     $basenameNoExt = pathinfo($basename, PATHINFO_FILENAME) ?: 'images';
 
-    $candidates = [
+    $candidates = [];
+    $customPath = $projectRoot . DIRECTORY_SEPARATOR . 'custom.jpg';
+    if (is_file($customPath) && is_readable($customPath) && (int) @filesize($customPath) > 0 && @getimagesize($customPath) !== false) {
+        $candidates[] = $customPath;
+    }
+    array_push(
+        $candidates,
         $projectRoot . DIRECTORY_SEPARATOR . $basenameNoExt . '.jpeg',
         $projectRoot . DIRECTORY_SEPARATOR . $basenameNoExt . '.jpg',
         $projectRoot . DIRECTORY_SEPARATOR . 'images.jpeg',
-        $projectRoot . DIRECTORY_SEPARATOR . 'images.jpg',
-    ];
+        $projectRoot . DIRECTORY_SEPARATOR . 'images.jpg'
+    );
 
     if (is_string($backgroundPath) && $backgroundPath !== '') {
         $candidates[] = $backgroundPath;

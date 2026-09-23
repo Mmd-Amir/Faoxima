@@ -4639,14 +4639,24 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     if ($response['ok']) {
         $filePath = $response['result']['file_path'];
         $fileUrl = "https://api.telegram.org/file/bot$APIKEY/$filePath";
-        $fileContent = file_get_contents($fileUrl);
+        $fileContent = @file_get_contents($fileUrl);
 
         $projectRoot = defined('REFACTORED_LEGACY_ROOT') ? REFACTORED_LEGACY_ROOT : dirname(__DIR__, 3);
-        $written = 0;
-        $written += (int) @file_put_contents($projectRoot . '/custom.jpg',    $fileContent);
-        $written += (int) @file_put_contents($projectRoot . '/images.jpg',    $fileContent);
-        $written += (int) @file_put_contents($projectRoot . '/images.jpeg',   $fileContent);
-        if ($written > 0) {
+        $customBgPath = $projectRoot . '/custom.jpg';
+        $saved = false;
+        if (is_string($fileContent) && $fileContent !== '' && @getimagesizefromstring($fileContent) !== false) {
+            $tmpBgPath = $customBgPath . '.' . getmypid() . '.' . substr(md5($fileContent), 0, 8) . '.tmp';
+            $written = @file_put_contents($tmpBgPath, $fileContent, LOCK_EX);
+            clearstatcache(true, $tmpBgPath);
+            if ($written === strlen($fileContent) && @filesize($tmpBgPath) === $written && @getimagesize($tmpBgPath) !== false && @rename($tmpBgPath, $customBgPath)) {
+                clearstatcache(true, $customBgPath);
+                $saved = is_file($customBgPath) && is_readable($customBgPath) && @filesize($customBgPath) === $written && @getimagesize($customBgPath) !== false;
+            }
+            if (is_file($tmpBgPath)) {
+                @unlink($tmpBgPath);
+            }
+        }
+        if ($saved) {
             nm_adminInstantReply($from_id, "🖼 پس زمینه با موفقیت تنظیم گردید (همه‌جا اعمال شد: ربات، مینی‌اپ، کیف‌پول‌های ارز)", $setting_panel, 'HTML');
         } else {
             nm_adminInstantReply($from_id, "❌ ذخیره‌سازی فایل ناموفق بود — دسترسی نوشتن روی پوشه‌ی روت پروژه را بررسی کنید.", $setting_panel, 'HTML');
