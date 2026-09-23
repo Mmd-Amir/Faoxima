@@ -2162,54 +2162,31 @@ function DirectPayment($order_id, $image = 'images.jpg')
     update("user", "Processing_value_tow", "0", "id", $Balance_id['id']);
     update("user", "Processing_value_four", "0", "id", $Balance_id['id']);
     if ($steppay[0] == "getconfigafterpay") {
-        // [invoice lookup with fallbacks] گاهی به‌خاطر race/cleanup/timing بین crypto-pay و DirectPayment،
-        // فاکتور با username + Status='unpaid' پیدا نمیشه. چندتا fallback می‌گذاریم تا قبل از refund همه گزینه‌ها تست بشن.
         $__invUsername = isset($steppay[1]) ? trim((string)$steppay[1]) : '';
+        $__invOwner = trim((string)($Payment_report['id_user'] ?? ''));
         $get_invoice = false;
-        if ($__invUsername !== '') {
+        $__invLookupError = false;
+        if ($__invUsername !== '' && $__invOwner !== '') {
             try {
-                // 1) دقیقا مثل قبل: username + Status='unpaid'
-                $stmt = $pdo->prepare("SELECT * FROM invoice WHERE username = :u AND Status = 'unpaid' ORDER BY id_invoice DESC LIMIT 1");
-                $stmt->execute([':u' => $__invUsername]);
+                $stmt = $pdo->prepare("SELECT * FROM invoice WHERE username = :u AND id_user = :uid AND Status IN ('unpaid', 'Unpaid') ORDER BY id_invoice DESC LIMIT 1");
+                $stmt->execute([':u' => $__invUsername, ':uid' => $__invOwner]);
                 $get_invoice = $stmt->fetch(PDO::FETCH_ASSOC);
-            } catch (Throwable $__e) { $get_invoice = false; }
+            } catch (Throwable $__e) { $get_invoice = false; $__invLookupError = true; }
             if (!$get_invoice) {
                 try {
-                    // 2) بدون فیلتر Status (در صورت تفاوت case یا تغییر status توسط cron دیگه)
-                    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE username = :u ORDER BY id_invoice DESC LIMIT 1");
-                    $stmt->execute([':u' => $__invUsername]);
+                    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE LOWER(username) = LOWER(:u) AND id_user = :uid AND Status IN ('unpaid', 'Unpaid') ORDER BY id_invoice DESC LIMIT 1");
+                    $stmt->execute([':u' => $__invUsername, ':uid' => $__invOwner]);
                     $get_invoice = $stmt->fetch(PDO::FETCH_ASSOC);
-                } catch (Throwable $__e) { $get_invoice = false; }
+                } catch (Throwable $__e) { $get_invoice = false; $__invLookupError = true; }
             }
-            if (!$get_invoice) {
-                try {
-                    // 3) case-insensitive روی username — اگه collation داره فرق می‌کنه
-                    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE LOWER(username) = LOWER(:u) ORDER BY id_invoice DESC LIMIT 1");
-                    $stmt->execute([':u' => $__invUsername]);
-                    $get_invoice = $stmt->fetch(PDO::FETCH_ASSOC);
-                } catch (Throwable $__e) { $get_invoice = false; }
-            }
-        }
-        if (!$get_invoice) {
-            try {
-                // 4) آخرین چاره: آخرین فاکتور unpaid این کاربر که usernameش با user_id شروع میشه (پترن مرسوم)
-                $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :uid AND (Status = 'unpaid' OR Status = 'Unpaid') AND username LIKE :prefix ORDER BY time_sell DESC LIMIT 1");
-                $stmt->execute([':uid' => (string)$Balance_id['id'], ':prefix' => $Balance_id['id'] . '_%']);
-                $get_invoice = $stmt->fetch(PDO::FETCH_ASSOC);
-                if (!$get_invoice) {
-                    // اگه پیدا نشد، بدون prefix filter
-                    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :uid AND (Status = 'unpaid' OR Status = 'Unpaid') ORDER BY time_sell DESC LIMIT 1");
-                    $stmt->execute([':uid' => (string)$Balance_id['id']]);
-                    $get_invoice = $stmt->fetch(PDO::FETCH_ASSOC);
-                }
-                // [NOTE] قبلاً اینجا username رو به مقدار اصلی (`$__invUsername`) برمی‌گردوندیم،
-                // ولی این باعث می‌شد cycle شکست-retry بی‌نهایت بشه: هر retry با username اصلی duplicate می‌خورد،
-                // یوزرنیم تازه می‌ساخت تو پنل (zombie)، بعد restore دوباره به اصلی، دوباره duplicate، الی آخر.
-                // الان username رو همون که DB داره نگه می‌داریم. اگه retry قبلی یوزر تو پنل ساخته، zombie-rescue
-                // اون رو پیدا می‌کنه و استفاده می‌کنه؛ اگه نساخته، duplicate-retry با random جدید موفق میشه.
-            } catch (Throwable $__e) { $get_invoice = false; }
         }
         // اگه با هیچ روشی پیدا نشد، قبل از اینکه به refund برسیم به ادمین گزارش بدیم و مستقیم برگردیم
+        if (!$get_invoice && $__invLookupError) {
+            if (function_exists('error_log')) {
+                @error_log("[DirectPayment] invoice lookup error for order={$order_id} user={$Balance_id['id']} steppay[1]={$__invUsername} — retryable");
+            }
+            return ['success' => false, 'retryable' => true, 'reason' => 'invoice_lookup_error'];
+        }
         if (!$get_invoice) {
             if (function_exists('error_log')) {
                 @error_log("[DirectPayment] invoice NOT FOUND for order={$order_id} user={$Balance_id['id']} steppay[1]={$__invUsername} — aborting WITHOUT refund (so cryptocheck stuck-refund can handle it cleanly)");
@@ -2229,7 +2206,7 @@ function DirectPayment($order_id, $image = 'images.jpg')
                     'parse_mode' => 'HTML',
                 ]);
             }
-            return;
+            return ['success' => false, 'retryable' => false, 'reason' => 'invoice_not_found'];
         }
         $userAgent = $Balance_id['agent'] ?? 'f';
         $stmt = $pdo->prepare("SELECT * FROM product WHERE name_product = :name AND (FIND_IN_SET(:loc, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))");
@@ -2299,6 +2276,7 @@ function DirectPayment($order_id, $image = 'images.jpg')
             // فقط وقتی id_invoice معتبره update کن (جلوی خطای "Column id_invoice cannot be null" گرفته میشه)
             if (!empty($get_invoice['id_invoice'])) {
                 try { update("invoice", "username", $username_ac, "id_invoice", $get_invoice['id_invoice']); } catch (Throwable $__e) { /* fail-open */ }
+                try { update("Payment_report", "id_invoice", "getconfigafterpay|" . $username_ac, "id_order", $order_id); } catch (Throwable $__e) {}
             }
         }
 
@@ -2391,6 +2369,7 @@ function DirectPayment($order_id, $image = 'images.jpg')
                     if (strlen($username_ac) < 3) $username_ac = 'u' . bin2hex(random_bytes(4));
                     if (!empty($get_invoice['id_invoice'])) {
                         try { update("invoice", "username", $username_ac, "id_invoice", $get_invoice['id_invoice']); } catch (Throwable $__e2) { /* fail-open */ }
+                        try { update("Payment_report", "id_invoice", "getconfigafterpay|" . $username_ac, "id_order", $order_id); } catch (Throwable $__e2) {}
                     }
                     $dataoutput = $ManagePanel->createUser($marzban_list_get['name_panel'], $info_product['code_product'], $username_ac, $datac);
                 }

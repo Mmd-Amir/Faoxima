@@ -29,6 +29,7 @@ final class PaymentStatusHandler extends BaseHandler
         'rate-unavailable'           => 'نرخ ارز در دسترس نیست — کمی بعد دوباره تلاش کنید',
         'below-min'                  => 'مبلغ کمتر از حداقل مجاز این روش است',
         'above-max'                  => 'مبلغ بیشتر از حداکثر مجاز این روش است',
+        'invoice_not_found'          => 'فاکتور مربوط به این پرداخت پیدا نشد — لطفاً با پشتیبانی تماس بگیرید',
     ];
 
     public function handle(): void

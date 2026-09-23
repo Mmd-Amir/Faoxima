@@ -113,7 +113,7 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         if (!is_array($privateReceiptTargets)) {
             $privateReceiptTargets = [];
         }
-        DirectPayment($Payment_report['id_order'],"../images.jpg");
+        $directPaymentResult = DirectPayment($Payment_report['id_order'],"../images.jpg");
         $Payment_report_after = select("Payment_report", "*", "id_order", $Payment_report['id_order'], "select", ['cache' => false]);
         $directPaymentDone = is_array($Payment_report_after) && intval($Payment_report_after['direct_payment_done'] ?? 0) === 1;
         $alreadyPaid = is_array($Payment_report_after) && $Payment_report_after['payment_Status'] === 'paid';
@@ -123,6 +123,16 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $finalizeCard->execute();
             $alreadyPaid = $finalizeCard->rowCount() > 0;
             if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
+        }
+        if (!$alreadyPaid && !$directPaymentDone && is_array($directPaymentResult) && ($directPaymentResult['retryable'] ?? true) === false) {
+            $terminalCard = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'reject', dec_not_confirmed = :reason WHERE id_order = :id AND payment_Status = 'processing'");
+            $terminalCard->bindValue(':reason', (string)($directPaymentResult['reason'] ?? 'invoice_not_found'), PDO::PARAM_STR);
+            $terminalCard->bindValue(':id', $Payment_report['id_order'], PDO::PARAM_STR);
+            $terminalCard->execute();
+            if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
+            if ($terminalCard->rowCount() > 0) {
+                continue;
+            }
         }
         if (!$alreadyPaid && !$directPaymentDone) {
             $rollbackCard = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'waiting' WHERE id_order = :id AND payment_Status = 'processing'");
