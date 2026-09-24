@@ -2052,13 +2052,13 @@ $textonebuy
 <blockquote>▫️قیمت نهایی : {$rxFmtPriceproduct} تومان</blockquote>
 <blockquote>▫️زمان خرید : $timejalali</blockquote>";
     if (strlen($setting['Channel_Report'] ?? '') > 0) {
-        telegram('sendmessage', [
+        rx_sendTopicReport([
             'chat_id' => $setting['Channel_Report'],
             'message_thread_id' => $buyreport,
             'text' => $text_report,
             'parse_mode' => "HTML",
             'reply_markup' => $Response
-        ]);
+        ], ['flow' => 'buy', 'order_id' => (string) ($randomString ?? ''), 'user_id' => (string) $from_id]);
     }
     if (function_exists('faoxima_public_purchase_log_event')) {
         faoxima_public_purchase_log_event('new_sub', [
@@ -2701,12 +2701,12 @@ $textonebuy
 <blockquote>▫️تعداد کانفیگ : {$user['Processing_value_four']} عدد</blockquote>
 <blockquote>▫️زمان خرید : $timejalali</blockquote>";
     if (strlen($setting['Channel_Report'] ?? '') > 0) {
-        telegram('sendmessage', [
+        rx_sendTopicReport([
             'chat_id' => $setting['Channel_Report'],
             'message_thread_id' => $buyreport,
             'text' => $text_report,
             'parse_mode' => "HTML"
-        ]);
+        ], ['flow' => 'bulk_buy', 'order_id' => (string) ($randomString ?? ''), 'user_id' => (string) $from_id]);
     }
     if (function_exists('faoxima_public_purchase_log_event')) {
         faoxima_public_purchase_log_event('new_sub', [

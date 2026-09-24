@@ -975,11 +975,22 @@ if ($shouldCheckChannel && !in_array($from_id, $admin_ids)) {
                 $channels = $rxChannelCached;
             }
         }
+        $rxChannelCheckFailed = [];
         if ($channels === null) {
-            $channels = channel($channels_id);
-            if ($rxChannelCacheApcu) {
+            $channels = channel($channels_id, $rxChannelCheckFailed);
+            if ($rxChannelCacheApcu && empty($rxChannelCheckFailed)) {
                 @apcu_store($rxChannelCacheKey, $channels, 30);
             }
+        }
+        $rxChannelCheckFailedText = "⚠️ بررسی عضویت شما در کانال در حال حاضر با خطا مواجه شد؛ لطفاً چند لحظه دیگر دوباره تلاش کنید.";
+        if ($isConfirmChannel && count($channels) == 0 && !empty($rxChannelCheckFailed)) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => $rxChannelCheckFailedText,
+                'show_alert' => true,
+                'cache_time' => 0,
+            ]);
+            return;
         }
         if ($isConfirmChannel) {
             if (count($channels) == 0) {
@@ -1078,6 +1089,16 @@ if ($shouldCheckChannel && !in_array($from_id, $admin_ids)) {
             $keyboardchannel['inline_keyboard'][] = [['text' => $textbotlang['users']['channel']['confirmjoin'], 'callback_data' => "confirmchannel"]];
             $keyboardchannel = json_encode($keyboardchannel);
             sendmessage($from_id, $datatextbot['text_channel'], $keyboardchannel, 'html');
+            return;
+        } elseif (!empty($rxChannelCheckFailed)) {
+            if (!empty($callback_query_id)) {
+                telegram('answerCallbackQuery', [
+                    'callback_query_id' => $callback_query_id,
+                    'cache_time' => 0,
+                ]);
+            }
+            $rxChannelRetryKeyboard = json_encode(['inline_keyboard' => [[['text' => $textbotlang['users']['channel']['confirmjoin'], 'callback_data' => "confirmchannel"]]]]);
+            sendmessage($from_id, $rxChannelCheckFailedText, $rxChannelRetryKeyboard, 'html');
             return;
         } else {
             if ($user['joinchannel'] != "active") {

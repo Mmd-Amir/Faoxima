@@ -611,13 +611,13 @@ final class ServiceRenewConfirmHandler extends BaseHandler
             ]],
         ]);
         try {
-            telegram('sendmessage', [
+            rx_sendTopicReport([
                 'chat_id'           => $channel,
                 'message_thread_id' => $topic,
                 'text'              => $text,
                 'parse_mode'        => 'HTML',
                 'reply_markup'      => $reply,
-            ]);
+            ], ['flow' => 'miniapp_renew', 'user_id' => (string)($this->user['id'] ?? '')]);
         } catch (Throwable $e) {
             FaoximaLogger::warn('renew success report failed', ['err' => $e->getMessage()]);
         }

@@ -714,7 +714,13 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     step('addchannel', $from_id);
 } elseif ($user['step'] == "addchannel") {
     if (!isset($update['message']) && empty($text)) { return; }
-    savedata("clear", "link", $text);
+    $rxChannelChatId = function_exists('rx_normalize_channel_chat_id') ? rx_normalize_channel_chat_id($text) : trim((string) $text);
+    if ($rxChannelChatId === '') {
+        $wizKb = function_exists('rx_get_channel_wizard_back_keyboard') ? rx_get_channel_wizard_back_keyboard() : $backadmin;
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['channel']['changechannel'], $wizKb, 'HTML');
+        return;
+    }
+    savedata("clear", "link", $rxChannelChatId);
     $wizKb = function_exists('rx_get_channel_wizard_back_keyboard') ? rx_get_channel_wizard_back_keyboard() : $backadmin;
     nm_adminInstantReply($from_id, "📌 یک نام برای دکمه عضویت چنل انتخاب نمایید.", $wizKb, 'HTML');
     step('getremark', $from_id);

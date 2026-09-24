@@ -99,7 +99,11 @@ final class VerifyHandler
         if (!$isAdmin) {
             $channelsId = select('channels', 'link', null, null, 'FETCH_COLUMN', ['cache' => false]);
             if (is_array($channelsId) && count($channelsId) > 0 && function_exists('channel')) {
-                $missing = channel($channelsId);
+                $checkFailed = [];
+                $missing = channel($channelsId, $checkFailed);
+                if (is_array($missing) && count($missing) === 0 && !empty($checkFailed)) {
+                    self::sendVerifyError(503, 'بررسی عضویت در کانال در حال حاضر با خطا مواجه شد؛ لطفاً چند لحظه دیگر دوباره تلاش کنید.');
+                }
                 if (is_array($missing) && count($missing) > 0) {
                     if (($userRecord['joinchannel'] ?? '') === 'active') {
                         update('user', 'joinchannel', '0', 'id', $userId);

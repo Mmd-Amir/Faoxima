@@ -636,32 +636,114 @@ function StatusPayment($paymentid)
     curl_close($curl);
     return $response;
 }
-function channel(array $id_channel)
+if (!function_exists('rx_normalize_channel_chat_id')) {
+    function rx_normalize_channel_chat_id($value)
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return '';
+        }
+        if (preg_match('/^-\d{5,}$/', $value)) {
+            return $value;
+        }
+        if (preg_match('/^@[A-Za-z][A-Za-z0-9_]{3,31}$/', $value)) {
+            return $value;
+        }
+        if (preg_match('~^(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me|telegram\.dog)/(?:s/)?([A-Za-z][A-Za-z0-9_]{3,31})/?(?:\?.*)?$~i', $value, $m)
+            && strtolower($m[1]) !== 'joinchat') {
+            return '@' . $m[1];
+        }
+        if (preg_match('/^[A-Za-z][A-Za-z0-9_]{3,31}$/', $value)) {
+            return '@' . $value;
+        }
+        return '';
+    }
+}
+
+if (!function_exists('rx_channel_member_state')) {
+    function rx_channel_member_state($channel, $userId)
+    {
+        $chatId = rx_normalize_channel_chat_id($channel);
+        $response = null;
+        if ($chatId !== '') {
+            for ($attempt = 1; $attempt <= 2; $attempt++) {
+                $response = telegram('getChatMember', [
+                    'chat_id' => $chatId,
+                    'user_id' => $userId
+                ]);
+                if (is_array($response) && !empty($response['ok'])) {
+                    $status = (string) ($response['result']['status'] ?? '');
+                    if (in_array($status, ['member', 'creator', 'administrator'], true)) {
+                        return 'MEMBER';
+                    }
+                    if ($status === 'restricted') {
+                        return !empty($response['result']['is_member']) ? 'MEMBER' : 'NOT_MEMBER';
+                    }
+                    if (in_array($status, ['left', 'kicked'], true)) {
+                        return 'NOT_MEMBER';
+                    }
+                    $response = ['ok' => false, 'error_code' => 0, 'description' => 'unexpected member status: ' . $status];
+                    break;
+                }
+                $errorCode = is_array($response) ? (int) ($response['error_code'] ?? 0) : 0;
+                $retryAfter = is_array($response) ? (int) ($response['parameters']['retry_after'] ?? 0) : 0;
+                if ($attempt === 1 && $errorCode === 429 && $retryAfter <= 2) {
+                    sleep(max(1, $retryAfter));
+                    continue;
+                }
+                if ($attempt === 1 && $errorCode >= 500) {
+                    usleep(500000);
+                    continue;
+                }
+                break;
+            }
+        } else {
+            $response = ['ok' => false, 'error_code' => 0, 'description' => 'invalid channel identifier'];
+        }
+        $errorCode = is_array($response) ? (int) ($response['error_code'] ?? 0) : 0;
+        $description = is_array($response) ? (string) ($response['description'] ?? '') : 'empty response';
+        $parameters = is_array($response) && isset($response['parameters']) ? $response['parameters'] : null;
+        $logContext = [
+            'status' => $errorCode,
+            'body' => (string) $channel . '|' . $description,
+            'channel' => (string) $channel,
+            'chat_id' => $chatId,
+            'user_id' => (string) $userId,
+            'error_code' => $errorCode,
+            'description' => $description,
+            'retry_after' => is_array($parameters) ? (int) ($parameters['retry_after'] ?? 0) : 0,
+            'parameters' => $parameters !== null ? json_encode($parameters) : '',
+        ];
+        if (function_exists('rx_log_event')) {
+            rx_log_event('CHANNEL_CHECK_FAILED', 'getChatMember did not return a usable result', $logContext);
+        } else {
+            error_log('[CHANNEL_CHECK_FAILED] ' . json_encode($logContext));
+        }
+        return 'CHECK_FAILED';
+    }
+}
+
+function channel(array $id_channel, &$check_failed = null)
 {
     global $from_id;
     $channel_link = [];
+    $failed = [];
     foreach ($id_channel as $channel) {
         $channel = trim((string) $channel);
         if ($channel === '') {
             continue;
         }
-        $response = telegram('getChatMember', [
-            'chat_id' => $channel,
-            'user_id' => $from_id
-        ]);
-        $isMember = false;
-        if (isset($response['ok']) && $response['ok']) {
-            $status = $response['result']['status'] ?? '';
-            if (in_array($status, ['member', 'creator', 'administrator'], true)) {
-                $isMember = true;
-            } elseif ($status === 'restricted' && !empty($response['result']['is_member'])) {
-                $isMember = true;
-            }
-        }
-        if (!$isMember) {
+        $state = rx_channel_member_state($channel, $from_id);
+        if ($state === 'NOT_MEMBER') {
             $channel_link[] = $channel;
+        } elseif ($state === 'CHECK_FAILED') {
+            $failed[] = $channel;
         }
     }
+    if (func_num_args() < 2) {
+        return array_merge($channel_link, $failed);
+    }
+    $check_failed = $failed;
     return $channel_link;
 }
 function isValidDate($date)
@@ -2560,13 +2642,13 @@ $textonebuy
 <blockquote>▫️قیمت نهایی : {$rxFmtPaymentReportPrice} تومان</blockquote>
 <blockquote>▫️زمان خرید : $timejalali</blockquote>";
         if (strlen($setting['Channel_Report']) > 0) {
-            telegram('sendmessage', [
+            rx_sendTopicReport([
                 'chat_id' => $setting['Channel_Report'],
                 'message_thread_id' => $buyreport,
                 'text' => $text_report,
                 'parse_mode' => "HTML",
                 'reply_markup' => $Response
-            ]);
+            ], ['flow' => 'direct_payment', 'order_id' => (string) ($get_invoice['id_invoice'] ?? ''), 'user_id' => (string) ($Balance_id['id'] ?? '')]);
         }
         if (function_exists('faoxima_public_purchase_log_event')) {
             faoxima_public_purchase_log_event('new_sub', [

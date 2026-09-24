@@ -949,13 +949,13 @@ final class PurchaseHandler extends BaseHandler
         $channel = $this->setting['Channel_Report'] ?? '';
         if ((string)$channel === '') return;
 
-        telegram('sendmessage', [
+        rx_sendTopicReport([
             'chat_id'           => $channel,
             'message_thread_id' => $topicId,
             'text'              => $text,
             'parse_mode'        => 'HTML',
             'reply_markup'      => $reply,
-        ]);
+        ], ['flow' => 'miniapp_buy', 'order_id' => $orderId, 'user_id' => (string)$this->user['id']]);
     }
 
     private function reportToChannel(string $text, string $topicId): void

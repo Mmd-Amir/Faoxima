@@ -1590,3 +1590,77 @@ function CreatePaymentNv($invoice_id, $amount)
     curl_close($ch);
     return json_decode($result, true);
 }
+
+if (!function_exists('rx_sendTopicReport')) {
+    function rx_sendTopicReport(array $params, array $context = [])
+    {
+        $chatId = trim((string) ($params['chat_id'] ?? ''));
+        if ($chatId === '' || $chatId === '0') {
+            return false;
+        }
+        $params['chat_id'] = $chatId;
+        $maxAttempts = 3;
+        $maxRetryAfter = 5;
+        $timeBudget = 15.0;
+        $startedAt = microtime(true);
+        $plainFallbackUsed = false;
+        $response = null;
+        $errorCode = 0;
+        $description = '';
+        $retryAfter = 0;
+        $attempt = 0;
+        while ($attempt < $maxAttempts) {
+            $attempt++;
+            try {
+                $response = telegram('sendmessage', $params);
+            } catch (Throwable $e) {
+                $response = ['ok' => false, 'error_code' => 0, 'description' => $e->getMessage()];
+            }
+            if (is_array($response) && !empty($response['ok'])) {
+                return $response;
+            }
+            $errorCode = is_array($response) ? (int) ($response['error_code'] ?? 0) : 0;
+            $description = is_array($response) ? (string) ($response['description'] ?? '') : 'empty response';
+            $retryAfter = is_array($response) ? (int) ($response['parameters']['retry_after'] ?? 0) : 0;
+            if (!$plainFallbackUsed && !empty($params['parse_mode']) && stripos($description, "can't parse entities") !== false) {
+                $plainFallbackUsed = true;
+                $params['text'] = html_entity_decode(strip_tags((string) ($params['text'] ?? '')), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                unset($params['parse_mode']);
+                continue;
+            }
+            $class = function_exists('rx_broadcast_classify') ? rx_broadcast_classify($response) : ['temporary' => false, 'manual' => true];
+            if (empty($class['temporary']) || !empty($class['manual']) || $attempt >= $maxAttempts) {
+                break;
+            }
+            $wait = $errorCode === 429 ? max(1, $retryAfter) : $attempt;
+            if ($wait > $maxRetryAfter || (microtime(true) - $startedAt + $wait) > $timeBudget) {
+                break;
+            }
+            sleep($wait);
+        }
+        $threadId = (string) ($params['message_thread_id'] ?? '');
+        $parameters = is_array($response) && isset($response['parameters']) ? $response['parameters'] : null;
+        $logContext = [
+            'status' => $errorCode,
+            'body' => $chatId . '|' . $threadId . '|' . implode('|', array_map('strval', array_filter($context, 'is_scalar'))),
+            'chat_id' => $chatId,
+            'message_thread_id' => $threadId,
+            'error_code' => $errorCode,
+            'description' => $description,
+            'retry_after' => $retryAfter,
+            'parameters' => $parameters !== null ? json_encode($parameters) : '',
+            'attempts' => $attempt,
+        ];
+        foreach ($context as $key => $value) {
+            if (is_scalar($value) && !isset($logContext[$key])) {
+                $logContext[$key] = $value;
+            }
+        }
+        if (function_exists('rx_log_event')) {
+            rx_log_event('TOPIC_REPORT_FAILED', 'Purchase report could not be delivered to the report topic', $logContext);
+        } else {
+            error_log('[TOPIC_REPORT_FAILED] ' . json_encode($logContext));
+        }
+        return false;
+    }
+}
