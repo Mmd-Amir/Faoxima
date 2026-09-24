@@ -173,22 +173,25 @@ function rx_buy_banner_file_id()
 function rx_send_buy_first_step($chat_id, $message_id, $datain, $text, $keyboard, $isCallback)
 {
     $fileId = rx_buy_banner_file_id();
-    if ($fileId === '') {
-        if ($isCallback) {
-            return Editmessagetext($chat_id, $message_id, $text, $keyboard);
+    if ($fileId !== '') {
+        $photoResult = telegram('sendphoto', [
+            'chat_id' => $chat_id,
+            'photo' => $fileId,
+            'caption' => $text,
+            'reply_markup' => $keyboard,
+            'parse_mode' => 'HTML',
+        ]);
+        if (is_array($photoResult) && !empty($photoResult['ok'])) {
+            if ($isCallback) {
+                deletemessage($chat_id, $message_id);
+            }
+            return $photoResult;
         }
-        return sendmessage($chat_id, $text, $keyboard, 'HTML');
     }
     if ($isCallback) {
-        deletemessage($chat_id, $message_id);
+        return Editmessagetext($chat_id, $message_id, $text, $keyboard);
     }
-    return telegram('sendphoto', [
-        'chat_id' => $chat_id,
-        'photo' => $fileId,
-        'caption' => $text,
-        'reply_markup' => $keyboard,
-        'parse_mode' => 'HTML',
-    ]);
+    return sendmessage($chat_id, $text, $keyboard, 'HTML');
 }
 function panel_feature_registry()
 {
