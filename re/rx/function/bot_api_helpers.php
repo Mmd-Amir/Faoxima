@@ -150,13 +150,16 @@ function rx_send_banner_message($chat_id, $section, $text, $keyboard = null, $pa
     $status = is_array($setting) ? ($setting[$statusCol] ?? '0') : '0';
     $fileId = is_array($setting) ? trim((string)($setting[$fileCol] ?? '')) : '';
     if ($status == '1' && $fileId !== '') {
-        return telegram('sendphoto', [
+        $photoResult = telegram('sendphoto', [
             'chat_id' => $chat_id,
             'photo' => $fileId,
             'caption' => $text,
             'reply_markup' => $keyboard,
             'parse_mode' => $parse_mode,
         ]);
+        if (is_array($photoResult) && !empty($photoResult['ok'])) {
+            return $photoResult;
+        }
     }
     return sendmessage($chat_id, $text, $keyboard, $parse_mode);
 }
