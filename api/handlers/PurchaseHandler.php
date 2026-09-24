@@ -309,6 +309,7 @@ final class PurchaseHandler extends BaseHandler
 
 
         $priceToCharge = (float) $product['price_product'];
+        $balanceBeforePurchase = (float) $this->user['Balance'];
         $balanceChargedAtomically = false;
         if ($priceToCharge > 0.0) {
             $agent = $this->user['agent'] ?? 'f';
@@ -378,7 +379,7 @@ final class PurchaseHandler extends BaseHandler
                 sendmessage($this->user['id'], faoxima_textbot_get('dyn_purchase_score_earned_1', '📌شما 1 امتیاز جدید کسب کردید.'), null, 'html');
                 update('user', 'score', (int)$this->user['score'] + 1, 'id', $this->user['id']);
             }
-            $this->reportPurchase($buyReport, $product, $panel, $usernameAc, $orderId, $invoiceCount);
+            $this->reportPurchase($buyReport, $product, $panel, $usernameAc, $orderId, $invoiceCount, $balanceBeforePurchase);
 
             $stockConfigs = ($stockContent !== '' && $stockContent !== $stockSubLink) ? [$stockContent] : [];
             $stockOutput = [];
@@ -620,7 +621,7 @@ final class PurchaseHandler extends BaseHandler
         }
 
 
-        $this->reportPurchase($buyReport, $product, $panel, $usernameAc, $orderId, $invoiceCount);
+        $this->reportPurchase($buyReport, $product, $panel, $usernameAc, $orderId, $invoiceCount, $balanceBeforePurchase);
 
         FaoximaLogger::debug('Purchase completed', [
             'user_id'  => $this->user['id'],
@@ -897,13 +898,13 @@ final class PurchaseHandler extends BaseHandler
         sendmessage($this->user['affiliates'], $textUser, null, 'HTML');
     }
 
-    private function reportPurchase(string $topicId, array $product, array $panel, string $usernameAc, string $orderId, int $invoiceCount): void
+    private function reportPurchase(string $topicId, array $product, array $panel, string $usernameAc, string $orderId, int $invoiceCount, float $balanceBeforePurchase): void
     {
         $balanceAfter = (float) FaoximaDb::fetchScalar(
             'SELECT Balance FROM user WHERE id = :id',
             [':id' => $this->user['id']]
         );
-        $balanceBefore = number_format((float)$this->user['Balance']);
+        $balanceBefore = number_format($balanceBeforePurchase);
         $balanceAfter  = number_format($balanceAfter);
 
         $firstBuy = $invoiceCount === 1 ? faoxima_textbot_get('dyn_purchase_first_buy_flag', '📌 خرید اول کاربر') : '';

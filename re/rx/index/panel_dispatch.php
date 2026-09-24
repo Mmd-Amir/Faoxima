@@ -1735,7 +1735,7 @@ $text_porsant
             'chat_id' => $from_id,
             'emoji' => "🎰",
         ]);
-        sleep(2);
+        sleep(4);
     }
     if (!is_array($diceResponse) || empty($diceResponse['ok']) || !isset($diceResponse['result']['dice']['value'])) {
         $errorContext = is_array($diceResponse) ? json_encode($diceResponse) : (is_string($diceResponse) ? $diceResponse : 'empty response');

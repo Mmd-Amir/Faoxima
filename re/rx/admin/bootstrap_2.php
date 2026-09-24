@@ -5894,8 +5894,12 @@ $caption";
 } elseif ($datain == "searchuser" || $datain == "support_search" || $text == "👁‍🗨 جستجو کاربر") {
     nm_adminInstantReply($from_id, $textbotlang['Admin']['ManageUser']['GetIdUserunblock'], $backadmin, 'HTML');
     step('show_info', $from_id);
-} elseif ($user['step'] == "show_info" || preg_match('/manageuser_(\w+)/', $datain, $dataget) || preg_match('/updateinfouser_(\w+)/', $datain, $dataget) || strpos($text, "/user ") !== false || strpos($text, "/id ") !== false) {
-    if ($user['step'] == "show_info") {
+} elseif ($user['step'] == "show_info" || preg_match('/manageuser_(\w+)/', $datain, $dataget) || preg_match('/updateinfouser_(\w+)/', $datain, $dataget) || (is_string($datain) && preg_match('/^toggle_user_cardpayment_(\d+)$/', $datain)) || strpos($text, "/user ") !== false || strpos($text, "/id ") !== false) {
+    $rxCardpayToggle = is_string($datain) && preg_match('/^toggle_user_cardpayment_(\d+)$/', $datain, $rxCardpayMatch);
+    $rxCardpayNotice = null;
+    if ($rxCardpayToggle) {
+        $id_user = $rxCardpayMatch[1];
+    } elseif ($user['step'] == "show_info") {
         if (!isset($update['message']) && empty($text)) { return; }
         $id_user = $text;
     } elseif (explode(" ", $text)[0] == "/user") {
@@ -5908,6 +5912,39 @@ $caption";
     if (!userExists($id_user)) {
         nm_adminInstantReply($from_id, $textbotlang['Admin']['not-user'], null, 'HTML');
         return;
+    }
+    if ($rxCardpayToggle) {
+        $rxCardpayOk = false;
+        $rxCardpayNew = null;
+        try {
+            $rxCardpayStmt = $pdo->prepare("SELECT cardpayment FROM user WHERE id = ? LIMIT 1");
+            $rxCardpayStmt->execute([$id_user]);
+            $rxCardpayCurrent = $rxCardpayStmt->fetchColumn();
+            $rxCardpayStmt->closeCursor();
+            if ($rxCardpayCurrent !== false) {
+                $rxCardpayNew = intval($rxCardpayCurrent) === 1 ? "0" : "1";
+                update("user", "cardpayment", $rxCardpayNew, "id", $id_user);
+                $rxCardpayStmt->execute([$id_user]);
+                $rxCardpayAfter = $rxCardpayStmt->fetchColumn();
+                $rxCardpayStmt->closeCursor();
+                $rxCardpayOk = $rxCardpayAfter !== false && (string) intval($rxCardpayAfter) === $rxCardpayNew;
+            }
+        } catch (Throwable $rxCardpayErr) {
+            error_log('[toggle_user_cardpayment] ' . $rxCardpayErr->getMessage());
+            $rxCardpayOk = false;
+        }
+        if (!$rxCardpayOk) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => "❌ تغییر وضعیت نمایش شماره کارت انجام نشد. دوباره تلاش کنید.",
+                'show_alert' => true,
+                'cache_time' => 0,
+            ]);
+            return;
+        }
+        $rxCardpayNotice = $rxCardpayNew === "1"
+            ? "✅ نمایش شماره کارت برای این کاربر فعال شد"
+            : "✅ نمایش شماره کارت برای این کاربر غیرفعال شد";
     }
     $date = date("Y-m-d");
     $_stmt = $connect->prepare("SELECT COUNT(*) FROM invoice WHERE (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold') AND id_user = ?");
@@ -5951,6 +5988,12 @@ $caption";
             [['text' => "💡 خاموش کردن", 'callback_data' => "disableconfig-" . $id_user], ['text' => "💡 روشن کردن", 'callback_data' => "activeconfig-" . $id_user]],
             [['text' => "📑 احراز عضویت", 'callback_data' => "confirmchannel-" . $id_user], ['text' => "0️⃣ صفر کردن موجودی", 'callback_data' => "zerobalance-" . $id_user]],
             [['text' => "🕚 وضعیت ارسال پیام های کرون", 'callback_data' => "statuscronuser-" . $id_user]],
+            [[
+                'text' => intval($user['cardpayment'] ?? 0) === 1
+                    ? "💳 غیرفعال‌سازی نمایش شماره کارت"
+                    : "💳 فعال‌سازی نمایش شماره کارت",
+                'callback_data' => "toggle_user_cardpayment_" . $id_user,
+            ]],
             [['text' => "💳 منوی کارت", 'callback_data' => "usercardmenu_" . $id_user]],
             [[
                 'text' => intval($user['card_verify_bypass'] ?? 0) === 1
@@ -6093,7 +6136,15 @@ $text_expie_agent
 🔰 مجموع فروش یک ماه گذشته : {$rxFmtSuminvoicemonth} تومان
 
 ";
-    if (is_string($datain) && isset($datain[0]) && $datain[0] == "u") {
+    if ($rxCardpayNotice !== null) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => $rxCardpayNotice,
+            'show_alert' => false,
+            'cache_time' => 0,
+        ]);
+        Editmessagetext($from_id, $message_id, $textinfouser, $keyboardmanage);
+    } elseif (is_string($datain) && isset($datain[0]) && $datain[0] == "u") {
         telegram('answerCallbackQuery', array(
             'callback_query_id' => $callback_query_id,
             'text' => "اطلاعات بروزرسانی گردید",

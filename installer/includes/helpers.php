@@ -179,31 +179,52 @@ function rx_get_contents(string $url)
 function rx_telegram_request(string $token, string $method, array $parameters = []): array
 {
     $url = 'https://api.telegram.org/bot' . $token . '/' . $method;
-    $ch = curl_init($url);
-    if ($ch === false) {
-        return ['ok' => false, 'description' => 'امکان آغاز ارتباط با تلگرام وجود ندارد.'];
+    $maxRateLimitRetries = 2;
+
+    for ($attempt = 0; $attempt <= $maxRateLimitRetries; $attempt++) {
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return ['ok' => false, 'description' => 'امکان آغاز ارتباط با تلگرام وجود ندارد.'];
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => http_build_query($parameters),
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_HTTPHEADER => ['Accept: application/json'],
+        ]);
+
+        $body = curl_exec($ch);
+        $curlError = curl_error($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        curl_close($ch);
+
+        if ($body === false) {
+            return ['ok' => false, 'description' => $curlError !== '' ? $curlError : 'پاسخی از تلگرام دریافت نشد.'];
+        }
+
+        $decoded = json_decode($body, true);
+        if (!is_array($decoded)) {
+            return ['ok' => false, 'description' => 'پاسخ تلگرام معتبر نبود.', 'status' => $status];
+        }
+
+        $isRateLimited = ((int) ($decoded['error_code'] ?? 0) === 429) || $status === 429;
+        if (!$isRateLimited || $attempt >= $maxRateLimitRetries) {
+            return $decoded;
+        }
+
+        $retryAfter = (int) ($decoded['parameters']['retry_after'] ?? 1);
+        if ($retryAfter < 1) {
+            $retryAfter = 1;
+        }
+
+        sleep($retryAfter);
     }
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => http_build_query($parameters),
-        CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_TIMEOUT => 30,
-        CURLOPT_SSL_VERIFYPEER => true,
-        CURLOPT_HTTPHEADER => ['Accept: application/json'],
-    ]);
-    $body = curl_exec($ch);
-    $curlError = curl_error($ch);
-    $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-    curl_close($ch);
-    if ($body === false) {
-        return ['ok' => false, 'description' => $curlError !== '' ? $curlError : 'پاسخی از تلگرام دریافت نشد.'];
-    }
-    $decoded = json_decode($body, true);
-    if (!is_array($decoded)) {
-        return ['ok' => false, 'description' => 'پاسخ تلگرام معتبر نبود.', 'status' => $status];
-    }
-    return $decoded;
+
+    return ['ok' => false, 'description' => 'محدودیت موقت تلگرام پس از چند تلاش برطرف نشد.'];
 }
 
 function rx_telegram_webhook_secret(string $rootDirectory, string $botToken): ?string
