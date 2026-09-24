@@ -18,6 +18,7 @@ header('Expires: 0');
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/lib/csrf.php';
+require_once __DIR__ . '/lib/textbot_edge.php';
 require_once __DIR__ . '/../re/rx/function/database_helpers_1.php';
 
 $query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
@@ -127,10 +128,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $updated = 0;
+        $edgeRejected = [];
         foreach ($newValues as $key => $val) {
             $key = (string)$key;
             $val = (string)$val;
             if (isset($cur[$key]) && $cur[$key] === $val) continue;
+            if (fx_textbot_edge_violation($key, $val) !== '') {
+                $edgeRejected[] = $key;
+                continue;
+            }
             try {
                 $upd = $pdo->prepare("INSERT INTO textbot (id_text, text) VALUES (:k, :v) ON DUPLICATE KEY UPDATE text = :v2");
                 $upd->execute([':k' => $key, ':v' => $val, ':v2' => $val]);
@@ -146,7 +152,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 clearSelectCache('textbot');
             }
         }
-        header('Location: textbot.php?saved=' . $updated);
+        $redirect = 'textbot.php?saved=' . $updated;
+        if (!empty($edgeRejected)) {
+            $redirect .= '&edge_rejected=' . urlencode(implode(',', $edgeRejected));
+        }
+        header('Location: ' . $redirect);
         exit;
     }
     elseif ($action === 'add') {
@@ -161,6 +171,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = 'کلید فقط می‌تواند شامل حروف، عدد و آندرلاین باشد (۲ تا ۱۰۰ کاراکتر).';
         } elseif (mb_strlen($val) > 4000) {
             $errors[] = 'متن بیش از حد طولانی است (حداکثر ۴۰۰۰ کاراکتر).';
+        } elseif (fx_textbot_edge_violation($key, $val) !== '') {
+            $errors[] = fx_textbot_edge_error_message();
         }
 
         if (!empty($errors)) {
@@ -236,6 +248,7 @@ function faoxima_tab_icon(string $tab, array $categories): string {
 $savedNum = isset($_GET['saved']) ? (int)$_GET['saved'] : -1;
 $addedKey = isset($_GET['added']) ? (string)$_GET['added'] : '';
 $delKey   = isset($_GET['deleted']) ? (string)$_GET['deleted'] : '';
+$edgeRejectedKeys = isset($_GET['edge_rejected']) ? array_values(array_filter(explode(',', (string)$_GET['edge_rejected']), 'strlen')) : [];
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
@@ -333,6 +346,25 @@ $delKey   = isset($_GET['deleted']) ? (string)$_GET['deleted'] : '';
         .text-row textarea.changed {
             border-color: var(--color-warning);
             background: var(--color-warning-soft);
+        }
+        .text-row textarea.edge-invalid,
+        #editTextArea.edge-invalid {
+            border-color: var(--color-danger);
+            background: var(--color-danger-soft);
+        }
+        .text-key__edge-error {
+            color: var(--color-danger);
+            font-size: 11px;
+            font-family: 'Vazirmatn', sans-serif;
+            direction: rtl;
+            text-align: right;
+        }
+        .text-key__edge-error[hidden],
+        .edit-edge-error[hidden] { display: none; }
+        .edit-edge-error {
+            color: var(--color-danger);
+            font-size: 12.5px;
+            margin-top: 6px;
         }
         @media (max-width: 768px) {
             .text-row {
@@ -604,6 +636,18 @@ $delKey   = isset($_GET['deleted']) ? (string)$_GET['deleted'] : '';
                     کلید <code><?php echo htmlspecialchars($delKey, ENT_QUOTES); ?></code> حذف شد.
                 </div>
             <?php endif; ?>
+            <?php if (!empty($edgeRejectedKeys)): ?>
+                <div class="alert alert-danger">
+                    <?php echo icon('circle-exclamation', 'svg-icon'); ?>
+                    <span>
+                        <?php echo htmlspecialchars(fx_textbot_edge_error_message(), ENT_QUOTES, 'UTF-8'); ?>
+                        ذخیره نشد:
+                        <?php foreach ($edgeRejectedKeys as $rk): ?>
+                            <code><?php echo htmlspecialchars($rk, ENT_QUOTES, 'UTF-8'); ?></code>
+                        <?php endforeach; ?>
+                    </span>
+                </div>
+            <?php endif; ?>
             <?php if ($flash['err']): ?>
                 <div class="alert alert-danger">
                     <?php echo htmlspecialchars($flash['err'], ENT_QUOTES, 'UTF-8'); ?>
@@ -663,6 +707,9 @@ $delKey   = isset($_GET['deleted']) ? (string)$_GET['deleted'] : '';
                                             <?php echo icon('circle-exclamation', 'svg-icon'); ?> متغیر
                                         </span>
                                     <?php endif; ?>
+                                    <?php if (fx_textbot_is_routing_key($k)): ?>
+                                        <span class="text-key__edge-error" id="edge-err-<?php echo htmlspecialchars($k, ENT_QUOTES); ?>" hidden><?php echo htmlspecialchars(fx_textbot_edge_error_message(), ENT_QUOTES, 'UTF-8'); ?></span>
+                                    <?php endif; ?>
                                 </code>
                                 <textarea name="t[<?php echo htmlspecialchars($k, ENT_QUOTES); ?>]"
                                         id="ta-<?php echo htmlspecialchars($k, ENT_QUOTES); ?>"
@@ -684,7 +731,7 @@ $delKey   = isset($_GET['deleted']) ? (string)$_GET['deleted'] : '';
 
                 <div class="save-bar">
                     <span id="changeCount" style="align-self:center; color:var(--text-muted); font-size:13px; margin-inline-end:auto;">۰ تغییر در انتظار ذخیره</span>
-                    <button type="submit" class="btn btn-primary">
+                    <button type="submit" class="btn btn-primary" id="textSaveBtn">
                         <?php echo icon('check', 'svg-icon svg-sm'); ?>
                         <span>ذخیره تغییرات</span>
                     </button>
@@ -749,6 +796,7 @@ $delKey   = isset($_GET['deleted']) ? (string)$_GET['deleted'] : '';
         </div>
         <div class="form-group">
             <textarea id="editTextArea" class="form-control" rows="10"></textarea>
+            <div class="edit-edge-error" id="editEdgeError" hidden><?php echo htmlspecialchars(fx_textbot_edge_error_message(), ENT_QUOTES, 'UTF-8'); ?></div>
         </div>
         <div class="modal-foot">
             <button type="button" class="btn btn-outline btn-sm" onclick="closeTextEditor()">لغو</button>
@@ -774,6 +822,34 @@ function deleteKey(k) {
     document.getElementById('deleteForm').submit();
 }
 
+var TEXT_EDGE = <?php echo fx_textbot_edge_js_config(); ?>;
+var TEXT_EDGE_LEAD = null;
+var TEXT_EDGE_TRAIL = null;
+try {
+    TEXT_EDGE_LEAD = new RegExp('^' + TEXT_EDGE.cls, 'u');
+    TEXT_EDGE_TRAIL = new RegExp(TEXT_EDGE.cls + '$', 'u');
+} catch (e) {
+    TEXT_EDGE_LEAD = null;
+    TEXT_EDGE_TRAIL = null;
+}
+function textEdgeIsRouting(key) {
+    return TEXT_EDGE.keys.indexOf(String(key || '').toLowerCase()) !== -1;
+}
+function textEdgeInvalid(value) {
+    value = String(value || '');
+    if (value === '') return false;
+    if (TEXT_EDGE_LEAD && TEXT_EDGE_TRAIL) return TEXT_EDGE_LEAD.test(value) || TEXT_EDGE_TRAIL.test(value);
+    return value !== value.trim();
+}
+function refreshEditorEdge() {
+    var ta = document.getElementById('editTextArea');
+    var err = document.getElementById('editEdgeError');
+    if (!ta || !err) return;
+    var bad = !!textEditorCurrentKey && textEdgeIsRouting(textEditorCurrentKey) && textEdgeInvalid(ta.value);
+    ta.classList.toggle('edge-invalid', bad);
+    err.hidden = !bad;
+}
+
 var textEditorCurrentKey = null;
 function openTextEditor(key) {
     var modal = document.getElementById('modal-edit-text');
@@ -783,6 +859,7 @@ function openTextEditor(key) {
     textEditorCurrentKey = key;
     document.getElementById('editTextKeyLabel').textContent = key;
     document.getElementById('editTextArea').value = src.value;
+    refreshEditorEdge();
     openModal('modal-edit-text');
     document.getElementById('editTextArea').focus();
 }
@@ -820,6 +897,12 @@ document.querySelectorAll('.fmt-btn').forEach(function (btn) {
         wrapTextSelection(btn.dataset.tag);
     });
 });
+(function () {
+    var ta = document.getElementById('editTextArea');
+    if (!ta) return;
+    ta.addEventListener('input', refreshEditorEdge);
+    ta.addEventListener('blur', refreshEditorEdge);
+})();
 function confirmTextEditor() {
     if (!textEditorCurrentKey) return;
     var src = document.getElementById('ta-' + textEditorCurrentKey);
@@ -834,7 +917,21 @@ function confirmTextEditor() {
 (function () {
     var counter = document.getElementById('changeCount');
     var areas = document.querySelectorAll('#textForm textarea');
+    var saveBtn = document.getElementById('textSaveBtn');
     function persianNum(n){ return String(n).replace(/\d/g, function(d){ return '۰۱۲۳۴۵۶۷۸۹'[+d]; }); }
+    function refreshEdge() {
+        var blocking = 0;
+        areas.forEach(function (t) {
+            if (!textEdgeIsRouting(t.dataset.key)) return;
+            var bad = textEdgeInvalid(t.value);
+            t.classList.toggle('edge-invalid', bad);
+            var err = document.getElementById('edge-err-' + t.dataset.key);
+            if (err) err.hidden = !bad;
+            if (bad && t.value !== t.dataset.orig) blocking++;
+        });
+        if (saveBtn) saveBtn.disabled = blocking > 0;
+        return blocking;
+    }
     function updateCount() {
         var n = 0;
         areas.forEach(function(t){
@@ -842,7 +939,9 @@ function confirmTextEditor() {
             else t.classList.remove('changed');
         });
         counter.textContent = persianNum(n) + ' تغییر در انتظار ذخیره';
+        refreshEdge();
     }
+    refreshEdge();
     function autogrow(t){
         t.style.height = 'auto';
         t.style.height = Math.max(44, t.scrollHeight) + 'px';
@@ -854,7 +953,12 @@ function confirmTextEditor() {
 
     var textForm = document.getElementById('textForm');
     if (textForm) {
-        textForm.addEventListener('submit', function () {
+        textForm.addEventListener('submit', function (ev) {
+            if (refreshEdge() > 0) {
+                ev.preventDefault();
+                alert(TEXT_EDGE.message);
+                return;
+            }
             areas.forEach(function (t) {
                 if (t.value === t.dataset.orig) {
                     t.disabled = true;

@@ -17,6 +17,7 @@ header('Pragma: no-cache');
 header('Expires: 0');
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/lib/icons.php';
+require_once __DIR__ . '/lib/textbot_edge.php';
 require_once __DIR__ . '/../re/rx/function/database_helpers_1.php';
 
 $query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
@@ -146,6 +147,7 @@ try {
 
 
 $savedCount = 0;
+$edgeRejectedCount = 0;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_save'])) {
     foreach ($FIN_GROUPS as $group) {
         foreach ($group['fields'] as $f) {
@@ -158,6 +160,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_save'])) {
                 $new = (string)$_POST['f_' . $key];
                 $cur = $textbotRows[$key] ?? '';
                 if ((string)$cur === $new) continue;
+                if (fx_textbot_edge_violation($key, $new) !== '') {
+                    $edgeRejectedCount++;
+                    continue;
+                }
                 try {
                     $stmt = $pdo->prepare(
                         "INSERT INTO textbot (id_text, text) VALUES (:k, :v)
@@ -208,10 +214,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_save'])) {
             }
         }
     }
-    header('Location: finance.php?saved=' . $savedCount);
+    header('Location: finance.php?saved=' . $savedCount . ($edgeRejectedCount > 0 ? '&edge_rejected=' . $edgeRejectedCount : ''));
     exit;
 }
 
+$showEdgeRejected = isset($_GET['edge_rejected']) && (int)$_GET['edge_rejected'] > 0;
 $showSaved = isset($_GET['saved']);
 $savedNum  = isset($_GET['saved']) ? (int)$_GET['saved'] : 0;
 
@@ -266,6 +273,13 @@ function faoxima_fin_mask_secret($v) {
                     <span>
                         <?php echo $savedNum > 0 ? ($savedNum . ' فیلد ذخیره شد.') : 'هیچ تغییری انجام نشد.'; ?>
                     </span>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($showEdgeRejected): ?>
+                <div class="alert alert-danger">
+                    <?php echo icon('circle-exclamation', 'svg-icon'); ?>
+                    <span><?php echo htmlspecialchars(fx_textbot_edge_error_message(), ENT_QUOTES, 'UTF-8'); ?></span>
                 </div>
             <?php endif; ?>
 
