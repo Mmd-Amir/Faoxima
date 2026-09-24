@@ -162,6 +162,7 @@ final class InvoicesHandler extends BaseHandler
                 $row['status'] = $row['Status'] ?? 'active';
             }
             $row['has_queued_renewal'] = isset($queuedUsernames[(string)$row['username']]);
+            $row['display_username'] = guardDisplayUsername((string)$row['username'], (string)($row['Service_location'] ?? ''));
         }
         unset($row);
 

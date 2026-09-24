@@ -151,7 +151,7 @@ final class ServiceActionHandler extends BaseHandler
         $textParts[] = faoxima_render_text(faoxima_textbot_get('dyn_serviceaction_user_id_line_tpl', '🪪 شناسه عددی: <code>{user_id}</code>'), ['user_id' => htmlspecialchars($userId, ENT_QUOTES)]);
         $textParts[] = '';
         $textParts[] = faoxima_render_text(faoxima_textbot_get('dyn_serviceaction_product_line_tpl', '🛍 محصول: {product}'), ['product' => htmlspecialchars((string)$invoice['name_product'], ENT_QUOTES)]);
-        $textParts[] = faoxima_render_text(faoxima_textbot_get('dyn_serviceaction_service_username_line_tpl', '👤 نام کاربری سرویس: <code>{username}</code>'), ['username' => htmlspecialchars((string)$invoice['username'], ENT_QUOTES)]);
+        $textParts[] = faoxima_render_text(faoxima_textbot_get('dyn_serviceaction_service_username_line_tpl', '👤 نام کاربری سرویس: <code>{username}</code>'), ['username' => htmlspecialchars(guardDisplayUsername((string)$invoice['username'], (string)($invoice['Service_location'] ?? '')), ENT_QUOTES)]);
         $textParts[] = faoxima_render_text(faoxima_textbot_get('dyn_serviceaction_location_line_tpl', '🌍 موقعیت سرویس: {location}'), ['location' => htmlspecialchars((string)$invoice['Service_location'], ENT_QUOTES)]);
         $textParts[] = faoxima_render_text(faoxima_textbot_get('dyn_serviceaction_invoice_id_line_tpl', '🆔 کد فاکتور: <code>{invoice_id}</code>'), ['invoice_id' => htmlspecialchars((string)$invoice['id_invoice'], ENT_QUOTES)]);
         if ($extraBlock !== '') {
@@ -276,7 +276,7 @@ final class ServiceActionHandler extends BaseHandler
             $text = faoxima_render_text(faoxima_textbot_get('dyn_serviceaction_changelink_report_tpl', "📣 جزئیات تغییر لینک از مینی‌اپ ثبت شد .\n<blockquote>▫️آیدی عددی کاربر : <code>{user_id}</code></blockquote>\n<blockquote>▫️نام کاربری کاربر :@{username}</blockquote>\n<blockquote>▫️نام کاربری کانفیگ :{config_username}</blockquote>\n<blockquote>▫️نام کاربر : {first_name}</blockquote>\n<blockquote>▫️موقعیت سرویس : {panel_name}</blockquote>\n<blockquote>▫️نوع کاربر : {agent}</blockquote>\n<blockquote>▫️زمان تغییر لینک : {when}</blockquote>"), [
                 'user_id' => $this->user['id'],
                 'username' => $userName,
-                'config_username' => $svcUsername,
+                'config_username' => guardDisplayUsername($svcUsername, $panel),
                 'first_name' => $userFirst,
                 'panel_name' => $panelName,
                 'agent' => $agent,
@@ -491,7 +491,7 @@ final class ServiceActionHandler extends BaseHandler
             $text = faoxima_render_text(faoxima_textbot_get('dyn_serviceaction_changeloc_report_tpl', "📍 تغییر موقعیت سرویس (از مینی‌اپ)\n\n<blockquote>▫️آیدی عددی کاربر : <code>{user_id}</code></blockquote>\n<blockquote>▫️نام کاربری کاربر : @{username}</blockquote>\n<blockquote>▫️نام کاربری کانفیگ : {config_username}</blockquote>\n<blockquote>▫️پنل قدیم : {old_panel}</blockquote>\n<blockquote>▫️پنل جدید : {new_panel}</blockquote>\n<blockquote>▫️موجودی کاربر : {balance} تومان</blockquote>\n<blockquote>▫️زمان : {when}</blockquote>"), [
                 'user_id' => $this->user['id'],
                 'username' => $userName,
-                'config_username' => $svcUsername,
+                'config_username' => guardDisplayUsername($svcUsername, $newPanel),
                 'old_panel' => $oldPanelName,
                 'new_panel' => $newPanel['name_panel'],
                 'balance' => $balanceAfter,

@@ -105,6 +105,7 @@ export async function services(view) {
         const badgeIcon = st.icon;
 
         const username = it.username || '—';
+    const displayUsername = it.display_username || username;
         const productName = it.name_product || '—';
         const location = it.Service_location || '';
 
@@ -112,7 +113,7 @@ export async function services(view) {
             <a href="#/services/${encodeURIComponent(username)}" class="list-item" data-username="${escapeHtml(username)}">
                 <div class="li-main">
                     <div class="li-title">${escapeHtml(productName)}</div>
-                    <div class="li-sub">${escapeHtml(username)}${location ? ' · ' + escapeHtml(location) : ''}</div>
+                    <div class="li-sub">${escapeHtml(displayUsername)}${location ? ' · ' + escapeHtml(location) : ''}</div>
                 </div>
                 ${it.has_queued_renewal ? `<span class="badge is-active">${icon('online', 'class="ico"')} رزرو اشتراک</span>` : ''}
                 <span class="badge ${badge}">${icon(badgeIcon, 'class="ico"')} ${escapeHtml(badgeText)}</span>

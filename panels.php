@@ -271,8 +271,7 @@ class ManagePanel
                 "username" => $usernameC,
                 "limit_usage" => $data_limit,
                 "service_ids" => $serviceResult['service_ids'],
-                "note" => $note,
-                "telegram_id" => null
+                "note" => $note
             );
             if ($guardOnHoldEnabled && $expire != 0) {
                 $guardOnHoldSeconds = max(60, $expire - time());

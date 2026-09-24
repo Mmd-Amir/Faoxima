@@ -328,7 +328,7 @@ final class TestAccountHandler extends BaseHandler
         global $textbotlang;
         $displayDay    = $serviceTime === 0 ? ($textbotlang['users']['stateus']['Unlimited'] ?? '∞') : (string)$serviceTime;
         $displayVolume = $volumeMb === 0 ? ($textbotlang['users']['stateus']['Unlimited'] ?? '∞') : formatBytes($totalBytes);
-        $template = str_replace('{username}', "<code>" . htmlspecialchars($usernameAc, ENT_QUOTES, 'UTF-8') . "</code>", $template);
+        $template = str_replace('{username}', "<code>" . htmlspecialchars(guardDisplayUsername($usernameAc, $panel), ENT_QUOTES, 'UTF-8') . "</code>", $template);
         $template = str_replace('{name_service}', htmlspecialchars(faoxima_textbot_get('dyn_testaccount_product_name', 'سرویس تست'), ENT_QUOTES, 'UTF-8'), $template);
         $template = str_replace('{location}', htmlspecialchars((string)($panel['name_panel'] ?? ''), ENT_QUOTES, 'UTF-8'), $template);
         $template = str_replace('{day}', htmlspecialchars($displayDay, ENT_QUOTES, 'UTF-8'), $template);
@@ -337,7 +337,7 @@ final class TestAccountHandler extends BaseHandler
             $template = applyConnectionPlaceholders($template, $subLink, '');
         }
         if (trim($template) === '') {
-            $template = faoxima_render_text(faoxima_textbot_get('dyn_testaccount_minimal_template', "✅ اکانت تست شما ساخته شد\n\n👤 نام کاربری : <code>{username}</code>"), ['username' => $usernameAc]);
+            $template = faoxima_render_text(faoxima_textbot_get('dyn_testaccount_minimal_template', "✅ اکانت تست شما ساخته شد\n\n👤 نام کاربری : <code>{username}</code>"), ['username' => guardDisplayUsername($usernameAc, $panel)]);
         }
 
         $keyboard = json_encode([
@@ -441,7 +441,7 @@ final class TestAccountHandler extends BaseHandler
             $text = faoxima_render_text(faoxima_textbot_get('dyn_testaccount_report_tpl', "🧪 دریافت اکانت تست از مینی‌اپ\n\n<blockquote>▫️آیدی عددی کاربر : <code>{user_id}</code></blockquote>\n<blockquote>▫️نام کاربری کاربر :@{username}</blockquote>\n<blockquote>▫️نام کاربری کانفیگ :{config_username}</blockquote>\n<blockquote>▫️موقعیت سرویس : {panel_name}</blockquote>"), [
                 'user_id' => $this->user['id'],
                 'username' => $this->user['username'],
-                'config_username' => $usernameAc,
+                'config_username' => guardDisplayUsername($usernameAc, $panel),
                 'panel_name' => $panel['name_panel'],
             ]);
             try {
@@ -466,6 +466,7 @@ final class TestAccountHandler extends BaseHandler
             'service'  => [
                 'id'                => $orderId,
                 'username'          => (string)($dataoutput['username'] ?? $usernameAc),
+                'display_username'  => guardDisplayUsername((string)($dataoutput['username'] ?? $usernameAc), $panel),
                 'status'            => 'active',
                 'active'            => true,
                 'expire'            => $expireTs,

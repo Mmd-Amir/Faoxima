@@ -374,7 +374,7 @@ final class ServiceRenewConfirmHandler extends BaseHandler
             $this->reportError(
                 faoxima_render_text(faoxima_textbot_get('dyn_renewconfirm_extend_failed_report_tpl', "خطای تمدید سرویس\n<blockquote>نام پنل : {panel_name}</blockquote>\n<blockquote>نام کاربری سرویس : {username}</blockquote>\n<blockquote>دلیل خطا : {reason}</blockquote>"), [
                     'panel_name' => $panel['name_panel'],
-                    'username' => $invoice['username'],
+                    'username' => guardDisplayUsername($invoice['username'], $panel),
                     'reason' => $reason,
                 ])
             );
@@ -476,7 +476,7 @@ final class ServiceRenewConfirmHandler extends BaseHandler
         $this->reportSuccess(
             faoxima_render_text(faoxima_textbot_get('dyn_renewconfirm_report_tpl', "✅ <b>تمدید سرویس</b>\n<blockquote>▫️آیدی کاربر : {user_id}</blockquote>\n<blockquote>▫️نام کاربری سرویس : {username}</blockquote>\n<blockquote>▫️محصول : {product_name}</blockquote>\n<blockquote>▫️حجم : {volume} گیگ</blockquote>\n<blockquote>▫️زمان : {service_time} روز</blockquote>\n<blockquote>▫️مبلغ : {price} تومان</blockquote>\n<blockquote>▫️پنل : {panel_name}</blockquote>"), [
                 'user_id' => $this->user['id'],
-                'username' => $invoice['username'],
+                'username' => guardDisplayUsername($invoice['username'], $panel),
                 'product_name' => $product['name_product'],
                 'volume' => (int)$product['Volume_constraint'],
                 'service_time' => (int)$product['Service_time'],

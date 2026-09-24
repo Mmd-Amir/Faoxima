@@ -2530,7 +2530,7 @@ function DirectPayment($order_id, $image = 'images.jpg')
             $get_invoice['Service_time'] = $textbotlang['users']['stateus']['Unlimited'];
         if (intval($get_invoice['Volume']) == 0)
             $get_invoice['Volume'] = $textbotlang['users']['stateus']['Unlimited'];
-        $textcreatuser = str_replace('{username}', "<code>{$dataoutput['username']}</code>", $rxAfterPayTpl);
+        $textcreatuser = str_replace('{username}', "<code>" . guardDisplayUsername($dataoutput['username'], $marzban_list_get) . "</code>", $rxAfterPayTpl);
         $textcreatuser = str_replace('{name_service}', $get_invoice['name_product'], $textcreatuser);
         $textcreatuser = str_replace('{location}', $marzban_list_get['name_panel'], $textcreatuser);
         $textcreatuser = str_replace('{day}', $get_invoice['Service_time'], $textcreatuser);
@@ -2628,7 +2628,7 @@ function DirectPayment($order_id, $image = 'images.jpg')
 $textonebuy
 <blockquote>▫️آیدی عددی کاربر : <code>{$Balance_id['id']}</code></blockquote>
 <blockquote>▫️نام کاربری کاربر :@{$Balance_id['username']}</blockquote>
-<blockquote>▫️نام کاربری کانفیگ :$username_ac</blockquote>
+<blockquote>▫️نام کاربری کانفیگ :" . guardDisplayUsername($username_ac, $marzban_list_get) . "</blockquote>
 <blockquote>▫️لوکیشن سرویس : {$get_invoice['Service_location']}</blockquote>
 <blockquote>▫️زمان خریداری شده :{$get_invoice['Service_time']} روز</blockquote>
 <blockquote>▫️نام محصول خریداری شده :{$get_invoice['name_product']}</blockquote>
@@ -2670,7 +2670,7 @@ $textonebuy
             $rxFmtBalanceBeforeBuy = rxFormatToman($Balance_id['Balance']);
             $textconfrom = "✅ پرداخت تایید شده
 🛍خرید سرویس
-▫️نام کاربری کانفیگ :$username_ac
+▫️نام کاربری کانفیگ :" . guardDisplayUsername($username_ac, $marzban_list_get) . "
 ▫️لوکیشن سرویس : {$get_invoice['Service_location']}
 👤 شناسه کاربر: <code>{$Balance_id['id']}</code>
 🛒 کد پیگیری پرداخت: {$Payment_report['id_order']}

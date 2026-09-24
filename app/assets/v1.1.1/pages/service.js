@@ -779,7 +779,7 @@ function renderBody($body, info, username, reload) {
     $body.innerHTML = `
         <div class="row-spread">
             <div>
-                <div class="muted mono" style="font-size:12px">${escapeHtml(info.username || username)}</div>
+                <div class="muted mono" style="font-size:12px">${escapeHtml(info.display_username || info.username || username)}</div>
                 <h2 style="margin:4px 0 0;font-size:20px;font-weight:700">${escapeHtml(info.product_name || '—')}</h2>
             </div>
             <span class="badge ${statusBadge}">

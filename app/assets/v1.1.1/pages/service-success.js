@@ -48,6 +48,7 @@ function renderQrPanel(data) {
 export function renderServiceSuccess(view, res, opts = {}) {
     const service = res?.service || {};
     const usernameAc = String(service.username || res?.username || '—');
+    const displayUsernameAc = String(service.display_username || usernameAc);
     const orderId = String(res?.order_id || service.id || '—');
     const productName = String(service.product_name || opts.productName || '—');
     const panelName = String(service.panel_name || opts.panelName || '—');
@@ -92,7 +93,7 @@ export function renderServiceSuccess(view, res, opts = {}) {
                 <div class="card-body info-card">
                     <div class="info-card-title-row">
                         <div class="info-card-title">
-                            <span class="arrow">&gt;</span><span>کانفیگ: ${escapeHtml(usernameAc)}</span>
+                            <span class="arrow">&gt;</span><span>کانفیگ: ${escapeHtml(displayUsernameAc)}</span>
                         </div>
                         <span class="info-card-status is-active">فعال</span>
                     </div>
@@ -141,7 +142,7 @@ export function renderServiceSuccess(view, res, opts = {}) {
                 <div class="service-detail-row">
                     ${icon('user', 'class="ico ico-leading"')}
                     <span class="service-detail-label">نام کاربری</span>
-                    <span class="service-detail-value mono">${escapeHtml(usernameAc)}</span>
+                    <span class="service-detail-value mono">${escapeHtml(displayUsernameAc)}</span>
                 </div>
                 <div class="service-detail-row">
                     ${icon('fileText', 'class="ico ico-leading"')}

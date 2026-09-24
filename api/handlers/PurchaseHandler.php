@@ -521,7 +521,7 @@ final class PurchaseHandler extends BaseHandler
         }
 
         $template = $this->resolveTemplate($panel['type'] ?? '');
-        $template = str_replace('{username}', "<code>{$remote['username']}</code>", $template);
+        $template = str_replace('{username}', "<code>" . guardDisplayUsername($remote['username'], $panel) . "</code>", $template);
         $template = str_replace('{name_service}', $product['name_product'] ?? '', $template);
         $template = str_replace('{location}', $panel['name_panel'] ?? '', $template);
 
@@ -663,6 +663,7 @@ final class PurchaseHandler extends BaseHandler
             'service'  => [
                 'id'                => $orderId,
                 'username'          => (string)($remote['username'] ?? $usernameAc),
+                'display_username'  => guardDisplayUsername((string)($remote['username'] ?? $usernameAc), $panel),
                 'username_requested' => $requestedUsernameAc,
                 'username_was_changed' => $usernameWasRenamed,
                 'status'            => 'active',
@@ -914,7 +915,7 @@ final class PurchaseHandler extends BaseHandler
             'first_buy' => $firstBuy,
             'user_id' => $this->user['id'],
             'username' => $this->user['username'],
-            'config_username' => $usernameAc,
+            'config_username' => guardDisplayUsername($usernameAc, $panel),
             'panel_name' => $panel['name_panel'],
             'product_name' => $product['name_product'],
             'service_time' => $product['Service_time'],

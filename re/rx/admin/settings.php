@@ -1844,7 +1844,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         $datatextbot['textafterpay'] = $panel['type'] == "WGDashboard" ? $datatextbot['text_wgdashboard'] : $datatextbot['textafterpay'];
         if (intval($text) == 0)
             $text = $textbotlang['users']['stateus']['Unlimited'];
-        $textcreatuser = str_replace('{username}', "<code>{$dataoutput['username']}</code>", $datatextbot['textafterpay']);
+        $textcreatuser = str_replace('{username}', "<code>" . guardDisplayUsername($dataoutput['username'], $panel) . "</code>", $datatextbot['textafterpay']);
         $textcreatuser = str_replace('{name_service}', "پلن دلخواه", $textcreatuser);
         $textcreatuser = str_replace('{location}', $panel['name_panel'], $textcreatuser);
         $textcreatuser = str_replace('{day}', $text, $textcreatuser);

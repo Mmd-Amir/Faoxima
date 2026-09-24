@@ -220,7 +220,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         $usertest_volume = $textbotlang['users']['stateus']['Unlimited'];
     else
         $usertest_volume = formatBytes((float) $usertest_volume * 1048576);
-    $textcreatuser = str_replace('{username}', $dataoutput['username'], $datatextbot['textaftertext']);
+    $textcreatuser = str_replace('{username}', guardDisplayUsername($dataoutput['username'], $marzban_list_get), $datatextbot['textaftertext']);
     $textcreatuser = str_replace('{name_service}', "تست", $textcreatuser);
     $textcreatuser = str_replace('{location}', $marzban_list_get['name_panel'], $textcreatuser);
     $textcreatuser = str_replace('{day}', $usertest_day, $textcreatuser);
@@ -248,7 +248,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     $text_report = "📣 جزئیات ساخت اکانت تست در ربات شما ثبت شد .
 <blockquote>▫️آیدی عددی کاربر : <code>$from_id</code></blockquote>
 <blockquote>▫️نام کاربری کاربر :@$username</blockquote>
-<blockquote>▫️نام کاربری کانفیگ :$username_ac</blockquote>
+<blockquote>▫️نام کاربری کانفیگ :" . guardDisplayUsername($username_ac, $marzban_list_get) . "</blockquote>
 <blockquote>▫️نام کاربر : $first_name</blockquote>
 <blockquote>▫️موقعیت سرویس : {$marzban_list_get['name_panel']}</blockquote>
 <blockquote>▫️زمان خریداری شده : {$marzban_list_get['time_usertest']} ساعت</blockquote>
@@ -1623,7 +1623,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     $info_product_price_product = number_format($info_product['price_product']);
     $userBalance = number_format($user['Balance']);
     $replacements = [
-        '{username}' => $username_ac,
+        '{username}' => guardDisplayUsername($username_ac, $marzban_list_get),
         '{name_product}' => $info_product['name_product'],
         '{Service_time}' => $info_product['Service_time'],
 
@@ -1634,7 +1634,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     ];
     $textin = strtr($datatextbot['text_pishinvoice'], $replacements);
     if ($usernameWasRenamed) {
-        $textin = "⚠️ نام کاربری «{$requestedUsername_ac}» قبلاً استفاده شده بود؛ نام کاربری «{$username_ac}» برای شما در نظر گرفته شد.\n\n" . $textin;
+        $textin = "⚠️ نام کاربری «" . guardDisplayUsername($requestedUsername_ac, $marzban_list_get) . "» قبلاً استفاده شده بود؛ نام کاربری «" . guardDisplayUsername($username_ac, $marzban_list_get) . "» برای شما در نظر گرفته شد.\n\n" . $textin;
     }
     if (intval($info_product['Volume_constraint']) == 0) {
         $textin = str_replace('گیگ', "", $textin);
@@ -1892,7 +1892,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         $info_product['Service_time'] = $textbotlang['users']['stateus']['Unlimited'];
     if (intval($info_product['Volume_constraint']) == 0)
         $info_product['Volume_constraint'] = $textbotlang['users']['stateus']['Unlimited'];
-    $textcreatuser = str_replace('{username}', "<code>{$dataoutput['username']}</code>", $datatextbot['textafterpay']);
+    $textcreatuser = str_replace('{username}', "<code>" . guardDisplayUsername($dataoutput['username'], $marzban_list_get) . "</code>", $datatextbot['textafterpay']);
     $textcreatuser = str_replace('{name_service}', $info_product['name_product'], $textcreatuser);
     $textcreatuser = str_replace('{location}', $marzban_list_get['name_panel'], $textcreatuser);
     $textcreatuser = str_replace('{day}', $info_product['Service_time'], $textcreatuser);
@@ -2036,7 +2036,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
 $textonebuy
 <blockquote>▫️آیدی عددی کاربر : <code>$from_id</code></blockquote>
 <blockquote>▫️نام کاربری کاربر :@$username</blockquote>
-<blockquote>▫️نام کاربری کانفیگ :$username_ac</blockquote>
+<blockquote>▫️نام کاربری کانفیگ :" . guardDisplayUsername($username_ac, $marzban_list_get) . "</blockquote>
 <blockquote>▫️نام کاربر : $first_name</blockquote>
 <blockquote>▫️موقعیت سرویس سرویس : {$userdate['name_panel']}</blockquote>
 <blockquote>▫️نام محصول :{$info_product['name_product']}</blockquote>
@@ -2414,7 +2414,7 @@ $textonebuy
     $userbalancepish = number_format($user['Balance']);
     $textin = "
 📇 پیش فاکتور شما:
-👤 نام کاربری: <code>$username_ac</code>
+👤 نام کاربری: <code>" . guardDisplayUsername($username_ac, $marzban_list_get) . "</code>
 🔐 نام سرویس: {$info_product['name_product']}
 📆 مدت اعتبار: {$info_product['Service_time']} روز
 💶 قیمت: $price_product_format  تومان
@@ -2656,7 +2656,7 @@ $textonebuy
 
 🧑‍🦯 شما میتوانید شیوه اتصال را  با فشردن دکمه زیر و انتخاب سیستم عامل خود را دریافت کنید";
         }
-        $textcreatuser = str_replace('{username}', "<code>{$dataoutput['username']}</code>", $datatextbot['textafterpay']);
+        $textcreatuser = str_replace('{username}', "<code>" . guardDisplayUsername($dataoutput['username'], $marzban_list_get) . "</code>", $datatextbot['textafterpay']);
         $textcreatuser = str_replace('{name_service}', $info_product['name_product'], $textcreatuser);
         $textcreatuser = str_replace('{location}', $marzban_list_get['name_panel'], $textcreatuser);
         $textcreatuser = str_replace('{day}', $info_product['Service_time'], $textcreatuser);

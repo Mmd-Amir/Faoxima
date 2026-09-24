@@ -429,6 +429,7 @@ final class ServiceHandler extends BaseHandler
         return [
             'status'                   => $remote['status'] ?? 'unknown',
             'username'                 => $remote['username'] ?? $invoice['username'],
+            'display_username'         => guardDisplayUsername((string)($remote['username'] ?? $invoice['username']), (string)($invoice['Service_location'] ?? '')),
             'product_name'             => $invoice['name_product'],
             'is_test'                  => $isTest,
             'is_stock'                 => false,
