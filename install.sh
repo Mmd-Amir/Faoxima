@@ -8,7 +8,7 @@ elif locale -a 2>/dev/null | grep -qi '^C\.UTF-8$'; then
     export LC_ALL=C.UTF-8
 fi
 
-readonly FAOXIMA_VERSION="1.0.5"
+readonly FAOXIMA_VERSION="1.1.1"
 readonly FAOXIMA_REPO="Mmd-Amir/Faoxima"
 readonly FAOXIMA_GITHUB="https://github.com/${FAOXIMA_REPO}"
 readonly FAOXIMA_TELEGRAM="https://t.me/faoxima"

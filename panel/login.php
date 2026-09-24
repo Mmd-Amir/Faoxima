@@ -245,7 +245,7 @@ if (isset($_POST['login'])) {
             <p class="text-muted" style="text-align:center; font-size:11px; margin-top:14px; direction:ltr; font-family:'JetBrains Mono',monospace;">
                 <?php
                     $__loginVer = trim((string)@file_get_contents(__DIR__ . '/../version'));
-                    if ($__loginVer === '') $__loginVer = '1.0.5';
+                    if ($__loginVer === '') $__loginVer = '1.1.1';
                     echo 'v' . htmlspecialchars(ltrim($__loginVer, 'vV'), ENT_QUOTES, 'UTF-8');
                 ?>
             </p>
