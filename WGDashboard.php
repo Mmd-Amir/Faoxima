@@ -363,7 +363,6 @@ function ResetUserDataUsagewg($publickey, $namepanel){
     $req = new CurlRequest($url);
     $req->setHeaders($headers);
     $response = $req->post($configpanel);
-    file_put_contents('ss',json_encode($response));
     return $response;
 }
 function remove_userwg($location,$username){

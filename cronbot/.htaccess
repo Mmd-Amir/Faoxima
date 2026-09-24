@@ -1,0 +1,3 @@
+<FilesMatch "^(info|gift|users\.txt.*|broadcast_log\.on)$">
+    Require all denied
+</FilesMatch>

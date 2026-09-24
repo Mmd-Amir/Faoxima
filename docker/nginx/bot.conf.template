@@ -8,7 +8,9 @@ location ~* ^/${URL_PATH}/.*\.(?:env|ya?ml|sql|log|sh|json|bak|lock|md|conf|ini|
     return 404;
 }
 
-location ~* ^/${URL_PATH}/(?:.*/)?(?:error_log|hash\.txt)$ { deny all; return 404; }
+location ~* ^/${URL_PATH}/(?:.*/)?(?:error_log|hash\.txt|ss|log\.txt|cartlist\.txt)$ { deny all; return 404; }
+
+location ~ ^/${URL_PATH}/cronbot/(?:info|gift|users\.txt.*|broadcast_log\.on)$ { deny all; return 404; }
 
 location ^~ /${URL_PATH}/installer/    { deny all; return 403; }
 location ^~ /${URL_PATH}/storage/      { deny all; return 403; }

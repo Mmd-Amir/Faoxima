@@ -103,7 +103,6 @@ if(preg_match('/انتقال اينترنت:\D*([\d,]+)/u', $valuepost, $matches
     $amountInteger = str_replace(',', '', $matches[1])*0.1;
 }}elseif($name_bank  == "parsian"){
 if(preg_match('/مبلغ:(\d{1,3}(?:,\d{3})*)\+/', $valuepost, $matches)) {
-    file_put_contents('ss',json_encode($matches));
     $amountInteger = str_replace(',', '', $matches[1])*0.1;
 }}elseif($name_bank  == "sphe"){
 if(preg_match('/مبلغ:\s*([\d,]+)\s*ريال/', $valuepost, $matches)) {
