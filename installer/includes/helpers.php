@@ -694,16 +694,17 @@ function rx_ensure_admin_record(array $dbInfo, string $adminNumber): bool
             return false;
         }
         $connect->set_charset('utf8mb4');
-        $defaultPasswordHash = password_hash('14e9eab674', PASSWORD_DEFAULT);
+        $defaultPassword = bin2hex(random_bytes(5));
+        $defaultPasswordHash = password_hash($defaultPassword, PASSWORD_DEFAULT);
         $tableCheck = $connect->query("SHOW TABLES LIKE 'admin'");
         if ($tableCheck && $tableCheck->num_rows > 0) {
             $result = $connect->query('SELECT COUNT(*) as cnt FROM admin');
             $countRow = $result ? $result->fetch_assoc() : ['cnt' => 0];
             $count = (int) ($countRow['cnt'] ?? 0);
             if ($count === 0) {
-                $stmt = $connect->prepare("INSERT INTO `admin` (`id_admin`, `username`, `password`, `password_hash`, `rule`) VALUES (?, 'admin', '14e9eab674', ?, 'administrator')");
+                $stmt = $connect->prepare("INSERT INTO `admin` (`id_admin`, `username`, `password`, `password_hash`, `rule`) VALUES (?, 'admin', ?, ?, 'administrator')");
                 if ($stmt) {
-                    $stmt->bind_param('ss', $adminNumber, $defaultPasswordHash);
+                    $stmt->bind_param('sss', $adminNumber, $defaultPassword, $defaultPasswordHash);
                     if (!$stmt->execute()) {
                         $stmt->close();
                         $connect->close();
@@ -716,8 +717,9 @@ function rx_ensure_admin_record(array $dbInfo, string $adminNumber): bool
                 }
             } else {
                 $adminNumberEscaped = $connect->real_escape_string($adminNumber);
+                $defaultPasswordEscaped = $connect->real_escape_string($defaultPassword);
                 $defaultPasswordHashEscaped = $connect->real_escape_string($defaultPasswordHash);
-                if (!$connect->query("UPDATE `admin` SET `id_admin` = '{$adminNumberEscaped}', `username` = 'admin', `password` = '14e9eab674', `password_hash` = '{$defaultPasswordHashEscaped}', `rule` = 'administrator' LIMIT 1")) {
+                if (!$connect->query("UPDATE `admin` SET `id_admin` = '{$adminNumberEscaped}', `username` = 'admin', `password` = '{$defaultPasswordEscaped}', `password_hash` = '{$defaultPasswordHashEscaped}', `rule` = 'administrator' LIMIT 1")) {
                     $connect->close();
                     return false;
                 }
@@ -734,9 +736,9 @@ function rx_ensure_admin_record(array $dbInfo, string $adminNumber): bool
                 $connect->close();
                 return false;
             }
-            $stmt = $connect->prepare("INSERT INTO `admin` (`id_admin`, `username`, `password`, `password_hash`, `rule`) VALUES (?, 'admin', '14e9eab674', ?, 'administrator')");
+            $stmt = $connect->prepare("INSERT INTO `admin` (`id_admin`, `username`, `password`, `password_hash`, `rule`) VALUES (?, 'admin', ?, ?, 'administrator')");
             if ($stmt) {
-                $stmt->bind_param('ss', $adminNumber, $defaultPasswordHash);
+                $stmt->bind_param('sss', $adminNumber, $defaultPassword, $defaultPasswordHash);
                 if (!$stmt->execute()) {
                     $stmt->close();
                     $connect->close();

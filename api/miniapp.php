@@ -71,10 +71,10 @@ register_shutdown_function(static function () {
     $err = error_get_last();
     $fatal = [E_ERROR, E_PARSE, E_COMPILE_ERROR, E_CORE_ERROR, E_USER_ERROR];
     if (is_array($err) && in_array($err['type'], $fatal, true)) {
+        @error_log('[miniapp] fatal: ' . $err['message'] . ' @ ' . (string)$err['file'] . ':' . (int)$err['line']);
         __miniapp_emit(500, [
             'status' => false,
-            'msg'    => 'PHP fatal: ' . $err['message'],
-            'detail' => basename((string)$err['file']) . ':' . (int)$err['line'],
+            'msg'    => 'Internal server error',
             'obj'    => [],
         ]);
         return;
@@ -246,10 +246,10 @@ try {
             FaoximaLogger::exception($e, 'miniapp.php top-level exception');
         } catch (Throwable $_) {  }
     }
+    @error_log('[miniapp] exception: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
     __miniapp_emit(500, [
         'status' => false,
-        'msg'    => 'miniapp.php exception: ' . $e->getMessage(),
-        'detail' => basename($e->getFile()) . ':' . $e->getLine(),
+        'msg'    => 'Internal server error',
         'obj'    => [],
     ]);
 }

@@ -55,7 +55,7 @@ function logApiRequest($headers, $data, $action)
             "INSERT IGNORE INTO logs_api (header, data, time, ip, actions) VALUES (?, ?, ?, ?, ?)"
         );
         $stmt->execute([
-            json_encode($headers),
+            json_encode(FaoximaApiCredential::redactHeaders($headers)),
             json_encode($data),
             date('Y/m/d H:i:s'),
             $_SERVER['REMOTE_ADDR'] ?? 'unknown',

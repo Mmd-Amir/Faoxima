@@ -38,6 +38,9 @@ register_shutdown_function(static function () {
 
 ini_set('session.cookie_samesite', 'Lax');
 ini_set('session.cookie_httponly', '1');
+if ((!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off') || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https') {
+    ini_set('session.cookie_secure', '1');
+}
 session_start();
 
 if (empty($_SESSION['_session_regenerated'])) {

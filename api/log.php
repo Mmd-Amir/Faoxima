@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/../botapi.php';
+require_once __DIR__ . '/../lib/ApiCredential.php';
 header('Content-Type: application/json');
 date_default_timezone_set('Asia/Tehran');
 ini_set('default_charset', 'UTF-8');
@@ -27,7 +28,7 @@ if (!is_array($data)) {
 }
 
 $stmt = $pdo->prepare("INSERT IGNORE INTO logs_api (header,data,time,ip,actions) VALUES (:header,:data,:time,:ip,:actions)");
-$headerJson  = json_encode($headrs);
+$headerJson  = json_encode(FaoximaApiCredential::redactHeaders($headrs));
 $dataJson    = json_encode($data);
 $nowStr      = date('Y/m/d H:i:s');
 $ipStr       = $_SERVER['REMOTE_ADDR'] ?? 'unknown';

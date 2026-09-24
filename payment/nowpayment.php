@@ -127,7 +127,24 @@ if ($ipnSecret !== '') {
     }
     $__rxRawLog('signature OK');
 } else {
-    $__rxRawLog('no IPN secret configured — skipping signature check');
+    $verifyPaymentId = isset($data['payment_id']) ? (string)$data['payment_id'] : '';
+    $apiPayment = null;
+    if ($verifyPaymentId !== '' && preg_match('/^[A-Za-z0-9_\-]{1,128}$/', $verifyPaymentId) && function_exists('StatusPayment')) {
+        $apiPayment = StatusPayment($verifyPaymentId);
+    }
+    if (!is_array($apiPayment) || (string)($apiPayment['payment_id'] ?? '') !== $verifyPaymentId) {
+        $__rxRawLog('REJECT: no IPN secret and payment could not be verified via API', ['payment_id' => $verifyPaymentId], true);
+        http_response_code(401);
+        exit('Unverified');
+    }
+    foreach (['payment_status', 'order_id', 'invoice_id', 'price_amount', 'pay_amount', 'actually_paid', 'payin_hash'] as $verifiedKey) {
+        if (array_key_exists($verifiedKey, $apiPayment)) {
+            $data[$verifiedKey] = $apiPayment[$verifiedKey];
+        } else {
+            unset($data[$verifiedKey]);
+        }
+    }
+    $__rxRawLog('no IPN secret configured — payment verified via API');
 }
 
 $paymentStatus = strtolower(trim((string)($data['payment_status'] ?? '')));
@@ -136,6 +153,7 @@ $orderIdRaw    = isset($data['order_id'])   ? (string)$data['order_id']   : '';
 $invoiceIdRaw  = isset($data['invoice_id']) ? (string)$data['invoice_id'] : '';
 $priceAmount   = isset($data['price_amount']) ? (float)$data['price_amount'] : 0.0;
 $actuallyPaid  = isset($data['actually_paid']) ? (float)$data['actually_paid'] : 0.0;
+$payAmount     = isset($data['pay_amount']) ? (float)$data['pay_amount'] : 0.0;
 
 $__rxRawLog('parsed callback', [
     'status'    => $paymentStatus,
@@ -148,7 +166,7 @@ $__rxRawLog('parsed callback', [
 
 $terminalStatuses = ['finished', 'confirmed', 'sending'];
 $paidStatuses     = $terminalStatuses;
-if ($paymentStatus === 'partially_paid' && $priceAmount > 0 && $actuallyPaid >= ($priceAmount - 0.000001)) {
+if ($paymentStatus === 'partially_paid' && $payAmount > 0 && $actuallyPaid >= ($payAmount - 0.000001)) {
     $paidStatuses[] = 'partially_paid';
 }
 
@@ -224,6 +242,16 @@ $__rxRawLog('matched Payment_report', [
     'price'      => $Payment_report['price'] ?? '?',
     'id_user'    => $Payment_report['id_user'] ?? '?',
 ]);
+
+if (strtolower((string)($Payment_report['Payment_Method'] ?? '')) !== 'nowpayment') {
+    $__rxRawLog('REJECT: matched Payment_report is not a NowPayments order', [
+        'order_id' => $orderId,
+        'method'   => $Payment_report['Payment_Method'] ?? '?',
+    ], true);
+    http_response_code(200);
+    echo 'method-mismatch';
+    exit;
+}
 
 if ((string)$Payment_report['payment_Status'] === 'paid') {
     $__rxRawLog('SKIP: already paid', ['order_id' => $orderId]);

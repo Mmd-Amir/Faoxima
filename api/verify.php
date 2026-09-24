@@ -39,10 +39,10 @@ register_shutdown_function(static function () {
     $err = error_get_last();
     $fatal = [E_ERROR, E_PARSE, E_COMPILE_ERROR, E_CORE_ERROR, E_USER_ERROR];
     if (is_array($err) && in_array($err['type'], $fatal, true)) {
+        @error_log('[verify] fatal: ' . $err['message'] . ' @ ' . (string)$err['file'] . ':' . (int)$err['line']);
         __verify_emit(500, [
             'status' => false,
-            'msg'    => 'PHP fatal: ' . $err['message'],
-            'detail' => basename((string)$err['file']) . ':' . (int)$err['line'],
+            'msg'    => 'Internal server error',
             'token'  => null,
         ]);
         return;
@@ -71,10 +71,10 @@ try {
         'token'  => null,
     ]);
 } catch (Throwable $e) {
+    @error_log('[verify] exception: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
     __verify_emit(500, [
         'status' => false,
-        'msg'    => 'verify.php exception: ' . $e->getMessage(),
-        'detail' => basename($e->getFile()) . ':' . $e->getLine(),
+        'msg'    => 'Internal server error',
         'token'  => null,
     ]);
 }

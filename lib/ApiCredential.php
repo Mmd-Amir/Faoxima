@@ -37,6 +37,17 @@ final class FaoximaApiCredential
         if (is_file($legacy)) @unlink($legacy);
     }
 
+    public static function redactHeaders($headers): array
+    {
+        if (!is_array($headers)) return [];
+        foreach ($headers as $name => $value) {
+            if (in_array(strtolower((string) $name), ['token', 'authorization', 'x-api-key', 'cookie'], true)) {
+                $headers[$name] = '[redacted]';
+            }
+        }
+        return $headers;
+    }
+
     public static function valid($provided, string $botToken): bool
     {
         if (!is_string($provided) || $provided === '') return false;

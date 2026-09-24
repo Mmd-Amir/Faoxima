@@ -148,8 +148,14 @@ if(isset($amountInteger) && $amountInteger !== NULL){
             'cache_time' => 5,
         ));
         return;}
+        $_claim = $connect->prepare("UPDATE Payment_report SET payment_Status = 'paid' WHERE id_order = ? AND (payment_Status = 'Unpaid' OR payment_Status = 'waiting')");
+        $_claim->bind_param("s", $order_id);
+        $_claim->execute();
+        $_claimed = $_claim->affected_rows;
+        $_claim->close();
+        if ($_claimed < 1) return;
+        if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
         DirectPayment($order_id,"../images.jpg");
-        update("Payment_report","payment_Status","paid",'id_order',$order_id);
     $_uid2 = $Payment_report['id_user'];
     $_stmt = $connect->prepare("SELECT Balance FROM user WHERE id = ? LIMIT 1");
     $_stmt->bind_param("s", $_uid2);

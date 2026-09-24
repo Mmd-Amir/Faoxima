@@ -16,10 +16,8 @@ register_shutdown_function(static function () {
         http_response_code(500);
         header('Content-Type: text/html; charset=utf-8');
     }
-    $msg = htmlspecialchars(
-        $err['message'] . ' @ ' . basename((string)$err['file']) . ':' . (int)$err['line'],
-        ENT_QUOTES, 'UTF-8'
-    );
+    @error_log('[panel/login] fatal: ' . $err['message'] . ' @ ' . (string)$err['file'] . ':' . (int)$err['line']);
+    $msg = 'خطای داخلی رخ داد. جزئیات در لاگ سرور ثبت شد.';
     echo '<!DOCTYPE html><html lang="fa" dir="rtl"><meta charset="utf-8">'
        . '<title>خطای سرور</title>'
        . '<body style="font-family:sans-serif;background:#0a0a0f;color:#f1f3f8;padding:32px;">'
@@ -29,6 +27,9 @@ register_shutdown_function(static function () {
 
 ini_set('session.cookie_samesite', 'Lax');
 ini_set('session.cookie_httponly', '1');
+if ((!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off') || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https') {
+    ini_set('session.cookie_secure', '1');
+}
 session_start();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/lib/icons.php';

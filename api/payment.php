@@ -73,7 +73,7 @@ $action = $data['actions'] ?? null;
 
 $stmt = $pdo->prepare("INSERT IGNORE INTO logs_api (header, data, time, ip, actions) VALUES (:header, :data, :time, :ip, :actions)");
 $stmt->execute([
-    ':header' => json_encode($headers),
+    ':header' => json_encode(FaoximaApiCredential::redactHeaders($headers)),
     ':data' => json_encode($data),
     ':time' => date('Y/m/d H:i:s'),
     ':ip' => $_SERVER['REMOTE_ADDR'],
