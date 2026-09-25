@@ -104,10 +104,14 @@ if (!function_exists('payment_confirm_paid')) {
             || rx_cashbackEligibleForKey($cashbackKey, $balanceUser['register'] ?? null, $report['id_invoice'] ?? null, $balanceUser['id'] ?? null, $report['id_order'] ?? null);
 
         $cashbackAmount = 0;
-        if ($cashbackEligible && $cashbackPercent !== '' && $cashbackPercent !== '0') {
+        if ($cashbackEligible && $cashbackPercent !== '' && $cashbackPercent !== '0'
+            && function_exists('rx_cashback_credit_once')) {
             $cashbackAmount = (int) floor(((int)($report['price'] ?? 0) * (int)$cashbackPercent) / 100);
-            $newBalance = (int)($balanceUser['Balance'] ?? 0) + $cashbackAmount;
-            update('user', 'Balance', $newBalance, 'id', $balanceUser['id']);
+            if (rx_cashback_credit_once($report['id_order'], $balanceUser['id'], $cashbackAmount, $cashbackKey, 'هدیه بازگشت وجه ' . $cashbackKey) !== 'credited') {
+                $cashbackAmount = 0;
+            }
+        }
+        if ($cashbackAmount > 0) {
             if (function_exists('sendmessage')) {
                 sendmessage(
                     $balanceUser['id'],

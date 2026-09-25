@@ -1247,7 +1247,7 @@ if (false) {
     step('addbalanceusercurrent', $from_id);
 } elseif ($user['step'] == "addbalanceusercurrent") {
     if (!isset($update['message']) && empty($text)) { return; }
-    if (!ctype_digit($text)) {
+    if (!ctype_digit($text) || intval($text) <= 0) {
         nm_adminInstantReply($from_id, $textbotlang['Admin']['Balance']['Invalidprice'], $backadmin, 'HTML');
         return;
     }
@@ -1257,24 +1257,52 @@ if (false) {
     }
     $dateacc = date('Y/m/d H:i:s');
     $randomString = bin2hex(random_bytes(5));
-    $stmt = $connect->prepare("INSERT INTO Payment_report (id_user,id_order,time,price,payment_Status,Payment_Method,id_invoice) VALUES (?,?,?,?,?,?,?)");
     $payment_Status = "paid";
     $Payment_Method = "add balance by admin";
     $invoice = null;
-    $stmt->bind_param("sssssss", $user['Processing_value'], $randomString, $dateacc, $text, $payment_Status, $Payment_Method, $invoice);
-    $stmt->execute();
+    $rxAddBalOk = false;
+    try {
+        $pdo->beginTransaction();
+        $rxAddBalClaim = $pdo->prepare("UPDATE user SET step = 'home' WHERE id = :admin AND step = 'addbalanceusercurrent'");
+        $rxAddBalClaim->execute([':admin' => $from_id]);
+        if ($rxAddBalClaim->rowCount() < 1) {
+            $pdo->rollBack();
+            return;
+        }
+        if (!balance_atomic_credit($user['Processing_value'], (int) $text)) {
+            throw new RuntimeException('balance_atomic_credit returned false');
+        }
+        $stmt = $pdo->prepare("INSERT INTO Payment_report (id_user,id_order,time,price,payment_Status,Payment_Method,id_invoice) VALUES (?,?,?,?,?,?,?)");
+        $stmt->execute([$user['Processing_value'], $randomString, $dateacc, $text, $payment_Status, $Payment_Method, $invoice]);
+        if (function_exists('wallet_ledger_record')) {
+            wallet_ledger_record($user['Processing_value'], 'credit', $text, 'admin_credit', 'افزایش موجودی توسط ادمین', $randomString);
+        }
+        $pdo->commit();
+        $rxAddBalOk = true;
+    } catch (Throwable $rxAddBalErr) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('[admin_add_balance] ' . $rxAddBalErr->getMessage());
+        if (function_exists('rx_log_event')) {
+            rx_log_event('ADMIN_ADD_BALANCE_FAILED', $rxAddBalErr->getMessage(), [
+                'admin_id' => $from_id,
+                'id_user' => $user['Processing_value'],
+                'amount' => $text,
+            ]);
+        }
+    }
+    if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
+    if (!$rxAddBalOk) {
+        nm_adminInstantReply($from_id, "❌ افزایش موجودی انجام نشد. دوباره تلاش کنید.", $backadmin, 'HTML');
+        return;
+    }
     nm_adminInstantReply($from_id, $textbotlang['Admin']['ManageUser']['addbalanced'], $keyboardadmin, 'html');
-
-
-    $stmtAtomic = $pdo->prepare("UPDATE user SET Balance = Balance + :delta WHERE id = :uid");
-    $stmtAtomic->bindValue(':delta', (int) $text, PDO::PARAM_INT);
-    $stmtAtomic->bindValue(':uid', $user['Processing_value'], PDO::PARAM_STR);
-    $stmtAtomic->execute();
     $heibalanceuser = number_format($text, 0);
     $textadd = "💎 کاربر عزیز مبلغ $heibalanceuser تومان به موجودی کیف پول تان اضافه گردید.";
     sendmessage($user['Processing_value'], $textadd, null, 'HTML');
     step('home', $from_id);
-    $Balance_user_after = number_format(select("user", "*", "id", $user['Processing_value'], "select")['Balance']);
+    $Balance_user_after = number_format(select("user", "*", "id", $user['Processing_value'], "select", ['cache' => false])['Balance']);
     $pricadd = number_format($text);
     if (strlen($setting['Channel_Report']) > 0) {
         $textaddbalance = "📌 یک ادمین موجودی کاربر را افزایش داده است :
@@ -1305,7 +1333,7 @@ if (false) {
     ]);
     step('addbalanceuser', $from_id);
 } elseif ($user['step'] == "addbalanceuser") {
-    if (!ctype_digit($text)) {
+    if (!ctype_digit($text) || intval($text) <= 0) {
         nm_adminInstantReply($from_id, $textbotlang['Admin']['Balance']['Invalidprice'], $backadmin, 'HTML');
         return;
     }
@@ -1315,24 +1343,58 @@ if (false) {
     }
     $dateacc = date('Y/m/d H:i:s');
     $randomString = bin2hex(random_bytes(5));
-    $stmt = $connect->prepare("INSERT INTO Payment_report (id_user,id_order,time,price,payment_Status,Payment_Method,id_invoice) VALUES (?,?,?,?,?,?,?)");
     $payment_Status = "paid";
     $Payment_Method = "low balance by admin";
     $invoice = null;
-    $stmt->bind_param("sssssss", $user['Processing_value'], $randomString, $dateacc, $text, $payment_Status, $Payment_Method, $invoice);
-    $stmt->execute();
+    $rxLowBalOk = false;
+    $rxLowBalReason = '';
+    try {
+        $pdo->beginTransaction();
+        $rxLowBalClaim = $pdo->prepare("UPDATE user SET step = 'home' WHERE id = :admin AND step = 'addbalanceuser'");
+        $rxLowBalClaim->execute([':admin' => $from_id]);
+        if ($rxLowBalClaim->rowCount() < 1) {
+            $pdo->rollBack();
+            return;
+        }
+        $rxLowBalCharge = balance_atomic_charge($user['Processing_value'], (int) $text, 0);
+        if (empty($rxLowBalCharge['ok'])) {
+            $rxLowBalReason = (string) ($rxLowBalCharge['reason'] ?? '');
+            throw new RuntimeException('balance_atomic_charge failed: ' . $rxLowBalReason);
+        }
+        $stmt = $pdo->prepare("INSERT INTO Payment_report (id_user,id_order,time,price,payment_Status,Payment_Method,id_invoice) VALUES (?,?,?,?,?,?,?)");
+        $stmt->execute([$user['Processing_value'], $randomString, $dateacc, $text, $payment_Status, $Payment_Method, $invoice]);
+        if (function_exists('wallet_ledger_record')) {
+            wallet_ledger_record($user['Processing_value'], 'debit', $text, 'admin_debit', 'کاهش موجودی توسط ادمین', $randomString);
+        }
+        $pdo->commit();
+        $rxLowBalOk = true;
+    } catch (Throwable $rxLowBalErr) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('[admin_low_balance] ' . $rxLowBalErr->getMessage());
+        if (function_exists('rx_log_event')) {
+            rx_log_event('ADMIN_LOW_BALANCE_FAILED', $rxLowBalErr->getMessage(), [
+                'admin_id' => $from_id,
+                'id_user' => $user['Processing_value'],
+                'amount' => $text,
+            ]);
+        }
+    }
+    if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
+    if (!$rxLowBalOk) {
+        $rxLowBalMsg = $rxLowBalReason === 'insufficient-or-stale'
+            ? "❌ موجودی کاربر برای کسر این مبلغ کافی نیست."
+            : "❌ کسر موجودی انجام نشد. دوباره تلاش کنید.";
+        nm_adminInstantReply($from_id, $rxLowBalMsg, $backadmin, 'HTML');
+        return;
+    }
     nm_adminInstantReply($from_id, $textbotlang['Admin']['ManageUser']['lowbalanced'], $keyboardadmin, 'html');
-
-
-    $stmtAtomic = $pdo->prepare("UPDATE user SET Balance = Balance - :delta WHERE id = :uid");
-    $stmtAtomic->bindValue(':delta', (int) $text, PDO::PARAM_INT);
-    $stmtAtomic->bindValue(':uid', $user['Processing_value'], PDO::PARAM_STR);
-    $stmtAtomic->execute();
     $lowbalanceuser = number_format($text, 0);
     $textkam = "❌ کاربر عزیز مبلغ $lowbalanceuser تومان از  موجودی کیف پول تان کسر گردید.";
     sendmessage($user['Processing_value'], $textkam, null, 'HTML');
     step('home', $from_id);
-    $Balance_user_afters = number_format(select("user", "*", "id", $user['Processing_value'], "select")['Balance']);
+    $Balance_user_afters = number_format(select("user", "*", "id", $user['Processing_value'], "select", ['cache' => false])['Balance']);
     if (strlen($setting['Channel_Report']) > 0) {
         $textaddbalance = "📌 یک ادمین موجودی کاربر را کم کرده است :
 
@@ -1939,44 +2001,74 @@ $iduser  در ربات  رفع مسدود گردید
         ));
         return;
     }
-    $rxClaimAddBal = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'paid' WHERE id_order = :o AND payment_Status <> 'paid'");
-    $rxClaimAddBal->execute([':o' => $id_order]);
-    if ($rxClaimAddBal->rowCount() < 1) {
-        telegram('answerCallbackQuery', array(
-            'callback_query_id' => $callback_query_id,
-            'text' => $textbotlang['Admin']['Payment']['reviewedpayment'],
-            'show_alert' => true,
-            'cache_time' => 5,
-        ));
-        return;
-    }
-    if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
-
     update("user", "Processing_value_four", $_addbal_chat_id . ':' . $_addbal_msg_id . ':' . $_addbal_thread_id, "id", $from_id);
     nm_adminInstantReply($from_id, $textbotlang['Admin']['ManageUser']['addbalanceuserdec'], $backadmin, 'html');
     step('addbalancemanual', $from_id);
 } elseif ($user['step'] == "addbalancemanual") {
     if (!isset($update['message']) && empty($text)) { return; }
-    if (!ctype_digit($text)) {
+    if (!ctype_digit($text) || intval($text) <= 0) {
         nm_adminInstantReply($from_id, $textbotlang['Admin']['Balance']['Invalidprice'], $backadmin, 'HTML');
         return;
     }
-    nm_adminInstantReply($from_id, $textbotlang['Admin']['Balance']['AddBalanceUser'], $keyboardadmin, 'HTML');
-    $Payment_report = select("Payment_report", "*", "id_order", $user['Processing_value'], "select");
-    $Balance_user = select("user", "*", "id", $Payment_report['id_user'], "select");
+    $Payment_report = select("Payment_report", "*", "id_order", $user['Processing_value'], "select", ['cache' => false]);
+    if (!is_array($Payment_report) || empty($Payment_report['id_user'])) {
+        step('home', $from_id);
+        nm_adminInstantReply($from_id, "❌ فاکتور پرداخت یافت نشد.", $keyboardadmin, 'HTML');
+        return;
+    }
+    $Balance_user = select("user", "*", "id", $Payment_report['id_user'], "select", ['cache' => false]);
     $balanceusers = number_format($text, 0);
-    if (function_exists('balance_atomic_credit')) {
-        balance_atomic_credit($Payment_report['id_user'], (float) $text);
-    } else {
-        $Balance_add_user = $Balance_user['Balance'] + $text;
-        update("user", "Balance", $Balance_add_user, "id", $Payment_report['id_user']);
+    $rxManualOk = false;
+    $rxManualReviewed = false;
+    try {
+        $pdo->beginTransaction();
+        $rxManualStep = $pdo->prepare("UPDATE user SET step = 'home' WHERE id = :admin AND step = 'addbalancemanual'");
+        $rxManualStep->execute([':admin' => $from_id]);
+        if ($rxManualStep->rowCount() < 1) {
+            $pdo->rollBack();
+            return;
+        }
+        $rxClaimAddBal = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'paid', at_updated = :at WHERE id_order = :o AND payment_Status NOT IN ('paid', 'reject', 'processing')");
+        $rxClaimAddBal->execute([':o' => $Payment_report['id_order'], ':at' => date('Y/m/d H:i:s')]);
+        if ($rxClaimAddBal->rowCount() < 1) {
+            $rxManualReviewed = true;
+            throw new RuntimeException('payment already reviewed');
+        }
+        if (!balance_atomic_credit($Payment_report['id_user'], (int) $text)) {
+            throw new RuntimeException('balance_atomic_credit returned false');
+        }
+        if (function_exists('wallet_ledger_record')) {
+            wallet_ledger_record($Payment_report['id_user'], 'credit', $text, 'topup_card', 'تایید رسید کارت به کارت توسط ادمین', $Payment_report['id_order']);
+        }
+        $pdo->commit();
+        $rxManualOk = true;
+    } catch (Throwable $rxManualErr) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        if (!$rxManualReviewed) {
+            error_log('[card_manual_add_balance] ' . $rxManualErr->getMessage());
+            if (function_exists('rx_log_event')) {
+                rx_log_event('CARD_MANUAL_CREDIT_FAILED', $rxManualErr->getMessage(), [
+                    'admin_id' => $from_id,
+                    'id_order' => $Payment_report['id_order'],
+                    'id_user' => $Payment_report['id_user'],
+                    'amount' => $text,
+                ]);
+            }
+        }
     }
-    if (function_exists('wallet_ledger_record')) {
-        wallet_ledger_record($Payment_report['id_user'], 'credit', $text, 'topup_card', 'تایید رسید کارت به کارت توسط ادمین', $Payment_report['id_order']);
+    if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
+    if ($rxManualReviewed) {
+        step('home', $from_id);
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['Payment']['reviewedpayment'], $keyboardadmin, 'HTML');
+        return;
     }
-    if (function_exists('update')) {
-        update('Payment_report', 'at_updated', date('Y/m/d H:i:s'), 'id_order', $Payment_report['id_order']);
+    if (!$rxManualOk) {
+        nm_adminInstantReply($from_id, "❌ افزایش موجودی انجام نشد. دوباره تلاش کنید.", $backadmin, 'HTML');
+        return;
     }
+    nm_adminInstantReply($from_id, $textbotlang['Admin']['Balance']['AddBalanceUser'], $keyboardadmin, 'HTML');
     $textadd = "💎 کاربر عزیز مبلغ $balanceusers تومان به موجودی کیف پول تان اضافه گردید.";
     sendmessage($Payment_report['id_user'], $textadd, null, 'HTML');
     if (function_exists('faoxima_public_purchase_log_event')) {
@@ -3265,18 +3357,53 @@ $iduser  در ربات  رفع مسدود گردید
             $pricelast = 0;
         }
     }
-    $pricelast = intval($pricelast);
-    if (intval($pricelast) != 0) {
-
-
-        $stmtAtomicRefund = $pdo->prepare("UPDATE user SET Balance = Balance + :delta WHERE id = :uid");
-        $stmtAtomicRefund->bindValue(':delta', (int) $pricelast, PDO::PARAM_INT);
-        $stmtAtomicRefund->bindValue(':uid', $nameloc['id_user'], PDO::PARAM_STR);
-        $stmtAtomicRefund->execute();
+    $pricelast = max(0, intval($pricelast));
+    $rxRefundCap = intval($nameloc['price_product'] ?? 0) + intval($sumproduct['SUM(price)'] ?? 0);
+    if ($rxRefundCap > 0 && $pricelast > $rxRefundCap) {
+        $pricelast = $rxRefundCap;
+    }
+    $rxRefundOk = false;
+    try {
+        $pdo->beginTransaction();
+        $rxRefundClaim = $pdo->prepare("UPDATE cancel_service SET status = 'accept' WHERE username = :u AND (status IS NULL OR status NOT IN ('accept', 'reject'))");
+        $rxRefundClaim->execute([':u' => $requestcheck['username']]);
+        if ($rxRefundClaim->rowCount() < 1) {
+            $pdo->rollBack();
+            telegram('answerCallbackQuery', array(
+                'callback_query_id' => $callback_query_id,
+                'text' => "این درخواست توسط ادمین دیگری بررسی شده است",
+                'show_alert' => true,
+                'cache_time' => 5,
+            ));
+            return;
+        }
+        if ($pricelast > 0) {
+            if (!balance_atomic_credit($nameloc['id_user'], $pricelast)) {
+                throw new RuntimeException('balance_atomic_credit returned false');
+            }
+            if (!wallet_ledger_record($nameloc['id_user'], 'credit', $pricelast, 'refund', 'بازگشت وجه حذف سرویس (تایید ادمین)', null, 'invoice', (string) ($nameloc['id_invoice'] ?? ''))) {
+                throw new RuntimeException('wallet_ledger_record failed');
+            }
+        }
+        $pdo->commit();
+        $rxRefundOk = true;
+    } catch (Throwable $rxRefundErr) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('[remoceserviceadmin] ' . $rxRefundErr->getMessage());
+        if (function_exists('rx_log_event')) {
+            rx_log_event('ADMIN_REFUND_FAILED', $rxRefundErr->getMessage(), ['admin_id' => $from_id, 'id_invoice' => $nameloc['id_invoice'] ?? null, 'id_user' => $nameloc['id_user'] ?? null, 'amount' => $pricelast]);
+        }
+    }
+    if (!$rxRefundOk) {
+        nm_adminInstantReply($from_id, "❌ بازگشت وجه انجام نشد و سرویس حذف نگردید. دوباره تلاش کنید.", null, 'HTML');
+        return;
+    }
+    if ($pricelast > 0) {
         sendmessage($nameloc['id_user'], "💰کاربر گرامی مبلغ " . rxFormatToman($pricelast) . " تومان به موجودی شما اضافه گردید.", null, 'HTML');
     }
     $ManagePanel->RemoveUser($nameloc['Service_location'], $requestcheck['username']);
-    update("cancel_service", "status", "accept", "username", $requestcheck['username']);
     update("cancel_service", "resolved_at", time(), "username", $requestcheck['username']);
     if (function_exists('rxRefundHardDeleteService')) {
         rxRefundHardDeleteService($nameloc['Service_location'] ?? '', $requestcheck['username'] ?? '', $nameloc['id_invoice'] ?? '');
@@ -3334,11 +3461,44 @@ $iduser  در ربات  رفع مسدود گردید
         return;
     }
     $invoice = select("invoice", "*", "id_invoice", $user['Processing_value'], "select");
-
-    $stmtAtomicRefund2 = $pdo->prepare("UPDATE user SET Balance = Balance + :delta WHERE id = :uid");
-    $stmtAtomicRefund2->bindValue(':delta', (int) $text, PDO::PARAM_INT);
-    $stmtAtomicRefund2->bindValue(':uid', $invoice['id_user'], PDO::PARAM_STR);
-    $stmtAtomicRefund2->execute();
+    if (!is_array($invoice) || empty($invoice['id_user'])) {
+        step('home', $from_id);
+        nm_adminInstantReply($from_id, "❌ فاکتور پیدا نشد.", $keyboardadmin, 'HTML');
+        return;
+    }
+    $rxManualRefundAmount = intval($text);
+    $rxManualRefundOk = false;
+    try {
+        $pdo->beginTransaction();
+        $rxManualRefundStep = $pdo->prepare("UPDATE user SET step = 'home' WHERE id = :admin AND step = 'getpricebackremove'");
+        $rxManualRefundStep->execute([':admin' => $from_id]);
+        if ($rxManualRefundStep->rowCount() < 1) {
+            $pdo->rollBack();
+            return;
+        }
+        if ($rxManualRefundAmount > 0) {
+            if (!balance_atomic_credit($invoice['id_user'], $rxManualRefundAmount)) {
+                throw new RuntimeException('balance_atomic_credit returned false');
+            }
+            if (!wallet_ledger_record($invoice['id_user'], 'credit', $rxManualRefundAmount, 'refund', 'بازگشت وجه حذف سرویس (مبلغ دستی ادمین)', null, 'invoice', (string) $invoice['id_invoice'])) {
+                throw new RuntimeException('wallet_ledger_record failed');
+            }
+        }
+        $pdo->commit();
+        $rxManualRefundOk = true;
+    } catch (Throwable $rxManualRefundErr) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('[getpricebackremove] ' . $rxManualRefundErr->getMessage());
+        if (function_exists('rx_log_event')) {
+            rx_log_event('ADMIN_REFUND_FAILED', $rxManualRefundErr->getMessage(), ['admin_id' => $from_id, 'id_invoice' => $invoice['id_invoice'], 'id_user' => $invoice['id_user'], 'amount' => $rxManualRefundAmount]);
+        }
+    }
+    if (!$rxManualRefundOk) {
+        nm_adminInstantReply($from_id, "❌ بازگشت وجه انجام نشد. دوباره مبلغ را ارسال کنید.", $backadmin, 'HTML');
+        return;
+    }
     if (function_exists('rxRefundHardDeleteService')) {
         rxRefundHardDeleteService($invoice['Service_location'] ?? '', $invoice['username'] ?? '', $invoice['id_invoice'] ?? '');
     }
@@ -3407,13 +3567,18 @@ $iduser  در ربات  رفع مسدود گردید
     }
 
 
-    $mafu_claim = $pdo->prepare("UPDATE invoice SET Status = 'removedbyadmin' WHERE id_invoice = :inv AND Status NOT IN ('removedbyadmin','removebyuser','refunded')");
-    $mafu_claim->bindValue(':inv', $mafu_inv_id, PDO::PARAM_STR);
-    $mafu_claim->execute();
-    if ($mafu_claim->rowCount() === 0) {
+    $mafu_refund = rx_refund_invoice_once(
+        $mafu_inv_id,
+        "UPDATE invoice SET Status = 'removedbyadmin' WHERE id_invoice = :inv AND Status NOT IN ('removedbyadmin','removebyuser','refunded')",
+        [':inv' => $mafu_inv_id],
+        $mafu_user_id,
+        $mafu_price,
+        'بازگشت وجه خودکار مینی‌اپ (تایید ادمین)'
+    );
+    if ($mafu_refund !== 'refunded') {
         telegram('answerCallbackQuery', [
             'callback_query_id' => $callback_query_id,
-            'text' => 'این درخواست قبلاً پردازش شده است.',
+            'text' => $mafu_refund === 'claimed' ? 'این درخواست قبلاً پردازش شده است.' : '❌ بازگشت وجه انجام نشد. دوباره تلاش کنید.',
             'show_alert' => true,
             'cache_time' => 0,
         ]);
@@ -3424,12 +3589,6 @@ $iduser  در ربات  رفع مسدود گردید
     if (isset($ManagePanel) && is_object($ManagePanel) && method_exists($ManagePanel, 'RemoveUser')) {
         try { @$ManagePanel->RemoveUser($mafu_panel_name, $mafu_username_svc); } catch (\Throwable $_) {}
     }
-
-
-    $mafu_bal = $pdo->prepare("UPDATE user SET Balance = Balance + :delta WHERE id = :uid");
-    $mafu_bal->bindValue(':delta', $mafu_price, PDO::PARAM_INT);
-    $mafu_bal->bindValue(':uid', $mafu_user_id, PDO::PARAM_STR);
-    $mafu_bal->execute();
 
     if (function_exists('rxRefundHardDeleteService')) {
         rxRefundHardDeleteService($mafu_panel_name, $mafu_username_svc, $mafu_inv_id);
@@ -3532,12 +3691,21 @@ $iduser  در ربات  رفع مسدود گردید
     $mafu_panel_name = (string)($mafu_invoice['Service_location'] ?? '');
 
 
-    $mafu_claim = $pdo->prepare("UPDATE invoice SET Status = 'removedbyadmin' WHERE id_invoice = :inv AND Status NOT IN ('removedbyadmin','removebyuser','refunded')");
-    $mafu_claim->bindValue(':inv', $mafu_inv_id, PDO::PARAM_STR);
-    $mafu_claim->execute();
-    if ($mafu_claim->rowCount() === 0) {
+    $mafu_refund = rx_refund_invoice_once(
+        $mafu_inv_id,
+        "UPDATE invoice SET Status = 'removedbyadmin' WHERE id_invoice = :inv AND Status NOT IN ('removedbyadmin','removebyuser','refunded')",
+        [':inv' => $mafu_inv_id],
+        $mafu_user_id,
+        $mafu_amount,
+        'بازگشت وجه دستی مینی‌اپ (تایید ادمین)'
+    );
+    if ($mafu_refund === 'claimed') {
         nm_adminInstantReply($from_id, "❌ این درخواست قبلاً پردازش شده است.", $keyboardadmin ?? null, 'HTML');
         step("home", $from_id);
+        return;
+    }
+    if ($mafu_refund !== 'refunded') {
+        nm_adminInstantReply($from_id, "❌ بازگشت وجه انجام نشد. دوباره مبلغ را ارسال کنید.", $backadmin ?? null, 'HTML');
         return;
     }
 
@@ -3546,11 +3714,6 @@ $iduser  در ربات  رفع مسدود گردید
         try { @$ManagePanel->RemoveUser($mafu_panel_name, $mafu_username_svc); } catch (\Throwable $_) {}
     }
 
-
-    $mafu_bal = $pdo->prepare("UPDATE user SET Balance = Balance + :delta WHERE id = :uid");
-    $mafu_bal->bindValue(':delta', $mafu_amount, PDO::PARAM_INT);
-    $mafu_bal->bindValue(':uid', $mafu_user_id, PDO::PARAM_STR);
-    $mafu_bal->execute();
 
     if (function_exists('rxRefundHardDeleteService')) {
         rxRefundHardDeleteService($mafu_panel_name, $mafu_username_svc, $mafu_inv_id);
@@ -3589,24 +3752,25 @@ $iduser  در ربات  رفع مسدود گردید
         telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => 'این درخواست قبلاً بررسی شده است.', 'show_alert' => true, 'cache_time' => 0]);
         return;
     }
-    $nmref_claim = $pdo->prepare("UPDATE invoice SET Status = 'removedbyadmin' WHERE id_invoice = :inv AND Status = 'nm_refund_pending'");
-    $nmref_claim->bindValue(':inv', $nmref_inv_id, PDO::PARAM_STR);
-    $nmref_claim->execute();
-    if ($nmref_claim->rowCount() === 0) {
-        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => 'این درخواست قبلاً پردازش شده است.', 'show_alert' => true, 'cache_time' => 0]);
-        return;
-    }
     $nmref_amount = (int)($nmref_invoice['price_product'] ?? 0);
     $nmref_user_id = (string)($nmref_invoice['id_user'] ?? '');
     $nmref_username_svc = (string)($nmref_invoice['username'] ?? '');
     $nmref_panel_name = (string)($nmref_invoice['Service_location'] ?? '');
+    $nmref_refund = rx_refund_invoice_once(
+        $nmref_inv_id,
+        "UPDATE invoice SET Status = 'removedbyadmin' WHERE id_invoice = :inv AND Status = 'nm_refund_pending'",
+        [':inv' => $nmref_inv_id],
+        $nmref_user_id,
+        $nmref_amount,
+        'بازگشت وجه انبار شبکه ملی (پیش‌فرض)'
+    );
+    if ($nmref_refund !== 'refunded') {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => $nmref_refund === 'claimed' ? 'این درخواست قبلاً پردازش شده است.' : '❌ بازگشت وجه انجام نشد. دوباره تلاش کنید.', 'show_alert' => true, 'cache_time' => 0]);
+        return;
+    }
     if (isset($ManagePanel) && is_object($ManagePanel) && method_exists($ManagePanel, 'RemoveUser') && $nmref_username_svc !== '') {
         try { @$ManagePanel->RemoveUser($nmref_panel_name, $nmref_username_svc); } catch (\Throwable $_) {}
     }
-    $nmref_bal = $pdo->prepare("UPDATE user SET Balance = Balance + :delta WHERE id = :uid");
-    $nmref_bal->bindValue(':delta', $nmref_amount, PDO::PARAM_INT);
-    $nmref_bal->bindValue(':uid', $nmref_user_id, PDO::PARAM_STR);
-    $nmref_bal->execute();
     if (function_exists('rxRefundHardDeleteService')) {
         rxRefundHardDeleteService($nmref_panel_name, $nmref_username_svc, $nmref_inv_id);
     }
@@ -3672,21 +3836,26 @@ $iduser  در ربات  رفع مسدود گردید
     $nmref_user_id = (string)($nmref_invoice['id_user'] ?? '');
     $nmref_username_svc = (string)($nmref_invoice['username'] ?? '');
     $nmref_panel_name = (string)($nmref_invoice['Service_location'] ?? '');
-    $nmref_claim = $pdo->prepare("UPDATE invoice SET Status = 'removedbyadmin' WHERE id_invoice = :inv AND Status = 'nm_refund_pending'");
-    $nmref_claim->bindValue(':inv', $nmref_inv_id, PDO::PARAM_STR);
-    $nmref_claim->execute();
-    if ($nmref_claim->rowCount() === 0) {
+    $nmref_refund = rx_refund_invoice_once(
+        $nmref_inv_id,
+        "UPDATE invoice SET Status = 'removedbyadmin' WHERE id_invoice = :inv AND Status = 'nm_refund_pending'",
+        [':inv' => $nmref_inv_id],
+        $nmref_user_id,
+        $nmref_amount,
+        'بازگشت وجه انبار شبکه ملی (مبلغ دستی)'
+    );
+    if ($nmref_refund === 'claimed') {
         nm_adminInstantReply($from_id, "❌ این درخواست قبلاً پردازش شده است.", $keyboardadmin ?? null, 'HTML');
         step("home", $from_id);
+        return;
+    }
+    if ($nmref_refund !== 'refunded') {
+        nm_adminInstantReply($from_id, "❌ بازگشت وجه انجام نشد. دوباره مبلغ را ارسال کنید.", $backadmin ?? null, 'HTML');
         return;
     }
     if (isset($ManagePanel) && is_object($ManagePanel) && method_exists($ManagePanel, 'RemoveUser') && $nmref_username_svc !== '') {
         try { @$ManagePanel->RemoveUser($nmref_panel_name, $nmref_username_svc); } catch (\Throwable $_) {}
     }
-    $nmref_bal = $pdo->prepare("UPDATE user SET Balance = Balance + :delta WHERE id = :uid");
-    $nmref_bal->bindValue(':delta', $nmref_amount, PDO::PARAM_INT);
-    $nmref_bal->bindValue(':uid', $nmref_user_id, PDO::PARAM_STR);
-    $nmref_bal->execute();
     if (function_exists('rxRefundHardDeleteService')) {
         rxRefundHardDeleteService($nmref_panel_name, $nmref_username_svc, $nmref_inv_id);
     }

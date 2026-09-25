@@ -628,11 +628,23 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
             return;
         }
 
-        $stmtBalance = $pdo->prepare("UPDATE user SET Balance = Balance + :amount WHERE id = :id");
-        $stmtBalance->execute([
-            ':amount' => intval($setting['agentreqprice']),
-            ':id' => $id_user,
-        ]);
+        $rxAgentRefund = intval($setting['agentreqprice']);
+        if ($rxAgentRefund > 0) {
+            $stmtBalance = $pdo->prepare("UPDATE user SET Balance = Balance + :amount WHERE id = :id");
+            $stmtBalance->execute([
+                ':amount' => $rxAgentRefund,
+                ':id' => $id_user,
+            ]);
+            if ($stmtBalance->rowCount() < 1) {
+                throw new RuntimeException('agent request refund affected no user row');
+            }
+            if (function_exists('clearSelectCacheRow')) {
+                clearSelectCacheRow('user', 'id', $id_user);
+            }
+            if (!wallet_ledger_record($id_user, 'credit', $rxAgentRefund, 'refund', 'بازگشت هزینه درخواست نمایندگی', null, 'Requestagent', (string) $id_user)) {
+                throw new RuntimeException('agent request refund ledger failed');
+            }
+        }
 
         $pdo->commit();
     } catch (Throwable $e) {

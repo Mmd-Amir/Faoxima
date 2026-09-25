@@ -212,15 +212,11 @@ if (!function_exists('rxReceiptConfirm')) {
         $cashbackEligible = !function_exists('rx_cashbackEligibleForKey')
             || rx_cashbackEligibleForKey('chashbackcart', $balanceUser['register'] ?? null, $finalReport['id_invoice'] ?? null, $balanceUser['id'] ?? null, $finalReport['id_order'] ?? null);
         if ($cashbackEligible && $pricecashback !== '0' && $pricecashback !== '') {
-            $cashbackAmount = (int) round(((int)$finalReport['price'] * (int)$pricecashback) / 100);
-            $stmtCashback = $pdo->prepare("UPDATE user SET Balance = Balance + :delta WHERE id = :uid");
-            $stmtCashback->bindValue(':delta', $cashbackAmount, PDO::PARAM_INT);
-            $stmtCashback->bindValue(':uid', $balanceUser['id'], PDO::PARAM_STR);
-            $stmtCashback->execute();
-            if (function_exists('wallet_ledger_record')) {
-                wallet_ledger_record($balanceUser['id'], 'credit', $cashbackAmount, 'cashback', 'هدیه بازگشت وجه کارت به کارت', $finalReport['id_order']);
+            $cashbackAmount = (int) floor(((int)$finalReport['price'] * (int)$pricecashback) / 100);
+            if (rx_cashback_credit_once($finalReport['id_order'], $balanceUser['id'], $cashbackAmount, 'chashbackcart', 'هدیه بازگشت وجه کارت به کارت') !== 'credited') {
+                $cashbackAmount = 0;
             }
-            if (function_exists('sendmessage')) {
+            if ($cashbackAmount > 0 && function_exists('sendmessage')) {
                 sendmessage($balanceUser['id'], "🎁 کاربر عزیز مبلغ " . (function_exists('rxFormatToman') ? rxFormatToman($cashbackAmount) : number_format($cashbackAmount)) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.", null, 'HTML');
             }
             $balanceUser = function_exists('select') ? select('user', '*', 'id', $finalReport['id_user'], 'select', ['cache' => false]) : $balanceUser;

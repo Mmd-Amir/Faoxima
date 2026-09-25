@@ -5793,55 +5793,128 @@ $caption";
 بله : 1
 خیر : 0", $backadmin, 'HTML');
     step("getmeesagestatus", $from_id);
-} elseif ($user['step'] == "getmeesagestatus") {
-    if (!isset($update['message']) && empty($text)) { return; }
-    $userdata = json_decode($user['Processing_value'], true);
-    nm_adminInstantReply($from_id, $textbotlang['Admin']['Balance']['AddBalanceUsers'], $keyboardadmin, 'HTML');
-    $query_where = "";
-    if ($userdata['agent'] == "all") {
-        if ($userdata['typecustomer'] == "all") {
-            $query_where = "";
-        } elseif ($userdata['typecustomer'] == "customer") {
-            $query_where = "WHERE EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id);";
-        } elseif ($userdata['typecustomer'] == "notcustomer") {
-            $query_where = "WHERE  NOT EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id);";
-        }
+} elseif ($user['step'] == "getmeesagestatus" || (is_string($datain) && preg_match('/^bulkgift_resume_([a-f0-9]{16})$/', $datain, $rxGiftResume))) {
+    if (!empty($rxGiftResume[1])) {
+        $rxGiftBatch = $rxGiftResume[1];
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => '⏳ در حال ادامه شارژ همگانی...', 'cache_time' => 0]);
     } else {
-        if ($userdata['typecustomer'] == "all") {
-            $query_where = null;
-            ;
-        } elseif ($userdata['typecustomer'] == "customer") {
-            $query_where = " WHERE u.agent =  '{$userdata['agent']}' AND EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id);";
-        } elseif ($userdata['typecustomer'] == "notcustomer") {
-            $query_where = " WHERE u.agent =  '{$userdata['agent']}' AND NOT EXISTS ( SELECT 1 FROM invoice i WHERE i.id_user = u.id);";
+        if (!isset($update['message']) && empty($text)) { return; }
+        if ($text !== "0" && $text !== "1") {
+            nm_adminInstantReply($from_id, "❌ فقط عدد 1 (ارسال پیام) یا 0 (بدون پیام) را ارسال کنید.", $backadmin, 'HTML');
+            return;
         }
+        $userdata = json_decode((string) $user['Processing_value'], true);
+        $rxGiftAmount = (is_array($userdata) && ctype_digit((string) ($userdata['price'] ?? ''))) ? (int) $userdata['price'] : 0;
+        $rxGiftAgent = is_array($userdata) ? (string) ($userdata['agent'] ?? '') : '';
+        if ($rxGiftAgent === 'nl') {
+            $rxGiftAgent = 'n';
+        }
+        $rxGiftType = is_array($userdata) ? (string) ($userdata['typecustomer'] ?? '') : '';
+        if ($rxGiftAmount <= 0 || $rxGiftAmount > 100000000
+            || !in_array($rxGiftAgent, ['all', 'f', 'n', 'n2'], true)
+            || !in_array($rxGiftType, ['all', 'customer', 'notcustomer'], true)) {
+            step('home', $from_id);
+            nm_adminInstantReply($from_id, "❌ اطلاعات شارژ همگانی نامعتبر است (مبلغ باید بین 1 تا 100,000,000 باشد). عملیات را از ابتدا شروع کنید.", $keyboardadmin, 'HTML');
+            return;
+        }
+        $rxGiftClaim = $pdo->prepare("UPDATE user SET step = 'home' WHERE id = :admin AND step = 'getmeesagestatus'");
+        $rxGiftClaim->execute([':admin' => $from_id]);
+        if ($rxGiftClaim->rowCount() < 1) {
+            return;
+        }
+        $rxGiftWhere = [];
+        $rxGiftParams = [];
+        if ($rxGiftAgent !== 'all') {
+            $rxGiftWhere[] = "u.agent = ?";
+            $rxGiftParams[] = $rxGiftAgent;
+        }
+        if ($rxGiftType === 'customer') {
+            $rxGiftWhere[] = "EXISTS (SELECT 1 FROM invoice i WHERE i.id_user = u.id)";
+        } elseif ($rxGiftType === 'notcustomer') {
+            $rxGiftWhere[] = "NOT EXISTS (SELECT 1 FROM invoice i WHERE i.id_user = u.id)";
+        }
+        $stmt = $pdo->prepare("SELECT u.id FROM user u" . (empty($rxGiftWhere) ? "" : " WHERE " . implode(" AND ", $rxGiftWhere)) . " ORDER BY u.id");
+        $stmt->execute($rxGiftParams);
+        $rxGiftIds = array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+        if (empty($rxGiftIds)) {
+            nm_adminInstantReply($from_id, "❌ هیچ کاربری با شرایط انتخاب‌شده پیدا نشد؛ شارژی انجام نشد.", $keyboardadmin, 'HTML');
+            return;
+        }
+        $rxGiftBatch = bin2hex(random_bytes(8));
+        $rxGiftState = [
+            'batch' => $rxGiftBatch,
+            'admin' => (string) $from_id,
+            'amount' => $rxGiftAmount,
+            'agent' => $rxGiftAgent,
+            'typecustomer' => $rxGiftType,
+            'notify' => $text === "1",
+            'ids' => $rxGiftIds,
+            'pos' => 0,
+            'credited' => 0,
+            'already' => 0,
+            'missing' => 0,
+            'failed' => [],
+            'status' => 'pending',
+            'notified' => false,
+            'started_at' => time(),
+        ];
+        if (!rx_bulk_gift_save(rx_bulk_gift_state_path($rxGiftBatch), $rxGiftState)) {
+            nm_adminInstantReply($from_id, "❌ ذخیره وضعیت شارژ همگانی ممکن نشد؛ هیچ شارژی انجام نشد.", $keyboardadmin, 'HTML');
+            return;
+        }
+        if (function_exists('rx_log_event')) {
+            rx_log_event('BULK_GIFT_START', 'bulk gift started', ['batch' => $rxGiftBatch, 'admin' => $from_id, 'amount' => $rxGiftAmount, 'users' => count($rxGiftIds), 'agent' => $rxGiftAgent, 'type' => $rxGiftType]);
+        }
+        nm_adminInstantReply($from_id, "⏳ شارژ همگانی " . rxFormatToman($rxGiftAmount) . " تومان برای " . number_format(count($rxGiftIds)) . " کاربر آغاز شد.\n🆔 <code>{$rxGiftBatch}</code>", json_encode(['inline_keyboard' => [[['text' => "▶️ ادامه شارژ همگانی", 'callback_data' => 'bulkgift_resume_' . $rxGiftBatch]]]]), 'HTML');
     }
-    $stmt = $pdo->prepare("SELECT u.id FROM user u " . $query_where);
-    $stmt->execute();
-    $Balance_user = $stmt->fetchAll();
-    $stmt = $pdo->prepare("UPDATE user as u SET  Balance = Balance + {$userdata['price']} " . $query_where);
-    $stmt->execute();
-    step('home', $from_id);
-    if ($text == "1") {
-        $cancelmessage = json_encode([
-            'inline_keyboard' => [
-                [
-                    ['text' => "لغو عملیات", 'callback_data' => 'cancel_sendmessage'],
-                ],
-            ]
-        ]);
-        $textgift = "🎁 کاربر  عزیز مبلغ " . rxFormatToman($userdata['price']) . " تومان از طرف مدیریت به عنوان هدیه به کیف پول شما واریز گردید.";
-        $message_id = sendmessage($from_id, "✅ عملیات ارسال پیام آغاز گردید پس از پایان اطلاع رسانی خواهد شد.", $cancelmessage, "html");
-        $data = json_encode(array(
-            "id_admin" => $from_id,
-            'type' => "sendmessage",
-            "id_message" => $message_id['result']['message_id'],
-            "message" => $textgift,
-            "pingmessage" => "no",
-            "btnmessage" => "start"
-        ));
-        file_put_contents("cronbot/users.json", json_encode($Balance_user));
-        file_put_contents('cronbot/info', $data);
+    $rxGiftState = rx_bulk_gift_run($rxGiftBatch);
+    $rxGiftStatus = (string) ($rxGiftState['status'] ?? 'missing');
+    if ($rxGiftStatus === 'missing') {
+        nm_adminInstantReply($from_id, "❌ عملیات شارژ همگانی پیدا نشد.", $keyboardadmin, 'HTML');
+        return;
+    }
+    $rxGiftTotal = count((array) ($rxGiftState['ids'] ?? []));
+    $rxGiftFailed = (array) ($rxGiftState['failed'] ?? []);
+    $rxGiftSummary = "📊 گزارش شارژ همگانی <code>{$rxGiftBatch}</code>\n\n"
+        . "👥 کل کاربران: " . number_format($rxGiftTotal) . "\n"
+        . "✅ شارژ شده: " . number_format((int) ($rxGiftState['credited'] ?? 0) + (int) ($rxGiftState['already'] ?? 0)) . "\n"
+        . "⏭ کاربر حذف‌شده: " . number_format((int) ($rxGiftState['missing'] ?? 0)) . "\n"
+        . "❌ ناموفق: " . number_format(count($rxGiftFailed)) . "\n"
+        . "⏳ پردازش‌نشده: " . number_format(max(0, $rxGiftTotal - (int) ($rxGiftState['pos'] ?? 0)));
+    if (!empty($rxGiftFailed)) {
+        $rxGiftSummary .= "\n\n❌ شناسه‌های ناموفق: <code>" . htmlspecialchars(implode(', ', array_slice(array_keys($rxGiftFailed), 0, 30))) . "</code>";
+    }
+    if ($rxGiftStatus !== 'done') {
+        $rxGiftSummary .= "\n\n" . ($rxGiftStatus === 'busy' ? "⏳ این عملیات هم‌اکنون در حال اجراست." : "⚠️ عملیات کامل نشد؛ برای ادامه از دکمه زیر استفاده کنید.");
+        nm_adminInstantReply($from_id, $rxGiftSummary, json_encode(['inline_keyboard' => [[['text' => "▶️ ادامه شارژ همگانی", 'callback_data' => 'bulkgift_resume_' . $rxGiftBatch]]]]), 'HTML');
+        return;
+    }
+    nm_adminInstantReply($from_id, $textbotlang['Admin']['Balance']['AddBalanceUsers'] . "\n\n" . $rxGiftSummary, $keyboardadmin, 'HTML');
+    if (!empty($rxGiftState['notify']) && empty($rxGiftState['notified'])) {
+        $rxGiftState['notified'] = true;
+        rx_bulk_gift_save(rx_bulk_gift_state_path($rxGiftBatch), $rxGiftState);
+        $Balance_user = array_map(function ($id) { return ['id' => $id]; }, rx_bulk_gift_credited_ids($rxGiftBatch));
+        if (!empty($Balance_user)) {
+            $cancelmessage = json_encode([
+                'inline_keyboard' => [
+                    [
+                        ['text' => "لغو عملیات", 'callback_data' => 'cancel_sendmessage'],
+                    ],
+                ]
+            ]);
+            $textgift = "🎁 کاربر  عزیز مبلغ " . rxFormatToman($rxGiftState['amount']) . " تومان از طرف مدیریت به عنوان هدیه به کیف پول شما واریز گردید.";
+            $message_id = sendmessage($from_id, "✅ عملیات ارسال پیام آغاز گردید پس از پایان اطلاع رسانی خواهد شد.", $cancelmessage, "html");
+            $data = json_encode(array(
+                "id_admin" => $from_id,
+                'type' => "sendmessage",
+                "id_message" => $message_id['result']['message_id'],
+                "message" => $textgift,
+                "pingmessage" => "no",
+                "btnmessage" => "start"
+            ));
+            file_put_contents("cronbot/users.json", json_encode($Balance_user));
+            file_put_contents('cronbot/info', $data);
+        }
     }
 } elseif ($text == "⬇️ کم کردن موجودی") {
     nm_adminInstantReply($from_id, $textbotlang['Admin']['Balance']['NegativeBalance'], $backadmin, 'HTML');
@@ -5855,7 +5928,7 @@ $caption";
     update("user", "Processing_value", $text, "id", $from_id);
     step('get_price_Negative', $from_id);
 } elseif ($user['step'] == "get_price_Negative") {
-    if (!ctype_digit($text)) {
+    if (!ctype_digit($text) || intval($text) <= 0) {
         nm_adminInstantReply($from_id, $textbotlang['Admin']['Balance']['Invalidprice'], $backadmin, 'HTML');
         return;
     }
@@ -5863,14 +5936,49 @@ $caption";
         nm_adminInstantReply($from_id, "📌 حداکثر مقدار 100 میلیون ریال است.", $backadmin, 'HTML');
         return;
     }
+    $rxNegOk = false;
+    $rxNegReason = '';
+    try {
+        $pdo->beginTransaction();
+        $rxNegClaim = $pdo->prepare("UPDATE user SET step = 'home' WHERE id = :admin AND step = 'get_price_Negative'");
+        $rxNegClaim->execute([':admin' => $from_id]);
+        if ($rxNegClaim->rowCount() < 1) {
+            $pdo->rollBack();
+            return;
+        }
+        $rxNegCharge = balance_atomic_charge($user['Processing_value'], (int) $text, 0);
+        if (empty($rxNegCharge['ok'])) {
+            $rxNegReason = (string) ($rxNegCharge['reason'] ?? '');
+            throw new RuntimeException('balance_atomic_charge failed: ' . $rxNegReason);
+        }
+        if (function_exists('wallet_ledger_record')) {
+            wallet_ledger_record($user['Processing_value'], 'debit', $text, 'admin_debit', 'کاهش موجودی توسط ادمین');
+        }
+        $pdo->commit();
+        $rxNegOk = true;
+    } catch (Throwable $rxNegErr) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('[admin_negative_balance] ' . $rxNegErr->getMessage());
+        if (function_exists('rx_log_event')) {
+            rx_log_event('ADMIN_NEGATIVE_BALANCE_FAILED', $rxNegErr->getMessage(), [
+                'admin_id' => $from_id,
+                'id_user' => $user['Processing_value'],
+                'amount' => $text,
+            ]);
+        }
+    }
+    if (!$rxNegOk) {
+        $rxNegMsg = $rxNegReason === 'insufficient-or-stale'
+            ? "❌ موجودی کاربر برای کسر این مبلغ کافی نیست."
+            : "❌ کسر موجودی انجام نشد. دوباره تلاش کنید.";
+        nm_adminInstantReply($from_id, $rxNegMsg, $backadmin, 'HTML');
+        return;
+    }
     nm_adminInstantReply($from_id, $textbotlang['Admin']['Balance']['NegativeBalanceUser'], $keyboardadmin, 'HTML');
-
-    $stmtAtomic = $pdo->prepare("UPDATE user SET Balance = Balance - :delta WHERE id = :uid");
-    $stmtAtomic->bindValue(':delta', (int) $text, PDO::PARAM_INT);
-    $stmtAtomic->bindValue(':uid', $user['Processing_value'], PDO::PARAM_STR);
-    $stmtAtomic->execute();
     $balances1 = number_format($text, 0);
-    $Balance_user_afters = number_format(select("user", "*", "id", $user['Processing_value'], "select")['Balance']);
+    $Balance_user_afters = number_format(select("user", "*", "id", $user['Processing_value'], "select", ['cache' => false])['Balance']);
     $textkam = "❌ کاربر عزیز مبلغ $balances1 تومان از  موجودی کیف پول تان کسر گردید.";
     sendmessage($user['Processing_value'], $textkam, null, 'HTML');
     step('home', $from_id);
@@ -5964,7 +6072,7 @@ $caption";
         $_stmt->bind_param("s", $id_user); $_stmt->execute();
         $sumvolume = $_stmt->get_result()->fetch_assoc(); $_stmt->close();
     }
-    $user = select("user", "*", "id", $id_user, "select");
+    $user = select("user", "*", "id", $id_user, "select", ['cache' => false]);
     $roll_Status = [
         '1' => $textbotlang['Admin']['ManageUser']['Acceptedphone'],
         '0' => $textbotlang['Admin']['ManageUser']['Failedphone'],
@@ -6037,7 +6145,6 @@ $caption";
         ['text' => "❌ بستن", 'callback_data' => 'close_stat']
     ];
     $keyboardmanage = json_encode($keyboardmanage, JSON_UNESCAPED_UNICODE);
-    $user['Balance'] = number_format($user['Balance']);
     if ($user['register'] != "none") {
         if ($user['register'] == null)
             return;

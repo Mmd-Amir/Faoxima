@@ -191,25 +191,23 @@ if (isset($_GET['status']) and $_GET['status']) {
 
 if (isset($_GET['priceadd']) and $_GET['priceadd']) {
     $priceadd = number_format($_GET['priceadd'], 0);
-    $textadd  = faoxima_render_text(faoxima_textbot_get('dyn_panel_user_balance_added_tpl', '💎 کاربر عزیز مبلغ {amount} T به موجودی کیف پول تان اضافه گردید.'), ['amount' => $priceadd]);
-    sendmessage($_GET['id'], $textadd, null, 'HTML');
-    if (strlen($setting['Channel_Report']) > 0) {
-        $textaddbalance = "📌 یک ادمین موجودی کاربر را از پنل تحت وب افزایش داده است :\n\n<blockquote>🪪 ادمین : {$_SESSION['user']}</blockquote>\n<blockquote>👤 کاربر : {$_GET['id']}</blockquote>\n<blockquote>مبلغ : $priceadd</blockquote>";
-        telegram('sendmessage', [
-            'chat_id'           => $setting['Channel_Report'],
-            'message_thread_id' => $paymentreports,
-            'text'              => $textaddbalance,
-            'parse_mode'        => "HTML"
-        ]);
-    }
-    if (function_exists('balance_atomic_credit')) {
-        balance_atomic_credit($_GET['id'], intval($_GET['priceadd']));
+    if (intval($_GET['priceadd']) > 0 && balance_atomic_credit($_GET['id'], intval($_GET['priceadd']))) {
+        if (function_exists('wallet_ledger_record')) {
+            wallet_ledger_record($_GET['id'], 'credit', $_GET['priceadd'], 'admin_credit', 'افزایش موجودی از پنل تحت وب');
+        }
+        $textadd  = faoxima_render_text(faoxima_textbot_get('dyn_panel_user_balance_added_tpl', '💎 کاربر عزیز مبلغ {amount} T به موجودی کیف پول تان اضافه گردید.'), ['amount' => $priceadd]);
+        sendmessage($_GET['id'], $textadd, null, 'HTML');
+        if (strlen($setting['Channel_Report']) > 0) {
+            $textaddbalance = "📌 یک ادمین موجودی کاربر را از پنل تحت وب افزایش داده است :\n\n<blockquote>🪪 ادمین : {$_SESSION['user']}</blockquote>\n<blockquote>👤 کاربر : {$_GET['id']}</blockquote>\n<blockquote>مبلغ : $priceadd</blockquote>";
+            telegram('sendmessage', [
+                'chat_id'           => $setting['Channel_Report'],
+                'message_thread_id' => $paymentreports,
+                'text'              => $textaddbalance,
+                'parse_mode'        => "HTML"
+            ]);
+        }
     } else {
-        $value = intval($user['Balance']) + intval($_GET['priceadd']);
-        update("user", "Balance", $value, "id", $_GET['id']);
-    }
-    if (function_exists('wallet_ledger_record')) {
-        wallet_ledger_record($_GET['id'], 'credit', $_GET['priceadd'], 'admin_credit', 'افزایش موجودی از پنل تحت وب');
+        error_log('[panel_add_balance] credit failed for user ' . $_GET['id'] . ' amount ' . $_GET['priceadd']);
     }
     header("Location: user.php?id={$_GET['id']}");
     exit;
@@ -217,7 +215,12 @@ if (isset($_GET['priceadd']) and $_GET['priceadd']) {
 
 if (isset($_GET['pricelow']) and $_GET['pricelow']) {
     $pricelow = number_format($_GET['pricelow'], 0);
-    if (strlen($setting['Channel_Report']) > 0) {
+    $__adminDebitOk = balance_atomic_charge($_GET['id'], intval($_GET['pricelow']), 0);
+    $__adminDebitOk = !empty($__adminDebitOk['ok']);
+    if ($__adminDebitOk && function_exists('wallet_ledger_record')) {
+        wallet_ledger_record($_GET['id'], 'debit', $_GET['pricelow'], 'admin_debit', 'کاهش موجودی از پنل تحت وب');
+    }
+    if ($__adminDebitOk && strlen($setting['Channel_Report']) > 0) {
         $textlowbalance = "📌 یک ادمین موجودی کاربر را از پنل تحت وب کسر کرده است :\n\n<blockquote>🪪 ادمین : {$_SESSION['user']}</blockquote>\n<blockquote>👤 کاربر : {$_GET['id']}</blockquote>\n<blockquote>مبلغ کسر شده : $pricelow</blockquote>";
         telegram('sendmessage', [
             'chat_id'           => $setting['Channel_Report'],
@@ -225,17 +228,6 @@ if (isset($_GET['pricelow']) and $_GET['pricelow']) {
             'text'              => $textlowbalance,
             'parse_mode'        => "HTML"
         ]);
-    }
-    if (function_exists('balance_atomic_charge')) {
-        $__adminDebitOk = balance_atomic_charge($_GET['id'], intval($_GET['pricelow']), 0);
-        $__adminDebitOk = !empty($__adminDebitOk['ok']);
-    } else {
-        $value = intval($user['Balance']) - intval($_GET['pricelow']);
-        update("user", "Balance", $value, "id", $_GET['id']);
-        $__adminDebitOk = true;
-    }
-    if ($__adminDebitOk && function_exists('wallet_ledger_record')) {
-        wallet_ledger_record($_GET['id'], 'debit', $_GET['pricelow'], 'admin_debit', 'کاهش موجودی از پنل تحت وب');
     }
     header("Location: user.php?id={$_GET['id']}");
     exit;

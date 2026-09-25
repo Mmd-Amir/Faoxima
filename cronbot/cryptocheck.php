@@ -247,16 +247,26 @@ try {
                 $balStmt->execute([':id' => $stuckUserId]);
                 $stuckUserRow = $balStmt->fetch(PDO::FETCH_ASSOC);
                 $oldBalance = $stuckUserRow ? (int) $stuckUserRow['Balance'] : 0;
-                $newBalance = $oldBalance + $stuckPriceIrr;
 
-                $updBal = $pdo->prepare("UPDATE user SET Balance = :b WHERE id = :id");
-                $updBal->execute([':b' => $newBalance, ':id' => $stuckUserId]);
-
-                if (function_exists('wallet_ledger_record')) {
-                    wallet_ledger_record($stuckUserId, 'credit', $stuckPriceIrr, 'refund', 'بازگشت خودکار پرداخت گیرکرده', $stuckOrderId);
+                $updBal = $pdo->prepare("UPDATE user SET Balance = Balance + :d WHERE id = :id");
+                $updBal->execute([':d' => $stuckPriceIrr, ':id' => $stuckUserId]);
+                if ($updBal->rowCount() < 1) {
+                    throw new RuntimeException('stuck refund credit affected no row');
                 }
 
+                if (!function_exists('wallet_ledger_record')
+                    || !wallet_ledger_record($stuckUserId, 'credit', $stuckPriceIrr, 'refund', 'بازگشت خودکار پرداخت گیرکرده', $stuckOrderId, 'Payment_report', $stuckOrderId)) {
+                    throw new RuntimeException('stuck refund ledger failed');
+                }
+
+                $balStmt->execute([':id' => $stuckUserId]);
+                $stuckUserRow = $balStmt->fetch(PDO::FETCH_ASSOC);
+                $newBalance = $stuckUserRow ? (int) $stuckUserRow['Balance'] : ($oldBalance + $stuckPriceIrr);
+
                 $pdo->commit();
+                if (function_exists('clearSelectCacheRow')) {
+                    clearSelectCacheRow('user', 'id', $stuckUserId);
+                }
                 $rxCryptoLog('OK', 'stuck invoice refunded', [
                     'order' => $stuckOrderId,
                     'user'  => $stuckUserId,
@@ -722,15 +732,8 @@ foreach ($rows as $row) {
         $userStmt->execute([':id' => (string) $row['id_user']]);
         $Balance_id = $userStmt->fetch(PDO::FETCH_ASSOC) ?: ['id' => $row['id_user'], 'username' => '—', 'Balance' => 0];
 
-        if ($pricecashback > 0) {
-            $bonus = ((float) $row['price'] * $pricecashback) / 100.0;
-            $newBalance = (int) ($Balance_id['Balance'] ?? 0) + (int) $bonus;
-            if (function_exists('update')) {
-                update('user', 'Balance', $newBalance, 'id', $Balance_id['id']);
-            }
-            if (function_exists('wallet_ledger_record')) {
-                wallet_ledger_record($Balance_id['id'], 'credit', $bonus, 'cashback', 'هدیه بازگشت وجه کریپتو', $orderId);
-            }
+        $bonus = $pricecashback > 0 ? (int) floor(((float) $row['price'] * $pricecashback) / 100.0) : 0;
+        if ($bonus > 0 && rx_cashback_credit_once($orderId, $Balance_id['id'], $bonus, $cashbackKey, 'هدیه بازگشت وجه کریپتو') === 'credited') {
             if (function_exists('sendmessage')) {
                 @sendmessage(
                     (string) $Balance_id['id'],

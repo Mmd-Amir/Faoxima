@@ -434,9 +434,12 @@ final class ServiceActionHandler extends BaseHandler
                 $remoteOut = $managePanel->createUser($newPanel['name_panel'], 'usertest', $svcUsername, $datac);
                 if (empty($remoteOut['username'])) {
                     if ($balanceCharged) {
-                        balance_atomic_credit($this->user['id'], $priceChange);
-                        if (function_exists('wallet_ledger_record')) {
-                            wallet_ledger_record($this->user['id'], 'credit', $priceChange, 'refund', faoxima_textbot_get('dyn_serviceaction_changeloc_refund_note', 'بازگشت وجه به دلیل خطای تغییر موقعیت'), null, 'invoice', (string)($invoice['id_invoice'] ?? ''));
+                        if (balance_atomic_credit($this->user['id'], $priceChange)) {
+                            if (function_exists('wallet_ledger_record')) {
+                                wallet_ledger_record($this->user['id'], 'credit', $priceChange, 'refund', faoxima_textbot_get('dyn_serviceaction_changeloc_refund_note', 'بازگشت وجه به دلیل خطای تغییر موقعیت'), null, 'invoice', (string)($invoice['id_invoice'] ?? ''));
+                            }
+                        } else {
+                            FaoximaLogger::error('refund credit failed', ['user' => $this->user['id'], 'amount' => $priceChange]);
                         }
                     }
                     $reason = is_array($remoteOut) ? json_encode($remoteOut['msg'] ?? $remoteOut) : (string)$remoteOut;
@@ -449,9 +452,12 @@ final class ServiceActionHandler extends BaseHandler
             }
         } catch (Throwable $e) {
             if ($balanceCharged) {
-                balance_atomic_credit($this->user['id'], $priceChange);
-                if (function_exists('wallet_ledger_record')) {
-                    wallet_ledger_record($this->user['id'], 'credit', $priceChange, 'refund', faoxima_textbot_get('dyn_serviceaction_changeloc_refund_note', 'بازگشت وجه به دلیل خطای تغییر موقعیت'), null, 'invoice', (string)($invoice['id_invoice'] ?? ''));
+                if (balance_atomic_credit($this->user['id'], $priceChange)) {
+                    if (function_exists('wallet_ledger_record')) {
+                        wallet_ledger_record($this->user['id'], 'credit', $priceChange, 'refund', faoxima_textbot_get('dyn_serviceaction_changeloc_refund_note', 'بازگشت وجه به دلیل خطای تغییر موقعیت'), null, 'invoice', (string)($invoice['id_invoice'] ?? ''));
+                    }
+                } else {
+                    FaoximaLogger::error('refund credit failed', ['user' => $this->user['id'], 'amount' => $priceChange]);
                 }
             }
             FaoximaLogger::exception($e, 'change_location panel swap threw', ['user' => $this->user['id']]);
@@ -460,9 +466,12 @@ final class ServiceActionHandler extends BaseHandler
 
         if (empty($remoteOut['username'])) {
             if ($balanceCharged) {
-                balance_atomic_credit($this->user['id'], $priceChange);
-                if (function_exists('wallet_ledger_record')) {
-                    wallet_ledger_record($this->user['id'], 'credit', $priceChange, 'refund', faoxima_textbot_get('dyn_serviceaction_changeloc_refund_note', 'بازگشت وجه به دلیل خطای تغییر موقعیت'), null, 'invoice', (string)($invoice['id_invoice'] ?? ''));
+                if (balance_atomic_credit($this->user['id'], $priceChange)) {
+                    if (function_exists('wallet_ledger_record')) {
+                        wallet_ledger_record($this->user['id'], 'credit', $priceChange, 'refund', faoxima_textbot_get('dyn_serviceaction_changeloc_refund_note', 'بازگشت وجه به دلیل خطای تغییر موقعیت'), null, 'invoice', (string)($invoice['id_invoice'] ?? ''));
+                    }
+                } else {
+                    FaoximaLogger::error('refund credit failed', ['user' => $this->user['id'], 'amount' => $priceChange]);
                 }
             }
             $reason = is_array($remoteOut) ? json_encode($remoteOut['msg'] ?? $remoteOut) : (string)$remoteOut;

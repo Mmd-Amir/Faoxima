@@ -169,16 +169,11 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         || rx_cashbackEligibleForKey("chashbackcart", $Balance_id['register'] ?? null, $Payment_report['id_invoice'] ?? null, $Balance_id['id'] ?? null, $Payment_report['id_order'] ?? null);
     if($cashbackEligible && $pricecashback != "0"){
         $result = intval(($Payment_report['price'] * $pricecashback) / 100);
-        $stmtCashback = $pdo->prepare("UPDATE user SET Balance = Balance + :delta WHERE id = :uid");
-        $stmtCashback->bindValue(':delta', $result, PDO::PARAM_INT);
-        $stmtCashback->bindValue(':uid', $Balance_id['id'], PDO::PARAM_STR);
-        $stmtCashback->execute();
-        if (function_exists('wallet_ledger_record')) {
-            wallet_ledger_record($Balance_id['id'], 'credit', $result, 'cashback', 'هدیه بازگشت وجه کارت به کارت (تایید خودکار)', $Payment_report['id_order']);
+        if (rx_cashback_credit_once($Payment_report['id_order'], $Balance_id['id'], $result, 'chashbackcart', 'هدیه بازگشت وجه کارت به کارت (تایید خودکار)') === 'credited') {
+            $pricecashback =  number_format($pricecashback);
+            $text_report = "🎁 کاربر عزیز مبلغ " . rxFormatToman($result) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
+            sendmessage($Balance_id['id'], $text_report, null, 'HTML');
         }
-        $pricecashback =  number_format($pricecashback);
-        $text_report = "🎁 کاربر عزیز مبلغ " . rxFormatToman($result) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
-        sendmessage($Balance_id['id'], $text_report, null, 'HTML');
     }
     $rxFmtCroncardPrice = rxFormatToman($Payment_report['price']);
     $text_reportpayment = "✅ تایید شده (تایید خودکار بدون بررسی)

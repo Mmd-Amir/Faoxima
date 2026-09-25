@@ -283,6 +283,9 @@ if (!function_exists('balance_atomic_charge')) {
             if ($stmt->rowCount() < 1) {
                 return ['ok' => false, 'reason' => 'insufficient-or-stale', 'new_balance' => null];
             }
+            if (function_exists('clearSelectCacheRow')) {
+                clearSelectCacheRow('user', 'id', $userId);
+            }
             $sel = $pdo->prepare("SELECT Balance FROM user WHERE id = :u");
             $sel->execute([':u' => $userId]);
             $newBal = $sel->fetchColumn();
@@ -489,12 +492,22 @@ if (!function_exists('balance_atomic_credit')) {
 
     function balance_atomic_credit($userId, $delta) {
         global $pdo;
+        if (!is_numeric($delta)) return false;
         $delta = (float) $delta;
-        if ($delta <= 0) return false;
+        if (!is_finite($delta) || $delta <= 0) return false;
+        if ($userId === null || trim((string) $userId) === '') return false;
+        if (!($pdo instanceof PDO)) return false;
         try {
             $stmt = $pdo->prepare("UPDATE user SET Balance = Balance + :d WHERE id = :u");
             $stmt->execute([':d' => $delta, ':u' => $userId]);
-            return $stmt->rowCount() > 0;
+            if ($stmt->rowCount() < 1) {
+                error_log('balance_atomic_credit: no row updated for user ' . $userId);
+                return false;
+            }
+            if (function_exists('clearSelectCacheRow')) {
+                clearSelectCacheRow('user', 'id', $userId);
+            }
+            return true;
         } catch (Throwable $e) {
             error_log('balance_atomic_credit failed: ' . $e->getMessage());
             return false;
@@ -536,6 +549,409 @@ if (!function_exists('wallet_ledger_record')) {
             error_log('wallet_ledger_record failed: ' . $e->getMessage());
             return false;
         }
+    }
+}
+
+if (!function_exists('rx_refund_payment_once')) {
+
+    function rx_refund_payment_once($orderId, $userId, $amount, string $description, $invoiceId = null): string
+    {
+        global $pdo;
+        $amount = is_numeric($amount) ? (int) round((float) $amount) : 0;
+        $orderId = (string) $orderId;
+        $userId = (string) $userId;
+        if (!($pdo instanceof PDO) || $amount <= 0 || $orderId === '' || $userId === '') {
+            if (function_exists('rx_log_event')) {
+                rx_log_event('REFUND_REJECTED', 'invalid refund input', ['id_order' => $orderId, 'id_user' => $userId, 'amount' => $amount]);
+            }
+            return 'failed';
+        }
+        $invoiceId = ($invoiceId === null || (string) $invoiceId === '') ? null : (string) $invoiceId;
+        $ownTx = !$pdo->inTransaction();
+        try {
+            if ($ownTx) {
+                $pdo->beginTransaction();
+            }
+            $note = '[auto-refund: ' . $description . ' at ' . date('Y-m-d H:i:s') . ']';
+            $claim = $pdo->prepare(
+                "UPDATE Payment_report SET direct_payment_done = 1, "
+                . "dec_not_confirmed = CASE WHEN dec_not_confirmed IS NULL OR dec_not_confirmed = '' THEN :n1 ELSE CONCAT(dec_not_confirmed, ' | ', :n2) END "
+                . "WHERE id_order = :o AND (direct_payment_done IS NULL OR direct_payment_done = 0) "
+                . "AND (dec_not_confirmed IS NULL OR dec_not_confirmed NOT LIKE '%auto-refund%')"
+            );
+            $claim->execute([':n1' => $note, ':n2' => $note, ':o' => $orderId]);
+            if ($claim->rowCount() < 1) {
+                if ($ownTx) {
+                    $pdo->rollBack();
+                }
+                if (function_exists('rx_log_event')) {
+                    rx_log_event('REFUND_DUPLICATE_SKIPPED', 'refund already applied or payment already fulfilled', ['id_order' => $orderId, 'id_user' => $userId]);
+                }
+                return 'duplicate';
+            }
+            if (!balance_atomic_credit($userId, $amount)) {
+                throw new RuntimeException('balance_atomic_credit returned false');
+            }
+            if (!function_exists('wallet_ledger_record')
+                || !wallet_ledger_record($userId, 'credit', $amount, 'refund', $description, $orderId, $invoiceId !== null ? 'invoice' : 'Payment_report', $invoiceId ?? $orderId)) {
+                throw new RuntimeException('wallet_ledger_record failed');
+            }
+            if ($ownTx) {
+                $pdo->commit();
+            }
+            if (function_exists('clearSelectCache')) {
+                clearSelectCache('Payment_report');
+            }
+            if (function_exists('rx_log_event')) {
+                rx_log_event('REFUND_APPLIED', $description, ['id_order' => $orderId, 'id_user' => $userId, 'amount' => $amount, 'id_invoice' => $invoiceId]);
+            }
+            return 'refunded';
+        } catch (Throwable $e) {
+            if ($ownTx && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            error_log('rx_refund_payment_once failed for ' . $orderId . ': ' . $e->getMessage());
+            if (function_exists('rx_log_event')) {
+                rx_log_event('REFUND_FAILED', $e->getMessage(), ['id_order' => $orderId, 'id_user' => $userId, 'amount' => $amount, 'id_invoice' => $invoiceId]);
+            }
+            return 'failed';
+        }
+    }
+}
+
+if (!function_exists('rx_refund_invoice_once')) {
+
+    function rx_refund_invoice_once(string $invoiceId, string $claimSql, array $claimParams, $userId, $amount, string $description): string
+    {
+        global $pdo;
+        $amount = is_numeric($amount) ? (int) round((float) $amount) : -1;
+        $userId = (string) $userId;
+        if (!($pdo instanceof PDO) || $invoiceId === '' || $userId === '' || $amount < 0) {
+            return 'failed';
+        }
+        $ownTx = !$pdo->inTransaction();
+        try {
+            if ($ownTx) {
+                $pdo->beginTransaction();
+            }
+            $claim = $pdo->prepare($claimSql);
+            $claim->execute($claimParams);
+            if ($claim->rowCount() < 1) {
+                if ($ownTx) {
+                    $pdo->rollBack();
+                }
+                return 'claimed';
+            }
+            if ($amount > 0) {
+                if (!balance_atomic_credit($userId, $amount)) {
+                    throw new RuntimeException('balance_atomic_credit returned false');
+                }
+                if (!function_exists('wallet_ledger_record')
+                    || !wallet_ledger_record($userId, 'credit', $amount, 'refund', $description, null, 'invoice', $invoiceId)) {
+                    throw new RuntimeException('wallet_ledger_record failed');
+                }
+            }
+            if ($ownTx) {
+                $pdo->commit();
+            }
+            if (function_exists('clearSelectCacheRow')) {
+                clearSelectCacheRow('invoice', 'id_invoice', $invoiceId);
+            }
+            if (function_exists('rx_log_event')) {
+                rx_log_event('REFUND_APPLIED', $description, ['id_invoice' => $invoiceId, 'id_user' => $userId, 'amount' => $amount]);
+            }
+            return 'refunded';
+        } catch (Throwable $e) {
+            if ($ownTx && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            error_log('rx_refund_invoice_once failed for ' . $invoiceId . ': ' . $e->getMessage());
+            if (function_exists('rx_log_event')) {
+                rx_log_event('REFUND_FAILED', $e->getMessage(), ['id_invoice' => $invoiceId, 'id_user' => $userId, 'amount' => $amount]);
+            }
+            return 'failed';
+        }
+    }
+}
+
+if (!function_exists('rx_cashback_credit_once')) {
+
+    function rx_cashback_credit_once($orderId, $userId, $amount, string $cashbackKey, string $description): string
+    {
+        global $pdo;
+        $amount = is_numeric($amount) ? (int) floor((float) $amount) : 0;
+        $orderId = (string) $orderId;
+        $userId = (string) $userId;
+        if ($amount <= 0) {
+            return 'skipped';
+        }
+        if (!($pdo instanceof PDO) || $orderId === '' || $userId === '' || $cashbackKey === '') {
+            return 'failed';
+        }
+        $ownTx = !$pdo->inTransaction();
+        try {
+            if ($ownTx) {
+                $pdo->beginTransaction();
+            }
+            $lockSql = "SELECT id_user, direct_payment_done FROM Payment_report WHERE id_order = :o";
+            if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql') {
+                $lockSql .= " FOR UPDATE";
+            }
+            $lock = $pdo->prepare($lockSql);
+            $lock->execute([':o' => $orderId]);
+            $payment = $lock->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($payment) || (int) ($payment['direct_payment_done'] ?? 0) !== 1 || (string) ($payment['id_user'] ?? '') !== $userId) {
+                if ($ownTx) {
+                    $pdo->rollBack();
+                }
+                if (function_exists('rx_log_event')) {
+                    rx_log_event('CASHBACK_SKIPPED', 'payment not fulfilled or owner mismatch', ['id_order' => $orderId, 'id_user' => $userId, 'key' => $cashbackKey]);
+                }
+                return 'skipped';
+            }
+            $dup = $pdo->prepare("SELECT COUNT(*) FROM wallet_ledger WHERE id_order = :o AND category = 'cashback' AND ref_table = 'cashback' AND ref_id = :k");
+            $dup->execute([':o' => $orderId, ':k' => $cashbackKey]);
+            if ((int) $dup->fetchColumn() > 0) {
+                if ($ownTx) {
+                    $pdo->rollBack();
+                }
+                if (function_exists('rx_log_event')) {
+                    rx_log_event('CASHBACK_DUPLICATE_SKIPPED', 'cashback already paid', ['id_order' => $orderId, 'id_user' => $userId, 'key' => $cashbackKey]);
+                }
+                return 'duplicate';
+            }
+            if (!balance_atomic_credit($userId, $amount)) {
+                throw new RuntimeException('balance_atomic_credit returned false');
+            }
+            if (!function_exists('wallet_ledger_record')
+                || !wallet_ledger_record($userId, 'credit', $amount, 'cashback', $description, $orderId, 'cashback', $cashbackKey)) {
+                throw new RuntimeException('wallet_ledger_record failed');
+            }
+            if ($ownTx) {
+                $pdo->commit();
+            }
+            return 'credited';
+        } catch (Throwable $e) {
+            if ($ownTx && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            error_log('rx_cashback_credit_once failed for ' . $orderId . ': ' . $e->getMessage());
+            if (function_exists('rx_log_event')) {
+                rx_log_event('CASHBACK_FAILED', $e->getMessage(), ['id_order' => $orderId, 'id_user' => $userId, 'amount' => $amount, 'key' => $cashbackKey]);
+            }
+            return 'failed';
+        }
+    }
+}
+
+if (!function_exists('rx_bulk_gift_state_path')) {
+
+    function rx_bulk_gift_state_path(string $batchId): string
+    {
+        $root = defined('REFACTORED_LEGACY_ROOT') ? REFACTORED_LEGACY_ROOT : getcwd();
+        return rtrim((string) $root, '/\\') . '/cronbot/bulk_gift_' . preg_replace('/[^a-f0-9]/', '', $batchId) . '.json';
+    }
+}
+
+if (!function_exists('rx_bulk_gift_save')) {
+
+    function rx_bulk_gift_save(string $path, array $state): bool
+    {
+        $tmp = $path . '.' . getmypid() . '.tmp';
+        if (@file_put_contents($tmp, json_encode($state, JSON_UNESCAPED_UNICODE), LOCK_EX) === false) {
+            return false;
+        }
+        if (!@rename($tmp, $path)) {
+            @unlink($tmp);
+            return false;
+        }
+        return true;
+    }
+}
+
+if (!function_exists('rx_bulk_gift_chunk')) {
+
+    function rx_bulk_gift_chunk(PDO $pdo, string $batchId, int $amount, array $chunk, string $description): array
+    {
+        $out = ['credited' => 0, 'already' => 0, 'missing' => 0, 'failed' => []];
+        if (empty($chunk)) {
+            return $out;
+        }
+        $ph = implode(',', array_fill(0, count($chunk), '?'));
+        try {
+            $pdo->beginTransaction();
+            $doneStmt = $pdo->prepare("SELECT id_user FROM wallet_ledger WHERE id_order = ? AND category = 'admin_gift' AND id_user IN ($ph)");
+            $doneStmt->execute(array_merge([$batchId], $chunk));
+            $already = array_flip(array_map('strval', $doneStmt->fetchAll(PDO::FETCH_COLUMN)));
+            $existStmt = $pdo->prepare("SELECT id FROM user WHERE id IN ($ph)");
+            $existStmt->execute($chunk);
+            $existing = array_flip(array_map('strval', $existStmt->fetchAll(PDO::FETCH_COLUMN)));
+            $todo = [];
+            foreach ($chunk as $id) {
+                if (isset($already[$id])) {
+                    $out['already']++;
+                } elseif (!isset($existing[$id])) {
+                    $out['missing']++;
+                } else {
+                    $todo[] = $id;
+                }
+            }
+            if (!empty($todo)) {
+                $ph2 = implode(',', array_fill(0, count($todo), '?'));
+                $up = $pdo->prepare("UPDATE user SET Balance = Balance + ? WHERE id IN ($ph2)");
+                $up->execute(array_merge([$amount], $todo));
+                $ins = $pdo->prepare(
+                    "INSERT INTO wallet_ledger (id_user, direction, amount, balance_after, category, description, id_order, ref_table, ref_id) "
+                    . "SELECT id, 'credit', ?, Balance, 'admin_gift', ?, ?, 'bulk_gift', ? FROM user WHERE id IN ($ph2)"
+                );
+                $ins->execute(array_merge([$amount, $description, $batchId, $batchId], $todo));
+                if ($up->rowCount() !== count($todo) || $ins->rowCount() !== count($todo)) {
+                    throw new RuntimeException('bulk gift row count mismatch');
+                }
+            }
+            $pdo->commit();
+            $out['credited'] = count($todo);
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            if (function_exists('rx_log_event')) {
+                rx_log_event('BULK_GIFT_CHUNK_FALLBACK', $e->getMessage(), ['batch' => $batchId, 'size' => count($chunk)]);
+            }
+            $out = ['credited' => 0, 'already' => 0, 'missing' => 0, 'failed' => []];
+            foreach ($chunk as $id) {
+                try {
+                    $pdo->beginTransaction();
+                    $one = $pdo->prepare("SELECT COUNT(*) FROM wallet_ledger WHERE id_order = ? AND category = 'admin_gift' AND id_user = ?");
+                    $one->execute([$batchId, $id]);
+                    if ((int) $one->fetchColumn() > 0) {
+                        $pdo->rollBack();
+                        $out['already']++;
+                        continue;
+                    }
+                    if (!balance_atomic_credit($id, $amount)) {
+                        $pdo->rollBack();
+                        $exists = $pdo->prepare("SELECT COUNT(*) FROM user WHERE id = ?");
+                        $exists->execute([$id]);
+                        if ((int) $exists->fetchColumn() === 0) {
+                            $out['missing']++;
+                        } else {
+                            $out['failed'][$id] = 'credit failed';
+                        }
+                        continue;
+                    }
+                    if (!wallet_ledger_record($id, 'credit', $amount, 'admin_gift', $description, $batchId, 'bulk_gift', $batchId)) {
+                        throw new RuntimeException('ledger failed');
+                    }
+                    $pdo->commit();
+                    $out['credited']++;
+                } catch (Throwable $inner) {
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
+                    $out['failed'][$id] = $inner->getMessage();
+                }
+            }
+        }
+        if (function_exists('clearSelectCache')) {
+            clearSelectCache('user');
+        }
+        return $out;
+    }
+}
+
+if (!function_exists('rx_bulk_gift_run')) {
+
+    function rx_bulk_gift_run(string $batchId, float $timeBudget = 20.0, int $chunkSize = 500): array
+    {
+        global $pdo;
+        $path = rx_bulk_gift_state_path($batchId);
+        $state = is_file($path) ? json_decode((string) @file_get_contents($path), true) : null;
+        if (!is_array($state) || !isset($state['ids']) || !is_array($state['ids'])) {
+            return ['status' => 'missing', 'batch' => $batchId];
+        }
+        if (($state['status'] ?? '') === 'done') {
+            return $state;
+        }
+        if (!($pdo instanceof PDO)) {
+            $state['status'] = 'partial';
+            return $state;
+        }
+        $lock = @fopen($path . '.lock', 'c');
+        if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
+            if ($lock !== false) {
+                fclose($lock);
+            }
+            $state['status'] = 'busy';
+            return $state;
+        }
+        $state = json_decode((string) @file_get_contents($path), true);
+        if (!is_array($state) || ($state['status'] ?? '') === 'done') {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+            return is_array($state) ? $state : ['status' => 'missing', 'batch' => $batchId];
+        }
+        $amount = (int) ($state['amount'] ?? 0);
+        $ids = array_map('strval', $state['ids']);
+        $total = count($ids);
+        $pos = (int) ($state['pos'] ?? 0);
+        foreach (['credited', 'already', 'missing'] as $k) {
+            $state[$k] = (int) ($state[$k] ?? 0);
+        }
+        $state['failed'] = is_array($state['failed'] ?? null) ? $state['failed'] : [];
+        $description = 'شارژ همگانی توسط ادمین';
+        $started = microtime(true);
+        $state['status'] = 'running';
+        rx_bulk_gift_save($path, $state);
+        while ($pos < $total && $amount > 0) {
+            if ((microtime(true) - $started) > $timeBudget) {
+                break;
+            }
+            $chunk = array_slice($ids, $pos, max(1, $chunkSize));
+            $res = rx_bulk_gift_chunk($pdo, $batchId, $amount, $chunk, $description);
+            $state['credited'] += $res['credited'];
+            $state['already'] += $res['already'];
+            $state['missing'] += $res['missing'];
+            foreach ($res['failed'] as $fid => $reason) {
+                $state['failed'][(string) $fid] = (string) $reason;
+            }
+            $pos += count($chunk);
+            $state['pos'] = $pos;
+            rx_bulk_gift_save($path, $state);
+            if (function_exists('rx_log_event')) {
+                rx_log_event('BULK_GIFT_CHUNK', 'chunk processed', [
+                    'batch' => $batchId,
+                    'pos' => $pos,
+                    'total' => $total,
+                    'credited' => $res['credited'],
+                    'already' => $res['already'],
+                    'missing' => $res['missing'],
+                    'failed_ids' => array_keys($res['failed']),
+                ]);
+            }
+        }
+        $state['status'] = $pos >= $total ? 'done' : 'partial';
+        if ($state['status'] === 'done') {
+            $state['finished_at'] = time();
+        }
+        rx_bulk_gift_save($path, $state);
+        flock($lock, LOCK_UN);
+        fclose($lock);
+        return $state;
+    }
+}
+
+if (!function_exists('rx_bulk_gift_credited_ids')) {
+
+    function rx_bulk_gift_credited_ids(string $batchId): array
+    {
+        global $pdo;
+        if (!($pdo instanceof PDO)) {
+            return [];
+        }
+        $stmt = $pdo->prepare("SELECT id_user FROM wallet_ledger WHERE id_order = :b AND category = 'admin_gift'");
+        $stmt->execute([':b' => $batchId]);
+        return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN));
     }
 }
 
@@ -2390,17 +2806,12 @@ function DirectPayment($order_id, $image = 'images.jpg')
                 }
                 return;
             }
-            $balance = $Balance_id['Balance'] + $Payment_report['price'];
-            $__refundOkNs = balance_atomic_credit($Balance_id['id'], $Payment_report['price']);
-            if ($__refundOkNs && function_exists('wallet_ledger_record')) {
-                wallet_ledger_record($Balance_id['id'], 'credit', $Payment_report['price'], 'refund', 'بازگشت وجه - موجودی انبار ملی تمام شده', (string)$order_id, 'invoice', (string)$get_invoice['id_invoice']);
+            $__refundNs = rx_refund_payment_once($order_id, $Balance_id['id'], $Payment_report['price'], 'بازگشت وجه - موجودی انبار ملی تمام شده', (string)$get_invoice['id_invoice']);
+            if ($__refundNs === 'refunded') {
+                sendmessage($Balance_id['id'], "❌ وضعیت نت ملی فعال است اما موجودی انبار برای این محصول تمام شده است. مبلغ پرداختی به کیف پول برگشت خورد.", $keyboard, 'HTML');
+            } elseif ($__refundNs === 'failed') {
+                sendmessage($Balance_id['id'], "❌ موجودی انبار برای این محصول تمام شده است. بازگشت وجه با خطا مواجه شد؛ لطفاً با پشتیبانی در ارتباط باشید.", $keyboard, 'HTML');
             }
-            try {
-                $__nationalNote = '[auto-refund: national stock empty at ' . date('Y-m-d H:i:s') . ']';
-                $__mk = $pdo->prepare("UPDATE Payment_report SET dec_not_confirmed = CASE WHEN dec_not_confirmed IS NULL OR dec_not_confirmed = '' THEN :n1 ELSE CONCAT(dec_not_confirmed, ' | ', :n2) END WHERE id_order = :o");
-                $__mk->execute([':n1' => $__nationalNote, ':n2' => $__nationalNote, ':o' => $order_id]);
-            } catch (Throwable $__e) {}
-            sendmessage($Balance_id['id'], "❌ وضعیت نت ملی فعال است اما موجودی انبار برای این محصول تمام شده است. مبلغ پرداختی به کیف پول برگشت خورد.", $keyboard, 'HTML');
             return;
         }
         // [zombie-rescue] قبل از تلاش جدید، اگه قبلاً تو panel یوزری برای این کاربر ساخته شده (zombie)،
@@ -2476,23 +2887,20 @@ function DirectPayment($order_id, $image = 'images.jpg')
         }
         if ($dataoutput['username'] == null) {
             $dataoutput['msg'] = json_encode($dataoutput['msg']);
-            $balance = $Balance_id['Balance'] + $Payment_report['price'];
-            $__refundOkCu = balance_atomic_credit($Balance_id['id'], $Payment_report['price']);
-            if ($__refundOkCu && function_exists('wallet_ledger_record')) {
-                wallet_ledger_record($Balance_id['id'], 'credit', $Payment_report['price'], 'refund', 'بازگشت وجه - خطا در ساخت سرویس', (string)$order_id, 'invoice', (string)$get_invoice['id_invoice']);
+            $__refundCu = rx_refund_payment_once($order_id, $Balance_id['id'], $Payment_report['price'], 'بازگشت وجه - خطا در ساخت سرویس', (string)$get_invoice['id_invoice']);
+            if ($__refundCu === 'duplicate') {
+                return;
             }
-            // [refund-marker] برای جلوگیری از double-refund توسط retry — حتماً قبل از sendmessageها مارک کن
-            try {
-                $__failNote = '[auto-refund: service creation failed at ' . date('Y-m-d H:i:s') . ']';
-                $__mk = $pdo->prepare("UPDATE Payment_report SET dec_not_confirmed = CASE WHEN dec_not_confirmed IS NULL OR dec_not_confirmed = '' THEN :n1 ELSE CONCAT(dec_not_confirmed, ' | ', :n2) END WHERE id_order = :o");
-                $__mk->execute([':n1' => $__failNote, ':n2' => $__failNote, ':o' => $order_id]);
-            } catch (Throwable $__e) { /* fail-open */ }
             // پیام UI fallback اگه textbotlang در دسترس نباشه (مثلاً وقتی از cron صدا زده میشه)
             $__uiErr = isset($textbotlang['users']['sell']['ErrorConfig']) && is_string($textbotlang['users']['sell']['ErrorConfig']) && trim($textbotlang['users']['sell']['ErrorConfig']) !== ''
                 ? $textbotlang['users']['sell']['ErrorConfig']
                 : "❌ متاسفانه ساخت سرویس با خطا مواجه شد. مبلغ پرداختی به کیف پول شما برگشت داده شد.";
-            sendmessage($Balance_id['id'], $__uiErr, $keyboard, 'HTML');
-            sendmessage($Balance_id['id'], "💎  کاربر عزیز بدلیل ساخته نشدن سرویس مبلغ " . rxFormatToman($balance) . " تومان به کیف پول شما اضافه گردید.", $keyboard, 'HTML');
+            if ($__refundCu === 'refunded') {
+                sendmessage($Balance_id['id'], $__uiErr, $keyboard, 'HTML');
+                sendmessage($Balance_id['id'], "💎  کاربر عزیز بدلیل ساخته نشدن سرویس مبلغ " . rxFormatToman($Payment_report['price']) . " تومان به کیف پول شما اضافه گردید.", $keyboard, 'HTML');
+            } else {
+                sendmessage($Balance_id['id'], "❌ ساخت سرویس با خطا مواجه شد و بازگشت وجه نیز انجام نشد؛ لطفاً با پشتیبانی در ارتباط باشید.", $keyboard, 'HTML');
+            }
             $texterros = "
 ⭕️ خطا در ساخت کانفیگ
 <blockquote>✍️ دلیل خطا : {$dataoutput['msg']}</blockquote>
@@ -2714,12 +3122,12 @@ $textonebuy
             $prodcut = $stmt->fetch(PDO::FETCH_ASSOC);
         }
         if (!is_array($prodcut)) {
-            $balance = $Balance_id['Balance'] + $Payment_report['price'];
-            $__refundOkPr = balance_atomic_credit($Balance_id['id'], $Payment_report['price']);
-            if ($__refundOkPr && function_exists('wallet_ledger_record')) {
-                wallet_ledger_record($Balance_id['id'], 'credit', $Payment_report['price'], 'refund', 'بازگشت وجه - محصول تمدید در دسترس نیست', (string)$Payment_report['id_order'], 'invoice', (string)($nameloc['id_invoice'] ?? ''));
+            $__refundPr = rx_refund_payment_once($Payment_report['id_order'], $Balance_id['id'], $Payment_report['price'], 'بازگشت وجه - محصول تمدید در دسترس نیست', (string)($nameloc['id_invoice'] ?? ''));
+            if ($__refundPr === 'refunded') {
+                sendmessage($Balance_id['id'], "❌ محصول این تمدید دیگر در دسترس نیست؛ مبلغ پرداختی به کیف پول شما بازگردانده شد.", $keyboard, 'HTML');
+            } elseif ($__refundPr === 'failed') {
+                sendmessage($Balance_id['id'], "❌ محصول این تمدید دیگر در دسترس نیست و بازگشت وجه با خطا مواجه شد؛ لطفاً با پشتیبانی در ارتباط باشید.", $keyboard, 'HTML');
             }
-            sendmessage($Balance_id['id'], "❌ محصول این تمدید دیگر در دسترس نیست؛ مبلغ پرداختی به کیف پول شما بازگردانده شد.", $keyboard, 'HTML');
             return;
         }
         if ($nameloc['name_product'] == "سرویس تست") {
@@ -2731,12 +3139,12 @@ $textonebuy
             $stockNew = function_exists('nmStockReserveForProduct') ? nmStockReserveForProduct($marzban_list_get, $prodcut, $Balance_id['id'], $nameloc['id_invoice'], 'paid_extend_national_stock') : false;
             if (!is_array($stockNew) || (string)($stockNew['content'] ?? '') === '') {
                 if (is_array($stockNew) && function_exists('nmStockReleaseReservation')) nmStockReleaseReservation($stockNew);
-                $balance = $Balance_id['Balance'] + $Payment_report['price'];
-                $__refundOkSt = balance_atomic_credit($Balance_id['id'], $Payment_report['price']);
-                if ($__refundOkSt && function_exists('wallet_ledger_record')) {
-                    wallet_ledger_record($Balance_id['id'], 'credit', $Payment_report['price'], 'refund', 'بازگشت وجه - موجودی انبار تمام شده', (string)$Payment_report['id_order'], 'invoice', (string)($nameloc['id_invoice'] ?? ''));
+                $__refundSt = rx_refund_payment_once($Payment_report['id_order'], $Balance_id['id'], $Payment_report['price'], 'بازگشت وجه - موجودی انبار تمام شده', (string)($nameloc['id_invoice'] ?? ''));
+                if ($__refundSt === 'refunded') {
+                    sendmessage($Balance_id['id'], "❌ موجودی انبار برای این محصول تمام شده است؛ مبلغ پرداختی به کیف پول شما بازگردانده شد.", $keyboard, 'HTML');
+                } elseif ($__refundSt === 'failed') {
+                    sendmessage($Balance_id['id'], "❌ موجودی انبار برای این محصول تمام شده است و بازگشت وجه با خطا مواجه شد؛ لطفاً با پشتیبانی در ارتباط باشید.", $keyboard, 'HTML');
                 }
-                sendmessage($Balance_id['id'], "❌ موجودی انبار برای این محصول تمام شده است؛ مبلغ پرداختی به کیف پول شما بازگردانده شد.", $keyboard, 'HTML');
                 return;
             }
             update("user", "Balance", 0, "id", $Balance_id['id']);
@@ -2761,16 +3169,18 @@ $textonebuy
             }
             $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
             $Balance_Low_user = 0;
-            update("user", "Balance", $Balance_Low_user, "id", $Balance_id['id']);
             $extend = $ManagePanel->extend($marzban_list_get['Methodextend'], $prodcut['Volume_constraint'], $prodcut['Service_time'], $nameloc['username'], $prodcut['code_product'], $marzban_list_get['code_panel']);
         if ($extend['status'] == false) {
-            $balance = $Balance_id['Balance'] + $Payment_report['price'];
-            $__refundOkEx = balance_atomic_credit($Balance_id['id'], $Payment_report['price']);
-            if ($__refundOkEx && function_exists('wallet_ledger_record')) {
-                wallet_ledger_record($Balance_id['id'], 'credit', $Payment_report['price'], 'refund', 'بازگشت وجه - خطا در تمدید سرویس', (string)$Payment_report['id_order'], 'invoice', (string)($nameloc['id_invoice'] ?? ''));
+            $__refundEx = rx_refund_payment_once($Payment_report['id_order'], $Balance_id['id'], $Payment_report['price'], 'بازگشت وجه - خطا در تمدید سرویس', (string)($nameloc['id_invoice'] ?? ''));
+            if ($__refundEx === 'duplicate') {
+                return;
             }
-            sendmessage($Balance_id['id'], $textbotlang['users']['sell']['ErrorConfig'], $keyboard, 'HTML');
-            sendmessage($Balance_id['id'], "💎  کاربر عزیز بدلیل تمدید نشدن سرویس مبلغ " . rxFormatToman($balance) . " تومان به کیف پول شما اضافه گردید.", $keyboard, 'HTML');
+            if ($__refundEx === 'refunded') {
+                sendmessage($Balance_id['id'], $textbotlang['users']['sell']['ErrorConfig'], $keyboard, 'HTML');
+                sendmessage($Balance_id['id'], "💎  کاربر عزیز بدلیل تمدید نشدن سرویس مبلغ " . rxFormatToman($Payment_report['price']) . " تومان به کیف پول شما اضافه گردید.", $keyboard, 'HTML');
+            } else {
+                sendmessage($Balance_id['id'], "❌ تمدید سرویس با خطا مواجه شد و بازگشت وجه نیز انجام نشد؛ لطفاً با پشتیبانی در ارتباط باشید.", $keyboard, 'HTML');
+            }
             $extend['msg'] = json_encode($extend['msg']);
             $textreports = "
         خطای تمدید سرویس
@@ -2794,6 +3204,7 @@ $textonebuy
             }
             return;
         }
+            update("user", "Balance", $Balance_Low_user, "id", $Balance_id['id']);
         }
         update("Payment_report", "direct_payment_done", 1, "id_order", $order_id);
 
@@ -2845,13 +3256,11 @@ $textonebuy
         $renewCashbackEligible = !function_exists('rx_shopCashbackEligible')
             || rx_shopCashbackEligible("chashbackextend", $Balance_id['register'] ?? null, "getextenduser", $Balance_id['id'] ?? null, $Payment_report['id_order'] ?? null);
         if ($renewCashbackEligible && intval($valurcashbackextend) != 0) {
-            $result = ($prodcut['price_product'] * $valurcashbackextend) / 100;
-            $__renewCashbackOk = balance_atomic_credit($Balance_id['id'], $result);
-            if ($__renewCashbackOk && function_exists('wallet_ledger_record')) {
-                wallet_ledger_record($Balance_id['id'], 'credit', $result, 'cashback', 'هدیه بازگشت وجه تمدید سرویس', (string)($Payment_report['id_order'] ?? ''), 'invoice', (string)($nameloc['id_invoice'] ?? ''));
-            }
-            sendmessage($Balance_id['id'], "تبریک 🎉
+            $result = (int) floor(($prodcut['price_product'] * $valurcashbackextend) / 100);
+            if (rx_cashback_credit_once($Payment_report['id_order'] ?? '', $Balance_id['id'], $result, 'chashbackextend', 'هدیه بازگشت وجه تمدید سرویس') === 'credited') {
+                sendmessage($Balance_id['id'], "تبریک 🎉
 📌 به عنوان هدیه تمدید مبلغ " . rxFormatToman($result) . " تومان حساب شما شارژ گردید", null, 'HTML');
+            }
         }
         $priceproductformat = number_format($prodcut['price_product']);
         if (!empty($extend['queued'])) {
@@ -2942,7 +3351,6 @@ $textonebuy
             }
             return;
         }
-        update("user", "Balance", $Balance_Low_user, "id", $Balance_id['id']);
         $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $steppay[0]);
         $data_for_database = json_encode(array(
             'volume_value' => $volume,
@@ -2953,12 +3361,19 @@ $textonebuy
         $type = "extra_user";
         $extra_volume = $ManagePanel->extra_volume($nameloc['username'], $marzban_list_get['code_panel'], $volume);
         if ($extra_volume['status'] == false) {
+            $__refundVx = rx_refund_payment_once($Payment_report['id_order'], $Balance_id['id'], $Payment_report['price'], 'بازگشت وجه - خطا در خرید حجم اضافه', (string)($nameloc['id_invoice'] ?? ''));
+            if ($__refundVx === 'duplicate') {
+                return;
+            }
             $extra_volume['msg'] = json_encode($extra_volume['msg']);
             $textreports = "خطای خرید حجم اضافه
 <blockquote>نام پنل : {$marzban_list_get['name_panel']}</blockquote>
 <blockquote>نام کاربری سرویس : {$nameloc['username']}</blockquote>
 <blockquote>دلیل خطا : {$extra_volume['msg']}</blockquote>";
             sendmessage($nameloc['id_user'], faoxima_textbot_get('dyn_errors_extra_volume_purchase_error', "❌خطایی در خرید حجم اضافه سرویس رخ داده با پشتیبانی در ارتباط باشید"), null, 'HTML');
+            if ($__refundVx === 'refunded') {
+                sendmessage($nameloc['id_user'], "💎  کاربر عزیز بدلیل انجام نشدن خرید حجم اضافه مبلغ " . rxFormatToman($Payment_report['price']) . " تومان به کیف پول شما اضافه گردید.", null, 'HTML');
+            }
             if (strlen($setting['Channel_Report']) > 0) {
                 telegram('sendmessage', [
                     'chat_id' => $setting['Channel_Report'],
@@ -2969,6 +3384,7 @@ $textonebuy
             }
             return;
         }
+        update("user", "Balance", $Balance_Low_user, "id", $Balance_id['id']);
         update("Payment_report", "direct_payment_done", 1, "id_order", $order_id);
         MiniDiscount::logSale([
             'id_user' => $Balance_id['id'],
@@ -3063,7 +3479,6 @@ $textonebuy
             }
             return;
         }
-        update("user", "Balance", $Balance_Low_user, "id", $nameloc['id_user']);
         $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $steppay[0]);
         $data_for_database = json_encode(array(
             'day' => $tmieextra,
@@ -3076,6 +3491,13 @@ $textonebuy
         $day = floor($timeservice / 86400);
         $extra_time = $ManagePanel->extra_time($nameloc['username'], $marzban_list_get['code_panel'], $tmieextra);
         if ($extra_time['status'] == false) {
+            $__refundEt = rx_refund_payment_once($Payment_report['id_order'], $Payment_report['id_user'], $Payment_report['price'], 'بازگشت وجه - خطا در خرید زمان اضافه', (string)($nameloc['id_invoice'] ?? ''));
+            if ($__refundEt === 'duplicate') {
+                return;
+            }
+            if ($__refundEt === 'refunded') {
+                sendmessage($Payment_report['id_user'], "💎  کاربر عزیز بدلیل انجام نشدن خرید زمان اضافه مبلغ " . rxFormatToman($Payment_report['price']) . " تومان به کیف پول شما اضافه گردید.", null, 'HTML');
+            }
             $extra_time['msg'] = json_encode($extra_time['msg']);
             $textreports = "خطای خرید حجم اضافه
 <blockquote>نام پنل : {$marzban_list_get['name_panel']}</blockquote>
@@ -3092,6 +3514,7 @@ $textonebuy
             }
             return;
         }
+        update("user", "Balance", $Balance_Low_user, "id", $nameloc['id_user']);
         update("Payment_report", "direct_payment_done", 1, "id_order", $order_id);
         MiniDiscount::logSale([
             'id_user' => $Balance_id['id'],
@@ -3179,7 +3602,23 @@ $textonebuy
             return;
         }
         if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
-        balance_atomic_credit($Payment_report['id_user'], $__creditAmount);
+        if (!balance_atomic_credit($Payment_report['id_user'], $__creditAmount)) {
+            try {
+                $rxReleaseCharge = $pdo->prepare("UPDATE Payment_report SET payment_Status = :s, direct_payment_done = NULL WHERE id_order = :o AND direct_payment_done = 1");
+                $rxReleaseCharge->execute([':s' => (string) ($Payment_report['payment_Status'] ?? 'Unpaid'), ':o' => $Payment_report['id_order']]);
+            } catch (Throwable $rxReleaseErr) {
+                error_log('DirectPayment charge release failed: ' . $rxReleaseErr->getMessage());
+            }
+            if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
+            if (function_exists('rx_log_event')) {
+                rx_log_event('WALLET_CREDIT_FAILED', 'DirectPayment wallet credit failed; claim released', [
+                    'id_order' => $Payment_report['id_order'],
+                    'id_user' => $Payment_report['id_user'],
+                    'amount' => $__creditAmount,
+                ]);
+            }
+            return;
+        }
         update("Payment_report", "at_updated", date('Y/m/d H:i:s'), "id_order", $Payment_report['id_order']);
         update("user", "Processing_value_four", "", "id", $Payment_report['id_user']);
 

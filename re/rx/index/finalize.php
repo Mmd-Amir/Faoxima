@@ -27,19 +27,11 @@ if (isset($update['pre_checkout_query'])) {
     $cashbackEligible = !function_exists('rx_cashbackEligibleForKey')
         || rx_cashbackEligibleForKey("chashbackstar", $Balance_id['register'] ?? null, $Payment_report['id_invoice'] ?? null, $Balance_id['id'] ?? null, $Payment_report['id_order'] ?? null);
     if ($cashbackEligible && $pricecashback != "0") {
-        $result = round(($Payment_report['price'] * $pricecashback) / 100);
-        if (function_exists('balance_atomic_credit')) {
-            $__starCashbackOk = balance_atomic_credit($Balance_id['id'], $result);
-        } else {
-            $Balance_confrim = intval($Balance_id['Balance']) + $result;
-            update("user", "Balance", $Balance_confrim, "id", $Balance_id['id']);
-            $__starCashbackOk = true;
+        $result = (int) floor(($Payment_report['price'] * $pricecashback) / 100);
+        if (rx_cashback_credit_once($Payment_report['id_order'], $Balance_id['id'], $result, 'chashbackstar', 'کش‌بک پرداخت استارز') === 'credited') {
+            $text_report = sprintf($textbotlang['users']['Discount']['gift-deposit'], rxFormatToman($result));
+            sendmessage($Balance_id['id'], $text_report, null, 'HTML');
         }
-        if (!empty($__starCashbackOk) && function_exists('wallet_ledger_record')) {
-            wallet_ledger_record($Balance_id['id'], 'credit', $result, 'cashback', 'کش‌بک پرداخت استارز', (string)$Payment_report['id_order'], 'Payment_report', (string)$Payment_report['id_order']);
-        }
-        $text_report = sprintf($textbotlang['users']['Discount']['gift-deposit'], rxFormatToman($result));
-        sendmessage($Balance_id['id'], $text_report, null, 'HTML');
     }
     if (strlen($setting['Channel_Report'] ?? '') > 0) {
         telegram('sendmessage', [

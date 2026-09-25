@@ -188,12 +188,12 @@ function tonpay_process_webhook()
     $cashbackEligible = !function_exists('rx_cashbackEligibleForKey')
         || rx_cashbackEligibleForKey("chashbacktonpay", $Balance_id['register'] ?? null, $Payment_report['id_invoice'] ?? null, $Balance_id['id'] ?? null, $Payment_report['id_order'] ?? null);
     if ($cashbackEligible && $pricecashback != "0") {
-        $result = round(($Payment_report['price'] * $pricecashback) / 100);
-        $Balance_confrim = intval($Balance_id['Balance']) + $result;
-        update("user", "Balance", $Balance_confrim, "id", $Balance_id['id']);
-        $pricecashback = number_format($pricecashback);
-        $text_report = "🎁 کاربر عزیز مبلغ " . rxFormatToman($result) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
-        sendmessage($Balance_id['id'], $text_report, null, 'HTML');
+        $result = (int) floor(($Payment_report['price'] * $pricecashback) / 100);
+        if (rx_cashback_credit_once($Payment_report['id_order'], $Balance_id['id'], $result, 'chashbacktonpay', 'هدیه بازگشت وجه تون‌پی') === 'credited') {
+            $pricecashback = number_format($pricecashback);
+            $text_report = "🎁 کاربر عزیز مبلغ " . rxFormatToman($result) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
+            sendmessage($Balance_id['id'], $text_report, null, 'HTML');
+        }
     }
 
     $paymentreports = select("topicid", "idreport", "report", "paymentreport", "select")['idreport'];

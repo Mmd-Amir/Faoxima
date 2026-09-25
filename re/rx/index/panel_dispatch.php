@@ -61,12 +61,12 @@ if (preg_match('/Confirmpay_user_(\w+)_(\w+)/', $datain, $dataget)) {
         $cashbackEligible = !function_exists('rx_cashbackEligibleForKey')
             || rx_cashbackEligibleForKey("chashbackiranpay2", $Balance_id['register'] ?? null, $Payment_report['id_invoice'] ?? null, $Balance_id['id'] ?? null, $Payment_report['id_order'] ?? null);
         if ($cashbackEligible && $pricecashback != "0") {
-            $result = round(($Payment_report['price'] * $pricecashback) / 100);
-            $Balance_confrim = intval($Balance_id['Balance']) + $result;
-            update("user", "Balance", $Balance_confrim, "id", $user['id']);
-            $pricecashback = number_format($pricecashback);
-            $text_report = sprintf($textbotlang['users']['Discount']['gift-deposit'], rxFormatToman($result));
-            sendmessage($from_id, $text_report, null, 'HTML');
+            $result = (int) floor(($Payment_report['price'] * $pricecashback) / 100);
+            if (rx_cashback_credit_once($Payment_report['id_order'], $Payment_report['id_user'], $result, 'chashbackiranpay2', 'هدیه بازگشت وجه درگاه ارزی ریالی') === 'credited') {
+                $pricecashback = number_format($pricecashback);
+                $text_report = sprintf($textbotlang['users']['Discount']['gift-deposit'], rxFormatToman($result));
+                sendmessage($Payment_report['id_user'], $text_report, null, 'HTML');
+            }
         }
         if (strlen($setting['Channel_Report'] ?? '') > 0) {
             telegram('sendmessage', [

@@ -227,12 +227,23 @@ switch ($action) {
             if (!isset($data['amount'])) {
                 sendJsonResponse(false, "id_invoice empty", []);
             }
-            $stmt = $pdo->prepare("UPDATE user SET Balance =  Balance + :balance WHERE id = '{$invoice['id_user']}'");
-            $stmt->execute([':balance' => $data['amount']]);
-            if (function_exists('wallet_ledger_record')) {
-                wallet_ledger_record($invoice['id_user'], 'credit', $data['amount'], 'refund', 'بازگشت وجه لغو سرویس', null, 'invoice', $data['id_invoice']);
+            if (!is_numeric($data['amount']) || (float) $data['amount'] < 0 || (float) $data['amount'] != floor((float) $data['amount'])) {
+                sendJsonResponse(false, "amount invalid", []);
             }
-            update("invoice", "Status", "removebyadmin", "id_invoice", $data["id_invoice"]);
+            $rxApiRefund = rx_refund_invoice_once(
+                (string) $data['id_invoice'],
+                "UPDATE invoice SET Status = 'removebyadmin' WHERE id_invoice = :inv AND Status NOT IN ('removebyadmin','removedbyadmin','removebyuser','refunded')",
+                [':inv' => (string) $data['id_invoice']],
+                $invoice['id_user'],
+                (int) $data['amount'],
+                'بازگشت وجه لغو سرویس'
+            );
+            if ($rxApiRefund === 'claimed') {
+                sendJsonResponse(false, "service already removed", []);
+            }
+            if ($rxApiRefund !== 'refunded') {
+                sendJsonResponse(false, "refund failed", []);
+            }
             $ManagePanel->RemoveUser($invoice['Service_location'], $invoice['username']);
         } elseif ($data['type'] == "three") {
             $stmt = $pdo->prepare("DELETE  FROM invoice WHERE id_invoice = :id_invoice");

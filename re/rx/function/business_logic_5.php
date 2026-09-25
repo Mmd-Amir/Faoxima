@@ -881,11 +881,38 @@ if (!function_exists('cm_apply_payment')) {
             return;
         }
 
-        $userRow = function_exists('select') ? select('user', '*', 'id', $payment['id_user'], 'select') : null;
-        $oldBalance = is_array($userRow) ? (int) ($userRow['Balance'] ?? 0) : 0;
-        $newBalance = $oldBalance + $finalIrr;
+        $userRow = function_exists('select') ? select('user', '*', 'id', $payment['id_user'], 'select', ['cache' => false]) : null;
+        if (!function_exists('balance_atomic_credit') || !balance_atomic_credit($payment['id_user'], $finalIrr)) {
+            try {
+                $release = $pdo->prepare("UPDATE Payment_report SET payment_Status = :s WHERE id_order = :id AND payment_Status = 'paid'");
+                $release->execute([':s' => (string) ($payment['payment_Status'] ?? 'waiting'), ':id' => $orderId]);
+            } catch (Throwable $e) {
+                error_log('[crypto] cm_apply_payment release failed: ' . $e->getMessage());
+            }
+            if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
+            if (function_exists('rx_log_event')) {
+                rx_log_event('WALLET_CREDIT_FAILED', 'cm_apply_payment wallet credit failed; claim released', [
+                    'id_order' => $orderId,
+                    'id_user' => $payment['id_user'] ?? null,
+                    'amount' => $finalIrr,
+                ]);
+            }
+            if ($callbackQueryId && function_exists('telegram')) {
+                telegram('answerCallbackQuery', [
+                    'callback_query_id' => $callbackQueryId,
+                    'text' => '❌ شارژ کیف پول انجام نشد. دوباره تلاش کنید.',
+                    'show_alert' => true,
+                    'cache_time' => 0,
+                ]);
+            }
+            return;
+        }
+        if (function_exists('wallet_ledger_record')) {
+            wallet_ledger_record($payment['id_user'], 'credit', $finalIrr, 'topup_crypto', (string) ($payment['Payment_Method'] ?? 'crypto'), $orderId);
+        }
+        $balanceRow = function_exists('select') ? select('user', 'Balance', 'id', $payment['id_user'], 'select', ['cache' => false]) : null;
+        $newBalance = is_array($balanceRow) ? (int) ($balanceRow['Balance'] ?? 0) : ((is_array($userRow) ? (int) ($userRow['Balance'] ?? 0) : 0) + $finalIrr);
         if (function_exists('update')) {
-            update('user', 'Balance', $newBalance, 'id', $payment['id_user']);
             update('Payment_report', 'at_updated', date('Y/m/d H:i:s'), 'id_order', $orderId);
         }
 

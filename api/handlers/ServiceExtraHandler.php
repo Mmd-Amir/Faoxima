@@ -208,9 +208,12 @@ final class ServiceExtraHandler extends BaseHandler
             ]);
 
             if ($balanceCharged) {
-                balance_atomic_credit($this->user['id'], $finalPrice);
-                if (function_exists('wallet_ledger_record')) {
-                    wallet_ledger_record($this->user['id'], 'credit', $finalPrice, 'refund', faoxima_textbot_get('dyn_serviceextra_refund_note', 'بازگشت وجه به دلیل خطا در سرویس اضافه'), $orderId, 'invoice', (string)($invoice['id_invoice'] ?? ''));
+                if (balance_atomic_credit($this->user['id'], $finalPrice)) {
+                    if (function_exists('wallet_ledger_record')) {
+                        wallet_ledger_record($this->user['id'], 'credit', $finalPrice, 'refund', faoxima_textbot_get('dyn_serviceextra_refund_note', 'بازگشت وجه به دلیل خطا در سرویس اضافه'), $orderId, 'invoice', (string)($invoice['id_invoice'] ?? ''));
+                    }
+                } else {
+                    FaoximaLogger::error('refund credit failed', ['user' => $this->user['id'], 'amount' => $finalPrice]);
                 }
             }
             $errorTitle = $kind === 'time'
