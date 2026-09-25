@@ -20,58 +20,41 @@ final class TestAccountHandler extends BaseHandler
     }
 
 
-    private function isTestServiceAvailable(): bool
+    private function policyErrorResponse(string $error): void
     {
-        $count = (int) FaoximaDb::fetchScalar(
-            "SELECT COUNT(*) FROM marzban_panel WHERE TestAccount = 'ONTestAccount'"
-        );
-        return $count > 0;
+        switch ($error) {
+            case 'feature_disabled':
+            case 'no_panel':
+                FaoximaResponse::fail(409, faoxima_textbot_get('dyn_testaccount_service_unavailable', '📌 سرویس تست در حال حاضر در دسترس نیست.'));
+                break;
+            case 'verify_phone':
+                FaoximaResponse::fail(403, faoxima_textbot_get('dyn_testaccount_phone_required', '📱 برای دریافت اکانت تست ابتدا باید شماره موبایل خود را تأیید کنید.'));
+                break;
+            case 'verify_verify':
+                FaoximaResponse::fail(403, faoxima_textbot_get('dyn_testaccount_verify_required', '⚠️ حساب شما هنوز احراز هویت نشده است.'));
+                break;
+            case 'panel_required':
+                FaoximaResponse::badRequest('country_id is required');
+                break;
+            case 'audience_restricted':
+                FaoximaResponse::fail(403, rx_test_audience_denied_text());
+                break;
+            case 'limit_reached':
+                FaoximaResponse::fail(403, faoxima_textbot_get('dyn_testaccount_limit_reached', '❌ سقف دریافت اکانت تست شما به پایان رسیده است.'));
+                break;
+            case 'stock_empty':
+                FaoximaResponse::fail(409, faoxima_textbot_get('dyn_testaccount_manualsale_stock_depleted', '❌ موجودی این سرویس به پایان رسیده.'));
+                break;
+            default:
+                FaoximaResponse::fail(404, faoxima_textbot_get('dyn_testaccount_location_unavailable', '❌ سرویس تست برای این موقعیت در دسترس نیست.'));
+        }
     }
 
 
-    private function loadTestPanel(): ?array
+    private function freshUser(): array
     {
-        $count = (int) FaoximaDb::fetchScalar(
-            "SELECT COUNT(*) FROM marzban_panel WHERE TestAccount = 'ONTestAccount'"
-        );
-
-        if ($count === 1) {
-            $panel = FaoximaDb::fetchOne(
-                "SELECT * FROM marzban_panel WHERE TestAccount = 'ONTestAccount' LIMIT 1"
-            );
-            if (!is_array($panel)) return null;
-
-            $hide = $this->decodeJsonField($panel['hide_user'] ?? null);
-            if (!empty($hide) && in_array((string)$this->user['id'], array_map('strval', $hide), true)) {
-                return null;
-            }
-            return $panel;
-        }
-
-        return null;
-    }
-
-
-    private function listTestPanels(): array
-    {
-        $rows = FaoximaDb::fetchAll(
-            "SELECT * FROM marzban_panel WHERE TestAccount = 'ONTestAccount' AND (agent = :agent OR agent = 'all')",
-            [':agent' => (string)($this->user['agent'] ?? 'f')]
-        );
-        if (!is_array($rows)) return [];
-
-        $list = [];
-        foreach ($rows as $row) {
-            $hide = $this->decodeJsonField($row['hide_user'] ?? null);
-            if (!empty($hide) && in_array((string)$this->user['id'], array_map('strval', $hide), true)) {
-                continue;
-            }
-            $list[] = [
-                'id'   => (string)$row['code_panel'],
-                'name' => (string)$row['name_panel'],
-            ];
-        }
-        return $list;
+        $row = select('user', '*', 'id', (string)$this->user['id'], 'select', ['cache' => false]);
+        return is_array($row) && !empty($row) ? $row : $this->user;
     }
 
 
@@ -79,36 +62,43 @@ final class TestAccountHandler extends BaseHandler
     {
         $this->requireMethod('GET');
 
-        $available = $this->isTestServiceAvailable();
-        if (!$available) {
-            FaoximaResponse::ok(['available' => false, 'panels' => [], 'limit_left' => 0]);
+        $user = $this->freshUser();
+        $isAdmin = $this->userIsAdmin();
+        $legacyLeft = (int)($user['limit_usertest'] ?? 0);
+
+        $overview = rx_test_overview($user, $isAdmin);
+        if (!$overview['enabled']) {
+            FaoximaResponse::ok(['available' => false, 'panels' => [], 'limit_left' => 0, 'reason' => 'feature_disabled']);
         }
 
-        $limitLeft = (int)($this->user['limit_usertest'] ?? 0);
-        $isAdmin = $this->userIsAdmin();
-
         $panels = [];
-        $singlePanel = $this->loadTestPanel();
-        if ($singlePanel === null && !$isAdmin) {
-            $countAll = (int) FaoximaDb::fetchScalar(
-                "SELECT COUNT(*) FROM marzban_panel WHERE TestAccount = 'ONTestAccount'"
-            );
-            if ($countAll !== 1) {
-                $panels = $this->listTestPanels();
-            }
-        } elseif ($singlePanel !== null) {
-            $panels = [[
-                'id'   => (string)$singlePanel['code_panel'],
-                'name' => (string)$singlePanel['name_panel'],
-            ]];
-        } else {
-            $panels = $this->listTestPanels();
+        foreach ($overview['panels'] as $entry) {
+            $row = $entry['panel'];
+            $settings = $entry['settings'];
+            $quota = $entry['quota'];
+            $panels[] = [
+                'id'               => (string)$row['code_panel'],
+                'name'             => (string)$row['name_panel'],
+                'available'        => (bool)$quota['can_create'],
+                'reason'           => (string)$quota['reason'],
+                'limit_left'       => $quota['remaining'] === null ? null : (int)$quota['remaining'],
+                'quota_mode'       => (string)$settings['mode'],
+                'quota_source'     => (string)$quota['source'],
+                'manual_override'  => (bool)$quota['manual_override'],
+                'audience_mode'    => (string)$quota['audience_mode'],
+                'time_hours'       => rx_test_stored_hours($settings),
+                'unlimited_time'   => !empty($settings['time_unlimited']),
+                'volume_mb'        => rx_test_stored_mb($settings),
+                'unlimited_volume' => !empty($settings['volume_unlimited']),
+            ];
         }
 
         FaoximaResponse::ok([
-            'available'  => $available && ($limitLeft > 0 || $isAdmin),
-            'panels'     => $panels,
-            'limit_left' => $limitLeft,
+            'available'      => $overview['gate'] === null && $overview['any_available'],
+            'panels'         => $panels,
+            'limit_left'     => $legacyLeft,
+            'reason'         => $overview['reason'],
+            'reason_message' => $overview['reason'] === 'audience_restricted' ? rx_test_audience_denied_text() : '',
         ]);
     }
 
@@ -117,44 +107,17 @@ final class TestAccountHandler extends BaseHandler
     {
         $this->requireMethod('POST');
 
-        if (!$this->isTestServiceAvailable()) {
-            FaoximaResponse::fail(409, faoxima_textbot_get('dyn_testaccount_service_unavailable', '📌 سرویس تست در حال حاضر در دسترس نیست.'));
-        }
-
-        $limitLeft = (int)($this->user['limit_usertest'] ?? 0);
+        $user = $this->freshUser();
         $isAdmin = $this->userIsAdmin();
-        if ($limitLeft <= 0 && !$isAdmin) {
-            FaoximaResponse::fail(403, faoxima_textbot_get('dyn_testaccount_limit_reached', '❌ سقف دریافت اکانت تست شما به پایان رسیده است.'));
-        }
-
         $codePanel = FaoximaInput::string($this->data, 'country_id');
         $customUsername = FaoximaInput::nullableString($this->data, 'custom_username');
 
-        $panel = null;
-        $countAll = (int) FaoximaDb::fetchScalar(
-            "SELECT COUNT(*) FROM marzban_panel WHERE TestAccount = 'ONTestAccount'"
-        );
-        if ($countAll === 1) {
-            $panel = $this->loadTestPanel();
-        } else {
-            if ($codePanel === '') {
-                FaoximaResponse::badRequest('country_id is required');
-            }
-            $candidate = FaoximaDb::fetchOne(
-                "SELECT * FROM marzban_panel WHERE code_panel = :c AND TestAccount = 'ONTestAccount' LIMIT 1",
-                [':c' => $codePanel]
-            );
-            if (is_array($candidate)) {
-                $hide = $this->decodeJsonField($candidate['hide_user'] ?? null);
-                if (empty($hide) || !in_array((string)$this->user['id'], array_map('strval', $hide), true)) {
-                    $panel = $candidate;
-                }
-            }
+        $policy = rx_test_check_policy($user, $isAdmin, $codePanel === '' ? null : $codePanel);
+        if (empty($policy['ok'])) {
+            $this->policyErrorResponse((string)($policy['error'] ?? ''));
         }
-
-        if ($panel === null) {
-            FaoximaResponse::fail(404, faoxima_textbot_get('dyn_testaccount_location_unavailable', '❌ سرویس تست برای این موقعیت در دسترس نیست.'));
-        }
+        $panel = $policy['panel'];
+        $settings = $policy['settings'];
 
         $methodUsername = (string)($panel['MethodUsername'] ?? '');
         $requiresCustom = ($methodUsername === 'نام کاربری دلخواه + عدد رندوم' || $methodUsername === 'متن دلخواه کاربر + رندوم');
@@ -170,110 +133,50 @@ final class TestAccountHandler extends BaseHandler
             $customUsername = $trimmedCustom;
         }
 
-        if (($panel['type'] ?? '') === 'Manualsale') {
-            $stock = (int) FaoximaDb::fetchScalar(
-                "SELECT COUNT(*) FROM manualsell WHERE codepanel = :p AND codeproduct = 'usertest' AND status = 'active'",
-                [':p' => $panel['code_panel']]
-            );
-            if ($stock === 0) {
-                FaoximaResponse::fail(409, faoxima_textbot_get('dyn_testaccount_manualsale_stock_depleted', '❌ موجودی این سرویس به پایان رسیده.'));
-            }
+        if (!rx_test_manual_stock_available($panel)) {
+            $this->policyErrorResponse('stock_empty');
+        }
+
+        $reserveError = '';
+        $reservation = rx_test_reserve($user, $panel, $settings, $isAdmin, 'miniapp', $reserveError);
+        if ($reservation === null) {
+            $this->policyErrorResponse($reserveError !== '' ? $reserveError : 'limit_reached');
         }
 
         $randomString = bin2hex(random_bytes(4));
-        $text = strtolower((string)($customUsername ?? ''));
-
-        $usernameAc = generateUsername(
-            (string)$this->user['id'],
-            $methodUsername,
-            (string)($this->user['username'] ?? ''),
-            $randomString,
-            $text,
-            (string)($panel['namecustom'] ?? ''),
-            (string)($this->user['namecustom'] ?? '')
-        );
-        $usernameAc = strtolower((string)$usernameAc);
-
-        $managePanel = new ManagePanel();
-        $existsLocal = FaoximaDb::fetchScalar(
-            'SELECT 1 FROM invoice WHERE username = :u LIMIT 1',
-            [':u' => $usernameAc]
-        );
-        $remoteCheck = null;
-        if (($panel['type'] ?? '') !== 'Manualsale') {
-            $remoteCheck = $managePanel->DataUser($panel['name_panel'], $usernameAc);
-        }
-        if ($existsLocal || (is_array($remoteCheck) && isset($remoteCheck['username']))) {
-            $usernameAc = rand(1000000, 9999999) . '-' . $usernameAc;
-        }
-
-        if (!$isAdmin) {
-            update('user', 'limit_usertest', $limitLeft - 1, 'id', $this->user['id']);
-        }
-
-        $expireTs = strtotime('+' . (int)($panel['time_usertest'] ?? 0) . ' hours');
-        $dataLimitBytes = (int)($panel['val_usertest'] ?? 0) * 1048576;
-
-        $orderId = $randomString;
-        $notifications = json_encode(['volume' => false, 'time' => false]);
-
         try {
-            FaoximaDb::execute(
-                "INSERT IGNORE INTO invoice
-                    (id_user, id_invoice, username, time_sell, Service_location, name_product,
-                     price_product, Volume, Volume_unit, Service_time, Status, notifctions)
-                 VALUES (:id_user, :id_invoice, :username, :time_sell, :location, :name_product,
-                         :price, :volume, :volume_unit, :service_time, :status, :notifs)",
-                [
-                    ':id_user'      => $this->user['id'],
-                    ':id_invoice'   => $orderId,
-                    ':username'     => $usernameAc,
-                    ':time_sell'    => time(),
-                    ':location'     => $panel['name_panel'],
-                    ':name_product' => 'سرویس تست',
-                    ':price'        => 0,
-                    ':volume'       => (int)($panel['val_usertest'] ?? 0),
-                    ':volume_unit'  => 'MB',
-                    ':service_time' => (int)($panel['time_usertest'] ?? 0),
-                    ':status'       => 'active',
-                    ':notifs'       => $notifications,
-                ]
-            );
+            $usernameAc = rx_test_build_username($user, $panel, (string)($customUsername ?? ''), $randomString);
         } catch (Throwable $e) {
-            if (!$isAdmin) {
-                update('user', 'limit_usertest', $limitLeft, 'id', $this->user['id']);
-            }
-            FaoximaLogger::exception($e, 'TestAccount invoice insert failed', ['user_id' => $this->user['id']]);
-            FaoximaResponse::serverError(faoxima_textbot_get('dyn_purchase_invoice_save_failed', 'خطا در ذخیره فاکتور'));
+            rx_test_reservation_update($reservation, 'failed');
+            rx_test_release($reservation);
+            FaoximaLogger::exception($e, 'TestAccount username build failed', ['user_id' => $user['id']]);
+            FaoximaResponse::serverError(faoxima_textbot_get('dyn_testaccount_create_failed_customer', '❌ خطایی در ساخت اکانت تست رخ داد. با پشتیبانی تماس بگیرید.'));
         }
 
-        $datac = [
-            'expire'     => $expireTs,
-            'data_limit' => $dataLimitBytes,
-            'from_id'    => $this->user['id'],
-            'username'   => $usernameAc,
-            'type'       => 'usertest',
-        ];
+        $provision = rx_test_provision($user, $panel, $settings, $reservation, $usernameAc, $randomString);
+        $orderId = (string)$provision['order_id'];
+        $expireTs = (int)$provision['expire'];
+        $dataLimitBytes = (int)$provision['data_limit'];
 
-        $dataoutput = $managePanel->createUser($panel['name_panel'], 'usertest', $usernameAc, $datac);
-
-        if (empty($dataoutput['username'])) {
-            $reason = is_array($dataoutput) ? json_encode($dataoutput['msg'] ?? $dataoutput) : (string)$dataoutput;
+        if (empty($provision['ok'])) {
+            if ($provision['error'] === 'invoice_failed') {
+                FaoximaLogger::error('TestAccount invoice insert failed', ['user_id' => $user['id'], 'reason' => $provision['msg']]);
+                FaoximaResponse::serverError(faoxima_textbot_get('dyn_purchase_invoice_save_failed', 'خطا در ذخیره فاکتور'));
+            }
+            if ($provision['error'] === 'stock_empty') {
+                $this->policyErrorResponse('stock_empty');
+            }
+            $reason = (string)$provision['msg'];
             FaoximaLogger::error('TestAccount createUser failed', [
-                'user_id' => $this->user['id'],
+                'user_id' => $user['id'],
                 'panel'   => $panel['name_panel'],
                 'reason'  => $reason,
             ]);
 
-            if (!$isAdmin) {
-                update('user', 'limit_usertest', $limitLeft, 'id', $this->user['id']);
-            }
-            try { FaoximaDb::execute('DELETE FROM invoice WHERE id_invoice = :o AND id_user = :u', [':o' => $orderId, ':u' => $this->user['id']]); } catch (Throwable $_) {}
-
             $errorText = faoxima_render_text(faoxima_textbot_get('dyn_testaccount_create_failed_report_tpl', "⭕️ یک کاربر قصد دریافت اکانت تست از مینی‌اپ داشت که ساخت کانفیگ با خطا مواجه شده\n<blockquote>✍️ دلیل خطا :</blockquote>\n<blockquote>{reason}</blockquote>\n<blockquote>آیدی کابر : {user_id}</blockquote>\n<blockquote>نام کاربری کاربر : @{username}</blockquote>\n<blockquote>نام پنل : {panel_name}</blockquote>"), [
                 'reason' => $reason,
-                'user_id' => $this->user['id'],
-                'username' => $this->user['username'],
+                'user_id' => $user['id'],
+                'username' => $user['username'],
                 'panel_name' => $panel['name_panel'],
             ]);
             $channel = $this->setting['Channel_Report'] ?? '';
@@ -290,9 +193,10 @@ final class TestAccountHandler extends BaseHandler
                 } catch (Throwable $_) {  }
             }
 
-            update('invoice', 'Status', 'Unsuccessful', 'id_invoice', $orderId);
             FaoximaResponse::serverError(faoxima_textbot_get('dyn_testaccount_create_failed_customer', '❌ خطایی در ساخت اکانت تست رخ داد. با پشتیبانی تماس بگیرید.'));
         }
+
+        $dataoutput = is_array($provision['output']) ? $provision['output'] : [];
 
         $configList = is_array($dataoutput['configs'] ?? null) ? $dataoutput['configs'] : [];
         $subLink = ($panel['sublink'] ?? '') === 'onsublink' ? (string)($dataoutput['subscription_url'] ?? '') : '';
@@ -313,9 +217,11 @@ final class TestAccountHandler extends BaseHandler
             $manualHasSubLink = ($manualSubLink !== '');
         }
 
-        $serviceTime = (int)($panel['time_usertest'] ?? 0);
-        $volumeMb = (int)($panel['val_usertest'] ?? 0);
+        $serviceTime = (int)$provision['hours'];
+        $volumeMb = (int)$provision['volume_mb'];
         $totalBytes = $dataLimitBytes;
+        $unlimitedTime = !empty($settings['time_unlimited']);
+        $unlimitedVolume = !empty($settings['volume_unlimited']);
 
         $configsArr = array_values(array_filter(array_map(static function ($c) {
             return is_string($c) ? trim($c) : '';
@@ -325,9 +231,8 @@ final class TestAccountHandler extends BaseHandler
         if (trim($template) === '') {
             $template = faoxima_textbot_get('dyn_testaccount_default_template', "✅ اکانت تست شما ساخته شد\n\n👤 نام کاربری : {username}\n🌿 نام سرویس : {name_service}\n🇺🇳 لوکیشن : {location}\n⏳ مدت زمان: {day}\n🗜 حجم بسته: {volume}");
         }
-        global $textbotlang;
-        $displayDay    = $serviceTime === 0 ? ($textbotlang['users']['stateus']['Unlimited'] ?? '∞') : (string)$serviceTime;
-        $displayVolume = $volumeMb === 0 ? ($textbotlang['users']['stateus']['Unlimited'] ?? '∞') : formatBytes($totalBytes);
+        $displayDay    = rx_test_display_time($settings);
+        $displayVolume = rx_test_display_volume($settings);
         $template = str_replace('{username}', "<code>" . htmlspecialchars(guardDisplayUsername($usernameAc, $panel), ENT_QUOTES, 'UTF-8') . "</code>", $template);
         $template = str_replace('{name_service}', htmlspecialchars(faoxima_textbot_get('dyn_testaccount_product_name', 'سرویس تست'), ENT_QUOTES, 'UTF-8'), $template);
         $template = str_replace('{location}', htmlspecialchars((string)($panel['name_panel'] ?? ''), ENT_QUOTES, 'UTF-8'), $template);
@@ -418,20 +323,20 @@ final class TestAccountHandler extends BaseHandler
                 $keyboard,
                 $template,
                 $orderId,
-                $this->user['id']
+                $user['id']
             );
             $deliveryOk = true;
         } catch (Throwable $e) {
-            FaoximaLogger::exception($e, 'TestAccount delivery to user threw', ['user_id' => $this->user['id']]);
+            FaoximaLogger::exception($e, 'TestAccount delivery to user threw', ['user_id' => $user['id']]);
         }
+        rx_test_mark_delivery($reservation, $deliveryOk);
 
         if (!$deliveryOk) {
             FaoximaLogger::error('TestAccount delivery to user failed', [
-                'user_id'  => $this->user['id'],
+                'user_id'  => $user['id'],
                 'order_id' => $orderId,
                 'panel'    => $panel['name_panel'],
             ]);
-            FaoximaResponse::fail(502, faoxima_textbot_get('dyn_testaccount_delivery_failed', '❌ اکانت تست ساخته شد اما ارسال آن به تلگرام ناموفق بود. لطفاً ربات را استارت کنید و دوباره تلاش کنید.'));
         }
 
         $channel = $this->setting['Channel_Report'] ?? '';
@@ -439,8 +344,8 @@ final class TestAccountHandler extends BaseHandler
             $topicRow = select('topicid', 'idreport', 'report', 'paymentreport', 'select');
             $topicId = is_array($topicRow) ? (string)($topicRow['idreport'] ?? '') : '';
             $text = faoxima_render_text(faoxima_textbot_get('dyn_testaccount_report_tpl', "🧪 دریافت اکانت تست از مینی‌اپ\n\n<blockquote>▫️آیدی عددی کاربر : <code>{user_id}</code></blockquote>\n<blockquote>▫️نام کاربری کاربر :@{username}</blockquote>\n<blockquote>▫️نام کاربری کانفیگ :{config_username}</blockquote>\n<blockquote>▫️موقعیت سرویس : {panel_name}</blockquote>"), [
-                'user_id' => $this->user['id'],
-                'username' => $this->user['username'],
+                'user_id' => $user['id'],
+                'username' => $user['username'],
                 'config_username' => guardDisplayUsername($usernameAc, $panel),
                 'panel_name' => $panel['name_panel'],
             ]);
@@ -455,7 +360,7 @@ final class TestAccountHandler extends BaseHandler
         }
 
         FaoximaLogger::debug('Test account created via miniapp', [
-            'user_id'  => $this->user['id'],
+            'user_id'  => $user['id'],
             'order_id' => $orderId,
             'panel'    => $panel['name_panel'],
         ]);
@@ -463,6 +368,8 @@ final class TestAccountHandler extends BaseHandler
         FaoximaResponse::ok([
             'success'  => true,
             'order_id' => $orderId,
+            'delivery_failed' => !$deliveryOk,
+            'delivery_message' => $deliveryOk ? '' : faoxima_textbot_get('dyn_testaccount_delivery_failed_saved', '⚠️ اکانت تست ساخته شد اما ارسال آن در تلگرام ناموفق بود. اطلاعات سرویس در همین صفحه و بخش سرویس‌های من در دسترس است.'),
             'service'  => [
                 'id'                => $orderId,
                 'username'          => (string)($dataoutput['username'] ?? $usernameAc),
@@ -483,8 +390,8 @@ final class TestAccountHandler extends BaseHandler
                 'total_bytes'       => $totalBytes,
                 'used_traffic_gb'   => 0,
                 'total_traffic_gb'  => $totalBytes > 0 ? $totalBytes / (1024 ** 3) : 0,
-                'unlimited_volume'  => $totalBytes === 0,
-                'unlimited_time'    => $serviceTime === 0,
+                'unlimited_volume'  => $unlimitedVolume,
+                'unlimited_time'    => $unlimitedTime,
                 'subscription_url'  => $subLink,
                 'configs'           => $configsArr,
                 'delivered_as_file' => $manualDelivered,

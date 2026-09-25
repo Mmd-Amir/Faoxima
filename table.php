@@ -973,8 +973,57 @@ try {
     }
     ensureMarzbanGuardFieldsMigrated();
     ensureRebeccaPanelFieldsMigrated();
+    rxSafeAddColumn($connect, "marzban_panel", "test_settings", "TEXT NULL");
 } catch (Exception $e) {
     error_log('[panels] ' . $e->getMessage());
+}
+
+try {
+    $connect->query("CREATE TABLE IF NOT EXISTS test_account_usage (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id VARCHAR(64) NOT NULL,
+        code_panel VARCHAR(100) NOT NULL,
+        used_count INT UNSIGNED NOT NULL DEFAULT 0,
+        quota_generation INT UNSIGNED NOT NULL DEFAULT 1,
+        created_at INT UNSIGNED NOT NULL DEFAULT 0,
+        updated_at INT UNSIGNED NOT NULL DEFAULT 0,
+        UNIQUE KEY uq_tau_user_panel (user_id, code_panel)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $connect->query("CREATE TABLE IF NOT EXISTS test_account_reservation (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id VARCHAR(64) NOT NULL,
+        code_panel VARCHAR(100) NOT NULL,
+        quota_mode VARCHAR(16) NOT NULL,
+        quota_generation INT UNSIGNED NOT NULL DEFAULT 1,
+        usage_counted TINYINT(1) NOT NULL DEFAULT 0,
+        state VARCHAR(16) NOT NULL,
+        id_invoice VARCHAR(64) NULL,
+        username VARCHAR(200) NULL,
+        source VARCHAR(16) NOT NULL DEFAULT 'bot',
+        created_at INT UNSIGNED NOT NULL DEFAULT 0,
+        updated_at INT UNSIGNED NOT NULL DEFAULT 0,
+        INDEX idx_tar_user_panel (user_id, code_panel),
+        INDEX idx_tar_state (state),
+        INDEX idx_tar_panel_gen_state (code_panel, quota_generation, state)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $connect->query("CREATE TABLE IF NOT EXISTS test_account_user_override (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id VARCHAR(64) NOT NULL,
+        remaining_limit INT UNSIGNED NOT NULL DEFAULT 0,
+        active TINYINT(1) NOT NULL DEFAULT 0,
+        revision INT UNSIGNED NOT NULL DEFAULT 1,
+        updated_at INT UNSIGNED NOT NULL DEFAULT 0,
+        updated_by VARCHAR(64) NULL,
+        UNIQUE KEY uq_tauo_user (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    rxSafeAddColumn($connect, "test_account_usage", "quota_generation", "INT UNSIGNED NOT NULL DEFAULT 1");
+    rxSafeAddColumn($connect, "test_account_reservation", "quota_generation", "INT UNSIGNED NOT NULL DEFAULT 1");
+    $tarIdx = $connect->query("SHOW INDEX FROM `test_account_reservation` WHERE Key_name = 'idx_tar_panel_gen_state'");
+    if ($tarIdx && mysqli_num_rows($tarIdx) == 0) {
+        $connect->query("ALTER TABLE `test_account_reservation` ADD INDEX idx_tar_panel_gen_state (code_panel, quota_generation, state)");
+    }
+} catch (Exception $e) {
+    error_log('[test-account-migrate] ' . $e->getMessage());
 }
 
 try {

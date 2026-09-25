@@ -338,6 +338,7 @@ if (!function_exists('rxNavParent')) {
                 'remna_panel_back'          => 'PanelMenu',
                 'updatetime'                => 'PanelMenu',
                 'val_usertest'              => 'PanelMenu',
+                'tset_limit'                => 'PanelMenu',
                 'getlimitnew'               => 'PanelMenu',
                 'panellimit_getnew'         => 'PanelMenu',
                 'GetusernameNew'            => 'PanelMenu',

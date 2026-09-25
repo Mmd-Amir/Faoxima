@@ -52,44 +52,55 @@ if (!function_exists('tk_album_send')) {
 $tkCancelKb = json_encode(['inline_keyboard' => [[['text' => '🔙 انصراف', 'callback_data' => 'tk_cancel']]]], JSON_UNESCAPED_UNICODE);
 
 if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $datain, $dataget) || (($text !== '' && $text == $datatextbot['text_usertest']) || $datain == "usertestbtn" || $text == "usertest")) {
-    if (!check_active_btn($setting['keyboardmain'], "text_usertest")) {
+    $rxTestIsAdmin = in_array($from_id, $admin_ids);
+    $userlimit = select("user", "*", "id", $from_id, "select", ['cache' => false]);
+    if (!is_array($userlimit) || empty($userlimit)) {
+        $userlimit = $user;
+    }
+    if (!rx_test_feature_enabled()) {
         sendmessage($from_id, $datatextbot['dyn_errors_test_service_unavailable'] ?? "📌 سرویس تست در حال حاضر در دسترس نیست .", null, 'HTML');
         return;
     }
-    $userlimit = select("user", "*", "id", $from_id, "select");
-    if ($userlimit['limit_usertest'] <= 0 && !in_array($from_id, $admin_ids)) {
-        sendmessage($from_id, $textbotlang['users']['usertest']['limitwarning'], $keyboard_buy, 'html');
+    $rxTestGate = rx_test_verification_gate($userlimit, $rxTestIsAdmin);
+    if ($rxTestGate === 'phone') {
+        if ($user['step'] != "get_number") {
+            sendmessage($from_id, $textbotlang['users']['number']['Confirming'], $request_contact, 'HTML');
+            step('get_number', $from_id);
+        }
         return;
     }
-    if ((($setting['get_number'] == "onAuthenticationphone") || ($setting['iran_number'] == "onAuthenticationiran")) && $user['step'] != "get_number" && $user['number'] == "none" && !rx_auth_skip_user($user)) {
-        sendmessage($from_id, $textbotlang['users']['number']['Confirming'], $request_contact, 'HTML');
-        step('get_number', $from_id);
-    }
-    if ($user['number'] == "none" && (($setting['get_number'] == "onAuthenticationphone") || ($setting['iran_number'] == "onAuthenticationiran")) && !rx_auth_skip_user($user))
+    if ($rxTestGate === 'verify') {
+        sendmessage($from_id, $datatextbot['dyn_testaccount_verify_required'] ?? "⚠️ حساب شما هنوز احراز هویت نشده است.", null, 'HTML');
         return;
-    $locationproduct = select("marzban_panel", "*", "TestAccount", "ONTestAccount", "count");
-    if ($locationproduct == 1) {
-        $panel = select("marzban_panel", "*", "TestAccount", "ONTestAccount", "select");
-        if ($panel['hide_user'] != null) {
-            $list_user = json_decode($panel['hide_user'], true);
-            if (in_array($from_id, $list_user)) {
-                sendmessage($from_id, $textbotlang['Admin']['managepanel']['nullpanel'], null, 'HTML');
-                return;
-            }
-        }
-        $location = $panel['code_panel'];
-    } else {
-        if (isset($dataget[1])) {
-            $location = $dataget[1];
-        } else {
-            if ($user['step'] != "createusertest") {
-                return;
-            } else {
-                $location = $user['Processing_value_one'];
-            }
-        }
     }
-    $marzban_list_get = select("marzban_panel", "*", "code_panel", $location, "select");
+    $rxTestCode = null;
+    if (preg_match('/^locationtest_(.+)$/', (string) $datain, $rxTestMatch)) {
+        $rxTestCode = $rxTestMatch[1];
+    } elseif ($user['step'] == "createusertest") {
+        $rxTestCode = (string) $user['Processing_value_one'];
+    }
+    $rxTestEligible = rx_test_eligible_panels($userlimit);
+    if ($rxTestCode === null && count($rxTestEligible) !== 1) {
+        return;
+    }
+    $marzban_list_get = rx_test_resolve_panel($userlimit, $rxTestCode, $rxTestEligible);
+    if ($marzban_list_get === null) {
+        if ($user['step'] == "createusertest") {
+            step('home', $from_id);
+        }
+        sendmessage($from_id, $textbotlang['Admin']['managepanel']['nullpanel'], null, 'HTML');
+        return;
+    }
+    $rxTestSettings = rx_test_panel_settings($marzban_list_get);
+    $rxTestQuota = rx_test_quota_state($userlimit, $marzban_list_get, $rxTestSettings, $rxTestIsAdmin);
+    if (!$rxTestQuota['can_create']) {
+        if ($user['step'] == "createusertest") {
+            step('home', $from_id);
+        }
+        sendmessage($from_id, $rxTestQuota['reason'] === 'audience_restricted' ? rx_test_audience_denied_text() : $textbotlang['users']['usertest']['limitwarning'], $keyboard_buy, 'html');
+        return;
+    }
+    $location = $marzban_list_get['code_panel'];
     $_rx_usernameKb = ($marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") ? $usernamePromptKb : $backuser;
     if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") {
         if ($user['step'] != "createusertest") {
@@ -98,11 +109,8 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
             sendmessage($from_id, $textbotlang['users']['selectusername'], $_rx_usernameKb, 'html');
             return;
         }
-    } else {
-        $name_panel = $location;
     }
     if ($user['step'] == "createusertest") {
-        $name_panel = $user['Processing_value_one'];
         if ($datain === 'gen_random_uname') {
             $text = rx_build_smart_random_username($username ?? '', $from_id);
             if ($callback_query_id && function_exists('telegram')) {
@@ -116,60 +124,46 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     } else {
         deletemessage($from_id, $message_id);
     }
-    if ($marzban_list_get['type'] == "Manualsale") {
-        $stmt = $pdo->prepare("SELECT * FROM manualsell WHERE codepanel = :codepanel AND codeproduct = :codeproduct AND status = 'active'");
-        $value = "usertest";
-        $stmt->bindParam(':codepanel', $marzban_list_get['code_panel']);
-        $stmt->bindParam(':codeproduct', $value);
-        $stmt->execute();
-        $configexits = $stmt->rowCount();
-        if (intval($configexits) == 0) {
+    if (!rx_test_manual_stock_available($marzban_list_get)) {
+        step('home', $from_id);
+        sendmessage($from_id, faoxima_textbot_get('dyn_testaccount_manualsale_stock_depleted', "❌ موجودی این سرویس به پایان رسیده."), null, 'HTML');
+        return;
+    }
+    $rxTestReserveError = '';
+    $rxTestReservation = rx_test_reserve($userlimit, $marzban_list_get, $rxTestSettings, $rxTestIsAdmin, 'bot', $rxTestReserveError);
+    if ($rxTestReservation === null) {
+        step('home', $from_id);
+        if ($rxTestReserveError === 'panel_unavailable') {
+            sendmessage($from_id, $textbotlang['Admin']['managepanel']['nullpanel'], null, 'HTML');
+            return;
+        }
+        sendmessage($from_id, $rxTestReserveError === 'audience_restricted' ? rx_test_audience_denied_text() : $textbotlang['users']['usertest']['limitwarning'], $keyboard_buy, 'html');
+        return;
+    }
+    $randomString = bin2hex(random_bytes(4));
+    $text = strtolower((string) $text);
+    try {
+        $username_ac = rx_test_build_username($userlimit, $marzban_list_get, $text, $randomString);
+    } catch (Throwable $rxTestErr) {
+        rx_test_reservation_update($rxTestReservation, 'failed');
+        rx_test_release($rxTestReservation);
+        step('home', $from_id);
+        sendmessage($from_id, $textbotlang['users']['usertest']['errorcreat'], $keyboard, 'html');
+        return;
+    }
+    $rxTestProvision = rx_test_provision($userlimit, $marzban_list_get, $rxTestSettings, $rxTestReservation, $username_ac, $randomString);
+    if (empty($rxTestProvision['ok'])) {
+        step('home', $from_id);
+        if ($rxTestProvision['error'] === 'stock_empty') {
             sendmessage($from_id, faoxima_textbot_get('dyn_testaccount_manualsale_stock_depleted', "❌ موجودی این سرویس به پایان رسیده."), null, 'HTML');
             return;
         }
-    }
-    $limit_usertest = $userlimit['limit_usertest'] - 1;
-    update("user", "limit_usertest", $limit_usertest, "id", $from_id);
-    $randomString = bin2hex(random_bytes(4));
-    $text = strtolower($text);
-    $marzban_list_get = select("marzban_panel", "*", "code_panel", $name_panel, "select");
-    $text = strtolower($text);
-    $username_ac = generateUsername($from_id, $marzban_list_get['MethodUsername'], $user['username'], $randomString, $text, $marzban_list_get['namecustom'], $user['namecustom']);
-    $username_ac = strtolower($username_ac);
-    $DataUserOut = $marzban_list_get['type'] != "Manualsale" ? $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_ac) : null;
-    $random_number = rand(1000000, 9999999);
-    if (isset($DataUserOut['username']) || rxTableValueExists('invoice', 'username', $username_ac)) {
-        $username_ac = $random_number . "-" . $username_ac;
-    }
-    $datac = array(
-        'expire' => strtotime(date("Y-m-d H:i:s", strtotime("+" . $marzban_list_get['time_usertest'] . "hours"))),
-        'data_limit' => $marzban_list_get['val_usertest'] * 1048576,
-        'from_id' => $from_id,
-        'username' => $username_ac,
-        'type' => 'usertest'
-    );
-    $date = time();
-    $notifctions = json_encode(array(
-        'volume' => false,
-        'time' => false,
-    ));
-    $stmt = $connect->prepare("INSERT IGNORE INTO invoice (id_user, id_invoice, username,time_sell, Service_location, name_product, price_product, Volume, Volume_unit, Service_time,Status,notifctions) VALUES (?, ?,  ?, ?, ?, ?, ?,?,?,?,?,?)");
-    $Status = "active";
-    $info_product['name_product'] = "سرویس تست";
-    $info_product['price_product'] = "0";
-    $Status = "active";
-    $volumeUnit = 'MB';
-    $stmt->bind_param("ssssssssssss", $from_id, $randomString, $username_ac, $date, $marzban_list_get['name_panel'], $info_product['name_product'], $info_product['price_product'], $marzban_list_get['val_usertest'], $volumeUnit, $marzban_list_get['time_usertest'], $Status, $notifctions);
-    $stmt->execute();
-    $stmt->close();
-    $dataoutput = $ManagePanel->createUser($marzban_list_get['name_panel'], "usertest", $username_ac, $datac);
-    if ($dataoutput['username'] == null) {
-        $dataoutput['msg'] = json_encode($dataoutput['msg']);
         sendmessage($from_id, $textbotlang['users']['usertest']['errorcreat'], $keyboard, 'html');
+        $rxTestErrReason = htmlspecialchars((string) $rxTestProvision['msg'], ENT_QUOTES, 'UTF-8');
         $texterros = "
 ⭕️ یک کاربر قصد دریافت اکانت  تست داشت که ساخت کانفیگ با خطا مواجه شده و به کاربر کانفیگ داده نشد
 <blockquote>✍️ دلیل خطا :
-{$dataoutput['msg']}</blockquote>
+{$rxTestErrReason}</blockquote>
 <blockquote>آیدی کابر : $from_id</blockquote>
 <blockquote>نام کاربری کاربر : @$username</blockquote>
 <blockquote>نام پنل : {$marzban_list_get['name_panel']}</blockquote>";
@@ -181,10 +175,9 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
                 'parse_mode' => "HTML"
             ]);
         }
-        step('home', $from_id);
-        update("invoice", "Status", "Unsuccessful", "id_invoice", $randomString);
         return;
     }
+    $dataoutput = $rxTestProvision['output'];
     $output_config_link = "";
     $config = "";
     $output_config_link = rxShouldShowConnectionLink($marzban_list_get, $dataoutput['file_ext'] ?? null) ? rxResolveConnectionLink($marzban_list_get, $dataoutput['subscription_url'], $dataoutput['file_ext'] ?? null) : "";
@@ -212,21 +205,25 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
 
 🧑‍🦯 شما میتوانید شیوه اتصال را  با فشردن دکمه زیر و انتخاب سیستم عامل خود را دریافت کنید";
     }
-    $usertest_day = $marzban_list_get['time_usertest'];
-    $usertest_volume = $marzban_list_get['val_usertest'];
-    if (intval($usertest_day) == 0)
-        $usertest_day = $textbotlang['users']['stateus']['Unlimited'];
-    if (intval($usertest_volume) == 0)
-        $usertest_volume = $textbotlang['users']['stateus']['Unlimited'];
-    else
-        $usertest_volume = formatBytes((float) $usertest_volume * 1048576);
+    $usertest_day = rx_test_display_time($rxTestSettings);
+    $usertest_volume = rx_test_display_volume($rxTestSettings);
     $textcreatuser = str_replace('{username}', guardDisplayUsername($dataoutput['username'], $marzban_list_get), $datatextbot['textaftertext']);
     $textcreatuser = str_replace('{name_service}', "تست", $textcreatuser);
     $textcreatuser = str_replace('{location}', $marzban_list_get['name_panel'], $textcreatuser);
     $textcreatuser = str_replace('{day}', $usertest_day, $textcreatuser);
     $textcreatuser = preg_replace('/\{volume\}[ \t\x{200c}]*(?:گیگابایت|گیگ|GB|مگابایت|مگ|MB)?/iu', $usertest_volume, $textcreatuser);
     $textcreatuser = applyConnectionPlaceholders($textcreatuser, $output_config_link, $config);
-    sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $usertestinfo, $textcreatuser, $randomString);
+    $rxTestDelivered = true;
+    try {
+        sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $usertestinfo, $textcreatuser, $randomString);
+    } catch (Throwable $rxTestErr) {
+        $rxTestDelivered = false;
+        error_log('[usertest] delivery failed: ' . $rxTestErr->getMessage());
+    }
+    rx_test_mark_delivery($rxTestReservation, $rxTestDelivered);
+    if (!$rxTestDelivered) {
+        sendmessage($from_id, $datatextbot['dyn_testaccount_delivery_failed_saved'] ?? "⚠️ اکانت تست ساخته شد اما ارسال جزئیات آن ناموفق بود. اطلاعات سرویس در بخش «سرویس‌های من» در دسترس است.", null, 'HTML');
+    }
     sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'HTML');
     step('home', $from_id);
     if ($marzban_list_get['MethodUsername'] == "متن دلخواه + عدد ترتیبی" || $marzban_list_get['MethodUsername'] == "نام کاربری + عدد به ترتیب" || $marzban_list_get['MethodUsername'] == "آیدی عددی+عدد ترتیبی" || $marzban_list_get['MethodUsername'] == "متن دلخواه نماینده + عدد ترتیبی") {
@@ -245,14 +242,16 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         ]
     ]);
     $timejalali = jdate('Y/m/d H:i:s');
+    $rxTestReportTime = !empty($rxTestSettings['time_unlimited']) ? rx_test_unlimited_label() : rx_test_stored_hours($rxTestSettings) . " ساعت";
+    $rxTestReportVolume = !empty($rxTestSettings['volume_unlimited']) ? rx_test_unlimited_label() : rx_test_stored_mb($rxTestSettings) . " MB";
     $text_report = "📣 جزئیات ساخت اکانت تست در ربات شما ثبت شد .
 <blockquote>▫️آیدی عددی کاربر : <code>$from_id</code></blockquote>
 <blockquote>▫️نام کاربری کاربر :@$username</blockquote>
 <blockquote>▫️نام کاربری کانفیگ :" . guardDisplayUsername($username_ac, $marzban_list_get) . "</blockquote>
 <blockquote>▫️نام کاربر : $first_name</blockquote>
 <blockquote>▫️موقعیت سرویس : {$marzban_list_get['name_panel']}</blockquote>
-<blockquote>▫️زمان خریداری شده : {$marzban_list_get['time_usertest']} ساعت</blockquote>
-<blockquote>▫️حجم خریداری شده : {$marzban_list_get['val_usertest']} MB</blockquote>
+<blockquote>▫️زمان خریداری شده : {$rxTestReportTime}</blockquote>
+<blockquote>▫️حجم خریداری شده : {$rxTestReportVolume}</blockquote>
 <blockquote>▫️کد پیگیری: $randomString</blockquote>
 <blockquote>▫️نوع کاربر : {$user['agent']}</blockquote>
 <blockquote>▫️شماره تلفن کاربر : {$user['number']}</blockquote>

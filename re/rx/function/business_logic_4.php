@@ -662,6 +662,7 @@ if (!function_exists('rx_normalizeAdminButtonText')) {
                 'p_group'               => "📍 تغییر گروه",
                 'p_test_time'           => "⏳ زمان سرویس تست",
                 'p_test_vol'            => "💾 حجم اکانت تست",
+                'p_test_settings'       => "🧪 تنظیمات تست",
                 'p_cvol_price'          => "⚙️ قیمت حجم دلخواه",
                 'p_xvol_price'          => "➕ قیمت حجم اضافه",
                 'p_xtime_price'         => "⏳ قیمت زمان اضافه",

@@ -428,34 +428,122 @@ if (false) {
     if (is_array($typepanel) && !empty($typepanel)) {
         outtypepanel($typepanel['type'], $textbotlang['Admin']['Back-menu']);
     }
-} elseif ($text == "⏳ زمان سرویس تست" && $adminrulecheck['rule'] == "administrator") {
-    nm_adminInstantReply($from_id, "🕰 مدت زمان سرویس تست را ارسال کنید.
-⚠️ زمان بر حسب ساعت است.", $backadmin, 'HTML');
-    step('updatetime', $from_id);
-} elseif ($user['step'] == "updatetime") {
-    if (!isset($update['message']) && empty($text)) { return; }
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['Product']['Invalidtime'] ?? '❌ زمان نامعتبر است', $backadmin, 'HTML');
+} elseif (($text == "🧪 تنظیمات تست" || $text == "⏳ زمان سرویس تست" || $text == "💾 حجم اکانت تست") && $adminrulecheck['rule'] == "administrator") {
+    $rxTestPanelName = function_exists('nmResolvePanelNameForUser') ? nmResolvePanelNameForUser($user) : (string)($user['Processing_value'] ?? '');
+    $rxTestPanel = $rxTestPanelName !== '' ? select("marzban_panel", "*", "name_panel", $rxTestPanelName, "select", ['cache' => false]) : false;
+    if (!is_array($rxTestPanel) || empty($rxTestPanel['code_panel'])) {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['nullpanel'], $backadmin, 'HTML');
         return;
     }
-    $typepanel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
-    outtypepanel($typepanel['type'], $textbotlang['Admin']['managepanel']['saveddata']);
-    update("marzban_panel", "time_usertest", $text, "name_panel", $user['Processing_value']);
-    step('PanelMenu', $from_id);
-} elseif ($text == "💾 حجم اکانت تست" && $adminrulecheck['rule'] == "administrator") {
-    nm_adminInstantReply($from_id, "حجم سرویس تست را ارسال کنید.
-⚠️ حجم بر حسب مگابایت است.", $backadmin, 'HTML');
-    step('val_usertest', $from_id);
-} elseif ($user['step'] == "val_usertest") {
-    if (!isset($update['message']) && empty($text)) { return; }
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['Product']['Invalidvolume'], $backadmin, 'HTML');
+    $rxTestMenu = rx_test_admin_menu_render($rxTestPanel);
+    nm_adminInstantReply($from_id, $rxTestMenu['text'], $rxTestMenu['keyboard'], 'HTML');
+} elseif (is_string($datain) && strpos($datain, 'tset_') === 0 && $adminrulecheck['rule'] == "administrator") {
+    if (!preg_match('/^tset_(menu|back|limit|ulimit|time|utime|vol|uvol|anew|aall)_([A-Za-z0-9_-]{1,100})$/', $datain, $rxTestCb)) {
+        if (!empty($callback_query_id)) {
+            telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "❌ درخواست نامعتبر است.", 'show_alert' => false]);
+        }
         return;
     }
-    $typepanel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
-    outtypepanel($typepanel['type'], $textbotlang['Admin']['managepanel']['saveddata']);
-    update("marzban_panel", "val_usertest", $text, "name_panel", $user['Processing_value']);
+    $rxTestPanel = rx_test_admin_load_panel($rxTestCb[2]);
+    $rxTestCurrentName = function_exists('nmResolvePanelNameForUser') ? nmResolvePanelNameForUser($user) : (string)($user['Processing_value'] ?? '');
+    if ($rxTestPanel === null || (string)$rxTestPanel['name_panel'] !== (string)$rxTestCurrentName) {
+        if (!empty($callback_query_id)) {
+            telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => "⚠️ این منو منقضی شده است؛ دوباره از مدیریت پنل وارد شوید.", 'show_alert' => true]);
+        }
+        return;
+    }
+    $rxTestAction = $rxTestCb[1];
+    $rxTestCode = (string)$rxTestPanel['code_panel'];
+    if ($rxTestAction === 'back') {
+        step('PanelMenu', $from_id);
+        outtypepanel($rxTestPanel['type'], $textbotlang['Admin']['Back-menu']);
+        return;
+    }
+    if ($rxTestAction === 'menu') {
+        step('PanelMenu', $from_id);
+        update("user", "Processing_value_tow", "", "id", $from_id);
+        $rxTestMenu = rx_test_admin_menu_render($rxTestPanel);
+        nm_adminInstantReply($from_id, $rxTestMenu['text'], $rxTestMenu['keyboard'], 'HTML');
+        return;
+    }
+    $rxTestUnlimitedMap = ['ulimit' => 'limit', 'utime' => 'time', 'uvol' => 'volume'];
+    if (isset($rxTestUnlimitedMap[$rxTestAction])) {
+        $rxTestSaved = rx_test_admin_save_settings($rxTestPanel, $rxTestUnlimitedMap[$rxTestAction], 'unlimited');
+        step('PanelMenu', $from_id);
+        $rxTestPanel = rx_test_admin_load_panel($rxTestCode);
+        if ($rxTestPanel === null) {
+            nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['nullpanel'], $backadmin, 'HTML');
+            return;
+        }
+        $rxTestMenu = rx_test_admin_menu_render($rxTestPanel);
+        $rxTestPrefix = $rxTestSaved ? "✅ ذخیره شد.\n\n" : "❌ ذخیره تنظیمات انجام نشد.\n\n";
+        nm_adminInstantReply($from_id, $rxTestPrefix . $rxTestMenu['text'], $rxTestMenu['keyboard'], 'HTML');
+        return;
+    }
+    if ($rxTestAction === 'limit') {
+        step('PanelMenu', $from_id);
+        update("user", "Processing_value_tow", "", "id", $from_id);
+        $rxTestAudienceMenu = rx_test_admin_audience_menu_render($rxTestPanel);
+        nm_adminInstantReply($from_id, $rxTestAudienceMenu['text'], $rxTestAudienceMenu['keyboard'], 'HTML');
+        return;
+    }
+    if ($rxTestAction === 'anew' || $rxTestAction === 'aall') {
+        $rxTestAudience = $rxTestAction === 'anew' ? RX_TEST_AUDIENCE_NEW : RX_TEST_AUDIENCE_ALL;
+        update("user", "Processing_value_tow", rx_test_admin_flow_state($rxTestCode, $rxTestAudience), "id", $from_id);
+        step('tset_limit', $from_id);
+        $rxTestPromptKb = json_encode(['inline_keyboard' => [[['text' => "🔙 بازگشت", 'callback_data' => 'tset_limit_' . $rxTestCode]]]], JSON_UNESCAPED_UNICODE);
+        nm_adminInstantReply($from_id, "👥 اعمال روی: " . rx_test_audience_label($rxTestAudience) . "\n\n👤 حداکثر تعداد اکانت تست هر کاربر برای این پنل را ارسال کنید.\n⚠️ فقط عدد صحیح بزرگ‌تر از صفر؛ برای نامحدود از دکمه «♾ سقف نامحدود» استفاده کنید.", $rxTestPromptKb, 'HTML');
+        return;
+    }
+    $rxTestPrompts = [
+        'time'  => ['updatetime', "🕰 مدت زمان سرویس تست را ارسال کنید.\n⚠️ زمان بر حسب ساعت و عدد صحیح بزرگ‌تر از صفر است؛ برای نامحدود از دکمه «♾ زمان نامحدود» استفاده کنید."],
+        'vol'   => ['val_usertest', "💾 حجم سرویس تست را ارسال کنید.\n⚠️ حجم بر حسب مگابایت و عدد صحیح بزرگ‌تر از صفر است؛ برای نامحدود از دکمه «♾ حجم نامحدود» استفاده کنید."],
+    ];
+    $rxTestPromptKb = json_encode(['inline_keyboard' => [[['text' => "🔙 بازگشت به تنظیمات تست", 'callback_data' => 'tset_menu_' . $rxTestCode]]]], JSON_UNESCAPED_UNICODE);
+    step($rxTestPrompts[$rxTestAction][0], $from_id);
+    nm_adminInstantReply($from_id, $rxTestPrompts[$rxTestAction][1], $rxTestPromptKb, 'HTML');
+} elseif (in_array($user['step'], ['tset_limit', 'updatetime', 'val_usertest'], true) && empty($datain) && isset($update['message']) && $adminrulecheck['rule'] == "administrator") {
+    $rxTestPanelName = function_exists('nmResolvePanelNameForUser') ? nmResolvePanelNameForUser($user) : (string)($user['Processing_value'] ?? '');
+    $rxTestPanel = $rxTestPanelName !== '' ? select("marzban_panel", "*", "name_panel", $rxTestPanelName, "select", ['cache' => false]) : false;
+    if (!is_array($rxTestPanel) || empty($rxTestPanel['code_panel'])) {
+        step('PanelMenu', $from_id);
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['nullpanel'], $backadmin, 'HTML');
+        return;
+    }
+    $rxTestFieldMap = ['tset_limit' => 'limit', 'updatetime' => 'time', 'val_usertest' => 'volume'];
+    $rxTestField = $rxTestFieldMap[$user['step']];
+    $rxTestValue = rx_test_normalize_digits($text);
+    $rxTestAudience = null;
+    if ($rxTestField === 'limit') {
+        $rxTestAudience = rx_test_admin_parse_flow_state((string)($user['Processing_value_tow'] ?? ''), (string)$rxTestPanel['code_panel']);
+        if ($rxTestAudience === null) {
+            step('PanelMenu', $from_id);
+            $rxTestAudienceMenu = rx_test_admin_audience_menu_render($rxTestPanel);
+            nm_adminInstantReply($from_id, "⚠️ مرحله قبلی منقضی شده است؛ لطفاً دوباره نوع کاربران را انتخاب کنید.\n\n" . $rxTestAudienceMenu['text'], $rxTestAudienceMenu['keyboard'], 'HTML');
+            return;
+        }
+    }
+    $rxTestPromptKb = json_encode(['inline_keyboard' => [[['text' => "🔙 بازگشت", 'callback_data' => ($rxTestField === 'limit' ? 'tset_limit_' : 'tset_menu_') . $rxTestPanel['code_panel']]]]], JSON_UNESCAPED_UNICODE);
+    if ($rxTestValue === '' || !ctype_digit($rxTestValue) || !rx_test_admin_save_settings($rxTestPanel, $rxTestField, $rxTestValue, $rxTestAudience)) {
+        $rxTestInvalid = [
+            'limit'  => "❌ مقدار نامعتبر است. یک عدد صحیح بین 1 تا " . RX_TEST_MAX_LIMIT . " ارسال کنید.",
+            'time'   => "❌ زمان نامعتبر است. یک عدد صحیح بین 1 تا " . RX_TEST_MAX_HOURS . " ساعت ارسال کنید.",
+            'volume' => "❌ حجم نامعتبر است. یک عدد صحیح بین 1 تا " . RX_TEST_MAX_MB . " مگابایت ارسال کنید.",
+        ];
+        nm_adminInstantReply($from_id, $rxTestInvalid[$rxTestField], $rxTestPromptKb, 'HTML');
+        return;
+    }
     step('PanelMenu', $from_id);
+    if ($rxTestField === 'limit') {
+        update("user", "Processing_value_tow", "", "id", $from_id);
+    }
+    $rxTestPanel = rx_test_admin_load_panel((string)$rxTestPanel['code_panel']);
+    if ($rxTestPanel === null) {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['nullpanel'], $backadmin, 'HTML');
+        return;
+    }
+    $rxTestMenu = rx_test_admin_menu_render($rxTestPanel);
+    nm_adminInstantReply($from_id, "✅ ذخیره شد.\n\n" . $rxTestMenu['text'], $rxTestMenu['keyboard'], 'HTML');
 } elseif ($text == "💎 شناسه اینباند" && $adminrulecheck['rule'] == "administrator") {
     $typepanelInboundPrompt = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
     if (is_array($typepanelInboundPrompt) && ($typepanelInboundPrompt['type'] ?? '') === 'x-ui_single' && xui_panel_uses_token($typepanelInboundPrompt)) {

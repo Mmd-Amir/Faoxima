@@ -5051,22 +5051,41 @@ $nameconfig";
         sendmessage($from_id, $datatextbot['dyn_errors_test_service_unavailable'] ?? "📌 سرویس تست در حال حاضر در دسترس نیست .", null, 'HTML');
         return;
     }
-    $locationproduct = select("marzban_panel", "*", "TestAccount", "ONTestAccount", "count");
+    $rxTestEntryUser = select("user", "*", "id", $from_id, "select", ['cache' => false]);
+    if (!is_array($rxTestEntryUser) || empty($rxTestEntryUser)) {
+        $rxTestEntryUser = $user;
+    }
+    $rxTestEntryAdmin = in_array($from_id, $admin_ids);
+    $rxTestEntryOverview = rx_test_overview($rxTestEntryUser, $rxTestEntryAdmin);
+    $locationproduct = count($rxTestEntryOverview['panels']);
     if ($locationproduct == 0) {
         sendmessage($from_id, $textbotlang['Admin']['managepanel']['nullpanel'], null, 'HTML');
         return;
     }
     if ($locationproduct != 1) {
-        if ((($setting['get_number'] == "onAuthenticationphone") || ($setting['iran_number'] == "onAuthenticationiran")) && $user['step'] != "get_number" && $user['number'] == "none" && !rx_auth_skip_user($user)) {
-            sendmessage($from_id, $textbotlang['users']['number']['Confirming'], $request_contact, 'HTML');
-            step('get_number', $from_id);
-        }
-        if ($user['number'] == "none" && (($setting['get_number'] == "onAuthenticationphone") || ($setting['iran_number'] == "onAuthenticationiran")) && !rx_auth_skip_user($user))
-            return;
-        if ($user['limit_usertest'] <= 0 && !in_array($from_id, $admin_ids)) {
-            sendmessage($from_id, $textbotlang['users']['usertest']['limitwarning'], $keyboard_buy, 'html');
+        $rxTestEntryGate = rx_test_verification_gate($rxTestEntryUser, $rxTestEntryAdmin);
+        if ($rxTestEntryGate === 'phone') {
+            if ($user['step'] != "get_number") {
+                sendmessage($from_id, $textbotlang['users']['number']['Confirming'], $request_contact, 'HTML');
+                step('get_number', $from_id);
+            }
             return;
         }
-        sendmessage($from_id, $datatextbot['textselectlocation'], $list_marzban_usertest, 'html');
+        if ($rxTestEntryGate === 'verify') {
+            sendmessage($from_id, $datatextbot['dyn_testaccount_verify_required'] ?? "⚠️ حساب شما هنوز احراز هویت نشده است.", null, 'HTML');
+            return;
+        }
+        if (!$rxTestEntryOverview['any_available']) {
+            sendmessage($from_id, $rxTestEntryOverview['reason'] === 'audience_restricted' ? rx_test_audience_denied_text() : $textbotlang['users']['usertest']['limitwarning'], $keyboard_buy, 'html');
+            return;
+        }
+        $rxTestEntryKb = ['inline_keyboard' => []];
+        foreach ($rxTestEntryOverview['panels'] as $rxTestEntryItem) {
+            if ($rxTestEntryItem['quota']['can_create']) {
+                $rxTestEntryKb['inline_keyboard'][] = [['text' => $rxTestEntryItem['panel']['name_panel'], 'callback_data' => "locationtest_{$rxTestEntryItem['panel']['code_panel']}"]];
+            }
+        }
+        $rxTestEntryKb['inline_keyboard'][] = [['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser"]];
+        sendmessage($from_id, $datatextbot['textselectlocation'], json_encode($rxTestEntryKb), 'html');
     }
 }

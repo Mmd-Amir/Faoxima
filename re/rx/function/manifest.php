@@ -18,4 +18,5 @@ return array (
   15 => 'panel_sales_metrics.php',
   16 => 'statistics_helpers.php',
   17 => 'receipt_actions.php',
+  18 => 'test_account_policy.php',
 );

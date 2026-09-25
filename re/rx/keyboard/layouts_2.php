@@ -452,11 +452,10 @@ $list_marzban_panel_users_change['inline_keyboard'][] = [
 $list_marzban_panel_userschange = json_encode($list_marzban_panel_users_change);
 
 
-    $stmt = $pdo->prepare("SELECT * FROM marzban_panel WHERE TestAccount = 'ONTestAccount' AND (agent = :ag OR agent = 'all')");
-    $stmt->execute([':ag' => (string)($users['agent'] ?? '')]);
     $list_marzban_panel_usertest = ['inline_keyboard' => []];
-    while ($result = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $rx_h = json_decode((string)($result['hide_user'] ?? ''), true); if (is_array($rx_h) and in_array($from_id, $rx_h)) continue;
+    $rxTestKbUser = is_array($users ?? null) ? $users : [];
+    $rxTestKbUser['id'] = $from_id;
+    foreach ((function_exists('rx_test_eligible_panels') ? rx_test_eligible_panels($rxTestKbUser) : []) as $result) {
             $list_marzban_panel_usertest['inline_keyboard'][] = [['text' => $result['name_panel'], 'callback_data' => "locationtest_{$result['code_panel']}"]
             ];
     }
@@ -814,7 +813,7 @@ $optionMarzban = rx_finalizeInlineAdminKb(json_encode([
         [$rxAdminPanelBtn("🔗 ویرایش آدرس پنل", 'admin_panel_marzban'), $rxAdminPanelBtn("⚙️ پروتکل اینباند", 'admin_panel_marzban')],
         [$rxAdminPanelBtn("🔋 روش تمدید سرویس", 'admin_panel_marzban'), $rxAdminPanelBtn("💡 ساخت نام کاربری", 'admin_panel_marzban')],
         [$rxAdminPanelBtn("🚨 محدودیت اکانت", 'admin_panel_marzban'), $rxAdminPanelBtn("📍 تغییر گروه", 'admin_panel_marzban')],
-        [$rxAdminPanelBtn("⏳ زمان سرویس تست", 'admin_panel_marzban'), $rxAdminPanelBtn("💾 حجم اکانت تست", 'admin_panel_marzban')],
+        [$rxAdminPanelBtn("🧪 تنظیمات تست", 'admin_panel_marzban')],
         [$rxAdminPanelBtn("⚙️ قیمت حجم دلخواه", 'admin_panel_marzban'), $rxAdminPanelBtn("➕ قیمت حجم اضافه", 'admin_panel_marzban')],
         [$rxAdminPanelBtn("⏳ قیمت زمان اضافه", 'admin_panel_marzban'), $rxAdminPanelBtn("⏳ قیمت زمان دلخواه", 'admin_panel_marzban')],
         [$rxAdminPanelBtn("🌍 قیمت تغییر مکان", 'admin_panel_marzban')],

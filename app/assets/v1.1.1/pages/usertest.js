@@ -31,11 +31,11 @@ export async function usertest(view) {
     }
 
     if (!info.available) {
-        $host.innerHTML = emptyState('در دسترس نیست', 'سرویس تست در حال حاضر غیرفعال است یا سهمیه شما به پایان رسیده.');
+        $host.innerHTML = emptyState('در دسترس نیست', info.reason_message ? String(info.reason_message) : unavailableText(info.reason));
         return;
     }
 
-    const panels = Array.isArray(info.panels) ? info.panels : [];
+    const panels = (Array.isArray(info.panels) ? info.panels : []).filter((p) => p && p.available !== false);
 
     if (panels.length === 0) {
         renderCreateForm($host, null, info);
@@ -50,13 +50,28 @@ export async function usertest(view) {
     renderPanelList($host, panels, info);
 }
 
+function unavailableText(reason) {
+    if (reason === 'verify_phone') return 'برای دریافت اکانت تست ابتدا شماره موبایل خود را در ربات تأیید کنید.';
+    if (reason === 'verify_verify') return 'حساب شما هنوز احراز هویت نشده است.';
+    if (reason === 'audience_restricted') return 'دریافت اکانت تست فقط برای کاربرانی فعال است که در ۲۴ ساعت گذشته عضو شده‌اند.';
+    if (reason === 'limit_reached') return 'سهمیه دریافت اکانت تست شما به پایان رسیده.';
+    return 'سرویس تست در حال حاضر غیرفعال است یا سهمیه شما به پایان رسیده.';
+}
+
+function quotaLeft(panel, info) {
+    if (panel && Object.prototype.hasOwnProperty.call(panel, 'limit_left')) {
+        return panel.limit_left === null ? 'نامحدود' : panel.limit_left;
+    }
+    return info.limit_left;
+}
+
 function renderPanelList($host, panels, info) {
     $host.innerHTML = `
-        <p class="muted" style="font-size:13px">موقعیت سرویس تست را انتخاب کنید (سهمیه باقیمانده: <b>${escapeHtml(info.limit_left)}</b>)</p>
+        <p class="muted" style="font-size:13px">موقعیت سرویس تست را انتخاب کنید</p>
         <div class="list mt-sm">
             ${panels.map((p) => `
                 <button class="plan" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}">
-                    <div class="plan-info"><div class="plan-title">${escapeHtml(p.name)}</div></div>
+                    <div class="plan-info"><div class="plan-title">${escapeHtml(p.name)}</div><div class="muted" style="font-size:12px">سهمیه باقیمانده: ${escapeHtml(quotaLeft(p, info))}</div></div>
                     <div class="plan-price"><span class="amt">${icon('select', 'class="ico ico-lg"')}</span></div>
                 </button>
             `).join('')}
@@ -65,7 +80,8 @@ function renderPanelList($host, panels, info) {
     $host.querySelectorAll('.plan').forEach((btn) => {
         btn.addEventListener('click', () => {
             hapticImpact('light');
-            renderCreateForm($host, { id: btn.dataset.id, name: btn.dataset.name }, info);
+            const picked = panels.find((p) => String(p.id) === btn.dataset.id) || { id: btn.dataset.id, name: btn.dataset.name };
+            renderCreateForm($host, picked, info);
         });
     });
 }
@@ -73,7 +89,7 @@ function renderPanelList($host, panels, info) {
 function renderCreateForm($host, panel, info) {
     $host.innerHTML = `
         <p class="muted" style="font-size:13px">
-            ${panel ? `موقعیت: <b>${escapeHtml(panel.name)}</b> — ` : ''}سهمیه باقیمانده: <b>${escapeHtml(info.limit_left)}</b>
+            ${panel ? `موقعیت: <b>${escapeHtml(panel.name)}</b> — ` : ''}سهمیه باقیمانده: <b>${escapeHtml(quotaLeft(panel, info))}</b>
         </p>
         <div class="form-row mt-sm" id="ut-username-row" hidden>
             <label class="muted" style="font-size:12px">نام کاربری دلخواه</label>
@@ -142,7 +158,7 @@ function renderSuccess($host, obj) {
         <div class="empty">
             ${icon('checkCircle', 'class="ico ico-xxl ico-success"')}
             <h3>اکانت تست شما ساخته شد</h3>
-            <p class="muted">جزئیات کانفیگ برای شما در تلگرام ارسال شد.</p>
+            <p class="muted">${obj.delivery_failed ? escapeHtml(obj.delivery_message || 'ارسال جزئیات در تلگرام ناموفق بود؛ اطلاعات سرویس در همین صفحه در دسترس است.') : 'جزئیات کانفیگ برای شما در تلگرام ارسال شد.'}</p>
         </div>
         <div class="kv mt-md">
             <span class="kv-label">نام کاربری</span>

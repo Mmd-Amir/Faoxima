@@ -109,7 +109,8 @@ final class InvoicesHandler extends BaseHandler
             if (($row['Status'] ?? '') === 'active') {
                 $timeSell = is_numeric($row['time_sell'] ?? null) ? (int)$row['time_sell'] : 0;
                 $serviceTime = is_numeric($row['Service_time'] ?? null) ? (int)$row['Service_time'] : 0;
-                $calcExpire = ($timeSell > 0 && $serviceTime > 0) ? ($timeSell + ($serviceTime * 86400)) : 0;
+                $unitSeconds = (($row['name_product'] ?? '') === 'سرویس تست') ? 3600 : 86400;
+                $calcExpire = ($timeSell > 0 && $serviceTime > 0) ? ($timeSell + ($serviceTime * $unitSeconds)) : 0;
 
                 if ($calcExpire > 0 && $calcExpire <= time()) {
                     try {

@@ -328,9 +328,51 @@ class ManagePanel
             $Output['subscription_url'] = $subscriptionUrl;
             $Output['configs'] = $configs;
         } elseif ($Get_Data_Panel['type'] == "Manualsale") {
-            $statement = $pdo->prepare("SELECT * FROM manualsell WHERE codepanel = :code_panel AND status = 'active' AND codeproduct = '$code_product' ORDER BY RAND() LIMIT 1");
-            $statement->execute(array(':code_panel' => $Get_Data_Panel['code_panel']));
-            $configman = $statement->fetch(PDO::FETCH_ASSOC);
+            $configman = null;
+            $manualClaimedRows = array();
+            $pickStock = $pdo->prepare("SELECT * FROM manualsell WHERE codepanel = ? AND status = 'active' AND codeproduct = ? ORDER BY RAND() LIMIT 1");
+            for ($claimAttempt = 0; $claimAttempt < 5 && $configman === null; $claimAttempt++) {
+                $pickStock->execute(array((string) $Get_Data_Panel['code_panel'], (string) $code_product));
+                $candidate = $pickStock->fetch(PDO::FETCH_ASSOC);
+                $pickStock->closeCursor();
+                if (!is_array($candidate) || empty($candidate['id'])) {
+                    break;
+                }
+                if (!empty($candidate['group_id'])) {
+                    $claimGroup = $pdo->prepare("UPDATE manualsell SET status = 'selled', username = ? WHERE group_id = ? AND status = 'active'");
+                    $claimGroup->execute(array($usernameC, $candidate['group_id']));
+                    if ($claimGroup->rowCount() < 1) {
+                        continue;
+                    }
+                    $groupFetch = $pdo->prepare("SELECT * FROM manualsell WHERE group_id = ? AND username = ? AND status = 'selled' ORDER BY id ASC");
+                    $groupFetch->execute(array($candidate['group_id'], $usernameC));
+                    $groupRows = $groupFetch->fetchAll(PDO::FETCH_ASSOC);
+                    if (empty($groupRows)) {
+                        continue;
+                    }
+                    $manualClaimedRows = $groupRows;
+                    $configman = $groupRows[0];
+                    foreach ($groupRows as $groupRow) {
+                        if ((string) $groupRow['id'] === (string) $candidate['id']) {
+                            $configman = $groupRow;
+                            break;
+                        }
+                    }
+                } else {
+                    $claimOne = $pdo->prepare("UPDATE manualsell SET status = 'selled', username = ? WHERE id = ? AND status = 'active'");
+                    $claimOne->execute(array($usernameC, $candidate['id']));
+                    if ($claimOne->rowCount() !== 1) {
+                        continue;
+                    }
+                    $candidate['status'] = 'selled';
+                    $candidate['username'] = $usernameC;
+                    $configman = $candidate;
+                    $manualClaimedRows = array($candidate);
+                }
+            }
+            if (function_exists('clearSelectCache')) {
+                clearSelectCache('manualsell');
+            }
             if (!is_array($configman) || empty($configman['id'])) {
                 return array(
                     'status' => 'Unsuccessful',
@@ -343,20 +385,6 @@ class ManagePanel
             $Output['configs'] = "";
             $Output['file_ext'] = $configman['file_ext'];
             $Output['sub_link'] = $configman['sub_link'] ?? '';
-            $manualClaimedRows = array($configman);
-            if (!empty($configman['group_id'])) {
-                $claimGroup = $pdo->prepare("UPDATE manualsell SET status = 'selled', username = :username WHERE group_id = :group_id AND status = 'active'");
-                $claimGroup->execute(array(':username' => $usernameC, ':group_id' => $configman['group_id']));
-                $groupFetch = $pdo->prepare("SELECT * FROM manualsell WHERE group_id = :group_id AND username = :username ORDER BY id ASC");
-                $groupFetch->execute(array(':group_id' => $configman['group_id'], ':username' => $usernameC));
-                $groupRows = $groupFetch->fetchAll(PDO::FETCH_ASSOC);
-                if (!empty($groupRows)) {
-                    $manualClaimedRows = $groupRows;
-                }
-            } else {
-                update("manualsell", "status", "selled", "id", $configman['id']);
-                update("manualsell", "username", $usernameC, "id", $configman['id']);
-            }
             $manualItemsOut = array();
             $manualUnifiedSubOut = '';
             foreach ($manualClaimedRows as $mRow) {
