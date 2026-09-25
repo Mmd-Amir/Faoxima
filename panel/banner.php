@@ -110,8 +110,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_save'])) {
         $curFileId = (string)($settingRow[$fileCol] ?? '');
 
         if ($curStatus !== $newStatus) {
+            $statusSql = "UPDATE setting SET `{$statusCol}` = :v";
+            if ($key === 'start' && $newStatus === '1' && array_key_exists('start_media_status', $settingRow)) {
+                $statusSql .= ", `start_media_status` = '0'";
+            }
             try {
-                $upd = $pdo->prepare("UPDATE setting SET `{$statusCol}` = :v");
+                $upd = $pdo->prepare($statusSql);
                 $upd->bindValue(':v', $newStatus, PDO::PARAM_STR);
                 $upd->execute();
                 $savedCount++;

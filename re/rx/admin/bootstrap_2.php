@@ -47,6 +47,7 @@ if (!function_exists('rx_featCategoryRows')) {
                         : (string)($textbotlang['Admin']['Status']['statusoff'] ?? '❌ خاموش'),
                    'callback_data' => 'editstsuts-cardverify-' . ($setting['card_verify_status'] ?? 'offcardverify')],
                  ['text' => "💳 احراز هویت کارت‌به‌کارت", 'callback_data' => "cardverify_info"]],
+                [['text' => "🎭 ارسال استیکر", 'callback_data' => "stmedia_menu"]],
             ];
         } elseif ($cat === 'users') {
             return [
@@ -164,6 +165,11 @@ if (function_exists('rxPremiumEmojiCancelKind')
     unset($rxPemCancelKind, $rxPemStepLeft);
 }
 unset($rx_pem_entry_step);
+
+if (function_exists('rxStartMediaHandleAdminUpdate')
+    && rxStartMediaHandleAdminUpdate($from_id, $datain ?? '', $update ?? [], $user, ($adminrulecheck['rule'] ?? '') === "administrator")) {
+    return;
+}
 
 if (in_array($text, $textadmin) || $datain == "admin") {
     if ($datain == "admin")
