@@ -1063,14 +1063,17 @@ if (!function_exists('rx_test_provision')) {
         ];
         try {
             $managePanel = new ManagePanel();
-            $output = $managePanel->createUser($panel['name_panel'], 'usertest', (string) $usernameAc, $datac);
+            $output = $managePanel->createUser($panel['name_panel'], 'usertest', (string) $usernameAc, $datac, true);
         } catch (Throwable $e) {
             $output = ['status' => 'Unsuccessful', 'msg' => $e->getMessage()];
         }
         $result['output'] = $output;
         if (!is_array($output) || empty($output['username'])) {
             $msg = is_array($output) ? ($output['msg'] ?? $output) : $output;
-            $result['msg'] = is_string($msg) ? $msg : (string) json_encode($msg, JSON_UNESCAPED_UNICODE);
+            $rawMsg = is_string($msg) ? $msg : (string) json_encode($msg, JSON_UNESCAPED_UNICODE);
+            $result['msg'] = function_exists('rx_panel_error_text')
+                ? rx_panel_error_text($msg, is_array($output) ? ($output['detail'] ?? null) : null, false)
+                : $rawMsg;
             rx_test_reservation_update($reservation, 'failed');
             try {
                 $upd = $pdo->prepare("UPDATE invoice SET Status = 'Unsuccessful' WHERE id_invoice = ? AND id_user = ?");
@@ -1082,11 +1085,16 @@ if (!function_exists('rx_test_provision')) {
                 error_log('[test_account_policy] invoice fail mark: ' . $e->getMessage());
             }
             rx_test_release($reservation);
-            $stockEmpty = ($panel['type'] ?? '') === 'Manualsale' && $result['msg'] === 'Manualsale stock not found';
+            $stockEmpty = ($panel['type'] ?? '') === 'Manualsale' && $rawMsg === 'Manualsale stock not found';
             $result['error'] = $stockEmpty ? 'stock_empty' : 'create_failed';
             return $result;
         }
-        rx_test_reservation_update($reservation, 'created');
+        if (!empty($output['renamed_from']) && function_exists('rx_adopt_created_username')) {
+            rx_adopt_created_username($output, (string) $usernameAc, $orderId);
+            rx_test_reservation_update($reservation, 'created', $orderId, (string) $output['username']);
+        } else {
+            rx_test_reservation_update($reservation, 'created');
+        }
         $result['ok'] = true;
         $result['username'] = (string) $output['username'];
         return $result;

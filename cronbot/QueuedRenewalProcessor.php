@@ -68,7 +68,7 @@ foreach ($queuedRows as $row) {
             ]);
         }
     } else {
-        $errorMsg = is_array($extend) ? json_encode($extend['msg'] ?? $extend, JSON_UNESCAPED_UNICODE) : (string)$extend;
+        $errorMsg = is_array($extend) ? rx_panel_error_text($extend['msg'] ?? $extend, $extend['detail'] ?? null) : htmlspecialchars((string)$extend, ENT_QUOTES, 'UTF-8');
         update("queued_renewal", "status", "failed", "id", $row['id']);
         update("queued_renewal", "output", $errorMsg, "id", $row['id']);
 

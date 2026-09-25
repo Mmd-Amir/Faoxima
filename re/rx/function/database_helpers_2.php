@@ -2849,25 +2849,12 @@ function DirectPayment($order_id, $image = 'images.jpg')
         }
 
         if (empty($dataoutput) || empty($dataoutput['username'])) {
-            $dataoutput = $ManagePanel->createUser($marzban_list_get['name_panel'], $info_product['code_product'], $username_ac, $datac);
-        }
-
-        // [duplicate retry — حداکثر 1 بار] اگه createUser duplicate برگردوند، فقط یک بار با random جدید retry می‌کنیم.
-        try {
-            if (empty($dataoutput['username'])) {
-                $__msgRaw = is_array($dataoutput) ? ($dataoutput['msg'] ?? '') : '';
-                $__msgStr = is_string($__msgRaw) ? $__msgRaw : json_encode($__msgRaw);
-                if (stripos($__msgStr, 'duplicate') !== false || stripos($__msgStr, 'already exist') !== false || stripos($__msgStr, 'exists') !== false) {
-                    $username_ac = preg_replace('/[^A-Za-z0-9-]/', '', str_replace('_', '-', (string)$Balance_id['id'])) . '-' . bin2hex(random_bytes(4));
-                    if (strlen($username_ac) < 3) $username_ac = 'u' . bin2hex(random_bytes(4));
-                    if (!empty($get_invoice['id_invoice'])) {
-                        try { update("invoice", "username", $username_ac, "id_invoice", $get_invoice['id_invoice']); } catch (Throwable $__e2) { /* fail-open */ }
-                        try { update("Payment_report", "id_invoice", "getconfigafterpay|" . $username_ac, "id_order", $order_id); } catch (Throwable $__e2) {}
-                    }
-                    $dataoutput = $ManagePanel->createUser($marzban_list_get['name_panel'], $info_product['code_product'], $username_ac, $datac);
-                }
+            $dataoutput = $ManagePanel->createUser($marzban_list_get['name_panel'], $info_product['code_product'], $username_ac, $datac, true);
+            if (!empty($dataoutput['renamed_from'])) {
+                $username_ac = rx_adopt_created_username($dataoutput, $username_ac, $get_invoice['id_invoice'] ?? null);
+                try { update("Payment_report", "id_invoice", "getconfigafterpay|" . $username_ac, "id_order", $order_id); } catch (Throwable $__e2) {}
             }
-        } catch (Throwable $__e) { /* fail-open */ }
+        }
 
         // [CRITICAL: mark invoice active EARLY]
         // اگه createUser موفق بوده، همین الان قبل از هر sendmessage/QR code generation/الخ که ممکنه hang کنه،
@@ -2886,7 +2873,7 @@ function DirectPayment($order_id, $image = 'images.jpg')
             } catch (Throwable $__e) { /* fail-open */ }
         }
         if ($dataoutput['username'] == null) {
-            $dataoutput['msg'] = json_encode($dataoutput['msg']);
+            $dataoutput['msg'] = rx_panel_error_text($dataoutput['msg'] ?? null, $dataoutput['detail'] ?? null);
             $__refundCu = rx_refund_payment_once($order_id, $Balance_id['id'], $Payment_report['price'], 'بازگشت وجه - خطا در ساخت سرویس', (string)$get_invoice['id_invoice']);
             if ($__refundCu === 'duplicate') {
                 return;
@@ -3181,7 +3168,7 @@ $textonebuy
             } else {
                 sendmessage($Balance_id['id'], "❌ تمدید سرویس با خطا مواجه شد و بازگشت وجه نیز انجام نشد؛ لطفاً با پشتیبانی در ارتباط باشید.", $keyboard, 'HTML');
             }
-            $extend['msg'] = json_encode($extend['msg']);
+            $extend['msg'] = rx_panel_error_text($extend['msg'] ?? null, $extend['detail'] ?? null);
             $textreports = "
         خطای تمدید سرویس
 <blockquote>نام پنل : {$marzban_list_get['name_panel']}</blockquote>
@@ -3365,7 +3352,7 @@ $textonebuy
             if ($__refundVx === 'duplicate') {
                 return;
             }
-            $extra_volume['msg'] = json_encode($extra_volume['msg']);
+            $extra_volume['msg'] = rx_panel_error_text($extra_volume['msg'] ?? null, $extra_volume['detail'] ?? null);
             $textreports = "خطای خرید حجم اضافه
 <blockquote>نام پنل : {$marzban_list_get['name_panel']}</blockquote>
 <blockquote>نام کاربری سرویس : {$nameloc['username']}</blockquote>
@@ -3498,7 +3485,7 @@ $textonebuy
             if ($__refundEt === 'refunded') {
                 sendmessage($Payment_report['id_user'], "💎  کاربر عزیز بدلیل انجام نشدن خرید زمان اضافه مبلغ " . rxFormatToman($Payment_report['price']) . " تومان به کیف پول شما اضافه گردید.", null, 'HTML');
             }
-            $extra_time['msg'] = json_encode($extra_time['msg']);
+            $extra_time['msg'] = rx_panel_error_text($extra_time['msg'] ?? null, $extra_time['detail'] ?? null);
             $textreports = "خطای خرید حجم اضافه
 <blockquote>نام پنل : {$marzban_list_get['name_panel']}</blockquote>
 <blockquote>نام کاربری سرویس : {$nameloc['username']}</blockquote>

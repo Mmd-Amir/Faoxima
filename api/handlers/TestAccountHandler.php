@@ -187,7 +187,7 @@ final class TestAccountHandler extends BaseHandler
             ]);
 
             $errorText = faoxima_render_text(faoxima_textbot_get('dyn_testaccount_create_failed_report_tpl', "⭕️ یک کاربر قصد دریافت اکانت تست از مینی‌اپ داشت که ساخت کانفیگ با خطا مواجه شده\n<blockquote>✍️ دلیل خطا :</blockquote>\n<blockquote>{reason}</blockquote>\n<blockquote>آیدی کابر : {user_id}</blockquote>\n<blockquote>نام کاربری کاربر : @{username}</blockquote>\n<blockquote>نام پنل : {panel_name}</blockquote>"), [
-                'reason' => $reason,
+                'reason' => htmlspecialchars($reason, ENT_QUOTES, 'UTF-8'),
                 'user_id' => $user['id'],
                 'username' => $user['username'],
                 'panel_name' => $panel['name_panel'],
@@ -210,6 +210,7 @@ final class TestAccountHandler extends BaseHandler
         }
 
         $dataoutput = is_array($provision['output']) ? $provision['output'] : [];
+        $usernameAc = (string)($provision['username'] ?? $usernameAc);
 
         $configList = is_array($dataoutput['configs'] ?? null) ? $dataoutput['configs'] : [];
         $subLink = ($panel['sublink'] ?? '') === 'onsublink' ? (string)($dataoutput['subscription_url'] ?? '') : '';

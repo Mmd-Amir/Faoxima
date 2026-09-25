@@ -300,7 +300,7 @@ switch ($action) {
             $DataUserOut = $ManagePanel->createUser($panel['name_panel'], $product['code_product'], $data['username'], $datac);
             if ($DataUserOut['username'] == null) {
                 sendmessage($data['chat_id'], "❌ خطایی در ساخت اشتراک رخ داده است برای رفع مشکل علت خطا را در گروه گزارش تان بررسی کنید", null, 'HTML');
-                $DataUserOut['msg'] = json_encode($DataUserOut['msg']);
+                $DataUserOut['msg'] = rx_panel_error_text($DataUserOut['msg'] ?? null, $DataUserOut['detail'] ?? null);
                 $texterros = "
 خطا در ساخت کافنیگ از پنل ادمین
 <blockquote>✍️ دلیل خطا : {$DataUserOut['msg']}</blockquote>
@@ -397,7 +397,7 @@ switch ($action) {
             sendJsonResponse(false, "Panel Not Found", [], 200);
         $extend = $ManagePanel->extend($panel['Methodextend'], $data['volume_service'], $data['time_service'], $invoice['username'], "custom_volume", $panel['code_panel']);
         if ($extend['status'] == false) {
-            $extend['msg'] = json_encode($extend['msg']);
+            $extend['msg'] = rx_panel_error_text($extend['msg'] ?? null, $extend['detail'] ?? null);
             $textreports = "
         خطای تمدید سرویس
 <blockquote>نام پنل : {$panel['name_panel']}</blockquote>

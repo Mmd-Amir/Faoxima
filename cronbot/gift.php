@@ -145,7 +145,7 @@ while (!empty($userid) && $processed < $batchSize) {
         $extra_volume = $ManagePanel->extra_volume($invoce['username'], $marzban_list_get['code_panel'], $info['value']);
         if ($extra_volume['status'] == false) {
             $hadPersistentError = true;
-            $extra_volume['msg'] = json_encode($extra_volume['msg']);
+            $extra_volume['msg'] = rx_panel_error_text($extra_volume['msg'] ?? null, $extra_volume['detail'] ?? null);
             $textreports = faoxima_render_text(faoxima_textbot_get('dyn_gift_error_report_tpl', "خطای اضافه شدن هدیه حجم\n<blockquote>نام پنل : {panel_name}</blockquote>\n<blockquote>نام کاربری سرویس : {username}</blockquote>\n<blockquote>دلیل خطا : {reason}</blockquote>"), [
                 'panel_name' => $marzban_list_get['name_panel'],
                 'username' => $iduser->username,
@@ -186,7 +186,7 @@ while (!empty($userid) && $processed < $batchSize) {
         $extra_time = $ManagePanel->extra_time($get_username_info['username'], $marzban_list_get['code_panel'], intval($info['value']));
         if ($extra_time['status'] == false) {
             $hadPersistentError = true;
-            $extra_time['msg'] = json_encode($extra_time['msg']);
+            $extra_time['msg'] = rx_panel_error_text($extra_time['msg'] ?? null, $extra_time['detail'] ?? null);
             $textreports = faoxima_render_text(faoxima_textbot_get('dyn_gift_error_report_tpl', "خطای اضافه شدن هدیه حجم\n<blockquote>نام پنل : {panel_name}</blockquote>\n<blockquote>نام کاربری سرویس : {username}</blockquote>\n<blockquote>دلیل خطا : {reason}</blockquote>"), [
                 'panel_name' => $marzban_list_get['name_panel'],
                 'username' => $iduser->username,

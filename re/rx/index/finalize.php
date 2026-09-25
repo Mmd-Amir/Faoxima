@@ -285,7 +285,7 @@ if (isset($update['pre_checkout_query'])) {
     if ($extend['status'] == false) {
         $rxStockEmpty = ($extend['code'] ?? '') === 'manual_stock_empty';
         $rxQueuedExists = ($extend['code'] ?? '') === 'queued_renewal_exists';
-        $extend['msg'] = json_encode($extend['msg']);
+        $extend['msg'] = rx_panel_error_text($extend['msg'] ?? null, $extend['detail'] ?? null);
         $textreports = "خطای تمدید سرویس
         <blockquote>نام پنل : {$marzban_list_get['name_panel']}</blockquote>
         <blockquote>نام کاربری سرویس : $usernamePanelExtends</blockquote>

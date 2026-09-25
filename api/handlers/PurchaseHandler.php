@@ -450,11 +450,12 @@ final class PurchaseHandler extends BaseHandler
             $panel['name_panel'],
             $product['code_product'],
             $usernameAc,
-            $createPayload
+            $createPayload,
+            true
         );
 
         if (empty($remote['username'])) {
-            $reason = is_array($remote) ? json_encode($remote['msg'] ?? $remote) : (string)$remote;
+            $reason = is_array($remote) ? rx_panel_error_text($remote['msg'] ?? null, $remote['detail'] ?? null) : htmlspecialchars((string)$remote, ENT_QUOTES, 'UTF-8');
             FaoximaLogger::error('createUser failed', [
                 'user_id' => $this->user['id'],
                 'panel' => $panel['name_panel'],
@@ -485,6 +486,11 @@ final class PurchaseHandler extends BaseHandler
             $this->reportToChannel($errorText, $errorReport);
 
             FaoximaResponse::serverError(faoxima_textbot_get('dyn_purchase_create_user_failed_customer', 'خطایی در ساخت اشتراک رخ داده است با پشتیبانی در ارتباط باشید'));
+        }
+
+        if (!empty($remote['renamed_from'])) {
+            $usernameAc = rx_adopt_created_username($remote, $usernameAc, $orderId);
+            $usernameWasRenamed = true;
         }
 
         if ($discountCode !== '') {

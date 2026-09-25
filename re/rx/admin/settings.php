@@ -1823,9 +1823,9 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     $panel = select("marzban_panel", "*", "name_panel", $userdata['idpanel'], "select");
     for ($i = 0; $i < $userdata['count']; $i++) {
         $usernameconfig = str_replace('_', '-', $user['Processing_value_one']) . "-" . $i;
-        $dataoutput = $ManagePanel->createUser($userdata['idpanel'], "usertest", $usernameconfig, $datac);
+        $dataoutput = $ManagePanel->createUser($userdata['idpanel'], "usertest", $usernameconfig, $datac, true);
         if ($dataoutput['username'] == null) {
-            $dataoutput['msg'] = json_encode($dataoutput['msg']);
+            $dataoutput['msg'] = rx_panel_error_text($dataoutput['msg'] ?? null, $dataoutput['detail'] ?? null);
             nm_adminInstantReply($from_id, $textbotlang['users']['sell']['ErrorConfig'], null, 'HTML');
             $texterros = "
 ⭕️ یک کاربر قصد دریافت اکانت داشت که ساخت کانفیگ با خطا مواجه شده و به کاربر کانفیگ داده نشد
@@ -5326,7 +5326,7 @@ elseif ($text == "🫣 مخفی پنل برای کاربر" && $adminrulecheck['
     deletemessage($from_id, $message_id);
     $extend = $ManagePanel->extend($marzban_list_get['Methodextend'], $prodcut['Volume_constraint'], $prodcut['Service_time'], $nameloc['username'], $prodcut['code_product'], $marzban_list_get['code_panel']);
     if ($extend['status'] == false) {
-        $extend['msg'] = json_encode($extend['msg']);
+        $extend['msg'] = rx_panel_error_text($extend['msg'] ?? null, $extend['detail'] ?? null);
         $textreports = "
         خطای تمدید سرویس
 <blockquote>نام پنل : {$marzban_list_get['name_panel']}</blockquote>

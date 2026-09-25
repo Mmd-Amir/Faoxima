@@ -96,7 +96,7 @@ function nmStockConvertInvoiceToPanelService($chatId, array $userRow, array $inv
     $datac = ['expire' => $expire, 'data_limit' => (float)($product['Volume_constraint'] ?? 0) * pow(1024, 3), 'from_id' => $chatId, 'username' => '', 'type' => 'buy'];
     $dataoutput = $ManagePanel->createUser($panel['name_panel'], $product['code_product'], $username, $datac);
     if (!is_array($dataoutput) || empty($dataoutput['username'])) {
-        $msg = isset($dataoutput['msg']) ? json_encode($dataoutput['msg'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : 'unknown';
+        $msg = rx_panel_error_text(is_array($dataoutput) ? ($dataoutput['msg'] ?? null) : null, is_array($dataoutput) ? ($dataoutput['detail'] ?? null) : null);
         error_log('nmStockConvertInvoiceToPanelService createUser failed: ' . $msg);
         sendmessage($chatId, '❌ تمدید از پنل اصلی انجام نشد. لطفاً گزارش خطا را بررسی کنید.', null, 'HTML');
         if (!empty($setting['Channel_Report'])) telegram('sendmessage', ['chat_id' => $setting['Channel_Report'], 'message_thread_id' => $errorreport ?? null, 'text' => "خطا در تبدیل سرویس انبار به پنل اصلی

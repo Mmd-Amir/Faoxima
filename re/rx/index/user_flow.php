@@ -178,6 +178,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         return;
     }
     $dataoutput = $rxTestProvision['output'];
+    $username_ac = (string) ($rxTestProvision['username'] ?? $username_ac);
     $output_config_link = "";
     $config = "";
     $output_config_link = rxShouldShowConnectionLink($marzban_list_get, $dataoutput['file_ext'] ?? null) ? rxResolveConnectionLink($marzban_list_get, $dataoutput['subscription_url'], $dataoutput['file_ext'] ?? null) : "";
@@ -1848,15 +1849,9 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         step('home', $from_id);
         return;
     }
-    $dataoutput = $ManagePanel->createUser($marzban_list_get['name_panel'], $info_product['code_product'], $username_ac, $datac);
+    $dataoutput = $ManagePanel->createUser($marzban_list_get['name_panel'], $info_product['code_product'], $username_ac, $datac, true);
     if (!isset($dataoutput['username']) || $dataoutput['username'] === null || $dataoutput['username'] === '') {
-        $errorMessage = $dataoutput['msg'] ?? 'unknown error';
-        if (is_array($errorMessage) || is_object($errorMessage)) {
-            $errorMessage = json_encode($errorMessage, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        } else {
-            $errorMessage = (string) $errorMessage;
-        }
-        $dataoutput['msg'] = $errorMessage;
+        $dataoutput['msg'] = rx_panel_error_text($dataoutput['msg'] ?? null, $dataoutput['detail'] ?? null);
         sendmessage($from_id, $textbotlang['users']['sell']['ErrorConfig'], $keyboard, 'HTML');
         $texterros = "⭕️ خطای ساخت اشتراک
 <blockquote>✍️ دلیل خطا :
@@ -1875,6 +1870,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         step('home', $from_id);
         return;
     }
+    $username_ac = rx_adopt_created_username($dataoutput, $username_ac, $randomString);
     update("invoice", "Status", "active", "username", $username_ac);
     $output_config_link = "";
     $config = "";
@@ -2603,9 +2599,9 @@ $textonebuy
         if (isset($get_username_Check['username']) || rxTableValueExists('invoice', 'username', $username_acc)) {
             $username_acc = $random_number . "-" . $username_acc;
         }
-        $dataoutput = $ManagePanel->createUser($marzban_list_get['name_panel'], $info_product['code_product'], $username_acc, $datac);
+        $dataoutput = $ManagePanel->createUser($marzban_list_get['name_panel'], $info_product['code_product'], $username_acc, $datac, true);
         if ($dataoutput['username'] == null) {
-            $dataoutput['msg'] = json_encode($dataoutput['msg']);
+            $dataoutput['msg'] = rx_panel_error_text($dataoutput['msg'] ?? null, $dataoutput['detail'] ?? null);
             sendmessage($from_id, $textbotlang['users']['sell']['ErrorConfig'], $keyboard, 'HTML');
             $texterros = "
 ⭕️ خطا در ساخت اکانت در بخش انبوه
@@ -2625,6 +2621,7 @@ $textonebuy
             step('home', $from_id);
             return;
         }
+        $username_acc = rx_adopt_created_username($dataoutput, $username_acc);
         $invoiceIpLimit = (string)(isset($info_product['ip_limit']) ? intval($info_product['ip_limit']) : 0);
         $invoiceHwidLimit = (string)(isset($info_product['hwid_limit']) ? intval($info_product['hwid_limit']) : 0);
         $invoiceSymbolicLimitEnabled = (string)($info_product['symbolic_limit_enabled'] ?? '0');

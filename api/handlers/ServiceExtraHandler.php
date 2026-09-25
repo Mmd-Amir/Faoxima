@@ -198,7 +198,7 @@ final class ServiceExtraHandler extends BaseHandler
         }
 
         if (!is_array($result) || ($result['status'] ?? null) === false) {
-            $reason = is_array($result) ? json_encode($result['msg'] ?? $result) : (string)$result;
+            $reason = is_array($result) ? rx_panel_error_text($result['msg'] ?? $result, $result['detail'] ?? null) : htmlspecialchars((string)$result, ENT_QUOTES, 'UTF-8');
             FaoximaLogger::error('ManagePanel extra_* failed', [
                 'kind'     => $kind,
                 'user_id'  => $this->user['id'],

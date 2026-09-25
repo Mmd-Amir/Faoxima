@@ -3464,7 +3464,7 @@ $nameconfig";
         }
         $rxStockEmpty = ($extend['code'] ?? '') === 'manual_stock_empty';
         $rxQueuedExists = ($extend['code'] ?? '') === 'queued_renewal_exists';
-        $extend['msg'] = json_encode($extend['msg']);
+        $extend['msg'] = rx_panel_error_text($extend['msg'] ?? null, $extend['detail'] ?? null);
         $textreports = "خطای تمدید سرویس
 <blockquote>نام پنل : {$marzban_list_get['name_panel']}</blockquote>
 <blockquote>نام کاربری سرویس : {$nameloc['username']}</blockquote>
@@ -3905,7 +3905,7 @@ $nameconfig";
                 wallet_ledger_record($from_id, 'credit', $volumepricelast, 'refund', 'بازگشت وجه خرید حجم اضافه', null, 'invoice', (string)($nameloc['id_invoice'] ?? ''));
             }
         }
-        $extra_volume['msg'] = json_encode($extra_volume['msg']);
+        $extra_volume['msg'] = rx_panel_error_text($extra_volume['msg'] ?? null, $extra_volume['detail'] ?? null);
         $textreports = "خطای خرید حجم اضافه
 <blockquote>نام پنل : {$marzban_list_get['name_panel']}</blockquote>
 <blockquote>نام کاربری سرویس : {$nameloc['username']}</blockquote>
@@ -4200,7 +4200,7 @@ $nameconfig";
     } else {
         $dataoutput = $ManagePanel->createUser($marzban_list_get_new['name_panel'], "usertest", $DataUserOut['username'], $datac);
         if ($dataoutput['username'] == null) {
-            $dataoutput['msg'] = json_encode($dataoutput['msg']);
+            $dataoutput['msg'] = rx_panel_error_text($dataoutput['msg'] ?? null, $dataoutput['detail'] ?? null);
             sendmessage($from_id, $textbotlang['users']['sell']['ErrorConfig'], $keyboard, 'HTML');
             $texterros = "خطا هنگام تغییر موقعیت سرویس
 <blockquote>دلیل خطا : {$dataoutput['msg']}</blockquote>
@@ -4673,7 +4673,7 @@ $nameconfig";
     $day = floor($timeservice / 86400);
     $extra_time = $ManagePanel->extra_time($nameloc['username'], $marzban_list_get['code_panel'], $extratimeday);
     if ($extra_time['status'] == false) {
-        $extra_time['msg'] = json_encode($extra_time['msg']);
+        $extra_time['msg'] = rx_panel_error_text($extra_time['msg'] ?? null, $extra_time['detail'] ?? null);
         $textreports = "خطای خرید حجم اضافه
 <blockquote>نام پنل : {$marzban_list_get['name_panel']}</blockquote>
 <blockquote>نام کاربری سرویس : {$nameloc['username']}</blockquote>

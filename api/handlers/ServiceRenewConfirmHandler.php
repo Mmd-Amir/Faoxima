@@ -363,7 +363,7 @@ final class ServiceRenewConfirmHandler extends BaseHandler
 
 
         if (!is_array($extend) || ($extend['status'] ?? null) === false) {
-            $reason = is_array($extend) ? json_encode($extend['msg'] ?? $extend) : (string)$extend;
+            $reason = is_array($extend) ? rx_panel_error_text($extend['msg'] ?? $extend, $extend['detail'] ?? null) : htmlspecialchars((string)$extend, ENT_QUOTES, 'UTF-8');
             FaoximaLogger::error('ManagePanel->extend failed', [
                 'user_id'  => $this->user['id'],
                 'panel'    => $panel['name_panel'],

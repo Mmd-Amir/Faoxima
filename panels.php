@@ -10,6 +10,177 @@ require_once __DIR__ . '/WGDashboard.php';
 require_once __DIR__ . '/remnawave.php';
 require_once __DIR__ . '/rebecca.php';
 
+if (!function_exists('rx_panel_http_status_fa')) {
+    function rx_panel_http_status_fa($code)
+    {
+        $code = (int) $code;
+        $map = [
+            0   => 'اتصال به پنل برقرار نشد؛ پنل خاموش است، آدرس اشتباه است یا فایروال/SSL جلوی اتصال را گرفته',
+            400 => 'درخواست نامعتبر؛ پنل داده‌های ارسالی ربات را نپذیرفت',
+            401 => 'احراز هویت ناموفق؛ API Key یا نام کاربری/رمز پنل در ربات اشتباه یا منقضی است',
+            403 => 'دسترسی غیرمجاز؛ ادمین پنل غیرفعال است، مجوز ساخت کاربر ندارد یا به سقف حجم/تعداد کاربر رسیده',
+            404 => 'پیدا نشد؛ آدرس پنل، مسیر API یا گروه/اینباند انتخاب‌شده روی پنل وجود ندارد',
+            405 => 'متد مجاز نیست؛ احتمالاً نوع یا نسخهٔ پنل در ربات اشتباه انتخاب شده',
+            408 => 'پنل در زمان مقرر پاسخ نداد (Timeout)',
+            409 => 'نام کاربری تکراری است؛ این یوزرنیم از قبل روی پنل وجود دارد',
+            413 => 'حجم درخواست بیش از حد مجاز پنل است',
+            422 => 'دادهٔ نامعتبر؛ فرمت نام کاربری، گروه/اینباند، حجم یا تاریخ انقضا مورد قبول پنل نیست',
+            429 => 'تعداد درخواست‌ها زیاد است؛ پنل موقتاً درخواست‌ها را محدود کرده',
+            500 => 'خطای داخلی پنل؛ لاگ پنل را بررسی کنید',
+            502 => 'Bad Gateway؛ وب‌سرور/پروکسی جلوی پنل به خود پنل دسترسی ندارد',
+            503 => 'سرویس پنل در دسترس نیست؛ پنل در حال ری‌استارت یا از کار افتاده است',
+            504 => 'Gateway Timeout؛ پنل دیر پاسخ داد',
+        ];
+        if (isset($map[$code])) {
+            return $map[$code];
+        }
+        if ($code >= 520 && $code <= 530) {
+            return 'خطای Cloudflare؛ سرور پنل پشت Cloudflare پاسخ نداد یا در دسترس نیست';
+        }
+        if ($code >= 500) {
+            return 'خطای سمت سرور پنل';
+        }
+        if ($code >= 400) {
+            return 'پنل درخواست را رد کرد';
+        }
+        if ($code >= 300) {
+            return 'ریدایرکت؛ آدرس پنل اشتباه است (http/https یا مسیر را بررسی کنید)';
+        }
+        if ($code >= 200) {
+            return 'پنل عملیات را با موفقیت انجام داد اما پاسخ آن با انتظار ربات جور نبود؛ نوع پنل انتخاب‌شده در ربات را بررسی کنید';
+        }
+        return '';
+    }
+}
+
+if (!function_exists('rx_panel_error_hint_fa')) {
+    function rx_panel_error_hint_fa($text)
+    {
+        $text = (string) $text;
+        $patterns = [
+            '/already\s+exist|duplicate|\bexists\b/i'                      => 'نام کاربری تکراری است؛ این یوزرنیم از قبل روی پنل وجود دارد',
+            '/timed?\s*out|timeout/i'                                     => 'پنل در زمان مقرر پاسخ نداد (Timeout)',
+            '/could not resolve host|name or service not known/i'         => 'دامنهٔ پنل پیدا نشد (خطای DNS)',
+            '/connection refused|failed to connect|couldn\'t connect/i'   => 'اتصال به پنل رد شد؛ پنل خاموش است یا پورت بسته است',
+            '/ssl|certificate/i'                                          => 'خطای SSL؛ گواهی پنل نامعتبر یا منقضی است',
+            '/unauthori[sz]ed|invalid username or password|login failed|not authenticated/i' => 'احراز هویت ناموفق؛ اطلاعات ورود یا API Key پنل را بررسی کنید',
+            '/^panel not found$/i'                                        => 'پنل در دیتابیس ربات پیدا نشد',
+            '/^user not found$/i'                                         => 'کاربر روی پنل پیدا نشد',
+            '/manualsale stock not found/i'                               => 'موجودی فروش دستی این محصول تمام شده است',
+            '/panel configuration not found/i'                            => 'تنظیمات پنل در ربات پیدا نشد',
+        ];
+        foreach ($patterns as $pattern => $hint) {
+            if (preg_match($pattern, $text)) {
+                return $hint;
+            }
+        }
+        return '';
+    }
+}
+
+if (!function_exists('rx_panel_error_detail_text')) {
+    function rx_panel_error_detail_text($detail)
+    {
+        if ($detail === null || $detail === '' || $detail === []) {
+            return '';
+        }
+        if (is_array($detail)) {
+            $parts = [];
+            foreach ($detail as $key => $item) {
+                if (is_array($item) && isset($item['msg'])) {
+                    $loc = isset($item['loc']) && is_array($item['loc']) ? implode('.', array_map('strval', $item['loc'])) : '';
+                    $parts[] = ($loc !== '' ? $loc . ': ' : '') . (string) $item['msg'];
+                } elseif (is_scalar($item)) {
+                    $parts[] = (is_string($key) ? $key . ': ' : '') . (string) $item;
+                } else {
+                    $parts[] = json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                }
+            }
+            $text = implode(' | ', $parts);
+        } else {
+            $text = (string) $detail;
+        }
+        $text = trim(preg_replace('/\s+/u', ' ', $text));
+        if (function_exists('mb_strlen') && mb_strlen($text, 'UTF-8') > 300) {
+            $text = mb_substr($text, 0, 300, 'UTF-8') . '…';
+        }
+        return $text;
+    }
+}
+
+if (!function_exists('rx_panel_error_text')) {
+    function rx_panel_error_text($msg, $detail = null, $html = true)
+    {
+        if (is_array($msg) || is_object($msg)) {
+            $raw = json_encode($msg, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        } else {
+            $raw = trim((string) $msg);
+        }
+        $hint = '';
+        if ($raw === '' || $raw === 'null') {
+            $raw = 'نامشخص';
+        } elseif (preg_match('/^\d{1,3}$/', $raw)) {
+            $hint = rx_panel_http_status_fa((int) $raw);
+        } else {
+            $hint = rx_panel_error_hint_fa($raw);
+        }
+        $detailText = rx_panel_error_detail_text($detail);
+        if ($hint === '' && $detailText !== '') {
+            $hint = rx_panel_error_hint_fa($detailText);
+        }
+        $text = $hint !== '' ? $raw . ' — ' . $hint : $raw;
+        if ($detailText !== '' && $detailText !== $raw) {
+            $text .= "\nپاسخ پنل: " . $detailText;
+        }
+        return $html ? htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') : $text;
+    }
+}
+
+if (!function_exists('rx_panel_username_variant')) {
+    function rx_panel_username_variant($base)
+    {
+        $alphabet = 'abcdefghijkmnpqrstuvwxyz23456789';
+        $suffix = '';
+        for ($i = 0; $i < 4; $i++) {
+            $suffix .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+        }
+        $base = trim((string) $base);
+        if (strlen($base) > 27) {
+            $base = substr($base, 0, 27);
+        }
+        $base = rtrim($base, '_-.');
+        if ($base === '') {
+            $base = 'u';
+        }
+        return $base . '_' . $suffix;
+    }
+}
+
+if (!function_exists('rx_adopt_created_username')) {
+    function rx_adopt_created_username($output, $requestedUsername, $idInvoice = null)
+    {
+        $requestedUsername = (string) $requestedUsername;
+        if (!is_array($output) || empty($output['username'])) {
+            return $requestedUsername;
+        }
+        $created = (string) $output['username'];
+        if ($created === $requestedUsername || empty($output['renamed_from'])) {
+            return $created;
+        }
+        if ($idInvoice !== null && $idInvoice !== '' && function_exists('update')) {
+            try {
+                update('invoice', 'username', $created, 'id_invoice', (string) $idInvoice);
+                if (function_exists('clearSelectCache')) {
+                    clearSelectCache('invoice');
+                }
+            } catch (Throwable $e) {
+                error_log('[rx_adopt_created_username] invoice update failed: ' . $e->getMessage());
+            }
+        }
+        return $created;
+    }
+}
+
 class ManagePanel
 {
     public $pdo, $domainhosts, $name_panel;
@@ -70,7 +241,61 @@ class ManagePanel
         $onlineTs = strtotime($onlineAt);
         return $onlineTs !== false && $onlineTs > 0;
     }
-    function createUser($name_panel, $code_product, $usernameC, array $Data_Config)
+    private function isDuplicateUsernameFailure($output): bool
+    {
+        if (!is_array($output) || !empty($output['username'])) {
+            return false;
+        }
+        $msg = $output['msg'] ?? '';
+        if (is_scalar($msg) && preg_match('/^\s*409\s*$/', (string) $msg)) {
+            return true;
+        }
+        $text = is_scalar($msg) ? (string) $msg : (string) json_encode($msg, JSON_UNESCAPED_UNICODE);
+        if (isset($output['detail'])) {
+            $text .= ' ' . (is_scalar($output['detail']) ? (string) $output['detail'] : (string) json_encode($output['detail'], JSON_UNESCAPED_UNICODE));
+        }
+        return (bool) preg_match('/already\s+exist|duplicate|\bexists\b/i', $text);
+    }
+
+    private function supportsUsernameRename($name_panel): bool
+    {
+        $panel = $this->loadPanel((string) $name_panel, 'name_panel');
+        return is_array($panel) && in_array((string) ($panel['type'] ?? ''), ['marzban', 'pasarguard', 'x-ui_single', 'guard', 'remnawave', 'rebecca'], true);
+    }
+
+    private function panelResponseDetail($response)
+    {
+        if (!is_array($response) || !isset($response['body']) || !is_string($response['body']) || $response['body'] === '') {
+            return null;
+        }
+        $decoded = json_decode($response['body'], true);
+        if (is_array($decoded)) {
+            return $decoded['detail'] ?? ($decoded['message'] ?? ($decoded['msg'] ?? null));
+        }
+        return function_exists('mb_substr') ? mb_substr(strip_tags($response['body']), 0, 300, 'UTF-8') : substr(strip_tags($response['body']), 0, 300);
+    }
+
+    function createUser($name_panel, $code_product, $usernameC, array $Data_Config, $allowRename = false)
+    {
+        $requested = (string) $usernameC;
+        $Output = $this->createUserOnce($name_panel, $code_product, $requested, $Data_Config, $requested);
+        if (!$allowRename || !$this->isDuplicateUsernameFailure($Output) || !$this->supportsUsernameRename($name_panel)) {
+            return $Output;
+        }
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            $candidate = rx_panel_username_variant($requested);
+            $Output = $this->createUserOnce($name_panel, $code_product, $candidate, $Data_Config, $requested);
+            if (!$this->isDuplicateUsernameFailure($Output)) {
+                break;
+            }
+        }
+        if (is_array($Output) && !empty($Output['username'])) {
+            $Output['renamed_from'] = $requested;
+        }
+        return $Output;
+    }
+
+    private function createUserOnce($name_panel, $code_product, $usernameC, array $Data_Config, $invoiceUsername)
     {
         $Output = [];
         global $pdo, $domainhosts;
@@ -89,7 +314,7 @@ class ManagePanel
             return $Output;
         }
         if ($Get_Data_Panel['subvip'] == "onsubvip") {
-            $inoice = select("invoice", "*", "username", $usernameC, "select");
+            $inoice = select("invoice", "*", "username", $invoiceUsername, "select");
         } else {
             $inoice = false;
         }
@@ -117,7 +342,8 @@ class ManagePanel
             if (!empty($ConnectToPanel['status']) && (int)$ConnectToPanel['status'] !== 200) {
                 return array(
                     'status' => 'Unsuccessful',
-                    'msg' => $ConnectToPanel['status']
+                    'msg' => $ConnectToPanel['status'],
+                    'detail' => $this->panelResponseDetail($ConnectToPanel)
                 );
             }
             if (!empty($ConnectToPanel['error'])) {
@@ -158,7 +384,8 @@ class ManagePanel
             if (!empty($ConnectToPanel['status']) && (int)$ConnectToPanel['status'] !== 201) {
                 return array(
                     'status' => 'Unsuccessful',
-                    'msg' => $ConnectToPanel['status']
+                    'msg' => $ConnectToPanel['status'],
+                    'detail' => $this->panelResponseDetail($ConnectToPanel)
                 );
             }
             if (!empty($ConnectToPanel['error'])) {

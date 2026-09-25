@@ -1463,7 +1463,7 @@ $text_porsant
     $data_limit_new = (intval($volume) / intval($extrapricevalue));
     $extra_volume = $ManagePanel->extra_volume($user['Processing_value'], $marzban_list_get['code_panel'], $data_limit_new);
     if ($extra_volume['status'] == false) {
-        $extra_volume['msg'] = json_encode($extra_volume['msg']);
+        $extra_volume['msg'] = rx_panel_error_text($extra_volume['msg'] ?? null, $extra_volume['detail'] ?? null);
         $textreports = "خطای خرید حجم اضافه
 <blockquote>نام پنل : {$user['Processing_value_one']}</blockquote>
 <blockquote>نام کاربری سرویس : {$user['Processing_value']}</blockquote>

@@ -442,7 +442,7 @@ final class ServiceActionHandler extends BaseHandler
                             FaoximaLogger::error('refund credit failed', ['user' => $this->user['id'], 'amount' => $priceChange]);
                         }
                     }
-                    $reason = is_array($remoteOut) ? json_encode($remoteOut['msg'] ?? $remoteOut) : (string)$remoteOut;
+                    $reason = is_array($remoteOut) ? rx_panel_error_text($remoteOut['msg'] ?? $remoteOut, $remoteOut['detail'] ?? null) : htmlspecialchars((string)$remoteOut, ENT_QUOTES, 'UTF-8');
                     FaoximaLogger::error('change_location createUser failed', [
                         'user' => $this->user['id'], 'reason' => $reason,
                     ]);
@@ -474,7 +474,7 @@ final class ServiceActionHandler extends BaseHandler
                     FaoximaLogger::error('refund credit failed', ['user' => $this->user['id'], 'amount' => $priceChange]);
                 }
             }
-            $reason = is_array($remoteOut) ? json_encode($remoteOut['msg'] ?? $remoteOut) : (string)$remoteOut;
+            $reason = is_array($remoteOut) ? rx_panel_error_text($remoteOut['msg'] ?? $remoteOut, $remoteOut['detail'] ?? null) : htmlspecialchars((string)$remoteOut, ENT_QUOTES, 'UTF-8');
             FaoximaLogger::error('change_location createUser failed (same domain)', [
                 'user' => $this->user['id'], 'reason' => $reason,
             ]);
