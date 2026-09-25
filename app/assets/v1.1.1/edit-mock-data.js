@@ -104,8 +104,9 @@ const MOCK_RESPONDERS = {
 
     test_account_info: () => ({
         available: true,
-        panels: [{ id: 'de1', name: 'آلمان ۱' }],
+        panels: [{ id: 'de1', name: 'آلمان ۱', available: true, limit_left: 1, quota_mode: 'panel', quota_source: 'panel' }],
         limit_left: 2,
+        quota_summary: { type: 'single_panel', remaining: 1, unlimited: false, panel_id: 'de1' },
     }),
     test_account_create: () => ({
         success: true,

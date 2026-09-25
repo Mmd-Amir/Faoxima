@@ -93,9 +93,22 @@ final class TestAccountHandler extends BaseHandler
             ];
         }
 
+        $quotaSummary = ['type' => 'none', 'remaining' => null, 'unlimited' => false, 'panel_id' => null];
+        if (count($panels) === 1) {
+            $quotaSummary = [
+                'type'      => 'single_panel',
+                'remaining' => $panels[0]['limit_left'],
+                'unlimited' => $panels[0]['limit_left'] === null,
+                'panel_id'  => $panels[0]['id'],
+            ];
+        } elseif (count($panels) > 1) {
+            $quotaSummary = ['type' => 'per_panel', 'remaining' => null, 'unlimited' => false, 'panel_id' => null];
+        }
+
         FaoximaResponse::ok([
             'available'      => $overview['gate'] === null && $overview['any_available'],
             'panels'         => $panels,
+            'quota_summary'  => $quotaSummary,
             'limit_left'     => $legacyLeft,
             'reason'         => $overview['reason'],
             'reason_message' => $overview['reason'] === 'audience_restricted' ? rx_test_audience_denied_text() : '',

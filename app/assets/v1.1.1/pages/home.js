@@ -151,23 +151,54 @@ export async function home(view) {
 }
 
 
+let _usertestBannerSeq = 0;
+
+function usertestQuotaText(obj) {
+    const summary = obj && typeof obj.quota_summary === 'object' ? obj.quota_summary : null;
+    if (summary && summary.type === 'single_panel') {
+        if (summary.unlimited === true || summary.remaining === null || summary.remaining === undefined) return 'سهمیه باقی‌مانده: نامحدود';
+        return `سهمیه باقی‌مانده: ${summary.remaining}`;
+    }
+    if (summary && summary.type === 'per_panel') {
+        return 'سهمیه برای هر پنل جداگانه محاسبه می‌شود';
+    }
+    const panels = Array.isArray(obj?.panels) ? obj.panels : [];
+    if (panels.length === 1 && panels[0] && Object.prototype.hasOwnProperty.call(panels[0], 'limit_left')) {
+        return panels[0].limit_left === null ? 'سهمیه باقی‌مانده: نامحدود' : `سهمیه باقی‌مانده: ${panels[0].limit_left}`;
+    }
+    if (panels.length > 1) {
+        return 'سهمیه برای هر پنل جداگانه محاسبه می‌شود';
+    }
+    return `سهمیه باقی‌مانده: ${obj?.limit_left ?? 0}`;
+}
+
 async function loadUsertestBanner(view) {
     const host = view.querySelector('#home-usertest-host');
     if (!host) return;
+    const seq = ++_usertestBannerSeq;
+    host.innerHTML = '';
     try {
         const res = await call('test_account_info');
+        if (seq !== _usertestBannerSeq) return;
         const obj = res?.obj || {};
-        if (!obj.available) return;
+        const panels = Array.isArray(obj.panels) ? obj.panels : [];
+        const exhausted = !obj.available && obj.reason === 'limit_reached' && panels.length > 0;
+        if (!obj.available && !exhausted) {
+            host.innerHTML = '';
+            return;
+        }
         host.innerHTML = `
             <a href="#/usertest" class="list-item mt-md">
                 <div class="li-main">
                     <div class="li-title">${icon('gift', 'class="ico ico-leading"')} دریافت اکانت تست</div>
-                    <div class="li-sub">سهمیه باقیمانده: ${escapeHtml(obj.limit_left ?? 0)}</div>
+                    <div class="li-sub">${escapeHtml(usertestQuotaText(obj))}</div>
                 </div>
                 <span class="li-action" aria-hidden="true">${icon('chevronLeft', 'class="ico"')}</span>
             </a>
         `;
-    } catch (_) {  }
+    } catch (_) {
+        if (seq === _usertestBannerSeq) host.innerHTML = '';
+    }
 }
 
 

@@ -1,4 +1,4 @@
-import { home } from './pages/home.js?v=0.0.58';
+import { home } from './pages/home.js?v=0.0.59';
 import { services as servicesPage } from './pages/services.js?v=0.0.53';
 
 import { buy as buyPage } from './pages/buy.js?v=0.0.54';
