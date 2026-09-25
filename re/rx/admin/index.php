@@ -17,6 +17,8 @@ if (isset($datain) && in_array((string)$datain, ['backadmin', 'admin'], true) &&
     $text = $textbotlang['Admin']['backadmin'] ?? '🏠 بازگشت به منوی مدیریت';
 }
 
+$rx_pem_entry_step = (isset($user) && is_array($user) && isset($user['step'])) ? (string) $user['step'] : '';
+
 $rx_nav_is_backmenu = false;
 
 if (

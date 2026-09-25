@@ -508,7 +508,7 @@ function isValidPremiumEmojiSource($emoji) {
     // (e.g. "iploginset"), while still allowing legit keycap emoji like
     // "0⃣", "#⃣", "*⃣" (ASCII digit/#/* immediately followed by U+20E3).
     if (preg_match('/[A-Za-z]/', $emoji)) { return false; }
-    if (preg_match('/[0-9#*](?!\x{20E3})/u', $emoji)) { return false; }
+    if (preg_match('/[0-9#*](?!\x{FE0F}?\x{20E3})/u', $emoji)) { return false; }
     return (bool) preg_match('/^[0-9#*\x{1F000}-\x{1FFFF}\x{2000}-\x{3300}\x{FE00}-\x{FE0F}\x{200D}]+$/u', $emoji);
 }
 
