@@ -13,6 +13,7 @@ require_once __DIR__ . '/lib/bulk_delete.php';
 require_once __DIR__ . '/lib/date_filter.php';
 require_once __DIR__ . '/lib/status_filter.php';
 require_once __DIR__ . '/lib/search_filter.php';
+require_once __DIR__ . '/lib/extra_filter.php';
 require_once __DIR__ . '/lib/csrf.php';
 
 if (!function_exists('rxReceiptJdate')) {
@@ -170,6 +171,17 @@ $rxStatusOptions = [
     'cancelled'  => 'لغو شده',
 ];
 $rxStatus = fx_status_filter_current();
+$rxAf = fx_amount_filter_resolve();
+$rxTypeOptions = [
+    'getconfigafterpay'  => 'خرید سرویس',
+    'getextenduser'      => 'تمدید سرویس',
+    'getextravolumeuser' => 'افزایش حجم',
+    'getextratimeuser'   => 'افزایش زمان',
+    'wallet'             => 'شارژ کیف پول',
+];
+$rxType = fx_extra_text_param('otype', 40);
+if (!isset($rxTypeOptions[$rxType])) $rxType = '';
+$rxExtraKeep = array_merge(fx_amount_filter_keep($rxAf), ['otype' => $rxType !== '' ? $rxType : null]);
 
 $rxWhereSql = rxReceiptScopeSql();
 $rxWhereParams = [];
@@ -182,12 +194,23 @@ if ($rxQ !== '') {
 }
 $rxWhereSql .= fx_date_filter_sql_mixed_named('time', $rxDf['from'], $rxDf['to'], $rxWhereParams, 'd');
 $rxWhereSql .= fx_status_filter_sql('payment_Status', $rxStatus, $rxStatusOptions, $rxWhereParams, ':statusVal');
+$rxWhereSql .= fx_amount_filter_sql('price', $rxAf, $rxWhereParams, 'am');
+if ($rxType === 'wallet') {
+    $rxWhereSql .= " AND (id_invoice IS NULL OR CAST(SUBSTRING_INDEX(id_invoice, '|', 1) AS BINARY) NOT IN ('getconfigafterpay', 'getextenduser', 'getextravolumeuser', 'getextratimeuser'))";
+} elseif ($rxType !== '') {
+    $rxWhereSql .= " AND CAST(SUBSTRING_INDEX(id_invoice, '|', 1) AS BINARY) = :otype";
+    $rxWhereParams[':otype'] = $rxType;
+}
 
 $rxStatusActive = $rxStatus !== '' && isset($rxStatusOptions[$rxStatus]);
-$rxFilterActive = $rxQ !== '' || $rxDf['active'] || $rxStatusActive;
+$rxFilterActive = $rxQ !== '' || $rxDf['active'] || $rxStatusActive || $rxAf['active'] || $rxType !== '';
 $rxDateKeep = fx_filter_delete_date_params('', $rxDf['active']);
-$rxFilterParams = array_merge(['q' => $rxQ !== '' ? $rxQ : null, 'status' => $rxStatusActive ? $rxStatus : null], $rxDateKeep);
-$rxFilterCriteria = fx_filter_delete_criteria($rxStatusActive ? $rxStatusOptions[$rxStatus] : '', $rxDf, $rxQ);
+$rxFilterParams = array_merge(['q' => $rxQ !== '' ? $rxQ : null, 'status' => $rxStatusActive ? $rxStatus : null], $rxDateKeep, $rxExtraKeep);
+$rxExtraCriteria = array_filter([
+    'مبلغ' => $rxAf['label'],
+    'نوع سفارش' => $rxType !== '' ? $rxTypeOptions[$rxType] : '',
+], function ($v) { return $v !== ''; });
+$rxFilterCriteria = array_merge(fx_filter_delete_criteria($rxStatusActive ? $rxStatusOptions[$rxStatus] : '', $rxDf, $rxQ), $rxExtraCriteria);
 if (fx_filter_delete_requested()) {
     $fdMatched = 0;
     $fdDeleted = 0;
@@ -240,7 +263,7 @@ $rxStatusMeta = [
     'cancelled'  => ['label' => 'لغو شده',          'class' => 'badge-gray'],
 ];
 
-$rxKeepQsArr = ['q' => $rxQ !== '' ? $rxQ : null, 'status' => $rxStatus !== '' ? $rxStatus : null];
+$rxKeepQsArr = array_merge(['q' => $rxQ !== '' ? $rxQ : null, 'status' => $rxStatus !== '' ? $rxStatus : null], $rxExtraKeep);
 foreach (['dpreset', 'ddays', 'dfrom', 'dto', 'p'] as $dk) {
     if (isset($_GET[$dk]) && $_GET[$dk] !== '') $rxKeepQsArr[$dk] = $_GET[$dk];
 }
@@ -301,12 +324,12 @@ $rxKeepQsString = http_build_query(array_filter($rxKeepQsArr, function ($v) { re
                 </div>
             </div>
 
-            <?php echo fx_search_ui('receipts.php', $rxQ, array_merge(['status' => $rxStatus !== '' ? $rxStatus : null], $rxDateKeep), 'جستجو در کد پیگیری، آیدی کاربر یا ۴ رقم آخر کارت…'); ?>
+            <?php echo fx_search_ui('receipts.php', $rxQ, array_merge(['status' => $rxStatus !== '' ? $rxStatus : null], $rxDateKeep, $rxExtraKeep), 'جستجو در کد پیگیری، آیدی کاربر یا ۴ رقم آخر کارت…'); ?>
 
-            <?php echo fx_status_filter_ui('receipts.php', $rxStatusOptions, $rxStatus, array_merge(['q' => $rxQ !== '' ? $rxQ : null], $rxDateKeep)); ?>
+            <?php echo fx_status_filter_ui('receipts.php', $rxStatusOptions, $rxStatus, array_merge(['q' => $rxQ !== '' ? $rxQ : null], $rxDateKeep, $rxExtraKeep)); ?>
 
             <?php $fxFd = fx_filter_delete_parts('receipts.php', $rxFilterParams, $rxFilterActive ? (int)$rxPg['total'] : 0, $rxFilterCriteria); ?>
-            <?php echo fx_date_filter_ui('receipts.php', '', ['q' => $rxQ !== '' ? $rxQ : null, 'status' => $rxStatus !== '' ? $rxStatus : null], '', $fxFd['button'], $fxFd['form']); ?>
+            <?php echo fx_date_filter_ui('receipts.php', '', array_merge(['q' => $rxQ !== '' ? $rxQ : null, 'status' => $rxStatus !== '' ? $rxStatus : null], $rxExtraKeep), '', $fxFd['button'], $fxFd['form']); ?>
 
             <div class="card">
                 <form method="POST" action="receipts.php" id="rx-bulk-form">

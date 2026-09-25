@@ -24,12 +24,16 @@ if (!function_exists('fx_bulk_delete_ids')) {
 
 if (!function_exists('fx_bulk_delete_redirect')) {
 
-    function fx_bulk_delete_redirect(string $baseUrl, int $requested, int $deleted, string $suffix = ''): void
+    function fx_bulk_delete_redirect(string $baseUrl, int $requested, int $deleted, string $suffix = '', array $keepParams = [], bool $failed = false): void
     {
         $param = 'bulk' . $suffix;
-        $qs = $requested > 0
-            ? ($deleted > 0 ? "$param=ok&{$param}n=$deleted" : "$param=err")
-            : "$param=empty";
+        $qs = $failed
+            ? "$param=fail"
+            : ($requested > 0
+                ? ($deleted > 0 ? "$param=ok&{$param}n=$deleted" : "$param=err")
+                : "$param=empty");
+        $keepQs = fx_qs($keepParams);
+        if ($keepQs !== '') $qs = $keepQs . '&' . $qs;
         header('Location: ' . $baseUrl . '?' . $qs);
         exit;
     }
@@ -49,6 +53,9 @@ if (!function_exists('fx_bulk_delete_flash_html')) {
             $n = (int)($_GET[$param . 'n'] ?? 0);
             $msg = $prefix . $n . ' مورد با موفقیت حذف شد.';
             return '<div class="alert" style="background:var(--color-success-soft); border:1px solid var(--color-success); color:var(--color-success); padding:12px 16px; border-radius:10px; margin-bottom:18px; display:flex; align-items:center; gap:10px;">' . htmlspecialchars($msg, ENT_QUOTES, 'UTF-8') . '</div>';
+        }
+        if ($bulk === 'fail') {
+            return '<div class="alert" style="background:var(--color-danger-soft); border:1px solid var(--color-danger); color:var(--color-danger); padding:12px 16px; border-radius:10px; margin-bottom:18px;">' . htmlspecialchars($prefix . 'حذف موارد انتخاب‌شده به‌دلیل خطای پایگاه داده انجام نشد و هیچ رکوردی حذف نشد. جزئیات خطا در لاگ سرور ثبت شد.', ENT_QUOTES, 'UTF-8') . '</div>';
         }
         if ($bulk === 'empty') {
             return '<div class="alert" style="background:var(--color-warning-soft); border:1px solid var(--color-warning); color:var(--color-warning); padding:12px 16px; border-radius:10px; margin-bottom:18px;">' . htmlspecialchars($prefix . 'هیچ موردی انتخاب نشده بود.', ENT_QUOTES, 'UTF-8') . '</div>';
@@ -109,8 +116,18 @@ if (!function_exists('fx_filter_delete_where')) {
             $d->execute($params);
             return [$matched, $d->rowCount()];
         } catch (\Throwable $e) {
-            return [$matched, 0];
+            fx_delete_log_error('filter_delete', $table, $e);
+            return [$matched, 0, true];
         }
+    }
+}
+
+if (!function_exists('fx_delete_log_error')) {
+
+    function fx_delete_log_error(string $op, string $table, \Throwable $e): void
+    {
+        $driverCode = ($e instanceof \PDOException && is_array($e->errorInfo ?? null)) ? (string)($e->errorInfo[1] ?? '') : '';
+        error_log('[panel ' . $op . '] table=' . preg_replace('/[^A-Za-z0-9_]/', '', $table) . ' error=' . get_class($e) . ' code=' . (string)$e->getCode() . ($driverCode !== '' ? ' driver=' . $driverCode : ''));
     }
 }
 
@@ -124,6 +141,7 @@ if (!function_exists('fx_filter_delete_collect')) {
             $vals = array_map('strval', $s->fetchAll(PDO::FETCH_COLUMN));
             return array_values(array_unique(array_filter($vals, function ($v) { return $v !== ''; })));
         } catch (\Throwable $e) {
+            fx_delete_log_error('filter_collect', $table, $e);
             return [];
         }
     }
@@ -131,10 +149,10 @@ if (!function_exists('fx_filter_delete_collect')) {
 
 if (!function_exists('fx_filter_delete_redirect')) {
 
-    function fx_filter_delete_redirect(string $baseUrl, array $filterParams, int $matched, int $deleted, string $scope = ''): void
+    function fx_filter_delete_redirect(string $baseUrl, array $filterParams, int $matched, int $deleted, string $scope = '', bool $failed = false): void
     {
         $param = 'fdel' . $scope;
-        $state = $matched <= 0 ? 'none' : ($deleted > 0 ? 'ok' : 'err');
+        $state = $failed ? 'fail' : ($matched <= 0 ? 'none' : ($deleted > 0 ? 'ok' : 'err'));
         $qs = fx_qs($filterParams, [
             $param => $state,
             $param . 'n' => $matched > 0 ? (string)$deleted : null,
@@ -165,6 +183,10 @@ if (!function_exists('fx_filter_delete_flash_html')) {
         if ($state === 'ok') {
             $msg = $prefix . 'از ' . number_format($t) . ' نتیجه فیلترشده، ' . number_format($n) . ' مورد حذف شد و ' . number_format($t - $n) . ' مورد قابل حذف نبود.';
             return '<div class="alert" style="background:var(--color-warning-soft); border:1px solid var(--color-warning); color:var(--color-warning); ' . $box . '">' . htmlspecialchars($msg, ENT_QUOTES, 'UTF-8') . '</div>';
+        }
+        if ($state === 'fail') {
+            $msg = $prefix . 'حذف نتایج فیلترشده به‌دلیل خطای پایگاه داده انجام نشد و هیچ رکوردی حذف نشد. جزئیات خطا در لاگ سرور ثبت شد.';
+            return '<div class="alert" style="background:var(--color-danger-soft); border:1px solid var(--color-danger); color:var(--color-danger); ' . $box . '">' . htmlspecialchars($msg, ENT_QUOTES, 'UTF-8') . '</div>';
         }
         if ($state === 'err') {
             $msg = $prefix . 'هیچ‌کدام از ' . number_format($t) . ' نتیجه فیلترشده قابل حذف نبود.';

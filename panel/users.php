@@ -29,8 +29,25 @@ $u_active = $u_total - $u_block;
 $u_balance = (int)($statsRow['balance'] ?? 0);
 
 $userQ = fx_search_current();
+$userFilterRaw = $_GET['ufilter'] ?? '';
+$userFilter = (is_string($userFilterRaw) && in_array($userFilterRaw, ['active', 'block', 'balance'], true)) ? $userFilterRaw : '';
 $userWhereSql = '1=1';
 $userParams = [];
+$userOrderSql = 'id DESC';
+if ($userFilter === 'active') {
+    $userWhereSql .= " AND (User_Status IS NULL OR LOWER(User_Status) <> 'block')";
+} elseif ($userFilter === 'block') {
+    $userWhereSql .= " AND LOWER(User_Status) = 'block'";
+} elseif ($userFilter === 'balance') {
+    $userWhereSql .= ' AND Balance > 0';
+    $userOrderSql = 'Balance DESC, id DESC';
+}
+$userCardLink = function (string $filter) use ($userQ, $userFilter) {
+    $qs = fx_qs(['q' => $userQ !== '' ? $userQ : null, 'ufilter' => $filter !== '' ? $filter : null]);
+    $href = 'users.php' . ($qs !== '' ? '?' . $qs : '');
+    $style = 'text-decoration:none; color:inherit; cursor:pointer;' . ($userFilter === $filter ? ' border-color:var(--accent); box-shadow:0 0 0 1px var(--accent);' : '');
+    return 'href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '" style="' . $style . '"' . ($userFilter === $filter ? ' aria-current="true"' : '');
+};
 if ($userQ !== '') {
     $userLike = '%' . $userQ . '%';
     $userWhereSql .= ' AND (id LIKE :uq1 OR username LIKE :uq2 OR namecustom LIKE :uq3 OR number LIKE :uq4 OR number_username LIKE :uq5)';
@@ -42,7 +59,7 @@ if ($userQ !== '') {
 }
 
 $pg = fx_paginate($pdo, "SELECT COUNT(*) FROM user WHERE $userWhereSql", $userParams, 5);
-$query = $pdo->prepare("SELECT * FROM user WHERE $userWhereSql ORDER BY id DESC LIMIT :perPage OFFSET :offset");
+$query = $pdo->prepare("SELECT * FROM user WHERE $userWhereSql ORDER BY $userOrderSql LIMIT :perPage OFFSET :offset");
 foreach ($userParams as $k => $v) $query->bindValue($k, $v, PDO::PARAM_STR);
 $query->bindValue(':perPage', $pg['perPage'], PDO::PARAM_INT);
 $query->bindValue(':offset', $pg['offset'], PDO::PARAM_INT);
@@ -79,7 +96,7 @@ $listusers = $query->fetchAll();
             </div>
 
             <div class="stats-grid">
-                <div class="stat-card observe-in">
+                <a class="stat-card observe-in" <?php echo $userCardLink(''); ?>>
                     <div class="stat-card__top">
                         <div class="stat-card__info">
                             <span class="stat-card__label">کل کاربران</span>
@@ -87,8 +104,8 @@ $listusers = $query->fetchAll();
                         </div>
                         <span class="stat-card__icon icon-blue"><?php echo icon('users', 'svg-icon'); ?></span>
                     </div>
-                </div>
-                <div class="stat-card observe-in">
+                </a>
+                <a class="stat-card observe-in" <?php echo $userCardLink('active'); ?>>
                     <div class="stat-card__top">
                         <div class="stat-card__info">
                             <span class="stat-card__label">فعال</span>
@@ -96,8 +113,8 @@ $listusers = $query->fetchAll();
                         </div>
                         <span class="stat-card__icon icon-green"><?php echo icon('users', 'svg-icon'); ?></span>
                     </div>
-                </div>
-                <div class="stat-card observe-in">
+                </a>
+                <a class="stat-card observe-in" <?php echo $userCardLink('block'); ?>>
                     <div class="stat-card__top">
                         <div class="stat-card__info">
                             <span class="stat-card__label">مسدود</span>
@@ -105,8 +122,8 @@ $listusers = $query->fetchAll();
                         </div>
                         <span class="stat-card__icon icon-rose"><?php echo icon('users', 'svg-icon'); ?></span>
                     </div>
-                </div>
-                <div class="stat-card observe-in">
+                </a>
+                <a class="stat-card observe-in" <?php echo $userCardLink('balance'); ?>>
                     <div class="stat-card__top">
                         <div class="stat-card__info">
                             <span class="stat-card__label">مجموع موجودی</span>
@@ -114,10 +131,10 @@ $listusers = $query->fetchAll();
                         </div>
                         <span class="stat-card__icon icon-amber"><svg class="svg-icon" viewBox="-1.5 0 33 33" aria-hidden="true"><g transform="translate(-259,-776)" fill="currentColor"><path fill="currentColor" stroke="none" d="M283,799 L289,799 L289,797 L283,797 L283,799 Z M287,787 L259,787 L259,807 C259,808.104 259.896,809 261,809 L287,809 C288.104,809 289,808.104 289,807 L289,801 L282,801 C281.448,801 281,800.553 281,800 L281,796 C281,795.448 281.448,795 282,795 L289,795 L289,789 C289,787.896 288.104,787 287,787 L287,787 Z M287,778 C287,777.447 286.764,777.141 286.25,776.938 C285.854,776.781 285.469,776.875 285,777 L259,785 L287,785 L287,778 L287,778 Z"/></g></svg></span>
                     </div>
-                </div>
+                </a>
             </div>
 
-            <?php echo fx_search_ui('users.php', $userQ, [], 'جستجو در شناسه، نام کاربری، شماره تلفن یا نام سفارشی…'); ?>
+            <?php echo fx_search_ui('users.php', $userQ, ['ufilter' => $userFilter !== '' ? $userFilter : null], 'جستجو در شناسه، نام کاربری، شماره تلفن یا نام سفارشی…'); ?>
 
             <div class="card">
                 <div class="table-wrap">
@@ -171,7 +188,7 @@ $listusers = $query->fetchAll();
                         <?php endforeach; ?>
                         </tbody>
                     </table>
-                    <?php echo fx_pager_html($pg['page'], $pg['pages'], $pg['total'], count($listusers), 'users.php', ['q' => $userQ !== '' ? $userQ : null]); ?>
+                    <?php echo fx_pager_html($pg['page'], $pg['pages'], $pg['total'], count($listusers), 'users.php', ['q' => $userQ !== '' ? $userQ : null, 'ufilter' => $userFilter !== '' ? $userFilter : null]); ?>
                 </div>
                 </div>
             </div>

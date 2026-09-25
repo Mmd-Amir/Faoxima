@@ -10,6 +10,7 @@ require_once __DIR__ . '/lib/bulk_delete.php';
 require_once __DIR__ . '/lib/date_filter.php';
 require_once __DIR__ . '/lib/status_filter.php';
 require_once __DIR__ . '/lib/search_filter.php';
+require_once __DIR__ . '/lib/extra_filter.php';
 require_once __DIR__ . '/lib/csrf.php';
 
 $query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
@@ -40,6 +41,36 @@ $payStatusOptions = [
     'waiting' => 'در انتظار تایید',
 ];
 $payStatus = fx_status_filter_current();
+$payAf = fx_amount_filter_resolve();
+$payMethod = fx_extra_text_param('method', 400);
+$payMethodLabels = [
+    'cart to cart'         => 'کارت به کارت',
+    'low balance by admin' => 'کسر توسط ادمین',
+    'add balance by admin' => 'افزایش توسط ادمین',
+    'Currency Rial 1'      => 'درگاه ریالی ۱',
+    'Currency Rial tow'    => 'درگاه ریالی ۲',
+    'Currency Rial 3'      => 'درگاه ریالی ۳',
+    'aqayepardakht'        => 'آقای پرداخت',
+    'zarinpal'             => 'زرین‌پال',
+    'plisio'               => 'Plisio',
+    'arze digital offline' => 'ارز دیجیتال آفلاین',
+    'Star Telegram'        => 'استارز تلگرام',
+    'nowpayment'           => 'NowPayment',
+];
+$payMethodOptions = [];
+try {
+    $payMethodStmt = $pdo->query("SELECT DISTINCT Payment_Method FROM Payment_report WHERE Payment_Method IS NOT NULL AND Payment_Method <> '' LIMIT 200");
+    foreach ($payMethodStmt->fetchAll(PDO::FETCH_COLUMN) as $pmv) {
+        $pmv = (string)$pmv;
+        $payMethodOptions[$pmv] = $payMethodLabels[$pmv] ?? $pmv;
+    }
+} catch (\Throwable $e) {
+}
+if ($payMethod !== '' && !isset($payMethodOptions[$payMethod])) {
+    $payMethodOptions[$payMethod] = $payMethodLabels[$payMethod] ?? $payMethod;
+}
+asort($payMethodOptions, SORT_STRING);
+$payExtraKeep = array_merge(fx_amount_filter_keep($payAf), ['method' => $payMethod !== '' ? $payMethod : null]);
 
 $whereSql = '1=1';
 $whereParams = [];
@@ -51,12 +82,21 @@ if ($payQ !== '') {
 }
 $whereSql .= fx_date_filter_sql_mixed_named('time', $df['from'], $df['to'], $whereParams, 'd');
 $whereSql .= fx_status_filter_sql('payment_Status', $payStatus, $payStatusOptions, $whereParams, ':statusVal');
+$whereSql .= fx_amount_filter_sql('price', $payAf, $whereParams, 'am');
+if ($payMethod !== '') {
+    $whereSql .= ' AND Payment_Method = :pmethod';
+    $whereParams[':pmethod'] = $payMethod;
+}
 
 $payStatusActive = $payStatus !== '' && isset($payStatusOptions[$payStatus]);
-$payFilterActive = $payQ !== '' || $df['active'] || $payStatusActive;
+$payFilterActive = $payQ !== '' || $df['active'] || $payStatusActive || $payAf['active'] || $payMethod !== '';
 $payDateKeep = fx_filter_delete_date_params('', $df['active']);
-$payFilterParams = array_merge(['q' => $payQ !== '' ? $payQ : null, 'status' => $payStatusActive ? $payStatus : null], $payDateKeep);
-$payFilterCriteria = fx_filter_delete_criteria($payStatusActive ? $payStatusOptions[$payStatus] : '', $df, $payQ);
+$payFilterParams = array_merge(['q' => $payQ !== '' ? $payQ : null, 'status' => $payStatusActive ? $payStatus : null], $payDateKeep, $payExtraKeep);
+$payExtraCriteria = array_filter([
+    'مبلغ' => $payAf['label'],
+    'روش پرداخت' => $payMethod !== '' ? ($payMethodOptions[$payMethod] ?? $payMethod) : '',
+], function ($v) { return $v !== ''; });
+$payFilterCriteria = array_merge(fx_filter_delete_criteria($payStatusActive ? $payStatusOptions[$payStatus] : '', $df, $payQ), $payExtraCriteria);
 if (fx_filter_delete_requested()) {
     [$fdMatched, $fdDeleted] = $payFilterActive ? fx_filter_delete_where($pdo, 'Payment_report', $whereSql, $whereParams) : [0, 0];
     fx_filter_delete_redirect('payment.php', $payFilterParams, $fdMatched, $fdDeleted);
@@ -104,12 +144,12 @@ $listpayment = $query->fetchAll();
 
             <?php echo fx_filter_delete_flash_html(); ?>
 
-            <?php echo fx_search_ui('payment.php', $payQ, array_merge(['status' => $payStatus !== '' ? $payStatus : null], $payDateKeep), 'جستجو در آیدی کاربر یا کد پیگیری…'); ?>
+            <?php echo fx_search_ui('payment.php', $payQ, array_merge(['status' => $payStatus !== '' ? $payStatus : null], $payDateKeep, $payExtraKeep), 'جستجو در آیدی کاربر یا کد پیگیری…'); ?>
 
-            <?php echo fx_status_filter_ui('payment.php', $payStatusOptions, $payStatus, array_merge(['q' => $payQ !== '' ? $payQ : null], $payDateKeep)); ?>
+            <?php echo fx_status_filter_ui('payment.php', $payStatusOptions, $payStatus, array_merge(['q' => $payQ !== '' ? $payQ : null], $payDateKeep, $payExtraKeep)); ?>
 
             <?php $fxFd = fx_filter_delete_parts('payment.php', $payFilterParams, $payFilterActive ? (int)$pg['total'] : 0, $payFilterCriteria); ?>
-            <?php echo fx_date_filter_ui('payment.php', '', ['q' => $payQ !== '' ? $payQ : null, 'status' => $payStatus !== '' ? $payStatus : null], '', $fxFd['button'], $fxFd['form']); ?>
+            <?php echo fx_date_filter_ui('payment.php', '', array_merge(['q' => $payQ !== '' ? $payQ : null, 'status' => $payStatus !== '' ? $payStatus : null], $payExtraKeep), '', $fxFd['button'], $fxFd['form']); ?>
 
             <div class="card">
                 <form method="POST" action="payment.php" id="bulk-form">
@@ -131,20 +171,7 @@ $listpayment = $query->fetchAll();
                         <tbody>
                         <?php foreach ($listpayment as $list):
                             $method = $list['Payment_Method'];
-                            switch ($method) {
-                                case 'cart to cart':         $method = 'کارت به کارت'; break;
-                                case 'low balance by admin': $method = 'کسر توسط ادمین'; break;
-                                case 'add balance by admin': $method = 'افزایش توسط ادمین'; break;
-                                case 'Currency Rial 1':      $method = 'درگاه ریالی ۱'; break;
-                                case 'Currency Rial tow':    $method = 'درگاه ریالی ۲'; break;
-                                case 'Currency Rial 3':      $method = 'درگاه ریالی ۳'; break;
-                                case 'aqayepardakht':        $method = 'آقای پرداخت'; break;
-                                case 'zarinpal':             $method = 'زرین‌پال'; break;
-                                case 'plisio':               $method = 'Plisio'; break;
-                                case 'arze digital offline': $method = 'ارز دیجیتال آفلاین'; break;
-                                case 'Star Telegram':        $method = 'استارز تلگرام'; break;
-                                case 'nowpayment':           $method = 'NowPayment'; break;
-                            }
+                            if (is_string($method) && isset($payMethodLabels[$method])) $method = $payMethodLabels[$method];
                             $statusText = $list['payment_Status']; $badgeClass = 'badge-gray';
                             switch ($list['payment_Status']) {
                                 case 'paid':    $statusText='پرداخت موفق';    $badgeClass='badge-success'; break;
@@ -175,7 +202,7 @@ $listpayment = $query->fetchAll();
                         </tbody>
                     </table>
                     <?php
-                    $payKeep = ['q' => $payQ !== '' ? $payQ : null];
+                    $payKeep = array_merge(['q' => $payQ !== '' ? $payQ : null], $payExtraKeep);
                     foreach (['dpreset', 'ddays', 'dfrom', 'dto', 'status'] as $dk) {
                         if (isset($_GET[$dk]) && $_GET[$dk] !== '') $payKeep[$dk] = $_GET[$dk];
                     }
