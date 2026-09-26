@@ -110,7 +110,11 @@ $primaryKeys = [
     'text_Purchased_services', 'accountwallet',
     'text_affiliates', 'text_Tariff_list',
     'text_support', 'text_help',
+    'text_miniapp_button',
 ];
+if (!isset($textbotMap['text_miniapp_button'])) {
+    $textbotMap['text_miniapp_button'] = '🚀 Open Mini App';
+}
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-color="blue">
@@ -261,6 +265,7 @@ $primaryKeys = [
                 <li><b>موفقیت (Success)</b> — سبز برای خرید، فعال‌سازی</li>
                 <li><b>خطر (Danger)</b> — قرمز برای لغو، حذف</li>
             </ul>
+            <p>دکمه «<b>text_miniapp_button</b>» (مینی‌اپ) فقط در حالت کیبورد شیشه‌ای نمایش داده می‌شود.</p>
         </div>
     </div>
 </div>
