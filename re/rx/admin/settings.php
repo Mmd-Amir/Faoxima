@@ -129,7 +129,23 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     update("user", "cardpayment", "1");
     update("setting", "showcard", "1");
 } elseif ($text == "🔋 روش تمدید سرویس" && $adminrulecheck['rule'] == "administrator") {
-    nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $Methodextend, 'HTML');
+    $rxExtendMethodGuide = "🔋 روش تمدید را انتخاب کنید.
+
+"
+        . "همه روش‌ها زمان و حجم باقی‌مانده مشتری را حفظ می‌کنند و هیچ‌کدام مقدار پرداخت‌شده را حذف نمی‌کند:
+
+"
+        . "✅ «اضافه شدن زمان و حجم به ماه بعد» و «ریست زمان و اضافه کردن حجم قبلی» (پیشنهادی): مصرف حفظ می‌شود؛ حجم کل = حجم فعلی + حجم خرید؛ انقضا = انقضای فعلی + روزهای خرید.
+
+"
+        . "♻️ «ریست حجم و زمان»، «ریست شدن حجم و اضافه شدن زمان» و «اضافه شدن زمان و تبدیل حجم کل به حجم باقی مانده»: مصرف صفر می‌شود؛ حجم کل = حجم باقی‌مانده + حجم خرید؛ انقضا = انقضای فعلی + روزهای خرید.
+
+"
+        . "📌 «رزرو اشتراک»: تمدید رزرو می‌شود و پس از پایان سرویس فعلی فعال می‌گردد.
+
+"
+        . "برای سرویس منقضی‌شده، روزهای خرید از زمان تمدید محاسبه می‌شود.";
+    nm_adminInstantReply($from_id, $rxExtendMethodGuide, $Methodextend, 'HTML');
     step('updateextendmethod', $from_id);
 } elseif ($user['step'] == "updateextendmethod") {
     if (!isset($update['message']) && empty($text)) { return; }

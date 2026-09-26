@@ -3209,6 +3209,16 @@ $nameconfig";
         $pricelastextend = number_format($product['price_product']);
     }
     $volumeextend = intval($product['Volume_constraint']) == 0 ? $textbotlang['users']['stateus']['Unlimited'] : $product['Volume_constraint'] . ' گیگ';
+    $rxRenewPreview = rxRenewalPreviewForService($ManagePanel, $marzban_list_get, (string) $nameloc['username'], $product['Volume_constraint'], $product['Service_time']);
+    if (!empty($rxRenewPreview['blocked'])) {
+        $keyboardextend = json_encode([
+            'inline_keyboard' => [
+                [
+                    ['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser"]
+                ]
+            ]
+        ]);
+    }
     $textextend = "📜 فاکتور تمدید شما برای نام کاربری {$nameloc['username']} ایجاد شد.
 
 🛍 نام محصول :{$product['name_product']}
@@ -3217,7 +3227,7 @@ $nameconfig";
 🔋 حجم تمدید :$volumeextend
 ✍️ توضیحات : {$product['note']}
 💸 موجودی کیف پول : " . rxFormatToman($user['Balance']) . "
-✅ برای تایید و تمدید سرویس روی دکمه زیر کلیک کنید";
+" . ($rxRenewPreview['text'] !== '' ? "\n" . $rxRenewPreview['text'] . "\n\n" : '') . (empty($rxRenewPreview['blocked']) ? "✅ برای تایید و تمدید سرویس روی دکمه زیر کلیک کنید" : '');
     if ($user['step'] == "getvolumecustomuserforextend") {
         sendmessage($from_id, $textextend, $keyboardextend, 'HTML');
     } else {
@@ -3279,6 +3289,7 @@ $nameconfig";
         $info_product['price_product'] = $info_product['price_product'] - $result;
     }
     $info_product['price_product'] = round($info_product['price_product']);
+    $rxRenewPreview = rxRenewalPreviewForService($ManagePanel, $marzban_list_get, (string) $nameloc['username'], $info_product['Volume_constraint'], $info_product['Service_time']);
     if (intval($info_product['Service_time']) == 0)
         $info_product['Service_time'] = $textbotlang['users']['stateus']['Unlimited'];
     if (intval($info_product['Volume_constraint']) == 0)
@@ -3295,8 +3306,7 @@ $nameconfig";
 🔋 حجم تمدید :{$info_product['Volume_constraint']} گیگ
 ✍️ توضیحات : {$info_product['note']}
 💸 موجودی کیف پول : {$rxFmtExtendUserBalance}
-
-✅ برای تایید و تمدید سرویس روی دکمه زیر کلیک کنید";
+" . ($rxRenewPreview['text'] !== '' ? "\n" . $rxRenewPreview['text'] . "\n" : '') . (empty($rxRenewPreview['blocked']) ? "\n✅ برای تایید و تمدید سرویس روی دکمه زیر کلیک کنید" : '');
     $keyboardextend = json_encode([
         'inline_keyboard' => [
             [
@@ -3304,7 +3314,7 @@ $nameconfig";
             ]
         ]
     ]);
-    sendmessage($from_id, $textextend, $keyboardextend, 'HTML');
+    sendmessage($from_id, $textextend, empty($rxRenewPreview['blocked']) ? $keyboardextend : null, 'HTML');
     $parametrsendvalue = "dis_" . $text . "_" . $info_product['price_product'];
     update("user", "Processing_value_four", $parametrsendvalue, "id", $from_id);
     step("home", $from_id);
@@ -3551,6 +3561,7 @@ $nameconfig";
 ▫️نام محصول : {$prodcut['name_product']}
 ▫️مبلغ تمدید $priceproductformat تومان
 ";
+        $textextend = rxRenewalDecorateSuccess($textextend, $extend, (string) $nameloc['username'], (string) ($marzban_list_get['name_panel'] ?? ''));
     }
     sendmessage($from_id, $textextend, $keyboardextendfnished, 'HTML');
     $timejalali = jdate('Y/m/d H:i:s');

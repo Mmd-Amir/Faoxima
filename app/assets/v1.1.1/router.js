@@ -161,7 +161,7 @@ function loadServicePage() {
 
 
     const url = new URL('./pages/service.js', import.meta.url);
-    url.searchParams.set('v', `${ver}-0.0.54`);
+    url.searchParams.set('v', `${ver}-0.0.55`);
     _serviceModulePromise = import(url.href).catch((err) => {
 
 

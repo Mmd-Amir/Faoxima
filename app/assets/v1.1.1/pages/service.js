@@ -1468,6 +1468,7 @@ function renderRenewConfirm($panel, opts, choice, username, reload) {
                 <span class="kv-label muted" style="font-size:12px">${m.split(' ')[0]}</span>
                 <span class="kv-value mono">${escapeHtml(m.replace(/<[^>]+>/g,'').trim())}</span>
             </div>`).join('')}
+            <div id="rc-preview" class="muted mt-sm" style="font-size:12px;white-space:pre-line">در حال دریافت پیش‌نمایش تمدید…</div>
             <div class="kv">
                 <span class="kv-label">${icon('coin')} مبلغ</span>
                 <span class="kv-value mono accent" style="font-size:18px;font-weight:700" id="rc-amount">${fmtNum(choice.price)} تومان</span>
@@ -1528,6 +1529,25 @@ function renderRenewConfirm($panel, opts, choice, username, reload) {
 
     const $btn = $host.querySelector('#rc-submit');
     const $label = $btn.querySelector('.rc-label');
+    const $preview = $host.querySelector('#rc-preview');
+    $btn.disabled = true;
+    (async () => {
+        try {
+            const previewBody = { username };
+            if (choice.code === '__custom__') {
+                previewBody.custom = choice.custom;
+            } else {
+                previewBody.product_code = choice.code;
+            }
+            const pr = await call('service_renew_preview', { method: 'POST', body: previewBody });
+            const pobj = pr?.obj || {};
+            if ($preview) $preview.textContent = String(pobj.text || '');
+            $btn.disabled = !!pobj.blocked;
+        } catch (err) {
+            if ($preview) $preview.textContent = 'پیش‌نمایش تمدید دریافت نشد؛ مقادیر نهایی پس از تمدید اعلام می‌شود.';
+            $btn.disabled = false;
+        }
+    })();
 
     $btn.addEventListener('click', async () => {
         const shownAmount = $host.querySelector('#rc-amount')?.textContent || `${fmtNum(basePrice)} تومان`;
@@ -1555,7 +1575,7 @@ function renderRenewConfirm($panel, opts, choice, username, reload) {
                         <div class="empty">
                             ${icon('checkCircle', 'class="ico ico-xxl ico-success"')}
                             <h3>سرویس تمدید شد</h3>
-                            <p class="muted">${escapeHtml(obj.message || '')}</p>
+                            <p class="muted" style="white-space:pre-line">${escapeHtml(obj.message || '')}</p>
                             ${obj.cashback ? `<p class="muted mt-sm">🎉 ${fmtNum(obj.cashback)} تومان کش‌بک به حساب شما اضافه شد.</p>` : ''}
                             <p class="muted mono mt-sm" style="font-size:12px">موجودی جدید: ${fmtNum(obj.balance_after)} تومان</p>
                         </div>

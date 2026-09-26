@@ -512,7 +512,7 @@ final class ServiceRenewConfirmHandler extends BaseHandler
 
         $renewMessage = !empty($extend['queued'])
             ? faoxima_textbot_get('dyn_renewconfirm_queued_success', '✅ سرویس خریداری شده رزرو شد و به محض پایان سرویس فعلی فعال می‌گردد.')
-            : faoxima_textbot_get('dyn_renewconfirm_success', '✅ سرویس شما با موفقیت تمدید شد.');
+            : rxRenewalDecorateSuccess(faoxima_textbot_get('dyn_renewconfirm_success', '✅ سرویس شما با موفقیت تمدید شد.'), $extend, (string)$invoice['username'], (string)($panel['name_panel'] ?? ''));
 
         FaoximaResponse::ok([
             'kind'          => 'done',

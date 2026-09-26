@@ -1012,37 +1012,255 @@ if (!function_exists('rx_pf_classify')) {
     }
 }
 
-if (!function_exists('rx_pf_extend_target')) {
-    function rx_pf_extend_target(string $method, array $before, $newLimitGb, $timeDay, int $now): ?array
+if (!function_exists('rxRenewalModes')) {
+    function rxRenewalModes(): array
     {
-        if ($method === 'رزرو اشتراک') {
+        return [
+            'ریست حجم و زمان' => ['key' => 'reset_usage_keep_remaining', 'reset_usage' => true, 'queued' => false, 'legacy_discarded' => ['time', 'traffic']],
+            'اضافه شدن زمان و حجم به ماه بعد' => ['key' => 'append_time_and_volume', 'reset_usage' => false, 'queued' => false, 'legacy_discarded' => []],
+            'ریست زمان و اضافه کردن حجم قبلی' => ['key' => 'append_time_and_volume', 'reset_usage' => false, 'queued' => false, 'legacy_discarded' => ['time']],
+            'ریست شدن حجم و اضافه شدن زمان' => ['key' => 'reset_usage_keep_remaining', 'reset_usage' => true, 'queued' => false, 'legacy_discarded' => ['traffic']],
+            'اضافه شدن زمان و تبدیل حجم کل به حجم باقی مانده' => ['key' => 'reset_usage_keep_remaining', 'reset_usage' => true, 'queued' => false, 'legacy_discarded' => []],
+            'رزرو اشتراک' => ['key' => 'queued', 'reset_usage' => false, 'queued' => true, 'legacy_discarded' => []],
+        ];
+    }
+}
+
+if (!function_exists('rxRenewalDefaultMethod')) {
+    function rxRenewalDefaultMethod(): string
+    {
+        return 'ریست حجم و زمان';
+    }
+}
+
+if (!function_exists('rxRenewalMode')) {
+    function rxRenewalMode($method): ?array
+    {
+        $method = trim((string) $method);
+        if ($method === '') {
+            $method = rxRenewalDefaultMethod();
+        }
+        $modes = rxRenewalModes();
+        if (!isset($modes[$method])) {
             return null;
         }
-        $volume = (float) $newLimitGb;
-        $days = (float) $timeDay;
-        $dataOld = rx_pf_int($before['data_limit'] ?? 0);
-        $timeOld = rx_pf_int($before['expire'] ?? 0);
-        $timeOld = ($now - $timeOld > 0) ? $now : $timeOld;
+        return array_merge($modes[$method], ['method' => $method]);
+    }
+}
+
+if (!function_exists('rxRenewalModeLabel')) {
+    function rxRenewalModeLabel(string $key): string
+    {
+        $labels = [
+            'reset_usage_keep_remaining' => 'ریست مصرف؛ حجم باقی‌مانده + حجم جدید، زمان باقی‌مانده + زمان جدید',
+            'append_time_and_volume' => 'حفظ مصرف؛ حجم کل + حجم جدید، زمان باقی‌مانده + زمان جدید',
+            'queued' => 'رزرو؛ پس از پایان سرویس فعلی فعال می‌شود',
+        ];
+        return $labels[$key] ?? $key;
+    }
+}
+
+if (!function_exists('rxBuildRenewalTarget')) {
+    function rxBuildRenewalTarget(int $now, $method, array $before, $purchasedVolumeGb, $purchasedDays): array
+    {
+        $mode = rxRenewalMode($method);
+        $fail = function (string $reason) use ($method) {
+            return ['ok' => false, 'reason' => $reason, 'method' => (string) $method, 'manual_review' => true, 'queued' => false, 'destructive' => false];
+        };
+        if ($mode === null) {
+            return $fail('unknown_renewal_method');
+        }
+        if (!is_numeric($purchasedVolumeGb) || !is_numeric($purchasedDays) || (float) $purchasedVolumeGb < 0 || (float) $purchasedDays < 0) {
+            return $fail('invalid_purchase');
+        }
+        $volume = (float) $purchasedVolumeGb;
+        $days = (float) $purchasedDays;
         $volumeBytes = (int) round($volume * RX_PF_GIB);
         $daySeconds = (int) round($days * 86400);
-        $dataNew = $volume == 0 ? 0 : $volumeBytes;
-        $dataNewAdd = $volume == 0 ? 0 : $dataOld + $volumeBytes;
-        $timeNew = $days == 0 ? 0 : $now + $daySeconds;
-        $timeNewAdd = $days == 0 ? 0 : $timeOld + $daySeconds;
-        if ($method === 'اضافه شدن زمان و حجم به ماه بعد') {
-            return ['data_limit' => $dataNewAdd, 'expire' => $timeNewAdd];
+        $oldLimit = rx_pf_int($before['data_limit'] ?? 0);
+        $oldExpire = rx_pf_int($before['expire'] ?? 0);
+        $used = max(0, rx_pf_int($before['used_traffic'] ?? 0));
+        $status = strtolower(trim((string) ($before['status'] ?? '')));
+        $unlimitedVolume = $oldLimit <= 0;
+        $unlimitedExpire = $oldExpire <= 0;
+        $remaining = $unlimitedVolume ? null : max(0, $oldLimit - $used);
+        $plan = [
+            'ok' => true,
+            'reason' => 'ok',
+            'method' => $mode['method'],
+            'effective_method' => $mode['key'],
+            'label' => rxRenewalModeLabel($mode['key']),
+            'queued' => (bool) $mode['queued'],
+            'reset_usage' => (bool) $mode['reset_usage'],
+            'destructive' => false,
+            'manual_review' => false,
+            'now' => $now,
+            'before_expire' => $oldExpire,
+            'before_data_limit' => $oldLimit,
+            'before_used_traffic' => $used,
+            'before_remaining' => $remaining,
+            'purchased_days' => $days,
+            'purchased_volume_bytes' => $volumeBytes,
+            'unlimited_expire' => $unlimitedExpire,
+            'unlimited_volume' => $unlimitedVolume,
+        ];
+        if ($mode['queued']) {
+            return $plan;
         }
-        if ($method === 'ریست زمان و اضافه کردن حجم قبلی') {
-            return ['data_limit' => $dataNewAdd, 'expire' => $timeNew];
+        if ($unlimitedExpire && $days > 0 && $status === 'on_hold') {
+            return $fail('on_hold_subscription');
         }
-        if ($method === 'ریست شدن حجم و اضافه شدن زمان') {
-            return ['data_limit' => $dataNew, 'expire' => $timeNewAdd];
+        if ($days == 0 || $unlimitedExpire) {
+            $targetExpire = 0;
+        } else {
+            $targetExpire = max($now, $oldExpire) + $daySeconds;
         }
-        if ($method === 'اضافه شدن زمان و تبدیل حجم کل به حجم باقی مانده') {
-            $remaining = $dataOld - rx_pf_int($before['used_traffic'] ?? 0);
-            return ['data_limit' => $dataNew + max(0, $remaining), 'expire' => $timeNewAdd];
+        if ($volume == 0 || $unlimitedVolume) {
+            $targetLimit = 0;
+        } elseif ($mode['reset_usage']) {
+            $targetLimit = (int) $remaining + $volumeBytes;
+        } else {
+            $targetLimit = $oldLimit + $volumeBytes;
         }
-        return ['data_limit' => $dataNew, 'expire' => $timeNew];
+        $targetUsed = $mode['reset_usage'] ? 0 : $used;
+        if (!$unlimitedExpire && $targetExpire > 0 && $oldExpire > $now && $targetExpire < $oldExpire + $daySeconds) {
+            return $fail('invariant_time_discarded');
+        }
+        if (!$unlimitedVolume && $targetLimit > 0 && ($targetLimit - $targetUsed) < (int) $remaining + $volumeBytes) {
+            return $fail('invariant_traffic_discarded');
+        }
+        $plan['expire'] = $targetExpire;
+        $plan['data_limit'] = $targetLimit;
+        $plan['target_used_traffic'] = $targetUsed;
+        $plan['target_remaining'] = $targetLimit > 0 ? $targetLimit - $targetUsed : null;
+        return $plan;
+    }
+}
+
+if (!function_exists('rxRenewalFormatExpire')) {
+    function rxRenewalFormatExpire($timestamp): string
+    {
+        $timestamp = rx_pf_int($timestamp);
+        if ($timestamp <= 0) {
+            return 'نامحدود';
+        }
+        return function_exists('jdate') ? (string) jdate('Y/m/d H:i', $timestamp) : date('Y/m/d H:i', $timestamp);
+    }
+}
+
+if (!function_exists('rxRenewalFormatBytes')) {
+    function rxRenewalFormatBytes($bytes, bool $zeroIsUnlimited = true): string
+    {
+        if ($bytes === null) {
+            return 'نامحدود';
+        }
+        $bytes = rx_pf_int($bytes);
+        if ($bytes <= 0 && $zeroIsUnlimited) {
+            return 'نامحدود';
+        }
+        $gb = max(0, $bytes) / RX_PF_GIB;
+        return rtrim(rtrim(number_format($gb, 2, '.', ''), '0'), '.') . ' گیگ';
+    }
+}
+
+if (!function_exists('rxRenewalPreviewText')) {
+    function rxRenewalPreviewText(array $plan): string
+    {
+        if (empty($plan['ok'])) {
+            return "❌ تمدید خودکار این سرویس امکان‌پذیر نیست؛ لطفاً با پشتیبانی در ارتباط باشید.";
+        }
+        if (!empty($plan['queued'])) {
+            return "📌 این تمدید به‌صورت رزرو ثبت می‌شود و پس از پایان سرویس فعلی فعال می‌گردد.\n"
+                . "⏳ انقضای فعلی : " . rxRenewalFormatExpire($plan['before_expire']) . "\n"
+                . "🔋 حجم باقی‌مانده فعلی : " . rxRenewalFormatBytes($plan['before_remaining'], false);
+        }
+        $days = (float) $plan['purchased_days'];
+        return "🔎 پیش‌نمایش تمدید\n"
+            . "⏳ انقضای فعلی : " . rxRenewalFormatExpire($plan['before_expire']) . "\n"
+            . "⏳ انقضای جدید : " . rxRenewalFormatExpire($plan['expire']) . "\n"
+            . "📦 حجم کل فعلی : " . rxRenewalFormatBytes($plan['before_data_limit']) . "\n"
+            . "📉 حجم مصرف‌شده : " . rxRenewalFormatBytes($plan['before_used_traffic'], false) . "\n"
+            . "🔋 حجم باقی‌مانده فعلی : " . rxRenewalFormatBytes($plan['before_remaining'], false) . "\n"
+            . "➕ زمان خریداری‌شده : " . ($days == 0 ? 'نامحدود' : rtrim(rtrim(number_format($days, 2, '.', ''), '0'), '.') . ' روز') . "\n"
+            . "➕ حجم خریداری‌شده : " . rxRenewalFormatBytes($plan['purchased_volume_bytes']) . "\n"
+            . "📦 حجم کل جدید : " . rxRenewalFormatBytes($plan['data_limit']) . "\n"
+            . "🔋 حجم قابل استفاده جدید : " . rxRenewalFormatBytes($plan['target_remaining']) . "\n"
+            . "♻️ ریست مصرف : " . (!empty($plan['reset_usage']) ? 'بله' : 'خیر') . "\n"
+            . "⚙️ روش تمدید : " . (string) $plan['label'];
+    }
+}
+
+if (!function_exists('rxRenewalPreviewForService')) {
+    function rxRenewalPreviewForService($managePanel, $panel, string $username, $purchasedVolumeGb, $purchasedDays): array
+    {
+        if (!is_array($panel) || ($panel['type'] ?? '') === 'Manualsale' || (function_exists('nmPanelNationalEnabled') && nmPanelNationalEnabled($panel))) {
+            return ['ok' => true, 'blocked' => false, 'plan' => null, 'text' => ''];
+        }
+        $mode = rxRenewalMode($panel['Methodextend'] ?? '');
+        if ($mode === null) {
+            $plan = rxBuildRenewalTarget(time(), $panel['Methodextend'] ?? '', [], $purchasedVolumeGb, $purchasedDays);
+            return ['ok' => false, 'blocked' => true, 'plan' => $plan, 'text' => rxRenewalPreviewText($plan)];
+        }
+        $snapshot = rx_pf_panel_snapshot($managePanel, (string) ($panel['name_panel'] ?? ''), $username);
+        if (empty($snapshot['ok']) || empty($snapshot['exists'])) {
+            return ['ok' => false, 'blocked' => false, 'plan' => null, 'text' => "⚠️ اطلاعات فعلی سرویس از پنل دریافت نشد؛ مقادیر نهایی پس از تمدید اعلام می‌شود."];
+        }
+        $before = rx_pf_limits($snapshot);
+        $before['status'] = (string) ($snapshot['raw']['status'] ?? '');
+        $plan = rxBuildRenewalTarget(time(), $panel['Methodextend'] ?? '', $before, $purchasedVolumeGb, $purchasedDays);
+        return ['ok' => !empty($plan['ok']), 'blocked' => empty($plan['ok']), 'plan' => $plan, 'text' => rxRenewalPreviewText($plan)];
+    }
+}
+
+if (!function_exists('rxRenewalResultText')) {
+    function rxRenewalResultText(array $before, array $after): string
+    {
+        $beforeLimit = rx_pf_int($before['data_limit'] ?? 0);
+        $afterLimit = rx_pf_int($after['data_limit'] ?? 0);
+        $beforeRemaining = $beforeLimit > 0 ? max(0, $beforeLimit - rx_pf_int($before['used_traffic'] ?? 0)) : null;
+        $afterRemaining = $afterLimit > 0 ? max(0, $afterLimit - rx_pf_int($after['used_traffic'] ?? 0)) : null;
+        return "⏳ انقضا : " . rxRenewalFormatExpire($before['expire'] ?? 0) . " ← " . rxRenewalFormatExpire($after['expire'] ?? 0) . "\n"
+            . "📦 حجم کل : " . rxRenewalFormatBytes($beforeLimit) . " ← " . rxRenewalFormatBytes($afterLimit) . "\n"
+            . "🔋 حجم باقی‌مانده : " . rxRenewalFormatBytes($beforeRemaining, false) . " ← " . rxRenewalFormatBytes($afterRemaining, false);
+    }
+}
+
+if (!function_exists('rxRenewalOutcomeText')) {
+    function rxRenewalOutcomeText($extend): string
+    {
+        if (!is_array($extend) || !is_array($extend['rx_renewal'] ?? null)) {
+            return '';
+        }
+        $renewal = $extend['rx_renewal'];
+        if (!empty($renewal['verified']) && is_array($renewal['before'] ?? null) && is_array($renewal['after'] ?? null)) {
+            return rxRenewalResultText($renewal['before'], $renewal['after']);
+        }
+        return "⚠️ نتیجه نهایی تمدید از پنل تأیید نشد و برای بررسی به پشتیبانی ارسال شد.";
+    }
+}
+
+if (!function_exists('rxRenewalDecorateSuccess')) {
+    function rxRenewalDecorateSuccess(string $successText, $extend, string $username, string $panelName): string
+    {
+        if (!is_array($extend) || !is_array($extend['rx_renewal'] ?? null)) {
+            return $successText;
+        }
+        $renewal = $extend['rx_renewal'];
+        if (!empty($renewal['verified']) && is_array($renewal['before'] ?? null) && is_array($renewal['after'] ?? null)) {
+            return rtrim($successText) . "
+
+" . rxRenewalResultText($renewal['before'], $renewal['after']);
+        }
+        rx_pf_log('RENEWAL_RESULT_UNVERIFIED', 'Panel state after renewal does not match the target', [
+            'username' => $username,
+            'panel' => $panelName,
+            'target' => $renewal['target'] ?? null,
+            'after' => $renewal['after'] ?? null,
+        ]);
+        rx_pf_alert_admin('renewal:' . $username, 'نتیجه تمدید با مقدار هدف مطابقت ندارد (پنل: ' . $panelName . ')', ['username' => $username]);
+        return "⚠️ درخواست تمدید در پنل ثبت شد اما نتیجه نهایی آن تأیید نشد و برای بررسی به پشتیبانی ارسال شد.
+
+▫️نام سرویس : " . $username;
     }
 }
 

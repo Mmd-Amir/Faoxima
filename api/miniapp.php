@@ -119,6 +119,7 @@ try {
         'service_action'         => 'ServiceActionHandler',
         'service_renew_options'  => 'ServiceRenewOptionsHandler',
         'service_renew_confirm'  => 'ServiceRenewConfirmHandler',
+        'service_renew_preview'  => 'ServiceRenewPreviewHandler',
         'service_extra_quote'    => ['class' => 'ServiceExtraHandler', 'mode' => 'quote'],
         'service_extra_confirm'  => ['class' => 'ServiceExtraHandler', 'mode' => 'confirm'],
         'service_simple_action'  => 'ServiceSimpleActionHandler',

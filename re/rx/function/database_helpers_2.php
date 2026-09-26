@@ -3227,9 +3227,11 @@ $textonebuy
             }
             $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
             $Balance_Low_user = 0;
-            $rxReconcilable = rx_pf_panel_reconcilable($marzban_list_get) && (string) ($marzban_list_get['Methodextend'] ?? '') !== 'رزرو اشتراک';
+            $rxRenewMode = rxRenewalMode($marzban_list_get['Methodextend'] ?? '');
+            $rxReconcilable = rx_pf_panel_reconcilable($marzban_list_get) && is_array($rxRenewMode) && empty($rxRenewMode['queued']);
             $rxSnap = rx_pf_snapshot_from_datauser($DataUserOut);
             $rxApply = true;
+            $rxAfterState = null;
             if ($rxPhase === 'reconcile') {
                 if (!$rxReconcilable || !is_array($rxBeforeState) || !is_array($rxTargetState)) {
                     return rx_pf_manual_review($order_id, $rxToken, 'renewal_result_unverifiable', ['username' => (string) $nameloc['username']]);
@@ -3244,19 +3246,34 @@ $textonebuy
                 if ($rxClass === 'target') {
                     $rxApply = false;
                     $extend = ['status' => true, 'reconciled' => true];
+                    $rxAfterState = rx_pf_limits($rxSnap);
                 } elseif (!rx_pf_mark_applying($order_id, $rxToken)) {
                     return rx_pf_result('already_processing', 'ownership_lost');
                 }
             } else {
                 $rxBeforeState = null;
                 $rxTargetState = null;
+                if ($rxRenewMode === null) {
+                    return rx_pf_manual_review($order_id, $rxToken, 'unknown_renewal_method: ' . (string) ($marzban_list_get['Methodextend'] ?? ''), ['username' => (string) $nameloc['username']]);
+                }
                 if ($rxReconcilable) {
                     if (empty($rxSnap['ok'])) {
                         return rx_pf_abort($order_id, $rxToken, 'renewal_panel_read_failed', true);
                     }
                     if (!empty($rxSnap['exists'])) {
                         $rxBeforeState = rx_pf_limits($rxSnap);
-                        $rxTargetState = rx_pf_extend_target((string) $marzban_list_get['Methodextend'], $rxBeforeState, $prodcut['Volume_constraint'], $prodcut['Service_time'], time());
+                        $rxBeforeState['status'] = (string) ($rxSnap['raw']['status'] ?? '');
+                        $rxPlan = rxBuildRenewalTarget(time(), (string) $marzban_list_get['Methodextend'], $rxBeforeState, $prodcut['Volume_constraint'], $prodcut['Service_time']);
+                        if (empty($rxPlan['ok'])) {
+                            return rx_pf_manual_review($order_id, $rxToken, 'renewal_plan_refused: ' . (string) ($rxPlan['reason'] ?? ''), ['username' => (string) $nameloc['username']]);
+                        }
+                        $rxBeforeState = array_merge($rxBeforeState, [
+                            'username' => (string) $nameloc['username'],
+                            'panel' => (string) $marzban_list_get['name_panel'],
+                            'remaining' => $rxPlan['before_remaining'],
+                            'method' => $rxPlan['method'],
+                        ]);
+                        $rxTargetState = $rxPlan;
                     }
                 }
                 if (!rx_pf_prepare($order_id, $rxToken, $rxBeforeState, $rxTargetState)) {
@@ -3271,12 +3288,24 @@ $textonebuy
                 }
             }
             if (($extend['status'] ?? false) == false && is_array($rxBeforeState) && is_array($rxTargetState)) {
-                $rxClass = rx_pf_classify(rx_pf_panel_snapshot($ManagePanel, (string) $nameloc['Service_location'], (string) $nameloc['username']), $rxBeforeState, $rxTargetState);
+                $rxPostSnap = rx_pf_panel_snapshot($ManagePanel, (string) $nameloc['Service_location'], (string) $nameloc['username']);
+                $rxClass = rx_pf_classify($rxPostSnap, $rxBeforeState, $rxTargetState);
                 if ($rxClass === 'target') {
                     $extend = ['status' => true, 'reconciled' => true];
+                    $rxAfterState = rx_pf_limits($rxPostSnap);
                 } elseif ($rxClass !== 'before') {
                     return rx_pf_reconcile_later($order_id, $rxToken, 'renewal_result_unknown: ' . (is_scalar($extend['msg'] ?? null) ? (string) $extend['msg'] : ''));
                 }
+            }
+            if (!empty($extend['status']) && is_array($rxTargetState) && $rxAfterState === null) {
+                $rxVerify = is_array($extend['rx_renewal'] ?? null) ? $extend['rx_renewal'] : null;
+                if ($rxVerify === null || !is_array($rxVerify['after'] ?? null)) {
+                    return rx_pf_reconcile_later($order_id, $rxToken, 'renewal_result_unverified');
+                }
+                if (empty($rxVerify['verified'])) {
+                    return rx_pf_manual_review($order_id, $rxToken, 'renewal_result_mismatch', ['username' => (string) $nameloc['username']]);
+                }
+                $rxAfterState = $rxVerify['after'];
             }
         if ($extend['status'] == false) {
             $__refundEx = rx_refund_payment_once($Payment_report['id_order'], $Balance_id['id'], $Payment_report['price'], 'بازگشت وجه - خطا در تمدید سرویس', (string)($nameloc['id_invoice'] ?? ''));
@@ -3389,6 +3418,11 @@ $textonebuy
 ▫️نام محصول : {$prodcut['name_product']}
 ▫️مبلغ تمدید $priceproductformat تومان
 ";
+            if (is_array($rxBeforeState ?? null) && is_array($rxAfterState ?? null)) {
+                $textextend .= "\n" . rxRenewalResultText($rxBeforeState, $rxAfterState);
+            } elseif (($rxOutcomeText = rxRenewalOutcomeText($extend)) !== '') {
+                $textextend .= "\n" . $rxOutcomeText;
+            }
         }
         sendmessage($Balance_id['id'], $textextend, $keyboardextendfnished, 'HTML');
         if (intval($setting['scorestatus']) == 1 and !in_array($Balance_id['id'], $admin_ids)) {

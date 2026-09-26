@@ -140,7 +140,15 @@ if (isset($update['pre_checkout_query'])) {
         ]
     ]);
     $prodcutVolumeLabel = intval($prodcut['Volume_constraint']) == 0 ? $textbotlang['users']['stateus']['Unlimited'] : $prodcut['Volume_constraint'];
-    sendmessage($from_id, sprintf($textbotlang['users']['extend']['renewalinvoice'], $username, $prodcut['name_product'], $prodcut['price_product'], $prodcut['Service_time'], $prodcutVolumeLabel, $prodcut['note'], $user['Balance']), $keyboardextend, 'html');
+    $rxRenewPreview = rxRenewalPreviewForService($ManagePanel, select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select"), (string) $username, $prodcut['Volume_constraint'], $prodcut['Service_time']);
+    if (!empty($rxRenewPreview['blocked'])) {
+        $keyboardextend = null;
+    }
+    $rxRenewInvoiceText = sprintf($textbotlang['users']['extend']['renewalinvoice'], $username, $prodcut['name_product'], $prodcut['price_product'], $prodcut['Service_time'], $prodcutVolumeLabel, $prodcut['note'], $user['Balance']);
+    if ($rxRenewPreview['text'] !== '') {
+        $rxRenewInvoiceText .= "\n\n" . $rxRenewPreview['text'];
+    }
+    sendmessage($from_id, $rxRenewInvoiceText, $keyboardextend, 'html');
 } elseif (preg_match('/^confirmserivces-(.*)-(.*)/', $datain, $dataget)) {
     $codeproduct = $dataget[1];
     $usernamePanelExtends = $dataget[2];
@@ -353,6 +361,7 @@ if (isset($update['pre_checkout_query'])) {
 ▫️نام محصول : {$prodcut['name_product']}
 ▫️مبلغ تمدید {$prodcut['price_product']} تومان
 ";
+        $textextend = rxRenewalDecorateSuccess($textextend, $extend, (string) $usernamePanelExtends, (string) ($marzban_list_get['name_panel'] ?? ''));
     }
     sendmessage($from_id, $textextend, $keyboard, 'HTML');
     if ($marzban_list_get['type'] == "Manualsale") {
