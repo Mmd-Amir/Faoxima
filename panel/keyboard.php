@@ -265,7 +265,7 @@ if (!isset($textbotMap['text_miniapp_button'])) {
                 <li><b>موفقیت (Success)</b> — سبز برای خرید، فعال‌سازی</li>
                 <li><b>خطر (Danger)</b> — قرمز برای لغو، حذف</li>
             </ul>
-            <p>دکمه «<b>text_miniapp_button</b>» (مینی‌اپ) فقط در حالت کیبورد شیشه‌ای نمایش داده می‌شود.</p>
+            <p>دکمه «<b>text_miniapp_button</b>» (مینی‌اپ) در هر دو حالت کیبورد شیشه‌ای و معمولی نمایش داده می‌شود.</p>
         </div>
     </div>
 </div>
