@@ -1033,7 +1033,11 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     step('home', $from_id);
 } elseif ($text == "🔑 ثبت API Key تون‌پی" && $adminrulecheck['rule'] == "administrator") {
     $PaySetting = select("PaySetting", "ValuePay", "NamePay", "apitonpay", "select");
-    $currentKey = $PaySetting['ValuePay'] ?? 'ثبت نشده';
+    $currentKey = function_exists('tonpayMaskSecret') ? tonpayMaskSecret($PaySetting['ValuePay'] ?? '') : '';
+    if ($currentKey === '') {
+        $currentKey = 'ثبت نشده';
+    }
+    $currentKey = htmlspecialchars($currentKey, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     $texttonpay = "🔑 کلید API تون‌پی خود را اینجا وارد کنید.\n\nکلید فعلی شما: {$currentKey}";
     nm_adminInstantReply($from_id, $texttonpay, $backadmin, 'HTML');
     step('apitonpay', $from_id);
@@ -1041,6 +1045,23 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     nm_adminInstantReply($from_id, $textbotlang['Admin']['SettingnowPayment']['Savaapi'], $tonpay, 'HTML');
     update("PaySetting", "ValuePay", $text, "NamePay", "apitonpay");
     step('home', $from_id);
+} elseif (($text == "🔀 مقصد پرداخت تون‌پی" || preg_match('/^tonpay_paymode_(bot|web)$/', (string) $datain, $tonpayModeMatch)) && $adminrulecheck['rule'] == "administrator") {
+    if (!empty($tonpayModeMatch[1])) {
+        update("PaySetting", "ValuePay", $tonpayModeMatch[1], "NamePay", "tonpay_payment_mode");
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => '✅ مقصد پرداخت تون‌پی ذخیره شد', 'show_alert' => false]);
+        $tonpayMode = $tonpayModeMatch[1];
+    } else {
+        $tonpayMode = function_exists('tonpayPaymentMode') ? tonpayPaymentMode() : 'bot';
+    }
+    $tonpayBotMark = $tonpayMode === 'bot' ? '✅ ' : '';
+    $tonpayWebMark = $tonpayMode === 'web' ? '✅ ' : '';
+    $tonpayModeKb = json_encode(['inline_keyboard' => [
+        [['text' => "{$tonpayBotMark}🤖 پرداخت از طریق ربات تلگرام", 'callback_data' => 'tonpay_paymode_bot']],
+        [['text' => "{$tonpayWebMark}🌐 پرداخت از طریق وب", 'callback_data' => 'tonpay_paymode_web']],
+        [['text' => "🔙 بازگشت", 'callback_data' => 'tonpaysetting']],
+    ]], JSON_UNESCAPED_UNICODE);
+    $tonpayModeLabel = $tonpayMode === 'web' ? '🌐 پرداخت از طریق وب' : '🤖 پرداخت از طریق ربات تلگرام';
+    nm_adminInstantReply($from_id, "🔀 مقصد پرداخت تون‌پی\n\nلینک پرداختی که برای کاربر ارسال می‌شود را انتخاب کنید. اگر لینک وب از سمت تون‌پی دریافت نشود، لینک ربات تلگرام ارسال خواهد شد.\n\nحالت فعلی: <b>{$tonpayModeLabel}</b>", $tonpayModeKb, 'HTML');
 } elseif ($text == "🔑 ثبت API Key اطلس‌پی" && $adminrulecheck['rule'] == "administrator") {
     $PaySetting = select("PaySetting", "ValuePay", "NamePay", "apiatlaspay", "select");
     $currentKey = $PaySetting['ValuePay'] ?? 'ثبت نشده';

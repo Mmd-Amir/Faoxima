@@ -543,6 +543,7 @@ if (!function_exists('rxNavMenuSignatures')) {
                     'blupal_name'            => 'gw_blupal',
                     'atlaspay_name'          => 'gw_atlaspay',
                     'tonpay_apikey'          => 'gw_tonpay',
+                    'tonpay_paymode'         => 'gw_tonpay',
                     'cubepay_apikey'         => 'gw_cubepay',
                     'blupal_apikey'          => 'gw_blupal',
                     'variza_name'            => 'gw_variza',

@@ -592,6 +592,7 @@ $trnado = rx_kb_encode([
 $tonpay = rx_kb_encode([
         [rx_kb_style(['text' => "🏷️ نام نمایشی درگاه تون‌پی", 'callback_data' => 'tonpay_name'], 'tonpay_name', $_rx_gw_styles)],
         [rx_kb_style(['text' => "🔑 ثبت API Key تون‌پی", 'callback_data' => 'tonpay_apikey'], 'tonpay_apikey', $_rx_gw_styles)],
+        [rx_kb_style(['text' => "🔀 مقصد پرداخت تون‌پی", 'callback_data' => 'tonpay_paymode'], 'tonpay_paymode', $_rx_gw_styles)],
         [rx_kb_style(['text' => "💰 کش بک تون‌پی", 'callback_data' => 'tonpay_cashback'], 'tonpay_cashback', $_rx_gw_styles)],
         [
             rx_kb_style(['text' => "⬇️ کف تون‌پی", 'callback_data' => 'tonpay_min'], 'tonpay_min', $_rx_gw_styles),

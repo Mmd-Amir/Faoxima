@@ -1403,13 +1403,376 @@ function trnado($order_id, $price)
     return $decodedResponse;
 }
 
+function tonpayRateLimitStatePath()
+{
+    $root = defined('REFACTORED_LEGACY_ROOT') ? REFACTORED_LEGACY_ROOT
+          : (defined('APP_ROOT_PATH') ? APP_ROOT_PATH : dirname(__DIR__, 3));
+    $runtime = $root . DIRECTORY_SEPARATOR . 'cronbot' . DIRECTORY_SEPARATOR . '.runtime';
+    if (@is_dir($runtime) || @mkdir($runtime, 0775, true) || @is_dir($runtime)) {
+        return $runtime . DIRECTORY_SEPARATOR . 'tonpay_ratelimit.json';
+    }
+    return sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'rx_tonpay_ratelimit_' . md5((string) $root) . '.json';
+}
+
+function tonpayRateLimitRedisEval($script, array $keys, array $args)
+{
+    if (!function_exists('getRedisConnection')) {
+        return null;
+    }
+    $client = getRedisConnection();
+    if ($client === null) {
+        return null;
+    }
+    try {
+        if ($client instanceof \Redis) {
+            $result = $client->eval($script, array_merge($keys, $args), count($keys));
+        } else {
+            $result = $client->eval($script, count($keys), ...array_merge($keys, $args));
+        }
+    } catch (\Throwable $e) {
+        if (function_exists('rx_redis_mark_unavailable')) {
+            rx_redis_mark_unavailable('exception');
+        }
+        return null;
+    }
+    return ($result === false || $result === null) ? null : (int) $result;
+}
+
+function tonpayRateLimitFileMutate(callable $mutator)
+{
+    $path = tonpayRateLimitStatePath();
+    $isNew = !is_file($path);
+    $fh = @fopen($path, 'c+');
+    if ($fh === false) {
+        return null;
+    }
+    if ($isNew) {
+        @chmod($path, 0664);
+    }
+    if (!@flock($fh, LOCK_EX)) {
+        @fclose($fh);
+        return null;
+    }
+    $state = json_decode((string) stream_get_contents($fh), true);
+    if (!is_array($state)) {
+        $state = [];
+    }
+    $result = $mutator($state);
+    @ftruncate($fh, 0);
+    @rewind($fh);
+    @fwrite($fh, (string) json_encode($state));
+    @fflush($fh);
+    @flock($fh, LOCK_UN);
+    @fclose($fh);
+    return $result;
+}
+
+function tonpayRateLimitAcquire()
+{
+    $limit = 50;
+    $windowMs = 60000;
+    $nowMs = (int) floor(microtime(true) * 1000);
+
+    $script = "local now = tonumber(ARGV[1]) "
+        . "local blocked = tonumber(redis.call('get', KEYS[2]) or '0') or 0 "
+        . "if blocked > now then return 0 end "
+        . "redis.call('zremrangebyscore', KEYS[1], '-inf', now - tonumber(ARGV[2])) "
+        . "if redis.call('zcard', KEYS[1]) >= tonumber(ARGV[3]) then return 0 end "
+        . "redis.call('zadd', KEYS[1], now, ARGV[4]) "
+        . "redis.call('pexpire', KEYS[1], tonumber(ARGV[2])) "
+        . "return 1";
+    $member = $nowMs . ':' . bin2hex(random_bytes(4));
+    $redisResult = tonpayRateLimitRedisEval(
+        $script,
+        ['faoxima:tonpay:ratelimit:window', 'faoxima:tonpay:ratelimit:blocked'],
+        [$nowMs, $windowMs, $limit, $member]
+    );
+    if ($redisResult !== null) {
+        return $redisResult === 1;
+    }
+
+    $fileResult = tonpayRateLimitFileMutate(function (array &$state) use ($limit, $windowMs, $nowMs) {
+        if ((int) ($state['blocked_until'] ?? 0) > $nowMs) {
+            return false;
+        }
+        $hits = [];
+        foreach ((array) ($state['hits'] ?? []) as $hit) {
+            if ((int) $hit > $nowMs - $windowMs) {
+                $hits[] = (int) $hit;
+            }
+        }
+        if (count($hits) >= $limit) {
+            $state['hits'] = $hits;
+            return false;
+        }
+        $hits[] = $nowMs;
+        $state['hits'] = $hits;
+        return true;
+    });
+    if ($fileResult === null) {
+        error_log('TonPay rate limiter storage unavailable; request allowed without local accounting');
+        return true;
+    }
+    return $fileResult;
+}
+
+function tonpayRateLimitBlock($seconds)
+{
+    $seconds = max(1, min(600, (int) $seconds));
+    $untilMs = (int) floor(microtime(true) * 1000) + ($seconds * 1000);
+
+    $script = "local cur = tonumber(redis.call('get', KEYS[1]) or '0') or 0 "
+        . "if tonumber(ARGV[1]) > cur then redis.call('set', KEYS[1], ARGV[1], 'PX', tonumber(ARGV[2])) end "
+        . "return 1";
+    if (tonpayRateLimitRedisEval($script, ['faoxima:tonpay:ratelimit:blocked'], [$untilMs, $seconds * 1000]) !== null) {
+        return;
+    }
+
+    tonpayRateLimitFileMutate(function (array &$state) use ($untilMs) {
+        if ($untilMs > (int) ($state['blocked_until'] ?? 0)) {
+            $state['blocked_until'] = $untilMs;
+        }
+        return true;
+    });
+}
+
+function tonpayParseRetryAfter($value)
+{
+    $value = trim((string) $value);
+    if ($value === '') {
+        return 60;
+    }
+    if (ctype_digit($value)) {
+        return (int) $value;
+    }
+    $ts = strtotime($value);
+    return $ts === false ? 60 : max(1, $ts - time());
+}
+
+function tonpayErrorCode($decoded)
+{
+    $detail = is_array($decoded) ? ($decoded['detail'] ?? null) : null;
+    if (is_array($detail) && isset($detail['code']) && is_scalar($detail['code'])) {
+        return trim((string) $detail['code']);
+    }
+    return '';
+}
+
+function tonpayNormalizeError($decoded, $fallbackMessage)
+{
+    $statusCode = is_array($decoded) ? (int) ($decoded['status_code'] ?? 0) : 0;
+    $detail = is_array($decoded) ? ($decoded['detail'] ?? null) : null;
+    $code = tonpayErrorCode($decoded);
+    $message = '';
+    if (is_array($detail)) {
+        if (isset($detail['message']) && is_scalar($detail['message'])) {
+            $message = trim((string) $detail['message']);
+        } elseif (isset($detail[0]['msg']) && is_scalar($detail[0]['msg'])) {
+            $message = trim((string) $detail[0]['msg']);
+        }
+    } elseif (is_scalar($detail)) {
+        $message = trim((string) $detail);
+    }
+    if ($code === '' && $statusCode === 429) {
+        $code = 'RATE_LIMIT_EXCEEDED';
+    }
+    return [
+        'success' => false,
+        'error_code' => $code,
+        'error' => $message !== '' ? $message : (string) $fallbackMessage,
+        'status_code' => $statusCode,
+        'rate_limited' => $code === 'RATE_LIMIT_EXCEEDED',
+    ];
+}
+
+function tonpayIsRateLimited($response)
+{
+    if (!is_array($response)) {
+        return false;
+    }
+    return !empty($response['rate_limited'])
+        || (int) ($response['status_code'] ?? 0) === 429
+        || tonpayErrorCode($response) === 'RATE_LIMIT_EXCEEDED'
+        || (string) ($response['error_code'] ?? '') === 'RATE_LIMIT_EXCEEDED';
+}
+
+function tonpayRedactUrl($url)
+{
+    $url = (string) $url;
+    $cut = strcspn($url, '?#');
+    return $cut < strlen($url) ? substr($url, 0, $cut) . '?[redacted]' : $url;
+}
+
+function tonpayMaskSecret($secret)
+{
+    $secret = trim((string) $secret);
+    $length = strlen($secret);
+    if ($length === 0) {
+        return '';
+    }
+    if ($length < 12) {
+        return str_repeat('•', 6);
+    }
+    return substr($secret, 0, 4) . '…' . substr($secret, -4);
+}
+
+function tonpayNormalizeBuyerChatId($buyerChatId)
+{
+    if (is_int($buyerChatId)) {
+        return $buyerChatId > 0 ? $buyerChatId : null;
+    }
+    if (is_string($buyerChatId)) {
+        $buyerChatId = trim($buyerChatId);
+        if ($buyerChatId !== '' && strlen($buyerChatId) <= 15 && ctype_digit($buyerChatId) && (int) $buyerChatId > 0) {
+            return (int) $buyerChatId;
+        }
+    }
+    return null;
+}
+
+function tonpayValidPaymentUrl($url)
+{
+    if (!is_string($url)) {
+        return '';
+    }
+    $url = trim($url);
+    if ($url === '' || filter_var($url, FILTER_VALIDATE_URL) === false) {
+        return '';
+    }
+    return strtolower((string) parse_url($url, PHP_URL_SCHEME)) === 'https' ? $url : '';
+}
+
+function tonpayPaymentMode()
+{
+    $row = select("PaySetting", "ValuePay", "NamePay", "tonpay_payment_mode", "select");
+    $mode = is_array($row) ? strtolower(trim((string) ($row['ValuePay'] ?? ''))) : '';
+    return $mode === 'web' ? 'web' : 'bot';
+}
+
+function tonpaySelectPaymentUrl($botUrl, $webUrl, $logOrderId = null)
+{
+    $botUrl = is_scalar($botUrl) ? trim((string) $botUrl) : '';
+    $webUrl = tonpayValidPaymentUrl($webUrl);
+    if (tonpayPaymentMode() !== 'web') {
+        return $botUrl;
+    }
+    if ($webUrl !== '') {
+        return $webUrl;
+    }
+    if ($logOrderId !== null) {
+        error_log('TonPay web payment url missing, falling back to bot url: ' . json_encode([
+            'order_id' => (string) $logOrderId,
+            'has_bot_url' => $botUrl !== '',
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+    return $botUrl;
+}
+
+function tonpayStoreWebInvoiceUrl($orderId, $webUrl)
+{
+    global $pdo;
+    $webUrl = tonpayValidPaymentUrl($webUrl);
+    if ($webUrl === '' || !($pdo instanceof PDO)) {
+        return false;
+    }
+    try {
+        $stmt = $pdo->prepare("UPDATE Payment_report SET tonpay_web_invoice_url = ? WHERE id_order = ?");
+        $stmt->execute([$webUrl, (string) $orderId]);
+        return true;
+    } catch (Throwable $e) {
+        error_log('TonPay store web invoice url failed: ' . json_encode([
+            'order_id' => (string) $orderId,
+            'error' => $e->getMessage(),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        return false;
+    }
+}
+
+function tonpayAmountsMatch($requestAmount, $expectedPrice)
+{
+    if (!is_numeric($requestAmount) || !is_numeric($expectedPrice)) {
+        return false;
+    }
+    $received = (float) $requestAmount;
+    $expected = (float) $expectedPrice;
+    if ($received != floor($received) || $expected != floor($expected)) {
+        return false;
+    }
+    return (int) $received === (int) $expected;
+}
+
+function tonpayLogAmountMismatch($source, $orderId, $invoiceId, $expectedPrice, $requestAmount)
+{
+    error_log('TonPay amount mismatch: ' . json_encode([
+        'source' => (string) $source,
+        'order_id' => (string) $orderId,
+        'invoice_id' => (string) $invoiceId,
+        'expected_amount' => is_scalar($expectedPrice) ? (string) $expectedPrice : null,
+        'received_request_amount' => is_scalar($requestAmount) ? (string) $requestAmount : null,
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+}
+
+function tonpayTerminalLocalStatus($remoteStatus)
+{
+    $map = [
+        'expired' => 'expire',
+        'canceled' => 'cancelled',
+        'cancelled' => 'cancelled',
+        'rejected' => 'reject',
+    ];
+    $remoteStatus = strtolower(trim(is_scalar($remoteStatus) ? (string) $remoteStatus : ''));
+    return $map[$remoteStatus] ?? null;
+}
+
+function tonpaySyncTerminalStatus($orderId, $remoteStatus)
+{
+    global $pdo;
+    $localStatus = tonpayTerminalLocalStatus($remoteStatus);
+    if ($localStatus === null || !($pdo instanceof PDO)) {
+        return false;
+    }
+    try {
+        $stmt = $pdo->prepare(
+            "UPDATE Payment_report
+                SET payment_Status = ?
+              WHERE id_order = ?
+                AND Payment_Method = 'tonpay'
+                AND payment_Status IN ('Unpaid','pending','waiting')"
+        );
+        $stmt->execute([$localStatus, (string) $orderId]);
+        return $stmt->rowCount() > 0;
+    } catch (Throwable $e) {
+        error_log('TonPay terminal status sync failed: ' . json_encode([
+            'order_id' => (string) $orderId,
+            'error' => $e->getMessage(),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        return false;
+    }
+}
+
 function tonpayCurlJson($method, $endpoint, array $payload, $apiKey)
 {
+    if (!tonpayRateLimitAcquire()) {
+        error_log('TonPay request skipped by local rate limiter: ' . json_encode([
+            'url' => $endpoint,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        return [
+            'detail' => [
+                'code' => 'RATE_LIMIT_EXCEEDED',
+                'message' => 'سقف درخواست‌های تون‌پی موقتاً پر شده است؛ لطفاً کمی بعد دوباره تلاش کنید',
+            ],
+            'status_code' => 429,
+            'rate_limited' => true,
+            'local_rate_limited' => true,
+        ];
+    }
+
     $headers = ['Content-Type: application/json'];
     if ($apiKey !== null) {
         $headers[] = 'X-API-Key: ' . $apiKey;
     }
 
+    $retryAfter = '';
     $curl = curl_init();
     $opts = array(
         CURLOPT_URL => $endpoint,
@@ -1422,6 +1785,12 @@ function tonpayCurlJson($method, $endpoint, array $payload, $apiKey)
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => $method,
         CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_HEADERFUNCTION => function ($ch, $headerLine) use (&$retryAfter) {
+            if (stripos($headerLine, 'Retry-After:') === 0) {
+                $retryAfter = trim(substr($headerLine, strlen('Retry-After:')));
+            }
+            return strlen($headerLine);
+        },
     );
     if ($method === 'POST') {
         $opts[CURLOPT_POSTFIELDS] = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -1445,6 +1814,18 @@ function tonpayCurlJson($method, $endpoint, array $payload, $apiKey)
     }
 
     $decoded = json_decode($response, true);
+    if ((int) $statusCode === 429 || tonpayErrorCode($decoded) === 'RATE_LIMIT_EXCEEDED') {
+        tonpayRateLimitBlock(tonpayParseRetryAfter($retryAfter));
+        error_log('TonPay rate limit response: ' . json_encode([
+            'url' => $endpoint,
+            'status_code' => $statusCode,
+            'retry_after' => $retryAfter,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        if (!is_array($decoded)) {
+            $decoded = ['detail' => ['code' => 'RATE_LIMIT_EXCEEDED', 'message' => 'Rate limit exceeded']];
+        }
+        $decoded['rate_limited'] = true;
+    }
     if (!is_array($decoded)) {
         error_log('TonPay invalid response: ' . json_encode([
             'url' => $endpoint,
@@ -1463,7 +1844,7 @@ function tonpayApiKey()
     return trim((string) select("PaySetting", "*", "NamePay", "apitonpay", "select")['ValuePay']);
 }
 
-function tonpayCreateInvoice($order_id, $amount)
+function tonpayCreateInvoice($order_id, $amount, $buyer_chat_id = null)
 {
     global $domainhosts;
 
@@ -1472,6 +1853,8 @@ function tonpayCreateInvoice($order_id, $amount)
         return [
             'success' => false,
             'error' => 'کلید API تون‌پی تنظیم نشده است',
+            'error_code' => 'MISSING_API_KEY',
+            'status_code' => 0,
         ];
     }
 
@@ -1481,20 +1864,31 @@ function tonpayCreateInvoice($order_id, $amount)
         'order_id' => (string) $order_id,
         'callback_url' => $callbackUrl,
     ];
+    $buyerChatId = tonpayNormalizeBuyerChatId($buyer_chat_id);
+    if ($buyerChatId !== null) {
+        $requestPayload['buyer_chat_id'] = $buyerChatId;
+    }
 
     $endpoint = 'https://tonpays.online/api/v1/invoices/create';
     $decoded = tonpayCurlJson('POST', $endpoint, $requestPayload, $apiKey);
 
-    if (!is_array($decoded) || empty($decoded['invoice_id']) || empty($decoded['invoice_url'])) {
-        $errorPayload = [
-            'success' => false,
-            'error' => is_array($decoded) ? ($decoded['detail'] ?? 'پاسخ نامعتبر از سرویس تون‌پی') : 'پاسخ نامعتبر از سرویس تون‌پی',
-            'raw' => $decoded,
-        ];
-        error_log('TonPay create invoice failed: ' . json_encode($errorPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    $invoiceId = is_array($decoded) && is_scalar($decoded['invoice_id'] ?? null) ? trim((string) $decoded['invoice_id']) : '';
+    $invoiceUrl = is_array($decoded) && is_scalar($decoded['invoice_url'] ?? null) ? trim((string) $decoded['invoice_url']) : '';
+    if ($invoiceId === '' || $invoiceUrl === '') {
+        $errorPayload = tonpayNormalizeError($decoded, 'پاسخ نامعتبر از سرویس تون‌پی');
+        error_log('TonPay create invoice failed: ' . json_encode([
+            'order_id' => (string) $order_id,
+            'status_code' => $errorPayload['status_code'],
+            'error_code' => $errorPayload['error_code'],
+            'error' => $errorPayload['error'],
+            'buyer_chat_id_sent' => $buyerChatId !== null,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         return $errorPayload;
     }
 
+    $decoded['invoice_id'] = $invoiceId;
+    $decoded['invoice_url'] = $invoiceUrl;
+    $decoded['web_invoice_url'] = tonpayValidPaymentUrl($decoded['web_invoice_url'] ?? null);
     return $decoded;
 }
 

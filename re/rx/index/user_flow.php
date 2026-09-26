@@ -3894,7 +3894,7 @@ $textonebuy
         $Payment_Method = "tonpay";
         $stmt->bind_param("sssssss", $from_id, $randomString, $dateacc, $user['Processing_value'], $payment_Status, $Payment_Method, $invoice);
         $stmt->execute();
-        $payment = tonpayCreateInvoice($randomString, (int) $user['Processing_value']);
+        $payment = tonpayCreateInvoice($randomString, (int) $user['Processing_value'], (int) $from_id);
 
         $paymentErrorData = null;
         if (!is_array($payment)) {
@@ -3964,10 +3964,12 @@ $textonebuy
         }
         update("Payment_report", "tonpay_invoice_id", $invoiceId, "id_order", $randomString);
         update("Payment_report", "tonpay_invoice_url", $invoiceUrl, "id_order", $randomString);
+        tonpayStoreWebInvoiceUrl($randomString, $payment['web_invoice_url'] ?? '');
+        $tonpayPaymentUrl = tonpaySelectPaymentUrl($invoiceUrl, $payment['web_invoice_url'] ?? '', $randomString);
         $paymentkeyboard = json_encode([
             'inline_keyboard' => [
                 [
-                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $invoiceUrl]
+                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $tonpayPaymentUrl]
                 ]
             ]
         ]);

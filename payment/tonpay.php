@@ -38,6 +38,18 @@ function tonpay_process_webhook()
         exit('Invalid body');
     }
 
+    $providedApiKey = isset($_SERVER['HTTP_X_API_KEY']) ? trim((string) $_SERVER['HTTP_X_API_KEY']) : null;
+    if ($providedApiKey !== null) {
+        $configuredApiKey = function_exists('tonpayApiKey') ? tonpayApiKey() : '';
+        if ($configuredApiKey === '' || !hash_equals($configuredApiKey, $providedApiKey)) {
+            tonpay_log_event('TONPAY_BAD_API_KEY', 'Callback X-API-Key header did not match the configured key', [
+                'remote_ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+            ]);
+            http_response_code(401);
+            exit('Unauthorized');
+        }
+    }
+
     $orderId = $data['order_id'] ?? null;
     if ($orderId === null || (!is_string($orderId) && !is_numeric($orderId))) {
         tonpay_log_event('TONPAY_NO_ID', 'Callback missing order_id', [
@@ -99,6 +111,14 @@ function tonpay_process_webhook()
     }
 
     $check = function_exists('tonpayCheckInvoice') ? tonpayCheckInvoice($invoiceId) : null;
+    if (function_exists('tonpayIsRateLimited') && tonpayIsRateLimited($check)) {
+        tonpay_log_event('TONPAY_CHECK_RATE_LIMITED', 'Server-side check deferred by rate limit; payment not confirmed', [
+            'order_id' => $orderId,
+            'invoice_id' => $invoiceId,
+        ]);
+        http_response_code(503);
+        exit('Retry later');
+    }
     if (!is_array($check) || (string) ($check['order_id'] ?? '') !== $orderId) {
         tonpay_log_event('TONPAY_CHECK_MISMATCH', 'Server-side check did not confirm this order', [
             'order_id' => $orderId,
@@ -114,7 +134,16 @@ function tonpay_process_webhook()
             'invoice_id' => $invoiceId,
             'status' => $check['status'] ?? null,
         ]);
+        if (function_exists('tonpaySyncTerminalStatus')) {
+            tonpaySyncTerminalStatus($orderId, $check['status'] ?? '');
+        }
         exit('Not paid');
+    }
+
+    if (!tonpayAmountsMatch($check['request_amount'] ?? null, $Payment_report['price'] ?? null)) {
+        tonpayLogAmountMismatch('callback', $orderId, $invoiceId, $Payment_report['price'] ?? null, $check['request_amount'] ?? null);
+        http_response_code(409);
+        exit('Amount mismatch');
     }
 
     $finalAmount = isset($check['final_amount']) ? (float) $check['final_amount'] : null;

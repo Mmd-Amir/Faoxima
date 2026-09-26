@@ -385,6 +385,9 @@ final class PaymentInitHandler extends BaseHandler
         if ($method === 'atlaspay') {
             return 20;
         }
+        if ($method === 'tonpay') {
+            return 1440;
+        }
         return self::STALE_UNPAID_MINUTES;
     }
 
@@ -704,7 +707,7 @@ final class PaymentInitHandler extends BaseHandler
         $this->insertPaymentReport('tonpay', $amount, $orderId);
 
         try {
-            $pay = tonpayCreateInvoice($orderId, $amount);
+            $pay = tonpayCreateInvoice($orderId, $amount, (int)$this->user['id']);
         } catch (Throwable $e) {
             FaoximaLogger::userFacing('tonpayCreateInvoice() threw', ['err' => $e->getMessage()]);
             FaoximaResponse::fail(502, faoxima_textbot_get('dyn_paymentinit_gateway_generic_error', '❌ خطا در ارتباط با درگاه پرداخت.'));
@@ -723,10 +726,11 @@ final class PaymentInitHandler extends BaseHandler
 
         update('Payment_report', 'tonpay_invoice_id', $invoiceId, 'id_order', $orderId);
         update('Payment_report', 'tonpay_invoice_url', $invoiceUrl, 'id_order', $orderId);
+        tonpayStoreWebInvoiceUrl($orderId, $pay['web_invoice_url'] ?? '');
 
         FaoximaResponse::ok([
             'kind'     => 'url',
-            'url'      => $invoiceUrl,
+            'url'      => tonpaySelectPaymentUrl($invoiceUrl, $pay['web_invoice_url'] ?? '', $orderId),
             'order_id' => $orderId,
             'message'  => faoxima_textbot_get('dyn_paymentinit_click_link_to_pay', '🌸 برای تکمیل پرداخت روی لینک زیر کلیک کنید.'),
         ]);

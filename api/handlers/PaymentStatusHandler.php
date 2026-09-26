@@ -138,6 +138,11 @@ final class PaymentStatusHandler extends BaseHandler
             $abangatewayUrl = abangatewayPayUrlFor((string)($report['dec_not_confirmed'] ?? ''));
         }
 
+        $tonpayGatewayUrl = trim((string)($report['tonpay_invoice_url'] ?? ''));
+        if ((string)($report['Payment_Method'] ?? '') === 'tonpay' && function_exists('tonpaySelectPaymentUrl')) {
+            $tonpayGatewayUrl = tonpaySelectPaymentUrl($tonpayGatewayUrl, $report['tonpay_web_invoice_url'] ?? '');
+        }
+
         $payload = [
             'order_id'         => $orderId,
             'payment_status'   => $paymentStatus,
@@ -155,7 +160,7 @@ final class PaymentStatusHandler extends BaseHandler
             'currency_code'    => trim((string)($report['crypto_currency'] ?? '')) ?: null,
             'crypto_amount'    => trim((string)($report['crypto_amount']   ?? '')) ?: null,
             'wallet_to'        => trim((string)($report['crypto_wallet_to'] ?? '')) ?: null,
-            'gateway_url'      => trim((string)($report['tronado_payment_url'] ?? '')) ?: (trim((string)($report['tonpay_invoice_url'] ?? '')) ?: (trim((string)($report['cubepay_payment_link'] ?? '')) ?: (trim((string)($report['blupal_payment_link'] ?? '')) ?: (trim((string)($report['atlaspay_payment_url'] ?? '')) ?: (trim((string)($report['tetrapay_payment_link'] ?? '')) ?: $abangatewayUrl))))),
+            'gateway_url'      => trim((string)($report['tronado_payment_url'] ?? '')) ?: ($tonpayGatewayUrl ?: (trim((string)($report['cubepay_payment_link'] ?? '')) ?: (trim((string)($report['blupal_payment_link'] ?? '')) ?: (trim((string)($report['atlaspay_payment_url'] ?? '')) ?: (trim((string)($report['tetrapay_payment_link'] ?? '')) ?: $abangatewayUrl))))),
         ];
 
         FaoximaResponse::ok($payload);

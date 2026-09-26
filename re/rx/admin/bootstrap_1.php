@@ -915,6 +915,7 @@ if (!empty($datain) && in_array($from_id, $admin_ids ?? [])) {
 
         'tonpay_name'     => "🏷️ نام نمایشی درگاه تون‌پی",
         'tonpay_apikey'   => "🔑 ثبت API Key تون‌پی",
+        'tonpay_paymode'  => "🔀 مقصد پرداخت تون‌پی",
         'tonpay_cashback' => "💰 کش بک تون‌پی",
         'tonpay_min'      => "⬇️ کف تون‌پی",
         'tonpay_max'      => "⬆️ سقف تون‌پی",

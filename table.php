@@ -2218,6 +2218,7 @@ try {
         ['minbalancetonpay', $main],
         ['maxbalancetonpay', $max],
         ['helptonpay', '2'],
+        ['tonpay_payment_mode', 'bot'],
         ['statuscubepay', 'offcubepay'],
         ['apicubepay', ''],
         ['chashbackcubepay', '0'],
@@ -3351,6 +3352,8 @@ try {
     rxSafeAddColumn($connect, "Payment_report", "tronado_payment_url",    "VARCHAR(500) NULL");
     rxSafeAddColumn($connect, "Payment_report", "tonpay_invoice_id",      "VARCHAR(64) NULL");
     rxSafeAddColumn($connect, "Payment_report", "tonpay_invoice_url",     "VARCHAR(500) NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tonpay_web_invoice_url", "VARCHAR(500) NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tonpay_last_checked_at", "BIGINT NULL");
     rxSafeAddColumn($connect, "Payment_report", "cubepay_authority",      "VARCHAR(64) NULL");
     rxSafeAddColumn($connect, "Payment_report", "cubepay_payment_link",   "VARCHAR(500) NULL");
     rxSafeAddColumn($connect, "Payment_report", "cubepay_method",         "VARCHAR(20) NULL");

@@ -1,5 +1,8 @@
 <?php
 require_once __DIR__ . '/_init.php';
+if ((int) ($_GET['worker'] ?? $_SERVER['BROADCAST_WORKER_ID'] ?? 0) > 0) {
+    return;
+}
 rx_cron_boot('tonpaycheck', 60);
 
 ini_set('error_log', 'error_log');
@@ -24,6 +27,7 @@ if (!function_exists('tonpayCheckInvoice')) {
     return;
 }
 
+$fairPolling = true;
 try {
     $stmt = $pdo->prepare(
         "SELECT id_order, tonpay_invoice_id, price
@@ -32,19 +36,42 @@ try {
             AND Payment_Method = 'tonpay'
             AND tonpay_invoice_id IS NOT NULL
             AND tonpay_invoice_id <> ''
-          ORDER BY id DESC
+            AND time >= ?
+            AND (tonpay_last_checked_at IS NULL OR tonpay_last_checked_at <= ?)
+          ORDER BY tonpay_last_checked_at IS NOT NULL, tonpay_last_checked_at ASC, id ASC
           LIMIT 30"
     );
-    $stmt->execute();
+    $stmt->execute([date('Y/m/d H:i:s', time() - 86400), time() - 50]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
-    error_log('[tonpaycheck] select pending failed: ' . $e->getMessage());
-    return;
+    error_log('[tonpaycheck] fair select failed, using legacy order: ' . $e->getMessage());
+    $fairPolling = false;
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT id_order, tonpay_invoice_id, price
+               FROM Payment_report
+              WHERE payment_Status = 'Unpaid'
+                AND Payment_Method = 'tonpay'
+                AND tonpay_invoice_id IS NOT NULL
+                AND tonpay_invoice_id <> ''
+              ORDER BY id DESC
+              LIMIT 30"
+        );
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        error_log('[tonpaycheck] select pending failed: ' . $e->getMessage());
+        return;
+    }
 }
 
 if (empty($rows)) {
     return;
 }
+
+$markChecked = $fairPolling
+    ? $pdo->prepare("UPDATE Payment_report SET tonpay_last_checked_at = ? WHERE id_order = ?")
+    : null;
 
 foreach ($rows as $row) {
     if (function_exists('rx_cron_time_up') && rx_cron_time_up()) break;
@@ -59,7 +86,23 @@ foreach ($rows as $row) {
         $check = tonpayCheckInvoice($invoiceId);
     } catch (Throwable $e) {
         error_log('[tonpaycheck] tonpayCheckInvoice threw for order ' . $orderId . ': ' . $e->getMessage());
-        continue;
+        $check = null;
+    }
+
+    if (is_array($check) && !empty($check['local_rate_limited'])) {
+        break;
+    }
+
+    if ($markChecked !== null) {
+        try {
+            $markChecked->execute([time(), $orderId]);
+        } catch (Throwable $e) {
+            error_log('[tonpaycheck] mark checked failed for order ' . $orderId . ': ' . $e->getMessage());
+        }
+    }
+
+    if (tonpayIsRateLimited($check)) {
+        break;
     }
 
     if (!is_array($check)) {
@@ -71,7 +114,26 @@ foreach ($rows as $row) {
         continue;
     }
 
-    if (empty($check['paid']) || (string) ($check['status'] ?? '') !== 'completed') {
+    $remoteStatus = (string) ($check['status'] ?? '');
+    if ($remoteStatus === 'need_action') {
+        error_log('[tonpaycheck] invoice needs buyer action: ' . json_encode([
+            'order_id' => $orderId,
+            'invoice_id' => $invoiceId,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        continue;
+    }
+
+    if (tonpayTerminalLocalStatus($remoteStatus) !== null) {
+        tonpaySyncTerminalStatus($orderId, $remoteStatus);
+        continue;
+    }
+
+    if (empty($check['paid']) || $remoteStatus !== 'completed') {
+        continue;
+    }
+
+    if (!tonpayAmountsMatch($check['request_amount'] ?? null, $row['price'])) {
+        tonpayLogAmountMismatch('poller', $orderId, $invoiceId, $row['price'], $check['request_amount'] ?? null);
         continue;
     }
 
