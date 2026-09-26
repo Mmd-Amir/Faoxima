@@ -118,74 +118,59 @@ if (!function_exists('rxReceiptConfirm')) {
             return ['ok' => false, 'reason' => 'purchase_receipts_pending', 'report' => $report];
         }
 
-        try {
-            $atomicStmt = $pdo->prepare(
-                "UPDATE Payment_report SET payment_Status = 'processing', at_updated = :at_updated WHERE id_order = :id_order AND payment_Status = 'waiting'"
-            );
-            $atomicStmt->bindValue(':id_order', $report['id_order'], PDO::PARAM_STR);
-            $atomicStmt->bindValue(':at_updated', date('Y/m/d H:i:s'), PDO::PARAM_STR);
-            $atomicStmt->execute();
-            if ($atomicStmt->rowCount() === 0) {
-                if (function_exists('rx_log_event')) {
-                    rx_log_event('RECEIPT_CONFIRM_RACE', 'Confirm raced with another actor; dropping duplicate', [
-                        'id_order' => $report['id_order'],
-                        'actor_id' => $actorId,
-                    ]);
-                }
-                return ['ok' => false, 'reason' => 'race_lost', 'report' => $report];
-            }
-        } catch (Throwable $e) {
+        $claim = rx_pf_claim((string) $report['id_order'], ['from' => ['waiting'], 'to' => 'processing']);
+        $claimStatus = (string) ($claim['status'] ?? 'error');
+        if ($claimStatus === 'error') {
             if (function_exists('rx_log_event')) {
                 rx_log_event('RECEIPT_CONFIRM_DB_ERROR', 'Atomic claim failed', [
                     'id_order' => $report['id_order'],
-                    'err' => $e->getMessage(),
+                    'err' => (string) ($claim['error'] ?? $claim['reason'] ?? ''),
                 ]);
             }
             return ['ok' => false, 'reason' => 'db_error'];
         }
-
-        if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
-
-        if (function_exists('DirectPayment') && intval($report['direct_payment_done'] ?? 0) !== 1) {
-            try {
-                DirectPayment($orderId);
-            } catch (Throwable $e) {
-                if (function_exists('rx_log_event')) {
-                    rx_log_event('RECEIPT_CONFIRM_FULFILL_THROWABLE', $e->getMessage(), [
-                        'id_order' => $orderId,
-                        'actor_id' => $actorId,
-                        'payment_type' => (string) ($report['Payment_Method'] ?? ''),
-                        'operation' => (string) ($typePay[0] ?? ''),
-                        'class' => get_class($e),
-                        'file' => $e->getFile(),
-                        'line' => $e->getLine(),
-                    ]);
-                }
-            }
+        if ($claimStatus === 'already_completed') {
+            return ['ok' => false, 'reason' => 'already_paid', 'report' => $report];
         }
-
-        $reportAfter = rxReceiptGet($orderId, false);
-        $directPaymentDone = is_array($reportAfter) && intval($reportAfter['direct_payment_done'] ?? 0) === 1;
-        $alreadyPaid = is_array($reportAfter) && $reportAfter['payment_Status'] === 'paid';
-
-        if (!$alreadyPaid && $directPaymentDone) {
-            $finalizeStmt = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'paid' WHERE id_order = :id_order AND payment_Status = 'processing'");
-            $finalizeStmt->bindValue(':id_order', $orderId, PDO::PARAM_STR);
-            $finalizeStmt->execute();
-            $alreadyPaid = $finalizeStmt->rowCount() > 0;
-            if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
-        }
-
-        if (!$alreadyPaid && !$directPaymentDone) {
-            $rollbackStmt = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'waiting' WHERE id_order = :id_order AND payment_Status = 'processing'");
-            $rollbackStmt->bindValue(':id_order', $orderId, PDO::PARAM_STR);
-            $rollbackStmt->execute();
-            if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
+        if ($claimStatus !== 'claimed') {
             if (function_exists('rx_log_event')) {
-                rx_log_event('RECEIPT_CONFIRM_FULFILL_FAILED', 'Confirm claimed order but DirectPayment did not complete; rolled back to waiting', [
+                rx_log_event('RECEIPT_CONFIRM_RACE', 'Confirm raced with another actor; dropping duplicate', [
+                    'id_order' => $report['id_order'],
+                    'actor_id' => $actorId,
+                    'claim' => $claimStatus,
+                ]);
+            }
+            return ['ok' => false, 'reason' => 'race_lost', 'report' => $report];
+        }
+
+        if (!function_exists('DirectPayment')) {
+            rx_pf_settle((string) $report['id_order'], (string) $claim['token'], rx_pf_result('retryable', 'direct_payment_unavailable'), 'waiting', 'waiting');
+            return ['ok' => false, 'reason' => 'fulfillment_failed', 'report' => rxReceiptGet($orderId, false)];
+        }
+
+        $run = rx_pf_run_claimed((string) $report['id_order'], (string) $claim['token'], 'images.jpg', 'waiting');
+        if (empty($run['finalized'])) {
+            $runResult = (array) ($run['result'] ?? []);
+            $settle = (string) ($run['settle'] ?? '');
+            if (function_exists('rx_log_event')) {
+                rx_log_event('RECEIPT_CONFIRM_FULFILL_FAILED', 'Confirm claimed order but DirectPayment did not complete', [
                     'id_order' => $orderId,
                     'actor_id' => $actorId,
+                    'payment_type' => (string) ($report['Payment_Method'] ?? ''),
+                    'operation' => (string) ($typePay[0] ?? ''),
+                    'result' => (string) ($runResult['status'] ?? ''),
+                    'reason' => (string) ($runResult['reason'] ?? ''),
+                    'settle' => $settle,
                 ]);
+            }
+            if (!empty($runResult['already_completed']) || $settle === 'paid') {
+                return ['ok' => false, 'reason' => 'already_paid', 'report' => rxReceiptGet($orderId, false)];
+            }
+            if ($settle === 'manual_review') {
+                return ['ok' => false, 'reason' => 'manual_review', 'report' => rxReceiptGet($orderId, false)];
+            }
+            if ($settle === 'reconciling' || $settle === 'error') {
+                return ['ok' => false, 'reason' => 'fulfillment_reconciling', 'report' => rxReceiptGet($orderId, false)];
             }
             return ['ok' => false, 'reason' => 'fulfillment_failed', 'report' => rxReceiptGet($orderId, false)];
         }

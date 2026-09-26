@@ -23,9 +23,10 @@ $ManagePanel = new ManagePanel();
 $setting = select("setting", "*");
 $paymentreports = select("topicid","idreport","report","paymentreport","select")['idreport'];
 $datatextbotget = select("textbot", "*",null ,null ,"fetchAll");
-$paymentverify = select("PaySetting","ValuePay","NamePay","autoconfirmcart","select")['ValuePay'];
-if ($paymentverify == "offauto") return;
-if (($setting['card_verify_status'] ?? 'offcardverify') === 'oncardverify') return;
+if (!function_exists('rx_pf_ensure_schema') || !rx_pf_ensure_schema()) {
+    error_log('[croncard] payment_fulfillment is unavailable; skipping run without touching payments');
+    return;
+}
 $trustModeActive = select("PaySetting","ValuePay","NamePay","trust_mode_active","select")['ValuePay'];
 $trustModeOn = ($trustModeActive == "on");
 $list_Exceptions_raw = select("PaySetting","ValuePay","NamePay","Exception_auto_cart","select")['ValuePay'];
@@ -56,52 +57,65 @@ foreach ($datatxtbot as $item) {
 }
 list($rxW, $rxN) = function_exists('rx_cron_shard') ? rx_cron_shard() : [0, 1];
 $rxShard = ($rxN > 1) ? " AND MOD(id, $rxN) = $rxW " : "";
-$staleProcessingCutoff = date('Y/m/d H:i:s', time() - 300);
-$staleRecover = $pdo->prepare(
-    "UPDATE Payment_report SET payment_Status = 'waiting' "
-    . "WHERE payment_Status = 'processing' AND (Payment_Method = 'cart to cart' OR Payment_Method = 'arze digital offline') "
-    . "AND (at_updated IS NULL OR at_updated < :cutoff)"
-);
-$staleRecover->bindValue(':cutoff', $staleProcessingCutoff, PDO::PARAM_STR);
-$staleRecover->execute();
-if ($staleRecover->rowCount() > 0 && function_exists('clearSelectCache')) clearSelectCache('Payment_report');
-$stmt = $pdo->prepare("SELECT * FROM Payment_report WHERE payment_Status = 'waiting' AND (Payment_Method = 'cart to cart' OR Payment_Method = 'arze digital offline') AND bottype IS NULL$rxShard ORDER BY id ASC LIMIT 50");
-$stmt->execute();
-while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+$rxCroncardQueue = [];
+$recoverStmt = $pdo->prepare("SELECT id_order FROM Payment_report WHERE payment_Status IN ('processing', 'reconciling') AND (Payment_Method = 'cart to cart' OR Payment_Method = 'arze digital offline') AND bottype IS NULL$rxShard ORDER BY id ASC LIMIT 20");
+$recoverStmt->execute();
+foreach ($recoverStmt->fetchAll(PDO::FETCH_COLUMN) as $recoverOrderId) {
+    $rxCroncardQueue[] = ['id_order' => (string) $recoverOrderId, 'mode' => 'recover'];
+}
+$timecheck = $setting['timeauto_not_verify']*60;
+$paymentverify = select("PaySetting","ValuePay","NamePay","autoconfirmcart","select")['ValuePay'];
+$rxAutoConfirmEnabled = $paymentverify != "offauto" && ($setting['card_verify_status'] ?? 'offcardverify') !== 'oncardverify';
+if ($rxAutoConfirmEnabled) {
+    $stmt = $pdo->prepare("SELECT * FROM Payment_report WHERE payment_Status = 'waiting' AND COALESCE(direct_payment_done, 0) = 0 AND (Payment_Method = 'cart to cart' OR Payment_Method = 'arze digital offline') AND bottype IS NULL AND NOT EXISTS (SELECT 1 FROM payment_fulfillment pf WHERE pf.id_order = Payment_report.id_order AND pf.state IN ('completed', 'manual_review'))$rxShard ORDER BY id ASC LIMIT 50");
+    $stmt->execute();
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        if (function_exists('rx_cron_time_up') && rx_cron_time_up()) break;
+        if($row['at_updated'] == null)continue;
+        $since_start = time() - strtotime($row['at_updated']);
+        if ($since_start >= 3600)continue;
+        $Balance_id = select("user","*","id",$row['id_user'],"select");
+        $userId = (string)$Balance_id['id'];
+        if ($trustModeOn) {
+            if (!in_array($userId, array_map('strval', (array)$list_Trusted)))continue;
+        } else {
+            if (in_array($userId, array_map('strval', (array)$list_Exceptions)))continue;
+            if ($since_start <= $timecheck)continue;
+        }
+        $rxCroncardQueue[] = ['id_order' => (string) $row['id_order'], 'mode' => 'claim', 'balance_before' => $Balance_id['Balance'] ?? 0];
+    }
+}
+foreach ($rxCroncardQueue as $rxJob) {
     if (function_exists('rx_cron_time_up') && rx_cron_time_up()) break;
-    $timecheck = $setting['timeauto_not_verify']*60;
-    if($row['at_updated'] == null)continue;
-    $since_start = time() - strtotime($row['at_updated']);
-    if ($since_start >= 3600)continue;
-    $Payment_report = $row;
-    $Balance_id = select("user","*","id",$Payment_report['id_user'],"select");
-    $balanceBeforeAuto = $Balance_id['Balance'];
-    $userId = (string)$Balance_id['id'];
-    if ($trustModeOn) {
-        if (!in_array($userId, array_map('strval', (array)$list_Trusted)))continue;
-    } else {
-        if (in_array($userId, array_map('strval', (array)$list_Exceptions)))continue;
-        if ($since_start <= $timecheck)continue;
-    }
-    $textbotlang =languagechange('../text.json');
-    if ($Payment_report['payment_Status'] == "paid") {
-        continue;
-    }
-
-
-        $atomicCard = $pdo->prepare(
-            "UPDATE Payment_report SET payment_Status = 'processing', "
-            . "dec_not_confirmed = 'تایید توسط ربات بدون بررسی', "
-            . "at_updated = :at_updated "
-            . "WHERE id_order = :id AND payment_Status = 'waiting'"
-        );
-        $atomicCard->bindValue(':id', $Payment_report['id_order'], PDO::PARAM_STR);
-        $atomicCard->bindValue(':at_updated', date('Y/m/d H:i:s'), PDO::PARAM_STR);
-        $atomicCard->execute();
-        if ($atomicCard->rowCount() < 1) {
+    $rxToken = null;
+    if ($rxJob['mode'] === 'recover') {
+        $recovered = rx_pf_recover($rxJob['id_order']);
+        $recoveredStatus = (string) ($recovered['status'] ?? '');
+        if ($recoveredStatus === 'claimed' || $recoveredStatus === 'reconcile') {
+            $rxToken = (string) $recovered['token'];
+        } elseif ($recoveredStatus !== 'finalized') {
             continue;
         }
-        if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
+    } else {
+        $claim = rx_pf_claim($rxJob['id_order'], [
+            'from' => ['waiting'],
+            'to' => 'processing',
+            'dec_not_confirmed' => 'تایید توسط ربات بدون بررسی',
+            'min_age' => $trustModeOn ? null : $timecheck,
+            'max_age' => 3600,
+        ]);
+        if (($claim['status'] ?? '') !== 'claimed') {
+            continue;
+        }
+        $rxToken = (string) $claim['token'];
+    }
+    $Payment_report = select("Payment_report", "*", "id_order", $rxJob['id_order'], "select", ['cache' => false]);
+    if (!is_array($Payment_report)) {
+        continue;
+    }
+    $Balance_id = select("user","*","id",$Payment_report['id_user'],"select");
+    $balanceBeforeAuto = $rxJob['balance_before'] ?? ($Balance_id['Balance'] ?? 0);
+    $textbotlang =languagechange('../text.json');
         if (function_exists('rx_redis_del') && isset($Payment_report['id_user'])) {
             rx_redis_del('faoxima:paystatus:' . $Payment_report['id_order'] . ':' . (string)$Payment_report['id_user']);
         }
@@ -113,34 +127,13 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         if (!is_array($privateReceiptTargets)) {
             $privateReceiptTargets = [];
         }
-        $directPaymentResult = DirectPayment($Payment_report['id_order'],"../images.jpg");
-        $Payment_report_after = select("Payment_report", "*", "id_order", $Payment_report['id_order'], "select", ['cache' => false]);
-        $directPaymentDone = is_array($Payment_report_after) && intval($Payment_report_after['direct_payment_done'] ?? 0) === 1;
-        $alreadyPaid = is_array($Payment_report_after) && $Payment_report_after['payment_Status'] === 'paid';
-        if (!$alreadyPaid && $directPaymentDone) {
-            $finalizeCard = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'paid' WHERE id_order = :id AND payment_Status = 'processing'");
-            $finalizeCard->bindValue(':id', $Payment_report['id_order'], PDO::PARAM_STR);
-            $finalizeCard->execute();
-            $alreadyPaid = $finalizeCard->rowCount() > 0;
-            if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
-        }
-        if (!$alreadyPaid && !$directPaymentDone && is_array($directPaymentResult) && ($directPaymentResult['retryable'] ?? true) === false) {
-            $terminalCard = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'reject', dec_not_confirmed = :reason WHERE id_order = :id AND payment_Status = 'processing'");
-            $terminalCard->bindValue(':reason', (string)($directPaymentResult['reason'] ?? 'invoice_not_found'), PDO::PARAM_STR);
-            $terminalCard->bindValue(':id', $Payment_report['id_order'], PDO::PARAM_STR);
-            $terminalCard->execute();
-            if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
-            if ($terminalCard->rowCount() > 0) {
+        if ($rxToken !== null) {
+            $rxRun = rx_pf_run_claimed($rxJob['id_order'], $rxToken, "../images.jpg", 'reject');
+            if (empty($rxRun['finalized'])) {
                 continue;
             }
         }
-        if (!$alreadyPaid && !$directPaymentDone) {
-            $rollbackCard = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'waiting' WHERE id_order = :id AND payment_Status = 'processing'");
-            $rollbackCard->bindValue(':id', $Payment_report['id_order'], PDO::PARAM_STR);
-            $rollbackCard->execute();
-            if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
-            continue;
-        }
+        $Payment_report = select("Payment_report", "*", "id_order", $rxJob['id_order'], "select", ['cache' => false]);
         $Balance_id = select("user","*","id",$Payment_report['id_user'],"select");
         $format_price_auto = number_format($Payment_report['price']);
         $rxFmtBalanceBeforeAuto = rxFormatToman($balanceBeforeAuto);

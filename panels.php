@@ -2232,7 +2232,7 @@ class ManagePanel
             );
         }
     }
-    function extend($Method_extend, $new_limit, $time_day, $username, $code_product, $name_panel)
+    function extend($Method_extend, $new_limit, $time_day, $username, $code_product, $name_panel, $rxTarget = null)
     {
         $panel = $this->loadPanel($name_panel, "code_panel");
         $product = select("product", "*", "code_product", $code_product, "select");
@@ -2404,6 +2404,14 @@ class ManagePanel
             $data_limit_last = $data_user['data_limit'] - $data_user['used_traffic'];
             $data_limit_last = $data_limit_last < 0 ? 0 : $data_limit_last;
             $data_limit_new = $data_limit_new + $data_limit_last;
+        }
+        if (is_array($rxTarget)) {
+            if (array_key_exists('data_limit', $rxTarget)) {
+                $data_limit_new = (int) $rxTarget['data_limit'];
+            }
+            if (array_key_exists('expire', $rxTarget)) {
+                $time_new = (int) $rxTarget['expire'];
+            }
         }
         if ($panel['type'] == "remnawave") {
             global $pdo;
@@ -2589,7 +2597,7 @@ class ManagePanel
         }
         return $extend;
     }
-    function extra_volume($username_account, $code_panel, $limit_volume_new)
+    function extra_volume($username_account, $code_panel, $limit_volume_new, $rxTarget = null)
     {
         $panel = $this->loadPanel($code_panel, "code_panel");
         $invoice = select("invoice", "*", "username", $username_account, "select");
@@ -2614,6 +2622,9 @@ class ManagePanel
         }
         $old_limit_volume = $user_info['data_limit'];
         $new_limit = $limit_volume_new == 0 ? 0 : ($limit_volume_new * pow(1024, 3)) + $old_limit_volume;
+        if (is_array($rxTarget) && array_key_exists('data_limit', $rxTarget)) {
+            $new_limit = (int) $rxTarget['data_limit'];
+        }
         $inbound_id = isset($panel['inboundid']) ? $panel['inboundid'] : 1;
         $inbounds = is_string($panel['inbounds']) ? json_decode($panel['inbounds']) : "{}";
         if ($panel['type'] != "WGDashboard") {
@@ -2761,7 +2772,7 @@ class ManagePanel
         }
         return $extra_volume;
     }
-    function extra_time($username_account, $code_panel, $limit_time_new)
+    function extra_time($username_account, $code_panel, $limit_time_new, $rxTarget = null)
     {
         $panel = $this->loadPanel($code_panel, "code_panel");
         $invoice = select("invoice", "*", "username", $username_account, "select");
@@ -2787,6 +2798,9 @@ class ManagePanel
         $old_limit_time = $user_info['expire'];
         $old_limit_time = time() - $old_limit_time > 0 ? time() : $old_limit_time;
         $new_limit = $limit_time_new == 0 ? 0 : $limit_time_new * 86400 + $old_limit_time;
+        if (is_array($rxTarget) && array_key_exists('expire', $rxTarget)) {
+            $new_limit = (int) $rxTarget['expire'];
+        }
         $inbound_id = isset($panel['inboundid']) ? $panel['inboundid'] : 1;
         $inbounds = is_string($panel['inbounds']) ? json_decode($panel['inbounds']) : "{}";
         if ($panel['type'] != "WGDashboard") {

@@ -796,15 +796,21 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             }
         }
     }
+    $dateacc = date('Y/m/d H:i:s');
+    $rxReceiptStmt = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'waiting', dec_not_confirmed = ?, at_updated = ? WHERE id_order = ? AND COALESCE(payment_Status, '') NOT IN ('paid', 'processing', 'reconciling', 'manual_review') AND COALESCE(direct_payment_done, 0) = 0");
+    $rxReceiptStmt->execute(["$text $caption", $dateacc, $PaymentReport['id_order']]);
+    if ($rxReceiptStmt->rowCount() !== 1) {
+        sendmessage($from_id, faoxima_textbot_get('dyn_errors_purchase_or_payment_restart', '❌ خطایی رخ داده است لطفا مراحل خرید یا پرداخت  را مجدد انجام دهید'), $keyboard, 'HTML');
+        return;
+    }
+    if (function_exists('clearSelectCache')) {
+        clearSelectCache('Payment_report');
+    }
     if ($user['Processing_value_tow'] == "getconfigafterpay") {
         sendmessage($from_id, $textbotlang['users']['Balance']['Send-receiptadnsendconfig'], $keyboard, 'HTML');
     } else {
         sendmessage($from_id, $textbotlang['users']['Balance']['Send-receipt'], $keyboard, 'HTML');
     }
-    update("Payment_report", "payment_Status", "waiting", "id_order", $PaymentReport['id_order']);
-    update("Payment_report", "dec_not_confirmed", "$text $caption", "id_order", $PaymentReport['id_order']);
-    $dateacc = date('Y/m/d H:i:s');
-    update("Payment_report", "at_updated", $dateacc, "id_order", $PaymentReport['id_order']);
 } elseif ($user['step'] == "cart_to_cart_user") {
     $format_balance = number_format($user['Balance'], 0);
     if (!$photo or isset($update['message']['media_group_id'])) {
@@ -840,6 +846,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
         ]
     ]);
     $format_price_cart = number_format($PaymentReport['price'], 0);
+    $rxReceiptUserText = null;
     $split_data = explode('|', $PaymentReport['id_invoice']);
     if ($split_data[0] == "getconfigafterpay") {
         $get_invoice = select("invoice", "*", "username", $split_data[1], "select");
@@ -862,7 +869,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             'username' => $username,
             'format_price_cart' => $format_price_cart,
         ]);
-        sendmessage($from_id, $textbotlang['users']['Balance']['Send-receiptadnsendconfig'], $keyboard, 'HTML');
+        $rxReceiptUserText = $textbotlang['users']['Balance']['Send-receiptadnsendconfig'];
     } elseif ($split_data[0] == "getextenduser") {
         $partsdic = explode("%", $split_data[1]);
         $usernamepanel = $partsdic[0];
@@ -925,7 +932,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             'username' => $username,
             'format_price_cart' => $format_price_cart,
         ]);
-        sendmessage($from_id, faoxima_textbot_get('dyn_cart_receipt_extend_sent', '🚀 رسید شما ارسال و پس از بررسی سرویس شما تمدید خواهد شد'), $keyboard, 'HTML');
+        $rxReceiptUserText = faoxima_textbot_get('dyn_cart_receipt_extend_sent', '🚀 رسید شما ارسال و پس از بررسی سرویس شما تمدید خواهد شد');
     } elseif ($split_data[0] == "getextravolumeuser") {
         $partsdic = explode("%", $split_data[1]);
         $usernamepanel = $partsdic[0];
@@ -940,7 +947,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             'username' => $username,
             'format_price_cart' => $format_price_cart,
         ]);
-        sendmessage($from_id, faoxima_textbot_get('dyn_cart_receipt_extra_volume_sent', '🚀 رسید شما ارسال و پس از بررسی  به سرویس شما حجم اضافه خواهد شد.'), $keyboard, 'HTML');
+        $rxReceiptUserText = faoxima_textbot_get('dyn_cart_receipt_extra_volume_sent', '🚀 رسید شما ارسال و پس از بررسی  به سرویس شما حجم اضافه خواهد شد.');
     } elseif ($split_data[0] == "getextratimeuser") {
         $partsdic = explode("%", $split_data[1]);
         $usernamepanel = $partsdic[0];
@@ -955,7 +962,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             'username' => $username,
             'format_price_cart' => $format_price_cart,
         ]);
-        sendmessage($from_id, faoxima_textbot_get('dyn_cart_receipt_extra_time_sent', '🚀 رسید شما ارسال و پس از بررسی به سرویس شما زمان اضافه خواهد شد'), $keyboard, 'HTML');
+        $rxReceiptUserText = faoxima_textbot_get('dyn_cart_receipt_extra_time_sent', '🚀 رسید شما ارسال و پس از بررسی به سرویس شما زمان اضافه خواهد شد');
     } else {
 
         $textsendrasid = faoxima_render_text(faoxima_textbot_get('dyn_admin_notify_cart_wallet_topup_tpl', "⭕️ یک پرداخت جدید انجام شده است .\nافزایش موجودی\n👤 نام اکانت کاربر : {first_name}\n👤 شناسه کاربر:  <a href = \"tg://user?id={from_id}\">{from_id}</a>\n💸 موجودی فعلی کاربر : {format_balance} تومان\n🛒 کد پیگیری پرداخت: {order_id}\n⚜️ نام کاربری: @{username}\n💸 مبلغ پرداختی: {format_price_cart} تومان\n\n✍️ در صورت درست بودن رسید پرداخت را تایید نمایید."), [
@@ -966,7 +973,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             'username' => $username,
             'format_price_cart' => $format_price_cart,
         ]);
-        sendmessage($from_id, $textbotlang['users']['Balance']['Send-receipt'], $keyboard, 'HTML');
+        $rxReceiptUserText = $textbotlang['users']['Balance']['Send-receipt'];
     }
     $_card_fid = (string)($PaymentReport['card_photo_file_id'] ?? '');
     $_receipt_route = rxReceiptDeliveryRoute();
@@ -1052,6 +1059,9 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     }
     if (function_exists('clearSelectCache')) {
         clearSelectCache('Payment_report');
+    }
+    if ($rxReceiptUserText !== null) {
+        sendmessage($from_id, $rxReceiptUserText, $keyboard, 'HTML');
     }
     $_verifyReceiptCard = select('Payment_report', 'card_photo_file_id', 'id_order', $PaymentReport['id_order'], 'select', ['cache' => false]);
     if (empty($_verifyReceiptCard['card_photo_file_id']) && function_exists('rx_log_event')) {
