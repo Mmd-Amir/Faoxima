@@ -731,7 +731,6 @@ $adminPanelsMenu = rx_kb_encode([
         rx_kb_style(['text' => $textbotlang['Admin']['btnkeyboardadmin']['managementpanel'], 'callback_data' => 'admin_managepanel'], 'admin_managepanel', $_rx_adm_styles),
         rx_kb_style(['text' => $textbotlang['Admin']['btnkeyboardadmin']['addpanel'], 'callback_data' => 'admin_addpanel'], 'admin_addpanel', $_rx_adm_styles)
     ],
-    [rx_kb_style(['text' => "🛠 قابلیت های پنل", 'callback_data' => 'admin_features'], 'admin_features', $_rx_adm_styles)],
     [
         rx_kb_style(['text' => "⏳ قیمت سریع زمان", 'callback_data' => 'admin_timeprice'], 'admin_timeprice', $_rx_adm_styles),
         rx_kb_style(['text' => "🔋 قیمت سریع حجم", 'callback_data' => 'admin_volprice'], 'admin_volprice', $_rx_adm_styles)
