@@ -179,6 +179,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     }
     $dataoutput = $rxTestProvision['output'];
     $username_ac = (string) ($rxTestProvision['username'] ?? $username_ac);
+    rx_notify_username_renamed($from_id, $dataoutput, $marzban_list_get);
     $output_config_link = "";
     $config = "";
     $output_config_link = rxShouldShowConnectionLink($marzban_list_get, $dataoutput['file_ext'] ?? null) ? rxResolveConnectionLink($marzban_list_get, $dataoutput['subscription_url'], $dataoutput['file_ext'] ?? null) : "";
@@ -1871,6 +1872,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         return;
     }
     $username_ac = rx_adopt_created_username($dataoutput, $username_ac, $randomString);
+    rx_notify_username_renamed($from_id, $dataoutput, $marzban_list_get);
     update("invoice", "Status", "active", "username", $username_ac);
     $output_config_link = "";
     $config = "";
@@ -2622,6 +2624,7 @@ $textonebuy
             return;
         }
         $username_acc = rx_adopt_created_username($dataoutput, $username_acc);
+        rx_notify_username_renamed($from_id, $dataoutput, $marzban_list_get);
         $invoiceIpLimit = (string)(isset($info_product['ip_limit']) ? intval($info_product['ip_limit']) : 0);
         $invoiceHwidLimit = (string)(isset($info_product['hwid_limit']) ? intval($info_product['hwid_limit']) : 0);
         $invoiceSymbolicLimitEnabled = (string)($info_product['symbolic_limit_enabled'] ?? '0');

@@ -491,6 +491,7 @@ final class PurchaseHandler extends BaseHandler
         if (!empty($remote['renamed_from'])) {
             $usernameAc = rx_adopt_created_username($remote, $usernameAc, $orderId);
             $usernameWasRenamed = true;
+            rx_notify_username_renamed($this->user['id'], $remote, $panel);
         }
 
         if ($discountCode !== '') {

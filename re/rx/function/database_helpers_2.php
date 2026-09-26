@@ -2853,6 +2853,7 @@ function DirectPayment($order_id, $image = 'images.jpg')
             if (!empty($dataoutput['renamed_from'])) {
                 $username_ac = rx_adopt_created_username($dataoutput, $username_ac, $get_invoice['id_invoice'] ?? null);
                 try { update("Payment_report", "id_invoice", "getconfigafterpay|" . $username_ac, "id_order", $order_id); } catch (Throwable $__e2) {}
+                rx_notify_username_renamed($Balance_id['id'], $dataoutput, $marzban_list_get);
             }
         }
 

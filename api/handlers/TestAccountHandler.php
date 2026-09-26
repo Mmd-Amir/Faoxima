@@ -211,6 +211,7 @@ final class TestAccountHandler extends BaseHandler
 
         $dataoutput = is_array($provision['output']) ? $provision['output'] : [];
         $usernameAc = (string)($provision['username'] ?? $usernameAc);
+        rx_notify_username_renamed($user['id'], $dataoutput, $panel);
 
         $configList = is_array($dataoutput['configs'] ?? null) ? $dataoutput['configs'] : [];
         $subLink = ($panel['sublink'] ?? '') === 'onsublink' ? (string)($dataoutput['subscription_url'] ?? '') : '';

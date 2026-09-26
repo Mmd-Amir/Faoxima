@@ -118,7 +118,8 @@ function rebeccaDecodeResponse(array $response)
         }
         return [
             'status' => false,
-            'msg' => $message
+            'msg' => $message,
+            'http_code' => (int) $statusCode
         ];
     }
 

@@ -58,7 +58,7 @@ if (!function_exists('rx_panel_error_hint_fa')) {
     {
         $text = (string) $text;
         $patterns = [
-            '/already\s+exist|duplicate|\bexists\b/i'                      => 'نام کاربری تکراری است؛ این یوزرنیم از قبل روی پنل وجود دارد',
+            '/already\s+exist|duplicate|\bexists\b|تکراری/iu'              => 'نام کاربری تکراری است؛ این یوزرنیم از قبل روی پنل وجود دارد',
             '/timed?\s*out|timeout/i'                                     => 'پنل در زمان مقرر پاسخ نداد (Timeout)',
             '/could not resolve host|name or service not known/i'         => 'دامنهٔ پنل پیدا نشد (خطای DNS)',
             '/connection refused|failed to connect|couldn\'t connect/i'   => 'اتصال به پنل رد شد؛ پنل خاموش است یا پورت بسته است',
@@ -181,6 +181,34 @@ if (!function_exists('rx_adopt_created_username')) {
     }
 }
 
+if (!function_exists('rx_notify_username_renamed')) {
+    function rx_notify_username_renamed($chatId, $output, $panel = null)
+    {
+        if (!is_array($output) || empty($output['renamed_from']) || empty($output['username']) || !function_exists('sendmessage')) {
+            return;
+        }
+        $old = (string) $output['renamed_from'];
+        $new = (string) $output['username'];
+        if (is_array($panel) && function_exists('guardDisplayUsername')) {
+            $old = guardDisplayUsername($old, $panel);
+            $new = guardDisplayUsername($new, $panel);
+        }
+        $template = "⚠️ نام کاربری «<code>{old}</code>» از قبل روی پنل وجود داشت؛ سرویس شما با نام کاربری «<code>{new}</code>» ساخته شد.";
+        if (function_exists('faoxima_textbot_get')) {
+            $template = faoxima_textbot_get('dyn_username_renamed_notice', $template);
+        }
+        $text = strtr($template, [
+            '{old}' => htmlspecialchars($old, ENT_QUOTES, 'UTF-8'),
+            '{new}' => htmlspecialchars($new, ENT_QUOTES, 'UTF-8'),
+        ]);
+        try {
+            sendmessage($chatId, $text, null, 'HTML');
+        } catch (Throwable $e) {
+            error_log('[rx_notify_username_renamed] ' . $e->getMessage());
+        }
+    }
+}
+
 class ManagePanel
 {
     public $pdo, $domainhosts, $name_panel;
@@ -246,6 +274,9 @@ class ManagePanel
         if (!is_array($output) || !empty($output['username'])) {
             return false;
         }
+        if ((int) ($output['http_code'] ?? 0) === 409) {
+            return true;
+        }
         $msg = $output['msg'] ?? '';
         if (is_scalar($msg) && preg_match('/^\s*409\s*$/', (string) $msg)) {
             return true;
@@ -254,7 +285,7 @@ class ManagePanel
         if (isset($output['detail'])) {
             $text .= ' ' . (is_scalar($output['detail']) ? (string) $output['detail'] : (string) json_encode($output['detail'], JSON_UNESCAPED_UNICODE));
         }
-        return (bool) preg_match('/already\s+exist|duplicate|\bexists\b/i', $text);
+        return (bool) preg_match('/already\s+exist|duplicate|\bexists\b|تکراری/iu', $text);
     }
 
     private function supportsUsernameRename($name_panel): bool
@@ -511,7 +542,8 @@ class ManagePanel
             if ($createResponse['status'] === false) {
                 return array(
                     'status' => 'Unsuccessful',
-                    'msg' => $createResponse['msg']
+                    'msg' => $createResponse['msg'],
+                    'http_code' => $createResponse['http_code'] ?? null
                 );
             }
             $subscriptionUrl = '';
@@ -738,6 +770,7 @@ class ManagePanel
             if ($createResponse['status'] === false) {
                 $Output['status'] = 'Unsuccessful';
                 $Output['msg'] = $createResponse['msg'];
+                $Output['http_code'] = $createResponse['http_code'] ?? null;
             } else {
                 $createdData = $createResponse['data'];
                 $subscriptionUrl = is_array($createdData) ? ($createdData['subscription_url'] ?? '') : '';
