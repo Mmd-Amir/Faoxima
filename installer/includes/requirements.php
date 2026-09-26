@@ -95,20 +95,6 @@ function rx_check_project_files(string $rootDirectory): array
     return $results;
 }
 
-function rx_check_migration_isolation(): array
-{
-    $disabled = array_filter(array_map('trim', explode(',', (string) ini_get('disable_functions'))));
-    $phpBinary = function_exists('rx_find_php_binary') ? rx_find_php_binary() : null;
-    $ok = function_exists('proc_open') && !in_array('proc_open', $disabled, true) && $phpBinary !== null;
-    return [
-        'id' => 'migration_isolation',
-        'label' => 'اجرای ایزوله Migration',
-        'detail' => $ok ? 'PHP اجرایی و proc_open در دسترس است' : 'PHP اجرایی یا تابع proc_open در دسترس نیست',
-        'ok' => $ok,
-        'critical' => true,
-    ];
-}
-
 function rx_project_subdirectory_depth(string $rootDirectory): array
 {
     $scriptDir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
@@ -157,7 +143,6 @@ function rx_run_requirement_checks(string $rootDirectory): array
     $checks[] = rx_check_php_version();
     $checks = array_merge($checks, rx_check_extensions());
     $checks = array_merge($checks, rx_check_project_files($rootDirectory));
-    $checks[] = rx_check_migration_isolation();
     $checks = array_merge($checks, rx_check_writable_paths($rootDirectory));
     return $checks;
 }

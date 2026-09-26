@@ -135,13 +135,19 @@ if (!function_exists('rx_cleanup_installer')) {
 
         @touch($flagFile);
 
-        if ($trigger === 'installer_shutdown') {
-            $phpBin = PHP_BINARY && is_executable(PHP_BINARY) ? PHP_BINARY : 'php';
+        $phpBin = PHP_BINARY && is_executable(PHP_BINARY) ? PHP_BINARY : '';
+        $isCliBinary = $phpBin !== '' && preg_match('/^php(\d+(\.\d+)*)?(\.exe)?$/i', basename($phpBin));
+        if ($trigger === 'installer_shutdown' && $isCliBinary) {
             $cleanCode = 'sleep(1); @rmdir(' . var_export($installerDir, true) . ');';
             $cmdStr = escapeshellarg($phpBin) . ' -r ' . escapeshellarg($cleanCode);
             if (strncasecmp(PHP_OS, 'WIN', 3) === 0) {
-                @pclose(@popen('start /B ' . $cmdStr, 'r'));
-            } else {
+                if (function_exists('popen') && function_exists('pclose')) {
+                    $backgroundProcess = @popen('start /B ' . $cmdStr, 'r');
+                    if (is_resource($backgroundProcess)) {
+                        @pclose($backgroundProcess);
+                    }
+                }
+            } elseif (function_exists('exec')) {
                 @exec($cmdStr . ' > /dev/null 2>&1 &');
             }
         }
@@ -176,55 +182,74 @@ function rx_get_contents(string $url)
     return $decoded;
 }
 
-function rx_telegram_request(string $token, string $method, array $parameters = []): array
+function rx_telegram_request(string $token, string $method, array $parameters = [], int $timeout = 15): array
 {
     $url = 'https://api.telegram.org/bot' . $token . '/' . $method;
-    $maxRateLimitRetries = 2;
+    $timeout = max(3, min(20, $timeout));
 
-    for ($attempt = 0; $attempt <= $maxRateLimitRetries; $attempt++) {
+    for ($attempt = 0; $attempt <= 1; $attempt++) {
         $ch = curl_init($url);
         if ($ch === false) {
-            return ['ok' => false, 'description' => 'امکان آغاز ارتباط با تلگرام وجود ندارد.'];
+            return ['ok' => false, 'transport_error' => true, 'description' => 'امکان آغاز ارتباط با تلگرام وجود ندارد.'];
         }
 
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => http_build_query($parameters),
-            CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_TIMEOUT => 30,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => $timeout,
             CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_HTTPHEADER => ['Accept: application/json'],
         ]);
 
         $body = curl_exec($ch);
+        $curlErrno = curl_errno($ch);
         $curlError = curl_error($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         curl_close($ch);
 
         if ($body === false) {
-            return ['ok' => false, 'description' => $curlError !== '' ? $curlError : 'پاسخی از تلگرام دریافت نشد.'];
+            $timedOut = $curlErrno === 28;
+            return [
+                'ok' => false,
+                'transport_error' => true,
+                'timed_out' => $timedOut,
+                'description' => $timedOut
+                    ? 'مهلت پاسخ سرور تلگرام به پایان رسید.'
+                    : ($curlError !== '' ? $curlError : 'پاسخی از تلگرام دریافت نشد.'),
+            ];
         }
 
         $decoded = json_decode($body, true);
         if (!is_array($decoded)) {
-            return ['ok' => false, 'description' => 'پاسخ تلگرام معتبر نبود.', 'status' => $status];
+            return ['ok' => false, 'transport_error' => true, 'description' => 'پاسخ تلگرام معتبر نبود. HTTP ' . $status, 'status' => $status];
         }
 
         $isRateLimited = ((int) ($decoded['error_code'] ?? 0) === 429) || $status === 429;
-        if (!$isRateLimited || $attempt >= $maxRateLimitRetries) {
+        $retryAfter = (int) ($decoded['parameters']['retry_after'] ?? 1);
+        if (!$isRateLimited || $attempt >= 1 || $retryAfter > 3) {
             return $decoded;
         }
 
-        $retryAfter = (int) ($decoded['parameters']['retry_after'] ?? 1);
-        if ($retryAfter < 1) {
-            $retryAfter = 1;
-        }
-
-        sleep($retryAfter);
+        sleep(max(1, $retryAfter));
     }
 
-    return ['ok' => false, 'description' => 'محدودیت موقت تلگرام پس از چند تلاش برطرف نشد.'];
+    return ['ok' => false, 'description' => 'محدودیت موقت تلگرام برطرف نشد.'];
+}
+
+function rx_telegram_error_description(array $response, array $secrets = []): string
+{
+    $description = trim((string) ($response['description'] ?? ''));
+    if ($description === '') {
+        $description = 'پاسخ ناموفق بدون توضیح از تلگرام دریافت شد.';
+    }
+    $errorCode = (int) ($response['error_code'] ?? 0);
+    if ($errorCode > 0) {
+        $description .= ' (کد ' . $errorCode . ')';
+    }
+    return mb_substr(rx_safe_error_message($description, $secrets), 0, 300, 'UTF-8');
 }
 
 function rx_telegram_webhook_secret(string $rootDirectory, string $botToken): ?string
@@ -276,47 +301,52 @@ function rx_installation_lock_path(string $rootDirectory): string
     return rtrim($rootDirectory, '/\\') . DIRECTORY_SEPARATOR . 'logs' . DIRECTORY_SEPARATOR . '.installer_running';
 }
 
-function rx_acquire_installation_lock(string $rootDirectory, string $owner, int $staleAfter = 1800): bool
+function rx_acquire_installation_lock(string $rootDirectory): array
 {
     $logsDirectory = rtrim($rootDirectory, '/\\') . DIRECTORY_SEPARATOR . 'logs';
     if (!is_dir($logsDirectory) && !@mkdir($logsDirectory, 0775, true) && !is_dir($logsDirectory)) {
-        return false;
+        return ['acquired' => false, 'busy' => false, 'handle' => null];
     }
-    $lockPath = rx_installation_lock_path($rootDirectory);
-    clearstatcache(true, $lockPath);
-    if (is_file($lockPath)) {
-        $current = json_decode((string) @file_get_contents($lockPath), true);
-        $currentOwner = is_array($current) ? (string) ($current['owner'] ?? '') : '';
-        $modifiedAt = (int) @filemtime($lockPath);
-        if ($currentOwner !== '' && hash_equals($currentOwner, $owner)) {
-            return @file_put_contents($lockPath, json_encode(['owner' => $owner, 'started_at' => time()]), LOCK_EX) !== false;
-        }
-        if ($modifiedAt > 0 && (time() - $modifiedAt) < $staleAfter) {
-            return false;
-        }
-        @unlink($lockPath);
-    }
-    $handle = @fopen($lockPath, 'x');
+    $handle = @fopen(rx_installation_lock_path($rootDirectory), 'c');
     if (!is_resource($handle)) {
-        return false;
+        return ['acquired' => false, 'busy' => false, 'handle' => null];
     }
-    $written = fwrite($handle, json_encode(['owner' => $owner, 'started_at' => time()]));
-    fclose($handle);
-    @chmod($lockPath, 0600);
-    return $written !== false;
+    $wouldBlock = 0;
+    if (!@flock($handle, LOCK_EX | LOCK_NB, $wouldBlock)) {
+        fclose($handle);
+        return ['acquired' => false, 'busy' => (bool) $wouldBlock, 'handle' => null];
+    }
+    @ftruncate($handle, 0);
+    @fwrite($handle, (string) time());
+    @fflush($handle);
+    return ['acquired' => true, 'busy' => false, 'handle' => $handle];
 }
 
-function rx_release_installation_lock(string $rootDirectory, string $owner): void
+function rx_release_installation_lock($handle): void
+{
+    if (is_resource($handle)) {
+        @flock($handle, LOCK_UN);
+        @fclose($handle);
+    }
+}
+
+function rx_installation_lock_is_busy(string $rootDirectory): bool
 {
     $lockPath = rx_installation_lock_path($rootDirectory);
     if (!is_file($lockPath)) {
-        return;
+        return false;
     }
-    $current = json_decode((string) @file_get_contents($lockPath), true);
-    $currentOwner = is_array($current) ? (string) ($current['owner'] ?? '') : '';
-    if ($currentOwner !== '' && hash_equals($currentOwner, $owner)) {
-        @unlink($lockPath);
+    $handle = @fopen($lockPath, 'r');
+    if (!is_resource($handle)) {
+        return false;
     }
+    $wouldBlock = 0;
+    $locked = @flock($handle, LOCK_SH | LOCK_NB, $wouldBlock);
+    if ($locked) {
+        @flock($handle, LOCK_UN);
+    }
+    fclose($handle);
+    return !$locked && (bool) $wouldBlock;
 }
 
 function rx_defer_installer_cleanup(string $rootDirectory): bool
@@ -505,23 +535,6 @@ function rx_write_config_atomically(string $configPath, string $configSource): a
     return ['ok' => true, 'message' => ''];
 }
 
-function rx_find_php_binary(): ?string
-{
-    $suffix = DIRECTORY_SEPARATOR === '\\' ? '.exe' : '';
-    $candidates = [
-        PHP_BINARY,
-        rtrim(PHP_BINDIR, '/\\') . DIRECTORY_SEPARATOR . 'php' . $suffix,
-        '/usr/local/bin/php',
-        '/usr/bin/php',
-    ];
-    foreach (array_unique($candidates) as $candidate) {
-        if (is_string($candidate) && $candidate !== '' && is_file($candidate) && is_executable($candidate)) {
-            return $candidate;
-        }
-    }
-    return null;
-}
-
 function rx_format_config_value($value, string $quoteChar = "'"): string
 {
     if ($value === null) {
@@ -544,13 +557,71 @@ function rx_escape_html($value): string
     return htmlspecialchars((string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 }
 
-function rx_table_migrations_verify_ready(array $dbInfo, int $retries = 5, int $delaySeconds = 2, ?array &$diagnostics = null): bool
+
+function rx_database_connect(array $dbInfo): PDO
+{
+    return new PDO(
+        'mysql:host=' . $dbInfo['host'] . ';dbname=' . $dbInfo['name'] . ';charset=utf8mb4',
+        $dbInfo['username'],
+        $dbInfo['password'],
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+            PDO::ATTR_TIMEOUT => 5,
+        ]
+    );
+}
+
+function rx_database_error_code(Throwable $error): int
+{
+    if (preg_match('/SQLSTATE\[[^\]]*\]\s*\[(\d+)\]/', $error->getMessage(), $matches)) {
+        return (int) $matches[1];
+    }
+    if ($error instanceof PDOException && is_array($error->errorInfo) && isset($error->errorInfo[1])) {
+        return (int) $error->errorInfo[1];
+    }
+    return is_numeric($error->getCode()) ? (int) $error->getCode() : 0;
+}
+
+function rx_database_error_message(Throwable $error): string
+{
+    $code = rx_database_error_code($error);
+    switch ($code) {
+        case 1045:
+            $message = 'نام کاربری یا رمز عبور دیتابیس اشتباه است. در cPanel نام کاربری کامل را همراه با پیشوند حساب (مانند cpuser_dbuser) وارد کنید.';
+            break;
+        case 1044:
+            $message = 'کاربر دیتابیس به این دیتابیس دسترسی ندارد. نام کامل دیتابیس (همراه با پیشوند حساب) را بررسی کنید و در بخش MySQL Databases هاست، کاربر را با ALL PRIVILEGES به دیتابیس اختصاص دهید.';
+            break;
+        case 1049:
+            $message = 'دیتابیسی با این نام یافت نشد. دیتابیس را ابتدا در cPanel بسازید و نام کامل آن را همراه با پیشوند حساب وارد کنید.';
+            break;
+        case 1040:
+        case 1203:
+            $message = 'تعداد اتصال‌های همزمان دیتابیس به حداکثر رسیده است. چند لحظه بعد دوباره تلاش کنید.';
+            break;
+        case 1142:
+        case 1227:
+        case 1370:
+            $message = 'کاربر دیتابیس سطح دسترسی کافی ندارد. در cPanel برای این کاربر ALL PRIVILEGES را فعال کنید.';
+            break;
+        case 2002:
+        case 2003:
+        case 2005:
+        case 2006:
+        case 2013:
+            $message = 'اتصال به میزبان دیتابیس برقرار نشد یا مهلت آن به پایان رسید. در هاست cPanel مقدار میزبان معمولاً localhost است.';
+            break;
+        default:
+            $message = 'اتصال به دیتابیس برقرار نشد. اطلاعات ورود و سطح دسترسی کاربر دیتابیس را بررسی کنید.';
+    }
+    return $code > 0 ? $message . ' (کد خطا: ' . $code . ')' : $message;
+}
+
+function rx_table_migrations_verify_ready(array $dbInfo, ?array &$diagnostics = null): bool
 {
     $diagnostics = ['missing_tables' => [], 'missing_columns' => [], 'charset_columns' => [], 'database_error' => ''];
-    if (!class_exists('mysqli')) {
-        $diagnostics['database_error'] = 'mysqli extension is unavailable';
-        return false;
-    }
     $requiredTables = [
         'user', 'setting', 'channels', 'marzban_panel', 'product', 'invoice',
         'Payment_report', 'textbot', 'shopSetting', 'support_message', 'crypto_wallets',
@@ -570,224 +641,178 @@ function rx_table_migrations_verify_ready(array $dbInfo, int $retries = 5, int $
         ['support_message', 'seen_by_admin'],
         ['crypto_wallets', 'verification_mode'],
     ];
-    for ($attempt = 1; $attempt <= $retries; $attempt++) {
-        try {
-            $connect = @new mysqli($dbInfo['host'], $dbInfo['username'], $dbInfo['password'], $dbInfo['name']);
-        } catch (Throwable $error) {
-            $diagnostics['database_error'] = $error->getMessage();
-            $connect = null;
+    try {
+        $pdo = rx_database_connect($dbInfo);
+        $requiredTablesLower = array_map('strtolower', $requiredTables);
+        $tablePlaceholders = implode(',', array_fill(0, count($requiredTables), '?'));
+        $tableQuery = $pdo->prepare("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' AND LOWER(TABLE_NAME) IN ({$tablePlaceholders})");
+        $tableQuery->execute($requiredTablesLower);
+        $foundTables = array_map('strtolower', array_map('strval', $tableQuery->fetchAll(PDO::FETCH_COLUMN)));
+        $diagnostics['missing_tables'] = array_values(array_filter($requiredTables, static function ($tableName) use ($foundTables) {
+            return !in_array(strtolower($tableName), $foundTables, true);
+        }));
+
+        $columnConditions = [];
+        $columnParameters = [];
+        foreach ($requiredColumns as $column) {
+            $columnConditions[] = '(LOWER(TABLE_NAME) = ? AND LOWER(COLUMN_NAME) = ?)';
+            $columnParameters[] = strtolower($column[0]);
+            $columnParameters[] = strtolower($column[1]);
         }
-        if ($connect instanceof mysqli && !$connect->connect_error) {
-            $connect->set_charset('utf8mb4');
-            $tableNames = implode(',', array_map(static function ($tableName) use ($connect) {
-                return "'" . $connect->real_escape_string($tableName) . "'";
-            }, $requiredTables));
-            $tableResult = $connect->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME IN ({$tableNames})");
-            $foundTables = [];
-            if ($tableResult) {
-                while ($row = $tableResult->fetch_assoc()) {
-                    $foundTables[] = (string) $row['TABLE_NAME'];
-                }
-            }
-            $diagnostics['missing_tables'] = array_values(array_diff($requiredTables, $foundTables));
-            $columnConditions = array_map(static function ($column) use ($connect) {
-                $tableName = $connect->real_escape_string($column[0]);
-                $columnName = $connect->real_escape_string($column[1]);
-                return "(TABLE_NAME = '{$tableName}' AND COLUMN_NAME = '{$columnName}')";
-            }, $requiredColumns);
-            $columnResult = $connect->query("SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND (" . implode(' OR ', $columnConditions) . ')');
-            $foundColumns = [];
-            if ($columnResult) {
-                while ($row = $columnResult->fetch_assoc()) {
-                    $foundColumns[] = (string) $row['TABLE_NAME'] . '.' . (string) $row['COLUMN_NAME'];
-                }
-            }
-            $expectedColumns = array_map(static function ($column) {
-                return $column[0] . '.' . $column[1];
-            }, $requiredColumns);
-            $diagnostics['missing_columns'] = array_values(array_diff($expectedColumns, $foundColumns));
-            $charsetResult = $connect->query("SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_SET_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ({$tableNames}) AND CHARACTER_SET_NAME IS NOT NULL AND CHARACTER_SET_NAME <> 'utf8mb4'");
-            $diagnostics['charset_columns'] = [];
-            if ($charsetResult) {
-                while ($row = $charsetResult->fetch_assoc()) {
-                    $diagnostics['charset_columns'][] = (string) $row['TABLE_NAME'] . '.' . (string) $row['COLUMN_NAME'] . ':' . (string) $row['CHARACTER_SET_NAME'];
-                }
-            }
-            if (!$tableResult || !$columnResult || !$charsetResult) {
-                $diagnostics['database_error'] = $connect->error;
-            } else {
-                $diagnostics['database_error'] = '';
-            }
-            $ready = empty($diagnostics['missing_tables']) && empty($diagnostics['missing_columns']) && empty($diagnostics['charset_columns']) && $diagnostics['database_error'] === '';
-            $connect->close();
-            if ($ready) {
-                return true;
-            }
-        } elseif ($connect instanceof mysqli) {
-            $diagnostics['database_error'] = $connect->connect_error;
+        $columnQuery = $pdo->prepare('SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND (' . implode(' OR ', $columnConditions) . ')');
+        $columnQuery->execute($columnParameters);
+        $foundColumns = [];
+        foreach ($columnQuery->fetchAll() as $row) {
+            $foundColumns[] = strtolower((string) $row['TABLE_NAME'] . '.' . (string) $row['COLUMN_NAME']);
         }
-        if ($attempt < $retries) {
-            sleep($delaySeconds);
+        $expectedColumns = array_map(static function ($column) {
+            return $column[0] . '.' . $column[1];
+        }, $requiredColumns);
+        $diagnostics['missing_columns'] = array_values(array_filter($expectedColumns, static function ($columnName) use ($foundColumns) {
+            return !in_array(strtolower($columnName), $foundColumns, true);
+        }));
+
+        $charsetQuery = $pdo->prepare("SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_SET_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND LOWER(TABLE_NAME) IN ({$tablePlaceholders}) AND CHARACTER_SET_NAME IS NOT NULL AND CHARACTER_SET_NAME <> 'utf8mb4'");
+        $charsetQuery->execute($requiredTablesLower);
+        foreach ($charsetQuery->fetchAll() as $row) {
+            $diagnostics['charset_columns'][] = (string) $row['TABLE_NAME'] . '.' . (string) $row['COLUMN_NAME'] . ':' . (string) $row['CHARACTER_SET_NAME'];
+        }
+    } catch (Throwable $error) {
+        $diagnostics['database_error'] = $error->getMessage();
+        return false;
+    }
+    return empty($diagnostics['missing_tables']) && empty($diagnostics['missing_columns']) && empty($diagnostics['charset_columns']);
+}
+
+function rx_execute_table_file(string $installerTableRunFile): array
+{
+    global $dbname, $usernamedb, $passworddb, $dbhost, $redis_host, $redis_port, $redis_password, $redis_database;
+    global $connect, $pdo, $dsn, $options, $APIKEY, $adminnumber, $domainhosts, $usernamebot;
+    global $telegramCurlTimeout, $telegramStrictIpValidation;
+
+    $installerTableRunDirectory = getcwd();
+    $installerTableRunReporting = error_reporting();
+    $installerTableRunErrorHandler = set_error_handler(static function (): bool {
+        return false;
+    });
+    restore_error_handler();
+    $installerTableRunExceptionHandler = set_exception_handler(null);
+    set_exception_handler($installerTableRunExceptionHandler);
+    $installerTableRunBufferLevel = ob_get_level();
+    $installerTableRunResult = ['ok' => true, 'message' => ''];
+    ob_start();
+    try {
+        include $installerTableRunFile;
+    } catch (Throwable $installerTableRunError) {
+        $installerTableRunResult = ['ok' => false, 'message' => $installerTableRunError->getMessage()];
+    } finally {
+        while (ob_get_level() > $installerTableRunBufferLevel) {
+            ob_end_clean();
+        }
+        set_error_handler($installerTableRunErrorHandler);
+        set_exception_handler($installerTableRunExceptionHandler);
+        error_reporting($installerTableRunReporting);
+        if ($installerTableRunDirectory !== false) {
+            @chdir($installerTableRunDirectory);
         }
     }
-    return false;
+    return $installerTableRunResult;
 }
 
 function rx_run_table_migrations(string $rootDirectory, array $dbInfo): array
 {
-    $tableFile = $rootDirectory . 'table.php';
-    if (!file_exists($tableFile)) {
+    $tableFile = rtrim($rootDirectory, '/\\') . DIRECTORY_SEPARATOR . 'table.php';
+    if (!is_file($tableFile)) {
         return ['ok' => false, 'message' => 'فایل table.php یافت نشد.'];
     }
-    if (!function_exists('proc_open')) {
-        return ['ok' => false, 'message' => 'تابع proc_open برای اجرای ایزوله migration در دسترس نیست.'];
-    }
-    $runner = __DIR__ . DIRECTORY_SEPARATOR . 'migration_runner.php';
-    if (!is_file($runner)) {
-        return ['ok' => false, 'message' => 'اجراکننده ایزوله migration یافت نشد.'];
-    }
-    $phpBinary = rx_find_php_binary();
-    if ($phpBinary === null) {
-        return ['ok' => false, 'message' => 'فایل اجرایی PHP برای اجرای migration یافت نشد.'];
-    }
-    $descriptors = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
-    $runnerKey = bin2hex(random_bytes(24));
-    $environment = array_merge(is_array(getenv()) ? getenv() : [], [
-        'RX_INSTALL_ROOT' => rtrim($rootDirectory, '/\\'),
-        'RX_INSTALL_RUNNER_KEY' => $runnerKey,
-    ]);
-    $process = @proc_open([$phpBinary, $runner], $descriptors, $pipes, rtrim($rootDirectory, '/\\'), $environment);
-    if (!is_resource($process)) {
-        return ['ok' => false, 'message' => 'فرآیند ایزوله migration آغاز نشد.'];
-    }
-    $stdout = stream_get_contents($pipes[1]);
-    $stderr = stream_get_contents($pipes[2]);
-    fclose($pipes[1]);
-    fclose($pipes[2]);
-    $exitCode = proc_close($process);
-    $combined = (string) $stdout . "\n" . (string) $stderr;
-    $result = null;
-    if (preg_match_all('/RX_INSTALL_RESULT:([^\r\n]+)/', $combined, $matches) && !empty($matches[1])) {
-        $encoded = end($matches[1]);
-        $decoded = json_decode(base64_decode($encoded, true) ?: '', true);
-        if (is_array($decoded)) {
-            $result = $decoded;
+    $executionError = '';
+    $diagnostics = [];
+    for ($pass = 1; $pass <= 2; $pass++) {
+        $execution = rx_execute_table_file($tableFile);
+        if (!$execution['ok']) {
+            $executionError = (string) $execution['message'];
+        }
+        if (rx_table_migrations_verify_ready($dbInfo, $diagnostics)) {
+            return ['ok' => true, 'message' => ''];
         }
     }
-    if ($exitCode !== 0 || !is_array($result) || empty($result['ok'])) {
-        $message = is_array($result) ? (string) ($result['message'] ?? '') : '';
-        if ($message === '') {
-            $diagnosticOutput = trim(preg_replace('/\s+/', ' ', rx_safe_error_message($combined, [$runnerKey])));
-            $diagnosticOutput = mb_substr($diagnosticOutput, -1200, null, 'UTF-8');
-            $binaryName = basename($phpBinary);
-            $message = 'اجرای ایزوله table.php ناموفق بود. exit=' . $exitCode . ' binary=' . $binaryName;
-            if ($diagnosticOutput !== '') {
-                $message .= ' output=' . $diagnosticOutput;
-            }
-        }
-        return ['ok' => false, 'message' => $message];
+    $details = [];
+    if ($executionError !== '') {
+        $details[] = 'خطای table.php: ' . $executionError;
     }
-    $verification = [];
-    if (!rx_table_migrations_verify_ready($dbInfo, 3, 1, $verification)) {
-        $details = [];
-        foreach (['missing_tables', 'missing_columns', 'charset_columns'] as $key) {
-            if (!empty($verification[$key])) {
-                $details[] = $key . '=' . implode(',', $verification[$key]);
-            }
+    $labels = [
+        'missing_tables' => 'جداول ایجادنشده',
+        'missing_columns' => 'ستون‌های ایجادنشده',
+        'charset_columns' => 'ستون‌های غیر utf8mb4',
+    ];
+    foreach ($labels as $key => $label) {
+        if (!empty($diagnostics[$key])) {
+            $details[] = $label . ': ' . implode(', ', array_slice($diagnostics[$key], 0, 8));
         }
-        if (!empty($verification['database_error'])) {
-            $details[] = 'database_error=' . $verification['database_error'];
-        }
-        $suffix = empty($details) ? '' : ' ' . implode(' ', $details);
-        return ['ok' => false, 'message' => 'migration اجرا شد اما جداول، ستون‌ها یا charset مورد انتظار تأیید نشد.' . $suffix];
     }
-    return ['ok' => true, 'message' => ''];
+    if (!empty($diagnostics['database_error'])) {
+        $details[] = 'خطای دیتابیس: ' . $diagnostics['database_error'];
+    }
+    $message = 'ساختار دیتابیس پس از اجرای table.php کامل نشد. سطح دسترسی کاربر دیتابیس (ALL PRIVILEGES) را بررسی کنید.';
+    if (!empty($details)) {
+        $message .= ' ' . implode(' | ', $details);
+    }
+    return ['ok' => false, 'message' => $message];
 }
 
-function rx_ensure_admin_record(array $dbInfo, string $adminNumber): bool
+function rx_ensure_admin_record(array $dbInfo, string $adminNumber): array
 {
-    if (!class_exists('mysqli')) {
-        return false;
-    }
     try {
-        $connect = @new mysqli($dbInfo['host'], $dbInfo['username'], $dbInfo['password'], $dbInfo['name']);
-        if ($connect->connect_error) {
-            return false;
-        }
-        $connect->set_charset('utf8mb4');
-        $defaultPassword = bin2hex(random_bytes(5));
-        $defaultPasswordHash = password_hash($defaultPassword, PASSWORD_DEFAULT);
-        $tableCheck = $connect->query("SHOW TABLES LIKE 'admin'");
-        if ($tableCheck && $tableCheck->num_rows > 0) {
-            $result = $connect->query('SELECT COUNT(*) as cnt FROM admin');
-            $countRow = $result ? $result->fetch_assoc() : ['cnt' => 0];
-            $count = (int) ($countRow['cnt'] ?? 0);
-            if ($count === 0) {
-                $stmt = $connect->prepare("INSERT INTO `admin` (`id_admin`, `username`, `password`, `password_hash`, `rule`) VALUES (?, 'admin', ?, ?, 'administrator')");
-                if ($stmt) {
-                    $stmt->bind_param('sss', $adminNumber, $defaultPassword, $defaultPasswordHash);
-                    if (!$stmt->execute()) {
-                        $stmt->close();
-                        $connect->close();
-                        return false;
-                    }
-                    $stmt->close();
-                } else {
-                    $connect->close();
-                    return false;
-                }
-            } else {
-                $adminNumberEscaped = $connect->real_escape_string($adminNumber);
-                $defaultPasswordEscaped = $connect->real_escape_string($defaultPassword);
-                $defaultPasswordHashEscaped = $connect->real_escape_string($defaultPasswordHash);
-                if (!$connect->query("UPDATE `admin` SET `id_admin` = '{$adminNumberEscaped}', `username` = 'admin', `password` = '{$defaultPasswordEscaped}', `password_hash` = '{$defaultPasswordHashEscaped}', `rule` = 'administrator' LIMIT 1")) {
-                    $connect->close();
-                    return false;
-                }
-            }
-        } else {
-            if (!$connect->query("CREATE TABLE `admin` (
+        $pdo = rx_database_connect($dbInfo);
+        $tableExists = (bool) $pdo->query("SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admin'")->fetchColumn();
+        if (!$tableExists) {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `admin` (
               `id_admin` varchar(500) NOT NULL,
               `username` varchar(1000) NOT NULL,
               `password` varchar(1000) NOT NULL,
               `password_hash` varchar(255) NULL,
+              `iplogin` varchar(1000) NULL,
               `rule` varchar(500) NOT NULL,
+              `last_ticket_seen` INT(11) NULL DEFAULT 0,
               PRIMARY KEY (`id_admin`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci")) {
-                $connect->close();
-                return false;
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        }
+
+        $select = $pdo->prepare('SELECT `id_admin`, `rule` FROM `admin` WHERE `id_admin` = ? LIMIT 1');
+        $select->execute([$adminNumber]);
+        $existing = $select->fetch();
+        $created = false;
+
+        if (is_array($existing)) {
+            if ((string) ($existing['rule'] ?? '') !== 'administrator') {
+                $promote = $pdo->prepare("UPDATE `admin` SET `rule` = 'administrator' WHERE `id_admin` = ?");
+                $promote->execute([$adminNumber]);
             }
-            $stmt = $connect->prepare("INSERT INTO `admin` (`id_admin`, `username`, `password`, `password_hash`, `rule`) VALUES (?, 'admin', ?, ?, 'administrator')");
-            if ($stmt) {
-                $stmt->bind_param('sss', $adminNumber, $defaultPassword, $defaultPasswordHash);
-                if (!$stmt->execute()) {
-                    $stmt->close();
-                    $connect->close();
-                    return false;
-                }
-                $stmt->close();
-            } else {
-                $connect->close();
-                return false;
-            }
+        } else {
+            $usernameCheck = $pdo->prepare('SELECT COUNT(*) FROM `admin` WHERE `username` = ?');
+            $usernameCheck->execute(['admin']);
+            $username = (int) $usernameCheck->fetchColumn() > 0 ? $adminNumber : 'admin';
+            $insert = $pdo->prepare("INSERT INTO `admin` (`id_admin`, `username`, `password`, `password_hash`, `rule`) VALUES (?, ?, '', ?, 'administrator')");
+            $insert->execute([$adminNumber, $username, password_hash(bin2hex(random_bytes(16)), PASSWORD_DEFAULT)]);
+            $created = true;
         }
-        $verify = $connect->prepare('SELECT COUNT(*) FROM `admin` WHERE `id_admin` = ?');
-        if (!$verify) {
-            $connect->close();
-            return false;
+
+        $verify = $pdo->prepare("SELECT COUNT(*) FROM `admin` WHERE `id_admin` = ? AND `rule` = 'administrator'");
+        $verify->execute([$adminNumber]);
+        if ((int) $verify->fetchColumn() < 1) {
+            return ['ok' => false, 'created' => $created, 'message' => 'Admin record was not found after write.'];
         }
-        $verify->bind_param('s', $adminNumber);
-        if (!$verify->execute()) {
-            $verify->close();
-            $connect->close();
-            return false;
-        }
-        $verify->bind_result($verifiedCount);
-        $verify->fetch();
-        $verify->close();
-        $connect->close();
-        return (int) $verifiedCount > 0;
-    } catch (\Throwable $e) {
-        return false;
+        return ['ok' => true, 'created' => $created, 'message' => ''];
+    } catch (Throwable $error) {
+        return ['ok' => false, 'created' => false, 'message' => $error->getMessage()];
     }
+}
+
+function rx_render_failure_page(string $stage, string $errorId, string $message): void
+{
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: text/html; charset=utf-8');
+    }
+    echo '<!doctype html><html dir="rtl" lang="fa"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>خطای نصب</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#07060b;color:#f5f3f8;font-family:Tahoma,sans-serif"><main style="width:min(520px,calc(100% - 32px));padding:32px;border:1px solid rgba(167,112,255,.2);border-radius:20px;background:#120e1b;text-align:center"><h1 style="font-size:22px">نصب تکمیل نشد</h1><p style="color:#aaa4b5;line-height:1.9">' . rx_escape_html($message) . '</p><small style="color:#b77aff">مرحله: ' . rx_escape_html($stage) . ' · شناسه خطا: ' . rx_escape_html($errorId) . '</small><p style="margin:22px 0 0"><a href="./" style="display:inline-block;padding:10px 18px;border-radius:11px;background:#7c3aed;color:#fff;text-decoration:none;font-weight:700">بازگشت به اینستالر و تلاش مجدد</a></p></main></body></html>';
 }

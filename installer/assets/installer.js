@@ -50,8 +50,22 @@
         var form = one('#installer-form');
         if (!form) return;
         var stages = all('[data-form-stage]', form);
-        var current = document.body.getAttribute('data-error-stage') === 'database' ? 3 : 2;
-        if (['config', 'migration', 'admin', 'webhook'].indexOf(document.body.getAttribute('data-error-stage')) !== -1) current = 4;
+        var errorStage = document.body.getAttribute('data-error-stage');
+        var current = errorStage === 'database' ? 3 : 2;
+        if (['config', 'migration', 'admin', 'webhook', 'cleanup'].indexOf(errorStage) !== -1) current = 4;
+        var loading = one('#install-loading');
+        var recovery = one('#install-loading-recovery');
+        var submitting = false;
+        var watchdog = null;
+
+        function resetSubmission() {
+            submitting = false;
+            if (watchdog) window.clearTimeout(watchdog);
+            watchdog = null;
+            if (loading) loading.hidden = true;
+            if (recovery) recovery.hidden = true;
+            all('button', form).forEach(function (button) { button.disabled = false; });
+        }
 
         function show(stage) {
             current = Math.max(2, Math.min(4, stage));
@@ -80,15 +94,30 @@
             });
         });
         form.addEventListener('submit', function (event) {
+            if (submitting) {
+                event.preventDefault();
+                return;
+            }
             var invalidStage = stages.find(function (stage) { return !validateStage(stage); });
             if (invalidStage) {
                 event.preventDefault();
                 show(Number(invalidStage.getAttribute('data-form-stage')));
                 return;
             }
-            var loading = one('#install-loading');
+            submitting = true;
             if (loading) loading.hidden = false;
-            all('button', form).forEach(function (button) { button.disabled = true; });
+            if (recovery) recovery.hidden = true;
+            window.setTimeout(function () {
+                all('button', form).forEach(function (button) { button.disabled = true; });
+            }, 0);
+            watchdog = window.setTimeout(function () {
+                if (recovery) recovery.hidden = false;
+            }, 120000);
+        });
+        var dismiss = one('#install-loading-dismiss');
+        if (dismiss) dismiss.addEventListener('click', resetSubmission);
+        window.addEventListener('pageshow', function (event) {
+            if (event.persisted) resetSubmission();
         });
         show(current);
     }

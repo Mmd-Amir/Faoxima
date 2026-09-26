@@ -25,7 +25,7 @@
         <div class="form-stage" data-form-stage="3">
             <div class="panel-heading">
                 <span class="section-icon"><svg><use href="#i-database"/></svg></span>
-                <div><span class="panel-kicker">مرحله سوم</span><h2>اتصال به دیتابیس</h2><p>اطلاعات MySQL را وارد کنید. در صورت داشتن دسترسی، دیتابیس به شکل امن ساخته می‌شود.</p></div>
+                <div><span class="panel-kicker">مرحله سوم</span><h2>اتصال به دیتابیس</h2><p>اطلاعات دیتابیس و کاربری را که از قبل در cPanel ساخته‌اید وارد کنید. نام دیتابیس و نام کاربری را کامل و همراه با پیشوند حساب وارد کنید.</p></div>
             </div>
             <div class="field-grid two-columns">
                 <div class="form-field"><label for="database_host">میزبان دیتابیس</label><div class="input-shell"><svg><use href="#i-server"/></svg><input type="text" id="database_host" name="database_host" value="<?php echo rx_escape_html($formValues['database_host'] ?? (getenv('DB_HOST') ?: 'localhost')); ?>" placeholder="localhost" required></div></div>

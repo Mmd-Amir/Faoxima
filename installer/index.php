@@ -27,13 +27,51 @@ require_once __DIR__ . '/includes/icons.php';
 $rootDirectory = dirname(__DIR__) . '/';
 $configDirectory = $rootDirectory . 'config.php';
 $unhandledSecrets = [$_POST['tg_bot_token'] ?? '', $_POST['database_password'] ?? ''];
-set_exception_handler(static function (Throwable $error) use ($rootDirectory, $unhandledSecrets): void {
-    $errorId = rx_installer_log($rootDirectory, 'unhandled', $error, $unhandledSecrets);
-    if (!headers_sent()) {
-        http_response_code(500);
-        header('Content-Type: text/html; charset=utf-8');
+$installGuard = ['active' => false, 'stage' => '', 'configBackup' => null, 'configWritten' => false];
+$rxRollbackGuardedConfig = static function () use ($rootDirectory, $configDirectory, $unhandledSecrets, &$installGuard): void {
+    if ($installGuard['configWritten'] && is_string($installGuard['configBackup'])) {
+        $rollback = rx_write_config_atomically($configDirectory, $installGuard['configBackup']);
+        if ($rollback['ok']) {
+            $installGuard['configWritten'] = false;
+        } else {
+            rx_installer_log($rootDirectory, 'config_rollback', $rollback['message'], $unhandledSecrets);
+        }
     }
-    echo '<!doctype html><html dir="rtl" lang="fa"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>خطای نصب</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#07060b;color:#f5f3f8;font-family:Tahoma,sans-serif"><main style="width:min(520px,calc(100% - 32px));padding:32px;border:1px solid rgba(167,112,255,.2);border-radius:20px;background:#120e1b;text-align:center"><h1 style="font-size:22px">نصب تکمیل نشد</h1><p style="color:#aaa4b5">یک خطای پیش‌بینی‌نشده در اینستالر ثبت شد. صفحه را تازه‌سازی و دوباره تلاش کنید.</p><small style="color:#b77aff">شناسه خطا: ' . rx_escape_html($errorId) . '</small></main></body></html>';
+};
+set_exception_handler(static function (Throwable $error) use ($rootDirectory, $unhandledSecrets, &$installGuard, $rxRollbackGuardedConfig): void {
+    $stage = $installGuard['active'] && $installGuard['stage'] !== '' ? $installGuard['stage'] : 'unhandled';
+    $errorId = rx_installer_log($rootDirectory, $stage, $error, $unhandledSecrets);
+    if ($installGuard['active']) {
+        $installGuard['active'] = false;
+        $rxRollbackGuardedConfig();
+    }
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    rx_render_failure_page($stage, $errorId, 'یک خطای پیش‌بینی‌نشده در اینستالر ثبت شد. در صورت ذخیره، فایل تنظیمات به نسخه قبلی بازگردانده شد؛ صفحه را تازه‌سازی و دوباره تلاش کنید.');
+});
+register_shutdown_function(static function () use ($rootDirectory, $unhandledSecrets, &$installGuard, $rxRollbackGuardedConfig): void {
+    if (!$installGuard['active']) {
+        return;
+    }
+    $installGuard['active'] = false;
+    $stage = $installGuard['stage'] !== '' ? $installGuard['stage'] : 'install';
+    $lastError = error_get_last();
+    $isFatal = is_array($lastError) && in_array($lastError['type'] ?? 0, [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true);
+    $detail = $isFatal ? (string) ($lastError['message'] ?? '') : 'Installation request ended before completion.';
+    $timedOut = $isFatal && stripos($detail, 'Maximum execution time') !== false;
+    $errorId = rx_installer_log($rootDirectory, $stage, $detail, $unhandledSecrets);
+    $rxRollbackGuardedConfig();
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    rx_render_failure_page(
+        $stage,
+        $errorId,
+        $timedOut
+            ? 'زمان مجاز اجرای درخواست روی هاست به پایان رسید و نصب متوقف شد. در صورت ذخیره، فایل تنظیمات به نسخه قبلی بازگردانده شد و می‌توانید دوباره تلاش کنید.'
+            : 'فرآیند نصب پیش از تکمیل متوقف شد. در صورت ذخیره، فایل تنظیمات به نسخه قبلی بازگردانده شد و می‌توانید دوباره تلاش کنید.'
+    );
 });
 $projectDepthInfo = rx_project_subdirectory_depth($rootDirectory);
 $isRootExecution = $projectDepthInfo['depth'] <= 0;
@@ -44,20 +82,16 @@ if (empty($_SESSION['rx_csrf'])) {
     $_SESSION['rx_csrf'] = bin2hex(random_bytes(24));
 }
 $csrfToken = $_SESSION['rx_csrf'];
-$installationLockOwner = $_SESSION['rx_installation_lock_owner'] ?? '';
-if (!is_string($installationLockOwner) || !preg_match('/^[a-f0-9]{48}$/', $installationLockOwner)) {
-    $installationLockOwner = bin2hex(random_bytes(24));
-    $_SESSION['rx_installation_lock_owner'] = $installationLockOwner;
-}
 
 if (!$isRootExecution && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
     rx_defer_installer_cleanup($rootDirectory);
-    if (($_SESSION['rx_step'] ?? '') === 'success') {
+    if (($_SESSION['rx_step'] ?? '') === 'success' && !rx_config_is_already_installed($configDirectory)) {
         unset($_SESSION['rx_step'], $_SESSION['rx_success_messages'], $_SESSION['rx_bot_username']);
     }
 }
 
 if (!$isRootExecution && $rxAction === 'keepalive') {
+    session_write_close();
     header('Content-Type: application/json; charset=utf-8');
     $csrfValid = isset($uPOST['csrf_token']) && hash_equals($csrfToken, (string) $uPOST['csrf_token']);
     $keptAlive = $csrfValid && rx_defer_installer_cleanup($rootDirectory);
@@ -68,10 +102,10 @@ if (!$isRootExecution && $rxAction === 'keepalive') {
 if (!$isRootExecution && $rxAction === 'cleanup') {
     header('Content-Type: application/json; charset=utf-8');
     $csrfValid = isset($uPOST['csrf_token']) && hash_equals($csrfToken, (string) $uPOST['csrf_token']);
-    $allowed = ($_SESSION['rx_step'] ?? '') === 'success' && $csrfValid;
+    $allowed = ($_SESSION['rx_step'] ?? '') === 'success' && $csrfValid && rx_config_is_already_installed($configDirectory);
     $cleaned = $allowed ? rx_cleanup_installer(__DIR__, 'installer_shutdown') : false;
-    if ($allowed) {
-        rx_release_installation_lock($rootDirectory, $installationLockOwner);
+    if ($allowed && !rx_installation_lock_is_busy($rootDirectory)) {
+        @unlink(rx_installation_lock_path($rootDirectory));
     }
     if ($cleaned) {
         unset(
@@ -93,6 +127,7 @@ $errorStage = '';
 $errorId = '';
 $botUsername = '';
 $successMessages = [];
+$installationBusy = false;
 $formValues = $uPOST;
 unset($formValues['tg_bot_token'], $formValues['database_password'], $formValues['csrf_token']);
 
@@ -155,25 +190,30 @@ if ($isRootExecution) {
             $tgBot = [];
             $configBackup = null;
             $configWritten = false;
+            $configWasInstalled = false;
+            $migrationStarted = false;
             $webhookRegistered = false;
+            $installationLock = null;
             $installationLockHeld = false;
             $cleanupDeferred = false;
+            $webhookSecret = null;
+            $webhookUrl = '';
 
             if (!$csrfValid) {
                 $ERROR[] = 'نشست نصب منقضی شده است. صفحه را تازه‌سازی کنید.';
                 $errorStage = 'security';
-            } elseif (!rx_is_https() || !preg_match('#^https://#i', $inputUrl)) {
-                $ERROR[] = 'اینستالر و آدرس وب‌هوک باید با HTTPS در دسترس باشند.';
-                $errorStage = 'webhook';
-            } elseif ($document === null || $host === '') {
-                $ERROR[] = 'آدرس وب‌هوک معتبر نیست.';
-                $errorStage = 'webhook';
             } elseif (!rx_is_valid_telegram_token($tgBotToken)) {
                 $ERROR[] = 'قالب توکن ربات تلگرام معتبر نیست.';
                 $errorStage = 'telegram';
             } elseif (!rx_is_valid_telegram_id($tgAdminId)) {
                 $ERROR[] = 'آیدی عددی مدیر معتبر نیست.';
                 $errorStage = 'telegram';
+            } elseif (!rx_is_https() || !preg_match('#^https://#i', $inputUrl)) {
+                $ERROR[] = 'اینستالر و آدرس وب‌هوک باید با HTTPS در دسترس باشند.';
+                $errorStage = 'webhook';
+            } elseif ($document === null || $host === '') {
+                $ERROR[] = 'آدرس وب‌هوک معتبر نیست.';
+                $errorStage = 'webhook';
             } elseif (!preg_match('/^[A-Za-z0-9_-]{1,64}$/', $dbInfo['name'])) {
                 $ERROR[] = 'نام دیتابیس معتبر نیست.';
                 $errorStage = 'database';
@@ -186,186 +226,233 @@ if ($isRootExecution) {
             }
 
             if (empty($ERROR)) {
-                $tgBot['details'] = rx_telegram_request($tgBotToken, 'getMe');
-                if (empty($tgBot['details']['ok']) || empty($tgBot['details']['result']['username'])) {
-                    $ERROR[] = 'اتصال به ربات تلگرام ناموفق بود. توکن یا دسترسی شبکه را بررسی کنید.';
-                    $errorStage = 'telegram';
+                session_write_close();
+                if (function_exists('ignore_user_abort')) {
+                    @ignore_user_abort(true);
+                }
+                if (function_exists('set_time_limit')) {
+                    @set_time_limit(300);
+                }
+                $lockResult = rx_acquire_installation_lock($rootDirectory);
+                if ($lockResult['busy']) {
+                    $ERROR[] = 'یک درخواست نصب دیگر هم‌اکنون روی سرور در حال اجراست (مثلاً به‌دلیل ارسال دوباره فرم یا تازه‌سازی صفحه). چند لحظه صبر کنید و صفحه را تازه‌سازی کنید؛ اگر آن درخواست موفق شده باشد صفحه پایان نصب نمایش داده می‌شود.';
+                    $errorStage = 'security';
                 } else {
-                    $tgBot['recognition'] = rx_telegram_request($tgBotToken, 'getChat', ['chat_id' => $tgAdminId]);
-                    if (empty($tgBot['recognition']['ok'])) {
-                        $ERROR[] = 'مدیر در تلگرام شناسایی نشد. ابتدا ربات را با حساب مدیر Start کنید.';
-                        $errorStage = 'telegram';
-                    } else {
-                        $SUCCESS[] = 'ربات تلگرام و مدیر تأیید شدند';
-                    }
+                    $installationLock = $lockResult['handle'];
+                    $installationLockHeld = $lockResult['acquired'];
+                    $installGuard['active'] = true;
                 }
             }
 
             if (empty($ERROR)) {
                 try {
-                    $pdoOptions = [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_TIMEOUT => 10];
-                    try {
-                        $pdo = new PDO('mysql:host=' . $dbInfo['host'] . ';dbname=' . $dbInfo['name'] . ';charset=utf8mb4', $dbInfo['username'], $dbInfo['password'], $pdoOptions);
-                    } catch (PDOException $databaseError) {
-                        $serverPdo = new PDO('mysql:host=' . $dbInfo['host'] . ';charset=utf8mb4', $dbInfo['username'], $dbInfo['password'], $pdoOptions);
-                        $quotedName = str_replace('`', '``', $dbInfo['name']);
-                        $serverPdo->exec('CREATE DATABASE IF NOT EXISTS `' . $quotedName . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
-                        $pdo = new PDO('mysql:host=' . $dbInfo['host'] . ';dbname=' . $dbInfo['name'] . ';charset=utf8mb4', $dbInfo['username'], $dbInfo['password'], $pdoOptions);
-                    }
-                    $pdo->query('SELECT 1');
-                    $pdo = null;
-                    $SUCCESS[] = 'اتصال دیتابیس تأیید شد';
-                } catch (Throwable $databaseError) {
-                    $errorId = rx_installer_log($rootDirectory, 'database', $databaseError, $secrets);
-                    $ERROR[] = 'اتصال به دیتابیس برقرار نشد. اطلاعات و سطح دسترسی کاربر را بررسی کنید.';
-                    $errorStage = 'database';
-                }
-            }
-
-            if (empty($ERROR)) {
-                $installationLockHeld = rx_acquire_installation_lock($rootDirectory, $installationLockOwner);
-                if (!$installationLockHeld) {
-                    $ERROR[] = 'یک فرآیند نصب دیگر در حال اجراست. چند دقیقه دیگر دوباره تلاش کنید.';
-                    $errorStage = 'security';
-                } else {
-                    $cleanupDeferred = rx_defer_installer_cleanup($rootDirectory);
-                    if (!$cleanupDeferred) {
-                        $ERROR[] = 'ایمن‌سازی موقت فایل‌های اینستالر ممکن نبود.';
-                        $errorStage = 'security';
-                    }
-                }
-            }
-
-            if (empty($ERROR)) {
-                $rawConfigData = @file_get_contents($configDirectory);
-                if ($rawConfigData === false) {
-                    $ERROR[] = 'خواندن فایل config.php ممکن نبود.';
-                    $errorStage = 'config';
-                } else {
-                    $configBackup = $rawConfigData;
-                    $replacementValues = [
-                        '{database_name}' => $dbInfo['name'],
-                        '{username_db}' => $dbInfo['username'],
-                        '{password_db}' => $dbInfo['password'],
-                        '{db_host}' => $dbInfo['host'],
-                        '{API_KEY}' => $tgBotToken,
-                        '{admin_number}' => $tgAdminId,
-                        '{domain_name}' => $document['address'],
-                        '{username_bot}' => $tgBot['details']['result']['username'],
-                    ];
-                    $expectedConfig = [
-                        'dbname' => $dbInfo['name'],
-                        'usernamedb' => $dbInfo['username'],
-                        'passworddb' => $dbInfo['password'],
-                        'dbhost' => $dbInfo['host'],
-                        'APIKEY' => $tgBotToken,
-                        'adminnumber' => $tgAdminId,
-                        'domainhosts' => $document['address'],
-                        'usernamebot' => $tgBot['details']['result']['username'],
-                    ];
-                    $replacementCount = 0;
-                    $newConfigData = rx_update_config_values($rawConfigData, $replacementValues, $replacementCount);
-                    $configValidation = rx_validate_config_source($newConfigData, $expectedConfig);
-                    if (!$configValidation['ok'] || $replacementCount < count($expectedConfig)) {
-                        $ERROR[] = 'تولید فایل تنظیمات کامل و معتبر نبود.';
-                        $errorStage = 'config';
+                    $installGuard['stage'] = 'telegram';
+                    $tgBot['details'] = rx_telegram_request($tgBotToken, 'getMe');
+                    if (empty($tgBot['details']['ok']) || empty($tgBot['details']['result']['username'])) {
+                        $description = rx_telegram_error_description($tgBot['details'], $secrets);
+                        $ERROR[] = !empty($tgBot['details']['transport_error'])
+                            ? 'ارتباط با سرور تلگرام برقرار نشد: ' . $description . ' دسترسی هاست به api.telegram.org را بررسی و دوباره تلاش کنید.'
+                            : 'توکن ربات توسط تلگرام پذیرفته نشد: ' . $description;
+                        $errorStage = 'telegram';
                     } else {
-                        $writeResult = rx_write_config_atomically($configDirectory, $newConfigData);
-                        if (!$writeResult['ok']) {
-                            $ERROR[] = 'ذخیره امن فایل تنظیمات ناموفق بود.';
-                            $errorStage = 'config';
+                        $tgBot['recognition'] = rx_telegram_request($tgBotToken, 'getChat', ['chat_id' => $tgAdminId]);
+                        if (empty($tgBot['recognition']['ok'])) {
+                            $description = rx_telegram_error_description($tgBot['recognition'], $secrets);
+                            $ERROR[] = !empty($tgBot['recognition']['transport_error'])
+                                ? 'ارتباط با سرور تلگرام برقرار نشد: ' . $description . ' دوباره تلاش کنید.'
+                                : 'مدیر در تلگرام شناسایی نشد. ابتدا ربات @' . $tgBot['details']['result']['username'] . ' را با حساب مدیر Start کنید. پاسخ تلگرام: ' . $description;
+                            $errorStage = 'telegram';
                         } else {
-                            $configWritten = true;
-                            $SUCCESS[] = 'فایل تنظیمات اعتبارسنجی و ذخیره شد';
+                            $SUCCESS[] = 'ربات تلگرام و مدیر تأیید شدند';
                         }
                     }
-                }
-            }
 
-            if (empty($ERROR)) {
-                $migrationResult = rx_run_table_migrations($rootDirectory, $dbInfo);
-                if (!$migrationResult['ok']) {
-                    $errorId = rx_installer_log($rootDirectory, 'migration', $migrationResult['message'], $secrets);
-                    $ERROR[] = 'اجرای migration یا تأیید ساختار دیتابیس ناموفق بود.';
-                    $errorStage = 'migration';
-                } else {
-                    $SUCCESS[] = 'ساختار دیتابیس ایجاد و تأیید شد';
-                }
-            }
+                    if (empty($ERROR)) {
+                        $installGuard['stage'] = 'database';
+                        try {
+                            $databaseConnection = rx_database_connect($dbInfo);
+                            $databaseConnection->query('SELECT 1');
+                            $databaseConnection = null;
+                            $SUCCESS[] = 'اتصال دیتابیس تأیید شد';
+                        } catch (Throwable $databaseError) {
+                            $databaseConnection = null;
+                            $errorId = rx_installer_log($rootDirectory, 'database', $databaseError, $secrets);
+                            $ERROR[] = rx_database_error_message($databaseError);
+                            $errorStage = 'database';
+                        }
+                    }
 
-            if (empty($ERROR)) {
-                if (!rx_ensure_admin_record($dbInfo, $tgAdminId)) {
-                    $errorId = rx_installer_log($rootDirectory, 'admin', 'Admin record could not be created or verified.', $secrets);
-                    $ERROR[] = 'ایجاد یا تأیید حساب مدیر ناموفق بود.';
-                    $errorStage = 'admin';
-                } else {
-                    $SUCCESS[] = 'حساب مدیر ایجاد و تأیید شد';
-                }
-            }
+                    if (empty($ERROR)) {
+                        $installGuard['stage'] = 'cleanup';
+                        $cleanupDeferred = rx_defer_installer_cleanup($rootDirectory);
+                        if (!$cleanupDeferred) {
+                            $ERROR[] = 'نوشتن فایل موقت در پوشه logs ممکن نبود. دسترسی نوشتن پوشه logs را بررسی کنید.';
+                            $errorStage = 'cleanup';
+                        }
+                    }
 
-            if (empty($ERROR)) {
-                $webhookUrl = 'https://' . $document['address'] . '/index.php';
-                $webhookSecret = rx_telegram_webhook_secret($rootDirectory, $tgBotToken);
-                if ($webhookSecret === null) {
-                    $errorId = rx_installer_log($rootDirectory, 'webhook_secret', 'Webhook secret token could not be generated.', $secrets);
-                    $ERROR[] = 'تولید کلید امنیتی وب‌هوک ناموفق بود.';
-                    $errorStage = 'webhook';
-                } else {
-                    $setWebhook = rx_telegram_request($tgBotToken, 'setWebhook', [
-                        'url' => $webhookUrl,
-                        'secret_token' => $webhookSecret,
-                        'drop_pending_updates' => false,
-                    ]);
+                    if (empty($ERROR)) {
+                        $installGuard['stage'] = 'config';
+                        $rawConfigData = @file_get_contents($configDirectory);
+                        if ($rawConfigData === false) {
+                            $ERROR[] = 'خواندن فایل config.php ممکن نبود.';
+                            $errorStage = 'config';
+                        } else {
+                            $configBackup = $rawConfigData;
+                            $configWasInstalled = rx_config_is_already_installed($configDirectory);
+                            $replacementValues = [
+                                '{database_name}' => $dbInfo['name'],
+                                '{username_db}' => $dbInfo['username'],
+                                '{password_db}' => $dbInfo['password'],
+                                '{db_host}' => $dbInfo['host'],
+                                '{API_KEY}' => $tgBotToken,
+                                '{admin_number}' => $tgAdminId,
+                                '{domain_name}' => $document['address'],
+                                '{username_bot}' => $tgBot['details']['result']['username'],
+                            ];
+                            $expectedConfig = [
+                                'dbname' => $dbInfo['name'],
+                                'usernamedb' => $dbInfo['username'],
+                                'passworddb' => $dbInfo['password'],
+                                'dbhost' => $dbInfo['host'],
+                                'APIKEY' => $tgBotToken,
+                                'adminnumber' => $tgAdminId,
+                                'domainhosts' => $document['address'],
+                                'usernamebot' => $tgBot['details']['result']['username'],
+                            ];
+                            $replacementCount = 0;
+                            $newConfigData = rx_update_config_values($rawConfigData, $replacementValues, $replacementCount);
+                            $configValidation = rx_validate_config_source($newConfigData, $expectedConfig);
+                            if (!$configValidation['ok'] || $replacementCount < count($expectedConfig)) {
+                                $ERROR[] = 'تولید فایل تنظیمات کامل و معتبر نبود. ' . $configValidation['message'];
+                                $errorStage = 'config';
+                            } else {
+                                $installGuard['configBackup'] = $configBackup;
+                                $writeResult = rx_write_config_atomically($configDirectory, $newConfigData);
+                                if (!$writeResult['ok']) {
+                                    $ERROR[] = 'ذخیره امن فایل تنظیمات ناموفق بود. ' . $writeResult['message'];
+                                    $errorStage = 'config';
+                                } else {
+                                    $configWritten = true;
+                                    $installGuard['configWritten'] = true;
+                                    $SUCCESS[] = 'فایل تنظیمات اعتبارسنجی و ذخیره شد';
+                                }
+                            }
+                        }
+                    }
+
+                    if (empty($ERROR)) {
+                        $installGuard['stage'] = 'migration';
+                        $migrationStarted = true;
+                        $migrationResult = rx_run_table_migrations($rootDirectory, $dbInfo);
+                        if (!$migrationResult['ok']) {
+                            $errorId = rx_installer_log($rootDirectory, 'migration', $migrationResult['message'], $secrets);
+                            $ERROR[] = mb_substr(rx_safe_error_message($migrationResult['message'], $secrets), 0, 600, 'UTF-8');
+                            $errorStage = 'migration';
+                        } else {
+                            $SUCCESS[] = 'ساختار دیتابیس ایجاد و تأیید شد';
+                        }
+                    }
+
+                    if (empty($ERROR)) {
+                        $installGuard['stage'] = 'admin';
+                        $adminResult = rx_ensure_admin_record($dbInfo, $tgAdminId);
+                        if (!$adminResult['ok']) {
+                            $errorId = rx_installer_log($rootDirectory, 'admin', $adminResult['message'], $secrets);
+                            $ERROR[] = 'ایجاد یا تأیید حساب مدیر ناموفق بود: ' . mb_substr(rx_safe_error_message($adminResult['message'], $secrets), 0, 300, 'UTF-8');
+                            $errorStage = 'admin';
+                        } else {
+                            $SUCCESS[] = $adminResult['created'] ? 'حساب مدیر اصلی ایجاد شد' : 'حساب مدیر اصلی تأیید شد';
+                        }
+                    }
+
+                    if (empty($ERROR)) {
+                        $installGuard['stage'] = 'webhook';
+                        $webhookUrl = 'https://' . $document['address'] . '/index.php';
+                        $webhookSecret = rx_telegram_webhook_secret($rootDirectory, $tgBotToken);
+                        if ($webhookSecret === null) {
+                            $errorId = rx_installer_log($rootDirectory, 'webhook', 'Webhook secret token could not be generated.', $secrets);
+                            $ERROR[] = 'تولید کلید امنیتی وب‌هوک ناموفق بود. فایل lib/WebhookAuth.php را بررسی کنید.';
+                            $errorStage = 'webhook';
+                        } else {
+                            $setWebhook = rx_telegram_request($tgBotToken, 'setWebhook', [
+                                'url' => $webhookUrl,
+                                'secret_token' => $webhookSecret,
+                                'drop_pending_updates' => 'false',
+                            ]);
+                            if (empty($setWebhook['ok'])) {
+                                $description = rx_telegram_error_description($setWebhook, array_merge($secrets, [$webhookSecret]));
+                                $errorId = rx_installer_log($rootDirectory, 'webhook', 'setWebhook failed: ' . $description, $secrets);
+                                $ERROR[] = 'ثبت وب‌هوک در تلگرام ناموفق بود: ' . $description;
+                                $errorStage = 'webhook';
+                            } else {
+                                $webhookRegistered = true;
+                                $webhookWarning = '';
+                                for ($verifyAttempt = 1; $verifyAttempt <= 2; $verifyAttempt++) {
+                                    $webhookInfo = rx_telegram_request($tgBotToken, 'getWebhookInfo', [], 10);
+                                    $registeredUrl = (string) ($webhookInfo['result']['url'] ?? '');
+                                    if (!empty($webhookInfo['ok']) && rtrim($registeredUrl, '/') === rtrim($webhookUrl, '/')) {
+                                        $webhookWarning = '';
+                                        break;
+                                    }
+                                    $webhookWarning = !empty($webhookInfo['ok'])
+                                        ? 'هشدار: آدرس وب‌هوکی که تلگرام گزارش کرد با آدرس ثبت‌شده یکسان نبود؛ وضعیت وب‌هوک را بعداً بررسی کنید.'
+                                        : 'هشدار: وب‌هوک ثبت شد اما تأیید وضعیت آن به‌طور موقت ممکن نشد؛ وضعیت وب‌هوک را بعداً بررسی کنید.';
+                                    if ($verifyAttempt < 2) {
+                                        sleep(1);
+                                    }
+                                }
+                                if ($webhookWarning === '') {
+                                    $SUCCESS[] = 'وب‌هوک در تلگرام ثبت و تأیید شد';
+                                } else {
+                                    rx_installer_log($rootDirectory, 'webhook_verify', $webhookWarning, $secrets);
+                                    $SUCCESS[] = 'وب‌هوک در تلگرام ثبت شد';
+                                    $SUCCESS[] = $webhookWarning;
+                                }
+                            }
+                        }
+                    }
+                } catch (Throwable $installError) {
+                    $failedStage = $installGuard['stage'] !== '' ? $installGuard['stage'] : 'install';
+                    $errorId = rx_installer_log($rootDirectory, $failedStage, $installError, $secrets);
+                    $ERROR[] = 'خطای پیش‌بینی‌نشده: ' . mb_substr(rx_safe_error_message($installError->getMessage(), $secrets), 0, 300, 'UTF-8');
+                    $errorStage = $failedStage;
                 }
-                if (empty($ERROR) && empty($setWebhook['ok'])) {
-                    $description = rx_safe_error_message($setWebhook['description'] ?? 'Telegram rejected setWebhook.', $secrets);
-                    $errorId = rx_installer_log($rootDirectory, 'webhook_register', $description, $secrets);
-                    $ERROR[] = 'ثبت وب‌هوک در تلگرام ناموفق بود: ' . $description;
-                    $errorStage = 'webhook';
-                } elseif (empty($ERROR)) {
-                    $webhookRegistered = true;
-                    $webhookInfo = rx_telegram_request($tgBotToken, 'getWebhookInfo');
-                    $registeredUrl = (string) ($webhookInfo['result']['url'] ?? '');
-                    if (empty($webhookInfo['ok']) || rtrim($registeredUrl, '/') !== rtrim($webhookUrl, '/')) {
-                        rx_telegram_request($tgBotToken, 'deleteWebhook');
-                        $webhookRegistered = false;
-                        $errorId = rx_installer_log($rootDirectory, 'webhook_verify', 'Telegram webhook URL verification failed.', $secrets);
-                        $ERROR[] = 'تلگرام ثبت وب‌هوک را تأیید نکرد.';
-                        $errorStage = 'webhook';
+
+                if (!empty($ERROR) && $configWritten && is_string($configBackup)) {
+                    if ($migrationStarted && !$configWasInstalled) {
+                        rx_telegram_request($tgBotToken, 'deleteWebhook', [], 10);
+                    }
+                    $rollback = rx_write_config_atomically($configDirectory, $configBackup);
+                    if ($rollback['ok']) {
+                        $configWritten = false;
+                        $installGuard['configWritten'] = false;
                     } else {
-                        $SUCCESS[] = 'وب‌هوک در تلگرام ثبت و تأیید شد';
+                        $rollbackId = rx_installer_log($rootDirectory, 'config_rollback', $rollback['message'], $secrets);
+                        $ERROR[] = 'بازگردانی config.php ناموفق بود. شناسه خطا: ' . $rollbackId;
                     }
                 }
-            }
 
-            if (!empty($ERROR) && $configWritten && is_string($configBackup)) {
-                if ($webhookRegistered) {
-                    rx_telegram_request($tgBotToken, 'deleteWebhook');
-                }
-                $rollback = rx_write_config_atomically($configDirectory, $configBackup);
-                if (!$rollback['ok']) {
-                    $rollbackId = rx_installer_log($rootDirectory, 'config_rollback', $rollback['message'], $secrets);
-                    $ERROR[] = 'بازگردانی config.php ناموفق بود. شناسه خطا: ' . $rollbackId;
-                }
-            }
-
-            if (!empty($ERROR) && $installationLockHeld) {
-                if ($cleanupDeferred) {
-                    rx_cancel_installer_cleanup_deferral($rootDirectory);
-                    $cleanupDeferred = false;
-                }
-                rx_release_installation_lock($rootDirectory, $installationLockOwner);
+                $installGuard['active'] = false;
+                rx_release_installation_lock($installationLock);
+                $installationLock = null;
                 $installationLockHeld = false;
             }
 
             if (empty($ERROR)) {
                 $botUsername = (string) $tgBot['details']['result']['username'];
-                $SUCCESS[] = 'نصب با موفقیت تکمیل شد';
-                rx_telegram_request($tgBotToken, 'sendMessage', [
+                $welcome = rx_telegram_request($tgBotToken, 'sendMessage', [
                     'chat_id' => $tgAdminId,
                     'text' => 'نصب فاکسیما با موفقیت انجام شد و شما به عنوان مدیر اصلی ثبت شدید.',
                     'reply_markup' => json_encode(['inline_keyboard' => [[['text' => 'شروع ربات', 'callback_data' => 'start']]]], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                ]);
+                ], 10);
+                if (empty($welcome['ok'])) {
+                    $SUCCESS[] = 'پیام تأیید در تلگرام ارسال نشد؛ می‌توانید ربات را مستقیماً باز کنید';
+                }
+                $SUCCESS[] = 'نصب با موفقیت تکمیل شد';
+                if (session_status() !== PHP_SESSION_ACTIVE) {
+                    @session_start();
+                }
                 $_SESSION['rx_step'] = 'success';
                 $_SESSION['rx_success_messages'] = $SUCCESS;
                 $_SESSION['rx_bot_username'] = $botUsername;
@@ -379,6 +466,9 @@ if ($isRootExecution) {
             }
         } else {
             $activeView = $currentStepName;
+            if ($activeView === 'install' && rx_installation_lock_is_busy($rootDirectory)) {
+                $installationBusy = true;
+            }
         }
     }
     $pageTitle = 'نصب و راه‌اندازی فاکسیما';
@@ -450,6 +540,12 @@ $assetVersion = (string) max(
                             <div><strong>نصب تکمیل نشد</strong><?php foreach ($ERROR as $message): ?><span><?php echo rx_escape_html($message); ?></span><?php endforeach; ?><?php if ($errorId !== ''): ?><small>مرحله: <?php echo rx_escape_html($errorStage); ?> · شناسه خطا: <bdi><?php echo rx_escape_html($errorId); ?></bdi></small><?php endif; ?></div>
                         </div>
                     <?php endif; ?>
+                    <?php if ($installationBusy): ?>
+                        <div class="alert alert-warning" role="status">
+                            <svg><use href="#i-warn"/></svg>
+                            <div><strong>نصب در حال اجراست</strong><span>یک درخواست نصب هم‌اکنون روی سرور در حال پردازش است. تا پایان آن صبر کنید و سپس صفحه را تازه‌سازی کنید.</span></div>
+                        </div>
+                    <?php endif; ?>
                     <?php if ($activeView === 'requirements'): ?>
                         <?php require __DIR__ . '/steps/requirements.php'; ?>
                     <?php elseif ($activeView === 'install'): ?>
@@ -464,7 +560,7 @@ $assetVersion = (string) max(
     <footer class="app-footer"><span>Faoxima Installer</span><span>راه‌اندازی ساده، امن و قابل بررسی</span></footer>
 </div>
 <div class="install-loading" id="install-loading" hidden aria-live="polite">
-    <div class="loading-panel"><span class="loading-orbit"><svg><use href="#i-cog"/></svg></span><h2>در حال آماده‌سازی ربات…</h2><p>درخواست واقعی نصب در حال پردازش است. این صفحه را نبندید.</p><div class="loading-line"><span></span></div></div>
+    <div class="loading-panel"><span class="loading-orbit"><svg><use href="#i-cog"/></svg></span><h2>در حال آماده‌سازی ربات…</h2><p>درخواست واقعی نصب در حال پردازش است. این صفحه را نبندید.</p><div class="loading-line"><span></span></div><div class="loading-recovery" id="install-loading-recovery" hidden><p>پاسخ سرور بیش از حد انتظار طول کشیده است. ممکن است نصب هنوز در حال انجام باشد یا ارتباط قطع شده باشد.</p><div class="loading-recovery-actions"><a class="btn btn-primary" href="index.php"><svg><use href="#i-refresh"/></svg>بررسی وضعیت نصب</a><button type="button" class="btn btn-secondary" id="install-loading-dismiss"><svg><use href="#i-arrow-right"/></svg>بازگشت به فرم</button></div></div></div>
 </div>
 <script src="assets/installer.js?v=<?php echo rawurlencode($assetVersion); ?>"></script>
 </body>
