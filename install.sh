@@ -2011,6 +2011,7 @@ services:
     env_file: ${bot_dir}/.env
     volumes:
       - ${bot_dir}:/var/www/faoxima
+      - ${PROJECT_DIR}/docker/php/pool.d/www.conf:/usr/local/etc/php-fpm.d/zz-pool.conf:ro
     depends_on:
       db:
         condition: service_healthy
@@ -3190,11 +3191,82 @@ import_database() {
 }
 
 detect_cpu_cores() {
-    nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || printf '1'
+    local host quota="" period="" cg
+    host=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null)
+    { [[ "$host" =~ ^[0-9]+$ ]] && [ "$host" -ge 1 ]; } || host=1
+    if [ -r /sys/fs/cgroup/cpu.max ]; then
+        read -r quota period < /sys/fs/cgroup/cpu.max 2>/dev/null
+    elif [ -r /sys/fs/cgroup/cpu/cpu.cfs_quota_us ]; then
+        quota=$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us 2>/dev/null)
+        period=$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us 2>/dev/null)
+    fi
+    if [[ "$quota" =~ ^[0-9]+$ ]] && [[ "$period" =~ ^[0-9]+$ ]] && [ "$quota" -gt 0 ] && [ "$period" -gt 0 ]; then
+        cg=$(((quota + period - 1) / period))
+        [ "$cg" -ge 1 ] && [ "$cg" -lt "$host" ] && host="$cg"
+    fi
+    printf '%d' "$host"
 }
 
 detect_ram_mb() {
-    free -m 2>/dev/null | awk '/^Mem:/{print $2}'
+    local host limit cg f
+    host=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}')
+    if ! [[ "$host" =~ ^[0-9]+$ ]] || [ "$host" -lt 128 ]; then
+        host=$(awk '/^MemTotal:/{print int($2 / 1024)}' /proc/meminfo 2>/dev/null)
+    fi
+    { [[ "$host" =~ ^[0-9]+$ ]] && [ "$host" -ge 128 ]; } || host=1024
+    for f in /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory/memory.limit_in_bytes; do
+        [ -r "$f" ] || continue
+        limit=$(tr -d '[:space:]' < "$f" 2>/dev/null)
+        { [[ "$limit" =~ ^[0-9]+$ ]] && [ "${#limit}" -le 15 ]; } || continue
+        cg=$((limit / 1048576))
+        [ "$cg" -ge 128 ] && [ "$cg" -lt "$host" ] && host="$cg"
+        break
+    done
+    printf '%d' "$host"
+}
+
+ini_size_to_mb() {
+    local raw="${1//[[:space:]]/}" num unit
+    [[ "$raw" =~ ^([0-9]+)([KkMmGg]?)$ ]] || return 1
+    num="${BASH_REMATCH[1]}"
+    unit="${BASH_REMATCH[2],,}"
+    case "$unit" in
+        g) printf '%d' $((num * 1024)) ;;
+        m) printf '%d' "$num" ;;
+        k) printf '%d' $(((num + 1023) / 1024)) ;;
+        *) printf '%d' $(((num + 1048575) / 1048576)) ;;
+    esac
+}
+
+php_upload_memory_floor_mb() {
+    local ini="$1" post upload floor=0 v
+    post=$(ini_size_to_mb "$(read_ini_value "post_max_size" "$ini")") || post=0
+    upload=$(ini_size_to_mb "$(read_ini_value "upload_max_filesize" "$ini")") || upload=0
+    v="$post"
+    [ "$upload" -gt "$v" ] && v="$upload"
+    [ "$v" -gt 0 ] && floor=$((v + 64))
+    printf '%d' "$floor"
+}
+
+compute_php_memory_limit() {
+    local ram_mb="$1" floor_mb="$2" result
+    if [ "$ram_mb" -le 1536 ]; then
+        result=128
+    elif [ "$ram_mb" -lt 16384 ]; then
+        result=256
+    else
+        result=384
+    fi
+    [ "$floor_mb" -gt "$result" ] && result="$floor_mb"
+    printf '%d' "$result"
+}
+
+compute_redis_maxmemory() {
+    local ram_mb="$1" result
+    result=$((ram_mb / 8))
+    [ "$result" -lt 32 ] && result=32
+    [ "$result" -gt 256 ] && result=256
+    printf '%d' "$result"
 }
 
 collect_bot_db_creds() {
@@ -3239,20 +3311,24 @@ count_db_users_total() {
 }
 
 compute_max_connections() {
-    local ram_mb="$1" cores="$2" bot_count="$3" user_count="$4"
-    local base=64
-    local per_core=$((cores * 10))
-    local per_bot=$((bot_count * 15))
-    local per_1k_users=$(((user_count / 1000) * 5))
-    local demand=$((base + per_core + per_bot + per_1k_users))
-
-    local ram_cap=$((ram_mb / 4))
-    [ "$ram_cap" -lt 50 ] && ram_cap=50
+    local ram_mb="$1" cores="$2" app_count="$3" user_count="$4" total_workers="$5"
+    local per_worker=2
+    local per_container=5
+    local user_bonus=$(((user_count / 10000) * 5))
+    [ "$user_bonus" -gt 50 ] && user_bonus=50
+    local demand=$((40 + total_workers * per_worker + app_count * per_container + user_bonus))
 
     local result="$demand"
-    [ "$result" -gt "$ram_cap" ] && result="$ram_cap"
     [ "$result" -lt 100 ] && result=100
-    [ "$result" -gt 1000 ] && result=1000
+
+    local ram_cap=$((ram_mb / 10))
+    [ "$ram_cap" -lt 50 ] && ram_cap=50
+    local cpu_cap=$((cores * 100))
+    [ "$cpu_cap" -lt 100 ] && cpu_cap=100
+
+    [ "$result" -gt "$ram_cap" ] && result="$ram_cap"
+    [ "$result" -gt "$cpu_cap" ] && result="$cpu_cap"
+    [ "$result" -gt 300 ] && result=300
 
     printf '%d' "$result"
 }
@@ -3270,22 +3346,91 @@ interactive_timeout = 180
 EOF
 }
 
+compute_system_reserve_mb() {
+    printf '%d' $((192 + $1 / 16))
+}
+
+compute_mysql_reserve_mb() {
+    printf '%d' $((256 + $1 / 32))
+}
+
+compute_redis_reserve_mb() {
+    local redis_mb="$1"
+    [ "$redis_mb" -gt 0 ] || { printf '0'; return; }
+    printf '%d' $((redis_mb + redis_mb / 8 + 16))
+}
+
+compute_worker_cost_mb() {
+    printf '%d' $((64 + 2 * 10))
+}
+
 compute_pm_max_children() {
-    local ram_mb="$1" cores="$2"
-    local per_worker_mb=40
-    local ram_reserved_mb=512
-    local ram_budget=$(((ram_mb - ram_reserved_mb) / per_worker_mb))
-    [ "$ram_budget" -lt 5 ] && ram_budget=5
+    local php_budget_mb="$1" cores="$2"
+    local worker_cost_mb
+    worker_cost_mb=$(compute_worker_cost_mb)
+    local ram_cap=0
+    [ "$php_budget_mb" -gt 0 ] && ram_cap=$((php_budget_mb / worker_cost_mb))
 
-    local cpu_cap=$((cores * 10))
-    [ "$cpu_cap" -lt 10 ] && cpu_cap=10
+    local cpu_cap=$((cores * 4))
+    [ "$cpu_cap" -lt 4 ] && cpu_cap=4
 
-    local result="$ram_budget"
+    local result="$ram_cap"
     [ "$cpu_cap" -lt "$result" ] && result="$cpu_cap"
-    [ "$result" -lt 5 ] && result=5
-    [ "$result" -gt 100 ] && result=100
+    [ "$result" -gt 200 ] && result=200
 
     printf '%d' "$result"
+}
+
+ensure_bot_pool_mount() {
+    local file="$1"
+    local mount="${PROJECT_DIR}/docker/php/pool.d/www.conf:/usr/local/etc/php-fpm.d/zz-pool.conf:ro"
+    [ -f "$file" ] || return 1
+    grep -qF "docker/php/pool.d/www.conf:/usr/local/etc/php-fpm.d/" "$file" && return 0
+    grep -qE '^      - .+:/var/www/faoxima$' "$file" || return 1
+    local tmp="${file}.tmp.$$"
+    awk -v m="$mount" '{ print } !done && /^      - .+:\/var\/www\/faoxima$/ { print "      - " m; done = 1 }' "$file" > "$tmp" \
+        && mv -f "$tmp" "$file" || { rm -f "$tmp"; return 1; }
+    grep -qF "$mount" "$file"
+}
+
+optimizer_backup_file() {
+    local src="$1" dir="$2" name
+    name=$(basename "$src")
+    if [ -f "$src" ]; then
+        cp -p "$src" "${dir}/${name}"
+    else
+        : > "${dir}/${name}.absent"
+    fi
+}
+
+optimizer_restore_file() {
+    local src="$1" dir="$2" name
+    name=$(basename "$src")
+    if [ -f "${dir}/${name}" ]; then
+        cp -p "${dir}/${name}" "$src"
+    elif [ -f "${dir}/${name}.absent" ]; then
+        rm -f "$src"
+    fi
+}
+
+wait_for_php_service() {
+    local service="$1" expect_children="$2" expect_mem="$3" i cid running
+    for i in {1..30}; do
+        cid=$(dc ps -q "$service" 2>/dev/null)
+        running=""
+        [ -n "$cid" ] && running=$(docker inspect -f '{{.State.Running}}' "$cid" 2>/dev/null)
+        if [ "$running" = "true" ] && dc exec -T "$service" php-fpm -t >/dev/null 2>&1; then
+            if [ -n "$expect_children" ] && ! dc exec -T "$service" grep -qE "^pm\.max_children[[:space:]]*=[[:space:]]*${expect_children}$" /usr/local/etc/php-fpm.d/zz-pool.conf 2>/dev/null; then
+                return 2
+            fi
+            if [ -n "$expect_mem" ] && [ "$(dc exec -T "$service" php -r 'echo ini_get("memory_limit");' 2>/dev/null | tr -d '\r')" != "$expect_mem" ]; then
+                return 3
+            fi
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
 }
 
 write_fpm_pool_conf() {
@@ -3467,20 +3612,24 @@ install_redis() {
 optimize_database() {
     show_logo
     ui_panel "OPTIMIZE DATABASE & SERVER" "$C_BOLD$C_GREEN" "$C_GREEN" \
-        "${C_WHITE}Automatically tunes MySQL and PHP based on detected server load,${C_RESET}" \
-        "${C_DIM}CPU/RAM, number of bots, databases, and users. Aims to prevent${C_RESET}" \
-        "${C_DIM}'Too many connections' / PDO connection errors.${C_RESET}"
+        "${C_WHITE}Conservatively tunes MySQL, PHP-FPM and Redis for the effective CPU/RAM,${C_RESET}" \
+        "${C_DIM}sharing one PHP worker budget across the main app and every additional${C_RESET}" \
+        "${C_DIM}bot container. Aims to prevent 'Too many connections' and out-of-memory.${C_RESET}"
 
     if [ ! -f "$COMPOSE_FILE" ]; then
         ui_err "Faoxima Bot is not installed."
         return 1
     fi
 
-    ui_action "Detecting server resources..."
+    if ! grep -qF "./docker/mysql/conf.d:/etc/mysql/conf.d:ro" "$COMPOSE_FILE"; then
+        ui_warn "docker-compose.yml does not yet mount docker/mysql/conf.d — add '- ./docker/mysql/conf.d:/etc/mysql/conf.d:ro' under the db service's volumes, then re-run this option."
+        return 1
+    fi
+
+    ui_action "Detecting effective server resources (host and cgroup limits)..."
     local cores ram_mb
     cores=$(detect_cpu_cores)
     ram_mb=$(detect_ram_mb)
-    [ -z "$ram_mb" ] && ram_mb=1024
 
     local names db_names db_users db_passes
     collect_bot_db_creds
@@ -3490,45 +3639,156 @@ optimize_database() {
         [ -n "${db_names[$i]}" ] && db_count=$((db_count + 1))
     done
 
+    local app_services=("app") bot_compose_files=() bn
+    for ((i = 1; i < ${#names[@]}; i++)); do
+        bn="${names[$i]}"
+        if [ -f "${BOT_COMPOSE_PREFIX}${bn}.yml" ]; then
+            app_services+=("app_${bn}")
+            bot_compose_files+=("${BOT_COMPOSE_PREFIX}${bn}.yml")
+        else
+            ui_warn "Bot '${bn}' has no $(basename "${BOT_COMPOSE_PREFIX}${bn}.yml") — it is not counted as an app container."
+        fi
+    done
+    local app_count="${#app_services[@]}"
+
     ui_action "Counting user records across ${db_count} database(s)..."
     local user_count
     user_count=$(count_db_users_total)
 
-    ui_info "Detected: ${cores} CPU core(s), ${ram_mb}MB RAM, ${bot_count} bot(s), ${db_count} database(s), ${user_count} total user record(s)."
+    local ini="${PROJECT_DIR}/docker/php/conf.d/faoxima.ini"
+    local pool_file="${PROJECT_DIR}/docker/php/pool.d/www.conf"
+    local mysql_cnf="${PROJECT_DIR}/docker/mysql/conf.d/faoxima.cnf"
+    local redis_conf="${PROJECT_DIR}/docker/redis/redis.conf"
+
+    local has_redis=0 redis_mem_mb=0
+    if redis_service_exists; then
+        has_redis=1
+        redis_mem_mb=$(compute_redis_maxmemory "$ram_mb")
+    fi
+
+    local system_mb mysql_mb redis_reserve_mb worker_cost_mb php_budget_mb
+    system_mb=$(compute_system_reserve_mb "$ram_mb")
+    mysql_mb=$(compute_mysql_reserve_mb "$ram_mb")
+    redis_reserve_mb=$(compute_redis_reserve_mb "$redis_mem_mb")
+    worker_cost_mb=$(compute_worker_cost_mb)
+    php_budget_mb=$((ram_mb - system_mb - mysql_mb - redis_reserve_mb))
+    [ "$php_budget_mb" -lt 0 ] && php_budget_mb=0
+
+    local total_workers per_container_workers min_per_container=2 overcommit=0
+    total_workers=$(compute_pm_max_children "$php_budget_mb" "$cores")
+    per_container_workers=$((total_workers / app_count))
+    [ "$per_container_workers" -gt 50 ] && per_container_workers=50
+    if [ "$per_container_workers" -lt "$min_per_container" ]; then
+        per_container_workers="$min_per_container"
+        overcommit=1
+    fi
+    local effective_workers=$((per_container_workers * app_count))
+
+    local current_mem_limit="" upload_floor_mb=0 mem_mb=""
+    if [ -f "$ini" ]; then
+        current_mem_limit=$(read_ini_value "memory_limit" "$ini")
+        upload_floor_mb=$(php_upload_memory_floor_mb "$ini")
+        mem_mb=$(compute_php_memory_limit "$ram_mb" "$upload_floor_mb")
+    fi
+
+    local max_conn
+    max_conn=$(compute_max_connections "$ram_mb" "$cores" "$app_count" "$user_count" "$effective_workers")
+    local conn_needed=$((effective_workers * 2 + 20))
+
+    local v
+    for v in "$cores" "$ram_mb" "$max_conn" "$total_workers" "$per_container_workers" "$redis_mem_mb" "$upload_floor_mb" "${mem_mb:-0}"; do
+        if ! [[ "$v" =~ ^[0-9]+$ ]]; then
+            ui_err "Resource calculation produced an invalid value ('${v}') — nothing was changed."
+            return 1
+        fi
+    done
+    if [ "$max_conn" -lt 50 ] || [ "$max_conn" -gt 300 ] \
+        || [ "$per_container_workers" -lt 2 ] || [ "$per_container_workers" -gt 50 ] \
+        || { [ -n "$mem_mb" ] && { [ "$mem_mb" -lt 128 ] || [ "$mem_mb" -lt "$upload_floor_mb" ]; }; } \
+        || { [ "$has_redis" -eq 1 ] && { [ "$redis_mem_mb" -lt 32 ] || [ "$redis_mem_mb" -gt 256 ]; }; }; then
+        ui_err "Resource calculation is outside the safe range — nothing was changed."
+        return 1
+    fi
 
     local current_conn
     current_conn=$(current_max_connections)
     [ -z "$current_conn" ] && current_conn="unknown"
 
-    local max_conn
-    max_conn=$(compute_max_connections "$ram_mb" "$cores" "$bot_count" "$user_count")
-    ui_info "Current MySQL max_connections = ${current_conn}."
-    ui_info "Computed MySQL max_connections = ${max_conn} (heuristic based on the above detection — not a guarantee for every traffic pattern)."
+    local mem_label="unchanged (faoxima.ini not found)"
+    [ -n "$mem_mb" ] && mem_label="${mem_mb}M (current ${current_mem_limit:-unset}, upload floor ${upload_floor_mb}MB)"
+    local redis_label="not installed"
+    [ "$has_redis" -eq 1 ] && redis_label="${redis_reserve_mb}MB (maxmemory ${redis_mem_mb}MB + overhead)"
+
+    ui_status_table "Resource Plan (conservative estimate)" "$C_CYAN" \
+        "Effective CPU|${cores} logical core(s)" \
+        "Effective RAM|${ram_mb}MB" \
+        "Bots / databases|${bot_count} bot(s), ${db_count} database(s), ${user_count} user record(s)" \
+        "App containers|${app_count} (${app_services[*]})" \
+        "Reserved OS/Docker/Nginx|${system_mb}MB" \
+        "Reserved MySQL|${mysql_mb}MB" \
+        "Reserved Redis|${redis_label}" \
+        "PHP worker budget|${php_budget_mb}MB (~${worker_cost_mb}MB per worker incl. DB connections)" \
+        "Total PHP-FPM workers|${effective_workers} (budget allows ${total_workers})" \
+        "Workers per container|${per_container_workers} (pm.max_children)" \
+        "PHP memory_limit|${mem_label}" \
+        "MySQL max_connections|${max_conn} (current ${current_conn})"
+
+    if [ "$overcommit" -eq 1 ]; then
+        ui_warn "This server cannot safely give ${app_count} app container(s) the minimum of ${min_per_container} PHP-FPM workers each (budget allows ${total_workers} in total). Using ${per_container_workers} per container anyway: ~$((effective_workers * worker_cost_mb))MB estimated vs ${php_budget_mb}MB available. Add RAM or remove bots to avoid out-of-memory kills."
+    fi
+    if [ -n "$mem_mb" ] && [ $((effective_workers * mem_mb)) -gt "$php_budget_mb" ]; then
+        ui_warn "Worst case: if every worker reached memory_limit at the same time PHP could use $((effective_workers * mem_mb))MB (> ${php_budget_mb}MB budget). Typical requests use far less; this is a ceiling, not an expected value."
+    fi
+    if [ "$max_conn" -lt "$conn_needed" ]; then
+        ui_warn "max_connections (${max_conn}) is below the estimated peak need of ${conn_needed} for ${effective_workers} PHP workers — the RAM cap won; consider more RAM or fewer bots."
+    fi
+    ui_info "These values are a conservative estimate from detected resources, not guaranteed capacity for every traffic pattern. Re-run this option after adding or removing bots."
+
+    local backup_dir f
+    backup_dir=$(mktemp -d "${TMPDIR:-/tmp}/faoxima_optimize.XXXXXX") || { ui_err "Failed to create a backup directory — nothing was changed."; return 1; }
+    for f in "$mysql_cnf" "$ini" "$pool_file" "$redis_conf" "${bot_compose_files[@]}"; do
+        if ! optimizer_backup_file "$f" "$backup_dir"; then
+            ui_err "Failed to back up ${f} — nothing was changed."
+            return 1
+        fi
+    done
+    ui_info "Current configuration backed up to ${backup_dir}."
+
+    local failed_parts=()
 
     ui_action "Writing MySQL tuning to docker/mysql/conf.d/faoxima.cnf..."
     if ! write_mysql_conf "$max_conn"; then
-        ui_err "Failed to write the MySQL configuration file."
-        return 1
-    fi
-
-    if ! grep -qF "./docker/mysql/conf.d:/etc/mysql/conf.d:ro" "$COMPOSE_FILE"; then
-        ui_warn "docker-compose.yml does not yet mount docker/mysql/conf.d — add '- ./docker/mysql/conf.d:/etc/mysql/conf.d:ro' under the db service's volumes, then re-run this option."
+        optimizer_restore_file "$mysql_cnf" "$backup_dir"
+        ui_err "Failed to write the MySQL configuration file — nothing was applied."
         return 1
     fi
 
     ui_action "Applying MySQL configuration (this may briefly restart the database)..."
-    if ! dc up -d --force-recreate db; then
-        ui_err "Failed to apply the MySQL configuration."
+    local wait_ok=0 wi
+    if dc up -d --force-recreate db; then
+        for wi in {1..60}; do
+            dc exec -T db mysqladmin ping -uroot -p"$(env_get MYSQL_ROOT_PASSWORD)" >/dev/null 2>&1 && { wait_ok=1; break; }
+            sleep 1
+        done
+    fi
+    if [ "$wait_ok" -eq 0 ]; then
+        ui_err "MySQL did not come back healthy with max_connections=${max_conn} — restoring the previous configuration."
+        optimizer_restore_file "$mysql_cnf" "$backup_dir"
+        wait_ok=0
+        if dc up -d --force-recreate db; then
+            for wi in {1..60}; do
+                dc exec -T db mysqladmin ping -uroot -p"$(env_get MYSQL_ROOT_PASSWORD)" >/dev/null 2>&1 && { wait_ok=1; break; }
+                sleep 1
+            done
+        fi
+        if [ "$wait_ok" -eq 1 ]; then
+            ui_warn "Previous MySQL configuration restored and MySQL is healthy again."
+        else
+            ui_err "MySQL is still not healthy after restoring the previous configuration — check 'dc logs db'. Backups: ${backup_dir}"
+        fi
+        ui_err "Optimization aborted — PHP-FPM and Redis settings were not changed."
         return 1
     fi
-
-    ui_action "Waiting for MySQL to come back up..."
-    local wait_ok=0 wi
-    for wi in {1..30}; do
-        dc exec -T db mysqladmin ping -uroot -p"$(env_get MYSQL_ROOT_PASSWORD)" >/dev/null 2>&1 && { wait_ok=1; break; }
-        sleep 1
-    done
-    [ "$wait_ok" -eq 0 ] && ui_warn "MySQL did not report healthy within 30s — checking the applied value anyway."
 
     local applied_conn
     applied_conn=$(current_max_connections)
@@ -3536,65 +3796,102 @@ optimize_database() {
         ui_ok "MySQL max_connections changed from ${current_conn} to ${applied_conn}."
     else
         ui_err "max_connections is still ${applied_conn:-unknown} (expected ${max_conn}). The container may not have restarted — check 'dc logs db'."
+        failed_parts+=("mysql")
     fi
 
-    local mem_mb=$((ram_mb / (cores * 4)))
-    [ "$mem_mb" -lt 128 ] && mem_mb=128
-    [ "$mem_mb" -gt 512 ] && mem_mb=512
-
-    local ini="${PROJECT_DIR}/docker/php/conf.d/faoxima.ini"
-    if [ -f "$ini" ]; then
-        cp "$ini" "${ini}.bak" 2>/dev/null || true
-        if faoxima_set_ini "memory_limit" "${mem_mb}M" "$ini"; then
-            ui_action "Rebuilding the app image with the new PHP memory_limit..."
-            if dc build app && dc up -d app; then
-                ui_ok "PHP memory_limit set to ${mem_mb}M."
-                if [ -d "$BOTS_DIR" ]; then
-                    local d bn
-                    for d in "${BOTS_DIR}"/*/; do
-                        [ -d "$d" ] || continue
-                        bn=$(basename "$d")
-                        dc up -d --no-deps "app_${bn}" || ui_warn "Failed to refresh 'app_${bn}' with the new image."
-                    done
-                fi
-            else
-                ui_err "Failed to rebuild/restart the app image — MySQL tuning was still applied."
-            fi
-        else
-            ui_err "Failed to update memory_limit in ${ini}."
-        fi
-    fi
-
+    local pool_enabled=0 ini_changed=0 php_failed=0
     if grep -qF "docker/php/pool.d/www.conf:/usr/local/etc/php-fpm.d/" "$COMPOSE_FILE" 2>/dev/null; then
-        local pm_max_children
-        pm_max_children=$(compute_pm_max_children "$ram_mb" "$cores")
-        ui_info "Computed PHP-FPM pm.max_children = ${pm_max_children} (heuristic: ~40MB/worker within available RAM, capped at 10x CPU cores)."
-
-        ui_action "Writing PHP-FPM pool tuning to docker/php/pool.d/www.conf..."
-        if write_fpm_pool_conf "$pm_max_children"; then
-            ui_action "Applying PHP-FPM pool configuration (this restarts the app container)..."
-            if dc up -d --force-recreate app; then
-                ui_ok "PHP-FPM pm.max_children set to ${pm_max_children}."
-            else
-                ui_err "Failed to restart the app container — PHP-FPM pool tuning was written but not yet applied."
-            fi
-        else
-            ui_err "Failed to write the PHP-FPM pool configuration file."
-        fi
+        pool_enabled=1
     else
         ui_warn "PHP-FPM pool tuning (pm.max_children) was skipped — docker-compose.yml does not mount docker/php/pool.d/www.conf yet. Re-run the installer's compose setup or add '- ./docker/php/pool.d/www.conf:/usr/local/etc/php-fpm.d/zz-pool.conf:ro' under the app service's volumes."
     fi
 
-    if redis_service_exists; then
-        local redis_mem_mb=$((ram_mb / 8))
-        [ "$redis_mem_mb" -lt 32 ] && redis_mem_mb=32
-        [ "$redis_mem_mb" -gt 256 ] && redis_mem_mb=256
+    if [ -n "$mem_mb" ] && [ "$current_mem_limit" != "${mem_mb}M" ]; then
+        ui_action "Setting PHP memory_limit to ${mem_mb}M in docker/php/conf.d/faoxima.ini..."
+        if faoxima_set_ini "memory_limit" "${mem_mb}M" "$ini"; then
+            ini_changed=1
+        else
+            ui_err "Failed to update memory_limit in ${ini}."
+            php_failed=1
+        fi
+    fi
 
+    if [ "$pool_enabled" -eq 1 ] && [ "$php_failed" -eq 0 ]; then
+        ui_action "Writing PHP-FPM pool tuning (pm.max_children=${per_container_workers} per container) to docker/php/pool.d/www.conf..."
+        write_fpm_pool_conf "$per_container_workers" || { ui_err "Failed to write the PHP-FPM pool configuration file."; php_failed=1; }
+        for f in "${bot_compose_files[@]}"; do
+            [ "$php_failed" -eq 0 ] || break
+            ensure_bot_pool_mount "$f" || { ui_err "Failed to add the PHP-FPM pool mount to $(basename "$f")."; php_failed=1; }
+        done
+    fi
+
+    if [ "$php_failed" -eq 1 ]; then
+        for f in "$ini" "$pool_file" "${bot_compose_files[@]}"; do
+            optimizer_restore_file "$f" "$backup_dir"
+        done
+        ui_err "PHP settings were not changed (files restored from backup)."
+        failed_parts+=("php")
+    elif [ "$ini_changed" -eq 1 ] || [ "$pool_enabled" -eq 1 ]; then
+        local php_ok=1 svc rc expect_children="" expect_mem=""
+        [ "$pool_enabled" -eq 1 ] && expect_children="$per_container_workers"
+        [ "$ini_changed" -eq 1 ] && expect_mem="${mem_mb}M"
+
+        if [ "$ini_changed" -eq 1 ]; then
+            ui_action "Rebuilding the app image with the new PHP memory_limit..."
+            dc build app || php_ok=0
+        fi
+        if [ "$php_ok" -eq 1 ]; then
+            ui_action "Recreating ${app_count} app container(s): ${app_services[*]}..."
+            dc up -d --force-recreate --no-deps "${app_services[@]}" || php_ok=0
+        fi
+        ui_action "Reloading nginx so it picks up the new app container IPs..."
+        dc restart nginx || ui_err "nginx failed to restart — the site may 502 until you run 'docker compose restart nginx' manually."
+
+        if [ "$php_ok" -eq 1 ]; then
+            for svc in "${app_services[@]}"; do
+                wait_for_php_service "$svc" "$expect_children" "$expect_mem"
+                rc=$?
+                case "$rc" in
+                    0) ui_ok "${svc}: PHP-FPM healthy${expect_children:+, pm.max_children=${expect_children}}${expect_mem:+, memory_limit=${expect_mem}}." ;;
+                    2) ui_err "${svc}: the PHP-FPM pool file does not show pm.max_children=${expect_children}."; php_ok=0 ;;
+                    3) ui_err "${svc}: PHP memory_limit is not ${expect_mem} after the rebuild."; php_ok=0 ;;
+                    *) ui_err "${svc}: PHP-FPM did not become healthy within 30s — check 'dc logs ${svc}'."; php_ok=0 ;;
+                esac
+            done
+        else
+            ui_err "Failed to rebuild or recreate the app container(s)."
+        fi
+
+        if [ "$php_ok" -eq 0 ]; then
+            ui_action "Restoring the previous PHP / PHP-FPM configuration..."
+            for f in "$ini" "$pool_file" "${bot_compose_files[@]}"; do
+                optimizer_restore_file "$f" "$backup_dir"
+            done
+            local restore_ok=1
+            if [ "$ini_changed" -eq 1 ]; then
+                dc build app || restore_ok=0
+            fi
+            dc up -d --force-recreate --no-deps "${app_services[@]}" || restore_ok=0
+            dc restart nginx || restore_ok=0
+            if [ "$restore_ok" -eq 1 ]; then
+                ui_warn "Previous PHP configuration restored and app container(s) recreated."
+            else
+                ui_err "Restoring the previous PHP configuration did not fully succeed — check 'dc ps' and 'dc logs app'. Backups: ${backup_dir}"
+            fi
+            failed_parts+=("php")
+        else
+            ui_ok "PHP-FPM: ${per_container_workers} worker(s) per container × ${app_count} container(s) = ${effective_workers} total${mem_mb:+, memory_limit ${mem_mb}M}."
+        fi
+    else
+        ui_info "No PHP / PHP-FPM changes needed."
+    fi
+
+    if [ "$has_redis" -eq 1 ]; then
         ui_action "Writing Redis tuning (maxmemory=${redis_mem_mb}mb) to docker/redis/redis.conf..."
         if write_redis_conf "$redis_mem_mb"; then
             ui_action "Applying Redis configuration (this may briefly restart Redis)..."
+            local redis_wait_ok=0 ri
             if dc up -d --force-recreate redis; then
-                local redis_wait_ok=0 ri
                 for ri in {1..30}; do
                     if dc exec -T redis redis-cli ping 2>/dev/null | grep -q PONG; then
                         redis_wait_ok=1
@@ -3602,22 +3899,29 @@ optimize_database() {
                     fi
                     sleep 1
                 done
-                if [ "$redis_wait_ok" -eq 1 ]; then
-                    ui_ok "Redis maxmemory set to ${redis_mem_mb}mb (allkeys-lru eviction)."
-                else
-                    ui_warn "Redis did not report healthy within 30s after retuning — check 'dc logs redis'."
-                fi
+            fi
+            if [ "$redis_wait_ok" -eq 1 ]; then
+                ui_ok "Redis maxmemory set to ${redis_mem_mb}mb (allkeys-lru eviction, no persistence)."
             else
-                ui_err "Failed to apply the Redis configuration."
+                ui_err "Redis did not become healthy after retuning — restoring the previous configuration."
+                optimizer_restore_file "$redis_conf" "$backup_dir"
+                dc up -d --force-recreate redis || ui_err "Failed to recreate Redis with the previous configuration — check 'dc logs redis'."
+                failed_parts+=("redis")
             fi
         else
+            optimizer_restore_file "$redis_conf" "$backup_dir"
             ui_err "Failed to write the Redis configuration file."
+            failed_parts+=("redis")
         fi
     else
         ui_info "Redis is not installed — skipping Redis tuning. Use Database ← Install/Enable Redis to add it."
     fi
 
-    ui_ok "Optimization finished. Verify cron/shell_exec still work with: dc exec app sh -c 'command -v cron && pgrep cron'"
+    if [ "${#failed_parts[@]}" -eq 0 ]; then
+        ui_ok "Optimization finished. Verify cron/shell_exec still work with: dc exec app sh -c 'command -v cron && pgrep cron'"
+    else
+        ui_warn "Optimization finished with problems in: ${failed_parts[*]}. Those parts were restored from ${backup_dir} where possible; everything else was applied."
+    fi
 }
 
 renew_ssl() {
