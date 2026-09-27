@@ -50,6 +50,8 @@ final class ServicesHandler extends BaseHandler
         $discount = (int)($this->user['pricediscount'] ?? 0);
 
         $nationalPanel = function_exists('nmPanelNationalEnabled') && nmPanelNationalEnabled($panel);
+        $fxEnabled = fx_context($panel, 'product') !== null;
+        $fxQuote = fx_quote_token($panel, 'product');
 
         $list = [];
         foreach ($rows as $row) {
@@ -59,16 +61,22 @@ final class ServicesHandler extends BaseHandler
                 continue;
             }
 
+            $basePrice = $row['price_product'] ?? 0;
+            $row = fx_apply_to_product($row, $panel);
             $price = (float)($row['price_product'] ?? 0);
             if ($discount !== 0) {
                 $price = $price - (($price * $discount) / 100);
             }
+            $price = fx_finalize_amount($price, $panel, 'product');
 
             $list[] = [
                 'id'             => $row['code_product'],
                 'name'           => $row['name_product'],
                 'description'    => $row['note'] ?? '',
                 'price'          => $price,
+                'base_price'     => (float) $basePrice,
+                'fx_enabled'     => $fxEnabled,
+                'fx_quote'       => $fxQuote,
                 'traffic_gb'     => (int)($row['Volume_constraint'] ?? 0),
                 'time_days'      => (int)($row['Service_time'] ?? 0),
                 'category_id'    => $categoryRow['id'] ?? null,

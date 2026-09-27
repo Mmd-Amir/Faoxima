@@ -1373,7 +1373,7 @@ $text_porsant
     $locations = select("marzban_panel", "*", "code_panel", $dataget[2], "select");
     $location = $locations['name_panel'];
     $eextraprice = json_decode($locations['priceextravolume'], true);
-    $extrapricevalue = $eextraprice[$user['agent']];
+    $extrapricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $locations, 'extra_volume');
     update("user", "Processing_value", $usernamepanel, "id", $from_id);
     update("user", "Processing_value_one", $location, "id", $from_id);
 
@@ -1392,8 +1392,10 @@ $text_porsant
     }
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value_one'], "select");
     $eextraprice = json_decode($marzban_list_get['priceextravolume'], true);
-    $extrapricevalue = $eextraprice[$user['agent']];
+    $extrapricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'extra_volume');
     $priceextra = $extrapricevalue * $text;
+    $priceextra = fx_finalize_amount($priceextra, $marzban_list_get, 'extra_volume');
+    fx_quote_store($from_id, fx_quote_context_key('extra_volume_external', (string) $user['Processing_value'] . '|' . (string) $user['Processing_value_one']), $priceextra, $marzban_list_get, 'extra_volume', ['qty' => (int) $text]);
     $keyboardsetting = json_encode([
         'inline_keyboard' => [
             [
@@ -1408,6 +1410,24 @@ $text_porsant
     step('home', $from_id);
 } elseif (preg_match('/confirmaextras_(\w+)/', $datain, $dataget)) {
     $volume = $dataget[1];
+    $fxExternalQty = null;
+    $fxExternalPanel = select("marzban_panel", "*", "name_panel", $user['Processing_value_one'], "select");
+    if (is_array($fxExternalPanel) && fx_context($fxExternalPanel, 'extra_volume') !== null) {
+        $fxExternalKey = fx_quote_context_key('extra_volume_external', (string) $user['Processing_value'] . '|' . (string) $user['Processing_value_one']);
+        $fxExternalQuote = fx_quote_get($from_id, $fxExternalKey);
+        $fxExternalQty = is_array($fxExternalQuote) ? (int) ($fxExternalQuote['meta']['qty'] ?? 0) : 0;
+        if ($fxExternalQty <= 0) {
+            sendmessage($from_id, $textbotlang['users']['stateus']['error'], null, 'html');
+            return;
+        }
+        $fxExternalUnit = fx_adjust_base_toman(json_decode($fxExternalPanel['priceextravolume'], true)[$user['agent']] ?? null, $fxExternalPanel, 'extra_volume');
+        $fxExternalFresh = fx_finalize_amount((float) $fxExternalUnit * $fxExternalQty, $fxExternalPanel, 'extra_volume');
+        if (!fx_quote_check($from_id, $fxExternalKey, $fxExternalFresh, $fxExternalPanel, 'extra_volume') || (int) round((float) $volume) !== (int) $fxExternalFresh) {
+            fx_quote_store($from_id, $fxExternalKey, $fxExternalFresh, $fxExternalPanel, 'extra_volume', ['qty' => $fxExternalQty]);
+            sendmessage($from_id, fx_price_changed_text($fxExternalFresh), json_encode(['inline_keyboard' => [[['text' => $textbotlang['users']['Extra_volume']['extracheck'], 'callback_data' => 'confirmaextras_' . $fxExternalFresh]]]]), 'HTML');
+            return;
+        }
+    }
     if ($user['Balance'] < $volume && $user['agent'] != "n2") {
         $marzbandirectpay = panel_feature_enabled($user['Processing_value_one'], 'directbuy') ? "ondirectbuy" : "offdirectbuy";
         if ($marzbandirectpay == "offdirectbuy") {
@@ -1429,6 +1449,9 @@ $text_porsant
                 $volume = $volume - $result;
                 sendmessage($from_id, sprintf($textbotlang['users']['Discount']['discountapplied'], $user['pricediscount']), null, 'HTML');
             }
+            if (is_array($fxExternalPanel)) {
+                $volume = fx_finalize_amount($volume, $fxExternalPanel, 'extra_volume');
+            }
             $Balance_prim = $volume - $user['Balance'];
             update("user", "Processing_value", $Balance_prim, "id", $from_id);
             sendmessage($from_id, $textbotlang['users']['sell']['None-credit'], $step_payment, 'HTML');
@@ -1448,16 +1471,17 @@ $text_porsant
         return;
     }
     $eextraprice = json_decode($marzban_list_get['priceextravolume'], true);
-    $extrapricevalue = $eextraprice[$user['agent']];
+    $extrapricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'extra_volume');
     deletemessage($from_id, $message_id);
     if (intval($user['pricediscount']) != 0) {
         $result = ($volume * $user['pricediscount']) / 100;
         $volume = $volume - $result;
         sendmessage($from_id, sprintf($textbotlang['users']['Discount']['discountapplied'], $user['pricediscount']), null, 'HTML');
     }
+    $volume = fx_finalize_amount($volume, $marzban_list_get, 'extra_volume');
 
     $DataUserOut = $ManagePanel->DataUser($user['Processing_value_one'], $user['Processing_value']);
-    $data_limit = $DataUserOut['data_limit'] + (intval($volume) / intval($extrapricevalue) * pow(1024, 3));
+    $data_limit = $DataUserOut['data_limit'] + (($fxExternalQty ?? intval($volume) / intval($extrapricevalue)) * pow(1024, 3));
     $stmt = $pdo->prepare("INSERT IGNORE INTO service_other (id_user, username, value, type, time, price) VALUES (:id_user, :username, :value, :type, :time, :price)");
     $value = $data_limit;
     $dateacc = date('Y/m/d H:i:s');
@@ -1470,7 +1494,7 @@ $text_porsant
         ':time' => $dateacc,
         ':price' => $volume,
     ]);
-    $data_limit_new = (intval($volume) / intval($extrapricevalue));
+    $data_limit_new = $fxExternalQty ?? (intval($volume) / intval($extrapricevalue));
     $extra_volume = $ManagePanel->extra_volume($user['Processing_value'], $marzban_list_get['code_panel'], $data_limit_new);
     if ($extra_volume['status'] == false) {
         $extra_volume['msg'] = rx_panel_error_text($extra_volume['msg'] ?? null, $extra_volume['detail'] ?? null);
@@ -1512,7 +1536,7 @@ $text_porsant
         ]
     ]);
     sendmessage($from_id, $textbotlang['users']['extend']['thanks'], $back, 'HTML');
-    $volumes = $volume / $extrapricevalue;
+    $volumes = $fxExternalQty ?? $volume / $extrapricevalue;
     $volumes = number_format($volumes, 0);
     $text_report = sprintf($textbotlang['Admin']['reportgroup']['volumepurchase'], $from_id, $volumes, $volume, $user['Balance'], $user['Processing_value']);
     if (strlen($setting['Channel_Report'] ?? '') > 0) {

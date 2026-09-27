@@ -401,6 +401,7 @@ if (!function_exists('getCronJobDefinitions')) {
             'ip_block_notify' => ['script' => 'ip_block_notify.php', 'admin_label' => 'اطلاع مسدودشدن IP', 'instruction' => '📶 اطلاع‌رسانی مسدودشدن IP قبلی — %s', 'default' => ['unit' => 'minute', 'value' => 1]],
             'public_log_drain' => ['script' => 'public_log_drain.php', 'admin_label' => 'گزارش عمومی', 'instruction' => '📣 تخلیه صف گزارش عمومی خرید — %s', 'default' => ['unit' => 'minute', 'value' => 1]],
             'queued_renewal' => ['script' => 'QueuedRenewalProcessor.php', 'admin_label' => 'رزرو اشتراک', 'instruction' => '🔋 بررسی و فعال‌سازی رزروهای اشتراک — %s', 'default' => ['unit' => 'minute', 'value' => 5]],
+            'fx_rate_sync' => ['script' => 'fx_rate_sync.php', 'admin_label' => 'نرخ دلار (USDT)', 'instruction' => '💵 به‌روزرسانی نرخ USDT/IRT — %s', 'default' => ['unit' => 'minute', 'value' => 5]],
         ];
     }
 }

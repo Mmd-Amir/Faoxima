@@ -30,12 +30,13 @@ final class ServiceExtraHandler extends BaseHandler
 
     private function handleQuote(): void
     {
-        [$invoice, $panel, $kind, $pricePerUnit, $bounds] = $this->resolveContext('GET');
+        [$invoice, $panel, $kind, $pricePerUnit, $bounds, $fxKind] = $this->resolveContext('GET');
 
         $amount = FaoximaInput::int($this->data, 'amount', 0);
         $total = null;
         if ($amount > 0) {
             $total = $amount * $pricePerUnit;
+            $total = fx_finalize_amount($total, $panel, $fxKind);
         }
 
         FaoximaResponse::ok([
@@ -48,12 +49,15 @@ final class ServiceExtraHandler extends BaseHandler
             'amount'          => $amount,
             'total_price'     => $total === null ? null : (int)$total,
             'balance'         => (float)($this->user['Balance'] ?? 0),
+            'fx_enabled'      => fx_context($panel, $fxKind) !== null,
+            'fx_quote'        => fx_quote_token($panel, $fxKind),
+            'fx_round_step'   => fx_context($panel, $fxKind)['round_step'] ?? null,
         ]);
     }
 
     private function handleConfirm(): void
     {
-        [$invoice, $panel, $kind, $pricePerUnit, $bounds] = $this->resolveContext('POST');
+        [$invoice, $panel, $kind, $pricePerUnit, $bounds, $fxKind] = $this->resolveContext('POST');
 
         $amount = FaoximaInput::int($this->data, 'amount', 0);
         if ($amount <= 0) {
@@ -70,6 +74,11 @@ final class ServiceExtraHandler extends BaseHandler
         }
 
         $price = (float) ($amount * $pricePerUnit);
+        $price = fx_finalize_amount($price, $panel, $fxKind);
+        if (fx_context($panel, $fxKind) !== null && !fx_quote_token_valid(FaoximaInput::string($this->data, 'fx_quote'), $panel, $fxKind)) {
+            FaoximaResponse::fail(409, fx_price_changed_api_message(), fx_price_changed_api_obj((int) $price, fx_quote_token($panel, $fxKind)));
+        }
+        $fxListPrice = (float) $price;
 
 
         $discountCode = FaoximaInput::string($this->data, 'discount_code');
@@ -93,7 +102,7 @@ final class ServiceExtraHandler extends BaseHandler
                 FaoximaResponse::fail(422, (string)($dv['reason'] ?? faoxima_textbot_get('dyn_purchase_invalid_discount_code', '❌ کد تخفیف نامعتبر است.')));
             }
             $discPriceBefore = $price;
-            $price = MiniDiscount::applyToPrice($dv['row'], $price);
+            $price = fx_finalize_amount(MiniDiscount::applyToPrice($dv['row'], $price), $panel, $fxKind);
             MiniDiscount::logOrderDiscount([
                 'id_user' => $this->user['id'],
                 'id_invoice' => $invoice['id_invoice'] ?? null,
@@ -115,6 +124,9 @@ final class ServiceExtraHandler extends BaseHandler
             $finalPrice = $finalPrice - (($finalPrice * $discount) / 100);
         }
         $finalPrice = (int) round($finalPrice);
+        $finalPrice = (int) fx_finalize_amount($finalPrice, $panel, $fxKind);
+        $fxBaseUnit = fx_panel_raw_unit_price($panel, $this->fxPriceField($invoice, $kind), (string)($this->user['agent'] ?? 'f'));
+        $fxSnapshot = fx_pricing_snapshot($panel, $fxKind, $amount * ($fxBaseUnit ?? 0), $finalPrice, $fxListPrice - $finalPrice, ['quantity' => $amount, 'unit_price' => (int) $pricePerUnit, 'source_channel' => 'miniapp']);
 
         $balance = (float)($this->user['Balance'] ?? 0);
         $agent = (string)($this->user['agent'] ?? 'f');
@@ -266,6 +278,7 @@ final class ServiceExtraHandler extends BaseHandler
                     'old_volume'      => $oldDataLimit,
                     'expire_old'      => $oldExpire,
                 ], JSON_UNESCAPED_UNICODE);
+                $value = fx_value_with_snapshot($value, $fxSnapshot);
                 $type = 'extra_time_user';
             } else {
                 $value = json_encode([
@@ -274,6 +287,7 @@ final class ServiceExtraHandler extends BaseHandler
                     'old_volume'      => $oldDataLimit,
                     'expire_old'      => $oldExpire,
                 ], JSON_UNESCAPED_UNICODE);
+                $value = fx_value_with_snapshot($value, $fxSnapshot);
                 $type = 'extra_user';
             }
 
@@ -378,12 +392,13 @@ final class ServiceExtraHandler extends BaseHandler
 
         $agent = (string)($this->user['agent'] ?? 'f');
         $isCustomService = in_array($invoice['name_product'] ?? '', ['🛍 حجم دلخواه', '⚙️ سرویس دلخواه'], true);
+        $priceField = $this->fxPriceField($invoice, $kind);
         if ($isCustomService) {
-            $priceField = $kind === 'time' ? 'pricecustomtime' : 'pricecustomvolume';
+            $fxKind = $kind === 'time' ? 'custom_time' : 'custom_volume';
         } else {
-            $priceField = $kind === 'time' ? 'priceextratime' : 'priceextravolume';
+            $fxKind = $kind === 'time' ? 'extra_time' : 'extra_volume';
         }
-        $pricePerUnit = (int) $this->jsonAgentValue($panel[$priceField] ?? '', $agent, 0);
+        $pricePerUnit = (int) fx_adjust_base_toman($this->jsonAgentValue($panel[$priceField] ?? '', $agent, 0), $panel, $fxKind);
         if ($pricePerUnit <= 0) {
             FaoximaResponse::fail(503, faoxima_textbot_get('dyn_serviceextra_tariff_not_configured', '❌ تعرفه خرید اضافه روی این پنل تنظیم نشده است.'));
         }
@@ -398,7 +413,15 @@ final class ServiceExtraHandler extends BaseHandler
         }
         if ($max <= 0) $max = 9999;
 
-        return [$invoice, $panel, $kind, $pricePerUnit, [$min, $max]];
+        return [$invoice, $panel, $kind, $pricePerUnit, [$min, $max], $fxKind];
+    }
+
+    private function fxPriceField(array $invoice, string $kind): string
+    {
+        if (in_array($invoice['name_product'] ?? '', ['🛍 حجم دلخواه', '⚙️ سرویس دلخواه'], true)) {
+            return $kind === 'time' ? 'pricecustomtime' : 'pricecustomvolume';
+        }
+        return $kind === 'time' ? 'priceextratime' : 'priceextravolume';
     }
 
     private function jsonAgentValue($raw, string $agent, $default = '')

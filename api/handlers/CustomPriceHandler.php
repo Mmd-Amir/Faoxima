@@ -36,9 +36,11 @@ final class CustomPriceHandler extends BaseHandler
         $trafficGb = FaoximaInput::int($this->data, 'traffic_gb', 0);
         $timeDays  = FaoximaInput::int($this->data, 'time_days', 0);
 
+        $fxKinds = ['custom_volume', 'custom_time'];
         if ($isCustomActive) {
-            $price = ((float)($tp[$agent] ?? 0) * $trafficGb)
-                   + ((float)($timeP[$agent] ?? 0) * $timeDays);
+            $price = ((float) fx_adjust_base_toman($tp[$agent] ?? 0, $panel, 'custom_volume') * $trafficGb)
+                   + ((float) fx_adjust_base_toman($timeP[$agent] ?? 0, $panel, 'custom_time') * $timeDays);
+            $price = fx_finalize_amount($price, $panel, $fxKinds);
         } else {
             $price = false;
         }
@@ -49,6 +51,8 @@ final class CustomPriceHandler extends BaseHandler
             'traffic_max'  => (int)($max[$agent] ?? 0),
             'time_min'     => (int)($minT[$agent] ?? 0),
             'time_max'     => (int)($maxT[$agent] ?? 0),
+            'fx_enabled'   => fx_context($panel, $fxKinds) !== null,
+            'fx_quote'     => fx_quote_token($panel, $fxKinds),
         ]);
     }
 }

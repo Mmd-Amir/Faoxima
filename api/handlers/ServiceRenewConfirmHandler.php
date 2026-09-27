@@ -67,6 +67,22 @@ final class ServiceRenewConfirmHandler extends BaseHandler
             $product = $row;
         }
 
+        $fxKinds = !empty($custom) ? ['custom_volume', 'custom_time'] : 'product';
+        $fxBasePrice = !empty($custom)
+            ? fx_custom_base_price($panel, $agent, $product['Volume_constraint'] ?? 0, $product['Service_time'] ?? 0)
+            : $product['price_product'];
+        if (empty($custom)) {
+            $product = fx_apply_to_product($product, $panel);
+        }
+        $product['price_product'] = fx_finalize_amount($product['price_product'], $panel, $fxKinds);
+        if (fx_context($panel, $fxKinds) !== null && !fx_quote_token_valid(FaoximaInput::string($this->data, 'fx_quote'), $panel, $fxKinds)) {
+            $fxDisplayPrice = empty($custom)
+                ? fx_finalize_amount((int) round(fx_apply_user_discount((float) $product['price_product'], (int)($this->user['pricediscount'] ?? 0))), $panel, $fxKinds)
+                : $product['price_product'];
+            FaoximaResponse::fail(409, fx_price_changed_api_message(), fx_price_changed_api_obj($fxDisplayPrice, fx_quote_token($panel, $fxKinds)));
+        }
+        $fxListPrice = (float) $product['price_product'];
+
 
         $discountCode = FaoximaInput::string($this->data, 'discount_code');
         if ($discountCode !== '') {
@@ -82,7 +98,7 @@ final class ServiceRenewConfirmHandler extends BaseHandler
                 FaoximaResponse::fail(422, (string)($dv['reason'] ?? faoxima_textbot_get('dyn_purchase_invalid_discount_code', '❌ کد تخفیف نامعتبر است.')));
             }
             $discPriceBefore = (float)$product['price_product'];
-            $product['price_product'] = MiniDiscount::applyToPrice($dv['row'], $discPriceBefore);
+            $product['price_product'] = fx_finalize_amount(MiniDiscount::applyToPrice($dv['row'], $discPriceBefore), $panel, $fxKinds);
             MiniDiscount::logOrderDiscount([
                 'id_user' => $this->user['id'],
                 'id_invoice' => $invoice['id_invoice'] ?? null,
@@ -104,6 +120,8 @@ final class ServiceRenewConfirmHandler extends BaseHandler
             $finalPrice = $finalPrice - (($finalPrice * $discount) / 100);
         }
         $finalPrice = (int) round($finalPrice);
+        $finalPrice = (int) fx_finalize_amount($finalPrice, $panel, $fxKinds);
+        $fxSnapshot = fx_pricing_snapshot($panel, $fxKinds, $fxBasePrice, $finalPrice, $fxListPrice - $finalPrice, ['product' => (string)($product['code_product'] ?? ''), 'source_channel' => 'miniapp']);
 
 
         $maxBuyAgent = (int)($this->user['maxbuyagent'] ?? 0);
@@ -150,6 +168,7 @@ final class ServiceRenewConfirmHandler extends BaseHandler
                 'code_product' => $soCode,
                 'id_order'     => $idOrder,
             ], JSON_UNESCAPED_UNICODE);
+            $soValue = fx_value_with_snapshot($soValue, $fxSnapshot);
 
             try {
                 $pdo = FaoximaDb::pdo();
@@ -424,6 +443,7 @@ final class ServiceRenewConfirmHandler extends BaseHandler
                 'code_product' => (string)$product['code_product'],
                 'id_order'     => $orderRand,
             ], JSON_UNESCAPED_UNICODE);
+            $value = fx_value_with_snapshot($value, $fxSnapshot);
 
             $pdo = FaoximaDb::pdo();
             $stmt = $pdo->prepare(
@@ -539,8 +559,8 @@ final class ServiceRenewConfirmHandler extends BaseHandler
         $maxVol  = (int) $this->jsonAgentValue($panel['maxvolume']  ?? '', $agent);
         $minTime = (int) $this->jsonAgentValue($panel['maintime']   ?? '', $agent);
         $maxTime = (int) $this->jsonAgentValue($panel['maxtime']    ?? '', $agent);
-        $priceV  = (float) $this->jsonAgentValue($panel['pricecustomvolume'] ?? '', $agent);
-        $priceT  = (float) $this->jsonAgentValue($panel['pricecustomtime']   ?? '', $agent);
+        $priceV  = (float) fx_adjust_base_toman($this->jsonAgentValue($panel['pricecustomvolume'] ?? '', $agent), $panel, 'custom_volume');
+        $priceT  = (float) fx_adjust_base_toman($this->jsonAgentValue($panel['pricecustomtime']   ?? '', $agent), $panel, 'custom_time');
 
         if ($volume > $maxVol || $volume < $minVol) {
             FaoximaResponse::badRequest(faoxima_render_text(faoxima_textbot_get('dyn_renewconfirm_invalid_volume_range_tpl', '❌ حجم نامعتبر است (بین {min} و {max} گیگابایت)'), ['min' => $minVol, 'max' => $maxVol]));

@@ -67,6 +67,21 @@ final class PurchaseHandler extends BaseHandler
             FaoximaResponse::fail(403, faoxima_textbot_get('dyn_purchase_product_not_allowed_for_agent', 'این محصول برای نوع کاربری شما فعال نیست'));
         }
 
+        $fxKinds = empty($customService) ? 'product' : ['custom_volume', 'custom_time'];
+        if (empty($customService)) {
+            $product = fx_apply_to_product($product, $panel);
+        }
+        if (fx_context($panel, $fxKinds) !== null && !fx_quote_token_valid(FaoximaInput::string($this->data, 'fx_quote'), $panel, $fxKinds)) {
+            $fxDisplayPrice = empty($customService)
+                ? fx_finalize_amount(fx_apply_user_discount($product['price_product'], (int)($this->user['pricediscount'] ?? 0)), $panel, $fxKinds)
+                : fx_finalize_amount($product['price_product'], $panel, $fxKinds);
+            FaoximaResponse::fail(409, fx_price_changed_api_message(), fx_price_changed_api_obj($fxDisplayPrice, fx_quote_token($panel, $fxKinds)));
+        }
+        $fxListPrice = (float) fx_finalize_amount($product['price_product'], $panel, $fxKinds);
+        $fxBasePrice = empty($customService)
+            ? ($product['fx_base_price'] ?? $product['price_product'])
+            : fx_custom_base_price($panel, $this->user['agent'] ?? 'f', $product['Volume_constraint'] ?? 0, $product['Service_time'] ?? 0);
+
 
         $discount = (int)($this->user['pricediscount'] ?? 0);
         if ($discount !== 0) {
@@ -91,7 +106,7 @@ final class PurchaseHandler extends BaseHandler
                 FaoximaResponse::fail(422, (string)($dv['reason'] ?? faoxima_textbot_get('dyn_purchase_invalid_discount_code', '❌ کد تخفیف نامعتبر است.')));
             }
             $discPriceBefore = (float)$product['price_product'];
-            $product['price_product'] = MiniDiscount::applyToPrice($dv['row'], $discPriceBefore);
+            $product['price_product'] = fx_finalize_amount(MiniDiscount::applyToPrice($dv['row'], $discPriceBefore), $panel, $fxKinds);
             $discPriceAfter = (float)$product['price_product'];
             $discAmount = $discPriceBefore - $discPriceAfter;
             MiniDiscount::logOrderDiscount([
@@ -107,6 +122,9 @@ final class PurchaseHandler extends BaseHandler
             ]);
         }
 
+
+        $product['price_product'] = fx_finalize_amount($product['price_product'], $panel, $fxKinds);
+        $fxSnapshot = fx_pricing_snapshot($panel, $fxKinds, $fxBasePrice, $product['price_product'], $fxListPrice - (float) $product['price_product'], ['product' => (string)($product['code_product'] ?? ''), 'source_channel' => 'miniapp']);
 
         $orderId = bin2hex(random_bytes(4));
         $customUsername = FaoximaInput::nullableString($this->data, 'custom_username');
@@ -205,6 +223,7 @@ final class PurchaseHandler extends BaseHandler
                 FaoximaLogger::exception($e, 'Unpaid invoice insert failed', ['user_id' => $this->user['id']]);
                 FaoximaResponse::serverError(faoxima_textbot_get('dyn_purchase_invoice_save_failed', 'خطا در ذخیره فاکتور'));
             }
+            fx_store_invoice_snapshot($orderId, $fxSnapshot);
 
             $amountDue = (int) ceil($shortfall);
 
@@ -303,6 +322,7 @@ final class PurchaseHandler extends BaseHandler
             FaoximaLogger::exception($e, 'Invoice insert failed', ['user_id' => $this->user['id']]);
             FaoximaResponse::serverError('خطا در ذخیره فاکتور');
         }
+        fx_store_invoice_snapshot($orderId, $fxSnapshot);
 
 
         $expireTs = $serviceTime > 0 ? strtotime('+' . $serviceTime . ' days') : 0;
@@ -846,8 +866,8 @@ final class PurchaseHandler extends BaseHandler
             FaoximaResponse::badRequest(faoxima_textbot_get('dyn_purchase_invalid_time_restart', 'زمان نامعتبر است خرید را از اول انجام دهید'));
         }
 
-        $price = ($volume * (float)($tp[$agent] ?? 0))
-               + ($time   * (float)($timeP[$agent] ?? 0));
+        $price = ($volume * (float) fx_adjust_base_toman($tp[$agent] ?? 0, $panel, 'custom_volume'))
+               + ($time   * (float) fx_adjust_base_toman($timeP[$agent] ?? 0, $panel, 'custom_time'));
 
         return [
             'code_product'      => 'customvolume',

@@ -1032,6 +1032,39 @@ try {
 }
 
 try {
+    $connect->query("CREATE TABLE IF NOT EXISTS fx_rate_cache (
+        pair VARCHAR(20) NOT NULL PRIMARY KEY,
+        rate DECIMAL(18,4) NOT NULL,
+        previous_rate DECIMAL(18,4) NULL,
+        pending_rate DECIMAL(18,4) NULL,
+        pending_count INT UNSIGNED NOT NULL DEFAULT 0,
+        source VARCHAR(50) NOT NULL,
+        fetched_at INT UNSIGNED NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'ok',
+        last_error VARCHAR(500) NULL,
+        last_event VARCHAR(500) NULL,
+        stale_notified_at INT UNSIGNED NOT NULL DEFAULT 0,
+        updated_at INT UNSIGNED NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $connect->query("CREATE TABLE IF NOT EXISTS fx_price_quote (
+        user_id VARCHAR(64) NOT NULL,
+        context VARCHAR(100) NOT NULL,
+        amount BIGINT NOT NULL,
+        meta TEXT NULL,
+        created_at INT UNSIGNED NOT NULL,
+        expires_at INT UNSIGNED NOT NULL,
+        PRIMARY KEY (user_id, context),
+        KEY idx_fx_quote_expires (expires_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    rxSafeAddColumn($connect, "fx_rate_cache", "last_event", "VARCHAR(500) NULL");
+    rxSafeAddColumn($connect, "fx_rate_cache", "stale_notified_at", "INT UNSIGNED NOT NULL DEFAULT 0");
+    rxSafeAddColumn($connect, "marzban_panel", "fx_pricing_config", "TEXT NULL");
+    rxSafeAddColumn($connect, "invoice", "pricing_snapshot", "TEXT NULL");
+} catch (Exception $e) {
+    error_log('[fx-pricing-migrate] ' . $e->getMessage());
+}
+
+try {
     $result = $connect->query("SHOW TABLES LIKE 'remnawave_users'");
     $table_exists = ($result && $result->num_rows > 0);
     if (!$table_exists) {

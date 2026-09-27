@@ -2973,7 +2973,7 @@ $nameconfig";
         return;
     }
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
-    $custompricevalue = $eextraprice[$user['agent']];
+    $custompricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_volume');
     $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
     $mainvolume = $mainvolume[$user['agent']];
     $maxvolume = json_decode($marzban_list_get['maxvolume'], true);
@@ -3016,10 +3016,12 @@ $nameconfig";
             if (is_array($hide_panel) && in_array($nameloc['Service_location'], $hide_panel)) {
                 error_log("Product {$result['code_product']} is marked hidden for {$nameloc['Service_location']} but was kept visible for extend.");
             }
+            $result = fx_apply_to_product($result, $marzban_list_get);
             if (intval($user['pricediscount']) != 0) {
                 $resultper = ($result['price_product'] * $user['pricediscount']) / 100;
                 $result['price_product'] = $result['price_product'] - $resultper;
             }
+            $result['price_product'] = fx_finalize_amount($result['price_product'], $marzban_list_get, 'product');
             if ($statusshowprice == "offshowprice") {
                 $namekeyboard = $result['name_product'];
             } else {
@@ -3068,7 +3070,7 @@ $nameconfig";
         return;
     }
     $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
-    $customtimevalueprice = $eextraprice[$user['agent']];
+    $customtimevalueprice = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_time');
     savedata("save", "volume", $text);
     $textcustom = "⌛️ زمان سرویس خود را انتخاب نمایید
 📌 تعرفه هر روز  : " . rxFormatToman($customtimevalueprice) . "  تومان
@@ -3089,10 +3091,12 @@ $nameconfig";
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
     $statusshowprice = panel_feature_enabled($marzban_list_get, 'showprice') ? "onshowprice" : "offshowprice";
     while ($result = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $result = fx_apply_to_product($result, $marzban_list_get);
         if (intval($user['pricediscount']) != 0) {
             $resultper = ($result['price_product'] * $user['pricediscount']) / 100;
             $result['price_product'] = $result['price_product'] - $resultper;
         }
+        $result['price_product'] = fx_finalize_amount($result['price_product'], $marzban_list_get, 'product');
         if ($statusshowprice == "offshowprice") {
             $namekeyboard = $result['name_product'];
         } else {
@@ -3161,9 +3165,9 @@ $nameconfig";
         $codeproduct = $dataget[1];
     }
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
-    $custompricevalue = $eextraprice[$user['agent']];
+    $custompricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_volume');
     $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
-    $customtimevalueprice = $eextraprice[$user['agent']];
+    $customtimevalueprice = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_time');
     if ($user['step'] == "getvolumecustomuserforextend") {
         $product['name_product'] = $nameloc['name_product'];
         $product['code_product'] = "customvolume";
@@ -3185,6 +3189,11 @@ $nameconfig";
         sendmessage($from_id, $datatextbot['dyn_errors_extend_restart_process'] ?? "❌ خطایی رخ داده است مراحل تمدید را از اول انجام دهید.", $keyboard, 'HTML');
         return;
     }
+    $fxRenewKinds = $product['code_product'] === "customvolume" ? ['custom_volume', 'custom_time'] : 'product';
+    if ($product['code_product'] !== "customvolume") {
+        $product = fx_apply_to_product($product, $marzban_list_get);
+    }
+    $product['price_product'] = fx_finalize_amount($product['price_product'], $marzban_list_get, $fxRenewKinds);
     savedata("save", "time", $product['Service_time']);
     savedata("save", "data_limit", $product['Volume_constraint']);
     savedata("save", "price_product", $product['price_product']);
@@ -3204,10 +3213,11 @@ $nameconfig";
     ]);
     if (intval($user['pricediscount']) != 0) {
         $result = ($product['price_product'] * $user['pricediscount']) / 100;
-        $pricelastextend = number_format(round($product['price_product'] - $result, 0));
+        $pricelastextend = number_format(round(fx_finalize_amount($product['price_product'] - $result, $marzban_list_get, $fxRenewKinds), 0));
     } else {
         $pricelastextend = number_format($product['price_product']);
     }
+    fx_quote_store($from_id, fx_quote_context_key('renew', (string) $nameloc['id_invoice'] . '|' . (string) $product['code_product']), fx_finalize_amount(fx_apply_user_discount($product['price_product'], $user['pricediscount']), $marzban_list_get, $fxRenewKinds), $marzban_list_get, $fxRenewKinds);
     $volumeextend = intval($product['Volume_constraint']) == 0 ? $textbotlang['users']['stateus']['Unlimited'] : $product['Volume_constraint'] . ' گیگ';
     $rxRenewPreview = rxRenewalPreviewForService($ManagePanel, $marzban_list_get, (string) $nameloc['username'], $product['Volume_constraint'], $product['Service_time']);
     if (!empty($rxRenewPreview['blocked'])) {
@@ -3263,9 +3273,9 @@ $nameconfig";
     $rxDiscountAppliedTpl = $datatextbot['dyn_errors_discount_applied'] ?? "🤩 کد تخفیف شما درست بود و تخفیف %s روی فاکتور شما اعمال شد.";
     sendmessage($from_id, sprintf($rxDiscountAppliedTpl, $__dlabel), $keyboard, 'HTML');
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
-    $custompricevalue = $eextraprice[$user['agent']];
+    $custompricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_volume');
     $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
-    $customtimevalueprice = $eextraprice[$user['agent']];
+    $customtimevalueprice = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_time');
     if ($nameloc['name_product'] == "🛍 حجم دلخواه" || $nameloc['name_product'] == "⚙️ سرویس دلخواه") {
         $info_product['code_product'] = "pre";
         $info_product['name_product'] = $nameloc['name_product'];
@@ -3279,6 +3289,14 @@ $nameconfig";
         $stmt->bindParam(':agent', $user['agent'], PDO::PARAM_STR);
         $stmt->execute();
         $info_product = $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+    $fxRenewCustom = ($nameloc['name_product'] == "🛍 حجم دلخواه" || $nameloc['name_product'] == "⚙️ سرویس دلخواه");
+    $fxRenewKinds = $fxRenewCustom ? ['custom_volume', 'custom_time'] : 'product';
+    if (!$fxRenewCustom && is_array($info_product)) {
+        $info_product = fx_apply_to_product($info_product, $marzban_list_get);
+    }
+    if (is_array($info_product) && isset($info_product['price_product'])) {
+        $info_product['price_product'] = fx_finalize_amount($info_product['price_product'], $marzban_list_get, $fxRenewKinds);
     }
     if ($__dvt === 'free') {
         $info_product['price_product'] = 0;
@@ -3296,6 +3314,7 @@ $nameconfig";
         $info_product['Volume_constraint'] = $textbotlang['users']['stateus']['Unlimited'];
     if ($info_product['price_product'] < 0)
         $info_product['price_product'] = 0;
+    $info_product['price_product'] = fx_finalize_amount($info_product['price_product'], $marzban_list_get, $fxRenewKinds);
     $rxFmtExtendInfoProductPrice = rxFormatToman($info_product['price_product']);
     $rxFmtExtendUserBalance = rxFormatToman($user['Balance']);
     $textextend = "📜 فاکتور تمدید شما برای نام کاربری {$nameloc['username']} ایجاد شد.
@@ -3317,6 +3336,7 @@ $nameconfig";
     sendmessage($from_id, $textextend, empty($rxRenewPreview['blocked']) ? $keyboardextend : null, 'HTML');
     $parametrsendvalue = "dis_" . $text . "_" . $info_product['price_product'];
     update("user", "Processing_value_four", $parametrsendvalue, "id", $from_id);
+    fx_quote_store($from_id, fx_quote_context_key('renew_discount', (string) $nameloc['id_invoice'] . '|' . (string) ($userdate['code_product'] ?? '')), $info_product['price_product'], $marzban_list_get, $fxRenewKinds);
     step("home", $from_id);
 } elseif ($datain == "confirmserivce" || $datain == "confirmserdiscount") {
     Editmessagetext($from_id, $message_id, $text_inline, json_encode(['inline_keyboard' => []]));
@@ -3334,9 +3354,9 @@ $nameconfig";
         return;
     }
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
-    $custompricevalue = $eextraprice[$user['agent']];
+    $custompricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_volume');
     $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
-    $customtimevalueprice = $eextraprice[$user['agent']];
+    $customtimevalueprice = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_time');
     $randomString = bin2hex(random_bytes(2));
     if ($nameloc['name_product'] == "🛍 حجم دلخواه" || $nameloc['name_product'] == "⚙️ سرویس دلخواه") {
         $prodcut['code_product'] = "custom_volume";
@@ -3359,10 +3379,45 @@ $nameconfig";
         sendmessage($from_id, $datatextbot['dyn_errors_renewal_failed_restart'] ?? "❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.", null, 'HTML');
         return;
     }
+    $fxRenewCustom = ($nameloc['name_product'] == "🛍 حجم دلخواه" || $nameloc['name_product'] == "⚙️ سرویس دلخواه");
+    $fxRenewKinds = $fxRenewCustom ? ['custom_volume', 'custom_time'] : 'product';
+    if (!$fxRenewCustom) {
+        $prodcut = fx_apply_to_product($prodcut, $marzban_list_get);
+    }
+    $prodcut['price_product'] = fx_finalize_amount($prodcut['price_product'], $marzban_list_get, $fxRenewKinds);
+    $pricelastextend = $prodcut['price_product'];
+    $fxRenewRef = (string) $nameloc['id_invoice'] . '|' . (string) ($userdata['code_product'] ?? '');
+    $fxRenewDiscounted = false;
     if ($datain == "confirmserdiscount") {
         $SellDiscountlimit = select("DiscountSell", "*", "codeDiscount", $partsdic[1], "select");
         if ($SellDiscountlimit != false) {
             $pricelastextend = $partsdic[2];
+            $fxRenewDiscounted = true;
+            $fxRenewDiscountKey = fx_quote_context_key('renew_discount', $fxRenewRef);
+            if (!fx_quote_check($from_id, $fxRenewDiscountKey, $pricelastextend, $marzban_list_get, $fxRenewKinds)) {
+                $fxRecheck = MiniDiscount::validateSell((string) $partsdic[1], 'extend', (string) ($userdata['code_product'] ?? ''), (string) ($marzban_list_get['code_panel'] ?? ''), (string) ($prodcut['category'] ?? ''), $user);
+                if (empty($fxRecheck['ok'])) {
+                    sendmessage($from_id, (string) ($fxRecheck['reason'] ?? $textbotlang['Admin']['Discount']['invalidcodedis']), null, 'HTML');
+                    return;
+                }
+                $fxNewDiscounted = fx_finalize_amount(fx_apply_discount_rule($prodcut['price_product'], (string) $fxRecheck['value_type'], (float) $fxRecheck['value']), $marzban_list_get, $fxRenewKinds);
+                update("user", "Processing_value_four", "dis_" . $partsdic[1] . "_" . $fxNewDiscounted, "id", $from_id);
+                fx_quote_store($from_id, $fxRenewDiscountKey, $fxNewDiscounted, $marzban_list_get, $fxRenewKinds);
+                sendmessage($from_id, fx_price_changed_text($fxNewDiscounted), json_encode(['inline_keyboard' => [[['text' => $textbotlang['users']['extend']['confirm'], 'callback_data' => "confirmserdiscount"]]]]), 'HTML');
+                return;
+            }
+        }
+    }
+    if (!$fxRenewDiscounted) {
+        $fxRenewCheckAmount = fx_finalize_amount(fx_apply_user_discount($pricelastextend, $user['pricediscount']), $marzban_list_get, $fxRenewKinds);
+        $fxRenewQuoteKey = fx_quote_context_key('renew', $fxRenewRef);
+        if (!fx_quote_check($from_id, $fxRenewQuoteKey, $fxRenewCheckAmount, $marzban_list_get, $fxRenewKinds)) {
+            fx_quote_store($from_id, $fxRenewQuoteKey, $fxRenewCheckAmount, $marzban_list_get, $fxRenewKinds);
+            sendmessage($from_id, fx_price_changed_text($fxRenewCheckAmount), json_encode(['inline_keyboard' => [
+                [['text' => $textbotlang['users']['extend']['confirm'], 'callback_data' => "confirmserivce"]],
+                [['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser"]],
+            ]]), 'HTML');
+            return;
         }
     }
     if (intval($user['pricediscount']) != 0) {
@@ -3370,6 +3425,9 @@ $nameconfig";
         $pricelastextend = $pricelastextend - $result;
         sendmessage($from_id, sprintf($textbotlang['users']['Discount']['discountapplied'], $user['pricediscount']), null, 'HTML');
     }
+    $pricelastextend = fx_finalize_amount($pricelastextend, $marzban_list_get, $fxRenewKinds);
+    $fxRenewBasePrice = $fxRenewCustom ? fx_custom_base_price($marzban_list_get, $user['agent'], $userdata['data_limit'] ?? 0, $userdata['time'] ?? 0) : ($prodcut['fx_base_price'] ?? $prodcut['price_product']);
+    $fxRenewSnapshot = fx_pricing_snapshot($marzban_list_get, $fxRenewKinds, $fxRenewBasePrice, $pricelastextend, (float) $prodcut['price_product'] - (float) $pricelastextend, ['product' => (string) ($prodcut['code_product'] ?? '')]);
     $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
     if ($user['Balance'] < $pricelastextend && $user['agent'] != "n2" && intval($pricelastextend) != 0) {
         $marzbandirectpay = panel_feature_enabled($nameloc['Service_location'], 'directbuy') ? "ondirectbuy" : "offdirectbuy";
@@ -3403,6 +3461,7 @@ $nameconfig";
                 'code_product' => $prodcut['code_product'],
                 'id_order' => $randomString
             ));
+            $value = fx_value_with_snapshot($value, $fxRenewSnapshot);
             $type = "extend_user";
             $status = "unpaid";
             $extend = '';
@@ -3510,6 +3569,7 @@ $nameconfig";
         'code_product' => $prodcut['code_product'],
         'id_order' => $randomString
     ));
+    $value = fx_value_with_snapshot($value, $fxRenewSnapshot);
     $type = "extend_user";
     $status = "paid";
     $extend_json = json_encode($extend);
@@ -3713,7 +3773,7 @@ $nameconfig";
         return;
     }
     $eextraprice = json_decode($marzban_list_get['priceextravolume'], true);
-    $extrapricevalue = $eextraprice[$user['agent']];
+    $extrapricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'extra_volume');
     update("user", "Processing_value", $nameloc['id_invoice'], "id", $from_id);
     $textextra = " ⭕️ مقدار حجمی که میخواهید خریداری کنید را ارسال کنید.
 ❌ مبلغ را به انگلیسی ارسال نمایید.
@@ -3739,19 +3799,21 @@ $nameconfig";
     $nameloc = select("invoice", "*", "id_invoice", $user['Processing_value'], "select");
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
     $eextraprice = json_decode($marzban_list_get['priceextravolume'], true);
-    $extrapricevalue = $eextraprice[$user['agent']];
+    $extrapricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'extra_volume');
     $priceextra = $extrapricevalue * $text;
+    $priceextra = fx_finalize_amount($priceextra, $marzban_list_get, 'extra_volume');
+    fx_quote_store($from_id, fx_quote_context_key('extra_volume', (string) $nameloc['id_invoice']), $priceextra, $marzban_list_get, 'extra_volume', ['qty' => (int) $text]);
     $__volSourceProduct = select("product", "*", "name_product", $nameloc['name_product'] ?? '', "select");
     $__volCategory = is_array($__volSourceProduct) ? (string)($__volSourceProduct['category'] ?? '') : '';
     $__discEligibleVolume = MiniDiscount::hasEligible('volume', '', (string)($marzban_list_get['code_panel'] ?? ''), $__volCategory, $user);
     $__volumeRows = [
         [
-            ['text' => $textbotlang['users']['Extra_volume']['extracheck'], 'callback_data' => 'confirmaextra-' . $extrapricevalue * $text],
+            ['text' => $textbotlang['users']['Extra_volume']['extracheck'], 'callback_data' => 'confirmaextra-' . $priceextra],
         ],
     ];
     if ($__discEligibleVolume) {
         $__volumeRows[] = [
-            ['text' => "🎁 ثبت کد تخفیف", 'callback_data' => 'discountvolume-' . $extrapricevalue * $text],
+            ['text' => "🎁 ثبت کد تخفیف", 'callback_data' => 'discountvolume-' . $priceextra],
         ];
     }
     $keyboardsetting = json_encode(['inline_keyboard' => $__volumeRows]);
@@ -3797,8 +3859,14 @@ $nameconfig";
         sendmessage($from_id, $dv['reason'], $backuser, 'HTML');
         return;
     }
+    if (!fx_quote_check($from_id, fx_quote_context_key('extra_volume', (string) $nameloc['id_invoice']), $__baseVol, $marzban_list_get, 'extra_volume')) {
+        sendmessage($from_id, $datatextbot['dyn_errors_extra_volume_restart_process'] ?? "❌ مراحل خرید حجم اضافه را مجددا انجام دهید", $keyboard, 'HTML');
+        step('home', $from_id);
+        return;
+    }
     $__discounted = (int)round(MiniDiscount::applyToPrice($dv['row'], $__baseVol));
     if ($__discounted < 0) $__discounted = 0;
+    $__discounted = fx_finalize_amount($__discounted, $marzban_list_get, 'extra_volume');
     update("user", "Processing_value_four", "disv_" . $text . "_" . $__baseVol . "_" . $__discounted, "id", $from_id);
     $__basefmt = number_format($__baseVol, 0);
     $__disfmt  = number_format($__discounted, 0);
@@ -3836,7 +3904,23 @@ $nameconfig";
     }
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
     $eextraprice = json_decode($marzban_list_get['priceextravolume'], true);
-    $extrapricevalue = $eextraprice[$user['agent']];
+    $extrapricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'extra_volume');
+    $fxExtraQty = null;
+    if (fx_context($marzban_list_get, 'extra_volume') !== null) {
+        $fxExtraKey = fx_quote_context_key('extra_volume', (string) $nameloc['id_invoice']);
+        $fxExtraQuote = fx_quote_get($from_id, $fxExtraKey);
+        $fxExtraQty = is_array($fxExtraQuote) ? (int) ($fxExtraQuote['meta']['qty'] ?? 0) : 0;
+        if ($fxExtraQty <= 0) {
+            sendmessage($from_id, $datatextbot['dyn_errors_extra_volume_restart_process'] ?? "❌ مراحل خرید حجم اضافه را مجددا انجام دهید", $keyboard, 'HTML');
+            return;
+        }
+        $fxExtraFresh = fx_finalize_amount($extrapricevalue * $fxExtraQty, $marzban_list_get, 'extra_volume');
+        if (!fx_quote_check($from_id, $fxExtraKey, $fxExtraFresh, $marzban_list_get, 'extra_volume') || (int) round((float) $volume) !== (int) $fxExtraFresh) {
+            fx_quote_store($from_id, $fxExtraKey, $fxExtraFresh, $marzban_list_get, 'extra_volume', ['qty' => $fxExtraQty]);
+            sendmessage($from_id, fx_price_changed_text($fxExtraFresh), json_encode(['inline_keyboard' => [[['text' => $textbotlang['users']['Extra_volume']['extracheck'], 'callback_data' => 'confirmaextra-' . $fxExtraFresh]]]]), 'HTML');
+            return;
+        }
+    }
     if ($user['Balance'] < $__volCharge && $user['agent'] != "n2") {
         $marzbandirectpay = panel_feature_enabled($marzban_list_get, 'directbuy') ? "ondirectbuy" : "offdirectbuy";
         if ($marzbandirectpay == "offdirectbuy") {
@@ -3853,12 +3937,13 @@ $nameconfig";
             step('getprice', $from_id);
             return;
         } else {
-            $valuevolume = intval($volume) / intval($extrapricevalue);
+            $valuevolume = $fxExtraQty ?? intval($volume) / intval($extrapricevalue);
             if (intval($user['pricediscount']) != 0) {
                 $result = ($__volCharge * $user['pricediscount']) / 100;
                 $__volCharge = $__volCharge - $result;
                 sendmessage($from_id, sprintf($textbotlang['users']['Discount']['discountapplied'], $user['pricediscount']), null, 'HTML');
             }
+            $__volCharge = fx_finalize_amount($__volCharge, $marzban_list_get, 'extra_volume');
             $Balance_prim = $__volCharge - $user['Balance'];
             update("user", "Processing_value", $Balance_prim, "id", $from_id);
             Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['None-credit'], $step_payment);
@@ -3878,6 +3963,7 @@ $nameconfig";
         $volumepricelast = $__volCharge - $result;
         sendmessage($from_id, sprintf($textbotlang['users']['Discount']['discountapplied'], $user['pricediscount']), null, 'HTML');
     }
+    $volumepricelast = fx_finalize_amount($volumepricelast, $marzban_list_get, 'extra_volume');
     if (intval($user['maxbuyagent']) != 0 and $user['agent'] == "n2") {
         if (($user['Balance'] - $volumepricelast) < intval("-" . $user['maxbuyagent'])) {
             sendmessage($from_id, $textbotlang['users']['Balance']['maxpurchasereached'], null, 'HTML');
@@ -3902,12 +3988,13 @@ $nameconfig";
     }
     $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
     $data_for_database = json_encode(array(
-        'volume_value' => intval($volume) / intval($extrapricevalue),
+        'volume_value' => $fxExtraQty ?? intval($volume) / intval($extrapricevalue),
         'priceـper_gig' => $extrapricevalue,
         'old_volume' => $DataUserOut['data_limit'],
         'expire_old' => $DataUserOut['expire']
     ));
-    $data_limit = intval($volume) / intval($extrapricevalue);
+    $data_for_database = fx_value_with_snapshot($data_for_database, fx_pricing_snapshot($marzban_list_get, 'extra_volume', ($fxExtraQty ?? 0) * (fx_panel_raw_unit_price($marzban_list_get, 'priceextravolume', $user['agent']) ?? 0), $volumepricelast, (float) $volume - (float) $volumepricelast, ['quantity' => $fxExtraQty, 'unit_price' => $extrapricevalue]));
+    $data_limit = $fxExtraQty ?? intval($volume) / intval($extrapricevalue);
     $extra_volume = $ManagePanel->extra_volume($nameloc['username'], $marzban_list_get['code_panel'], $data_limit);
     if ($extra_volume['status'] == false) {
         if ($__chargedVxUser && function_exists('balance_atomic_credit')) {
@@ -3982,7 +4069,7 @@ $nameconfig";
         update("user", "score", $scorenew, "id", $from_id);
     }
     $volumesformat = number_format($volumepricelast, 0);
-    $volumes = $volume / $extrapricevalue;
+    $volumes = $fxExtraQty ?? $volume / $extrapricevalue;
     $textvolume = "✅ افزایش حجم برای سرویس شما با موفقیت صورت گرفت
 
 ▫️نام سرویس  : {$nameloc['username']}
@@ -4483,7 +4570,7 @@ $nameconfig";
         return;
     }
     $eextraprice = json_decode($marzban_list_get['priceextratime'], true);
-    $extratimepricevalue = $eextraprice[$user['agent']];
+    $extratimepricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'extra_time');
     update("user", "Processing_value", $nameloc['id_invoice'], "id", $from_id);
     $textextra = "📆 تعداد روز اضافه مورد نظر را وارد کنید ( برحسب روز ) :
 
@@ -4505,21 +4592,23 @@ $nameconfig";
     $nameloc = select("invoice", "*", "id_invoice", $user['Processing_value'], "select");
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
     $eextraprice = json_decode($marzban_list_get['priceextratime'], true);
-    $extratimepricevalue = $eextraprice[$user['agent']];
+    $extratimepricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'extra_time');
     $eextraprice = json_decode($marzban_list_get['priceextravolume'], true);
-    $extrapricevalue = $eextraprice[$user['agent']];
+    $extrapricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'extra_volume');
     $priceextratime = $extratimepricevalue * $text;
+    $priceextratime = fx_finalize_amount($priceextratime, $marzban_list_get, 'extra_time');
+    fx_quote_store($from_id, fx_quote_context_key('extra_time', (string) $nameloc['id_invoice']), $priceextratime, $marzban_list_get, 'extra_time', ['qty' => (int) $text]);
     $__timeSourceProduct = select("product", "*", "name_product", $nameloc['name_product'] ?? '', "select");
     $__timeCategory = is_array($__timeSourceProduct) ? (string)($__timeSourceProduct['category'] ?? '') : '';
     $__discEligibleTime = MiniDiscount::hasEligible('time', '', (string)($marzban_list_get['code_panel'] ?? ''), $__timeCategory, $user);
     $__timeRows = [
         [
-            ['text' => $textbotlang['users']['Extra_time']['extratimecheck'], 'callback_data' => 'confirmaextratime-' . $extratimepricevalue * $text],
+            ['text' => $textbotlang['users']['Extra_time']['extratimecheck'], 'callback_data' => 'confirmaextratime-' . $priceextratime],
         ],
     ];
     if ($__discEligibleTime) {
         $__timeRows[] = [
-            ['text' => "🎁 ثبت کد تخفیف", 'callback_data' => 'discounttime-' . $extratimepricevalue * $text],
+            ['text' => "🎁 ثبت کد تخفیف", 'callback_data' => 'discounttime-' . $priceextratime],
         ];
     }
     $keyboardsetting = json_encode(['inline_keyboard' => $__timeRows]);
@@ -4565,8 +4654,14 @@ $nameconfig";
         sendmessage($from_id, $dv['reason'], $backuser, 'HTML');
         return;
     }
+    if (!fx_quote_check($from_id, fx_quote_context_key('extra_time', (string) $nameloc['id_invoice']), $__baseTime, $marzban_list_get, 'extra_time')) {
+        sendmessage($from_id, $datatextbot['dyn_errors_extra_time_restart_process'] ?? "❌ مراحل خرید زمان اضافه را مجددا انجام دهید", $keyboard, 'HTML');
+        step('home', $from_id);
+        return;
+    }
     $__discounted = (int)round(MiniDiscount::applyToPrice($dv['row'], $__baseTime));
     if ($__discounted < 0) $__discounted = 0;
+    $__discounted = fx_finalize_amount($__discounted, $marzban_list_get, 'extra_time');
     update("user", "Processing_value_four", "distime_" . $text . "_" . $__baseTime . "_" . $__discounted, "id", $from_id);
     $__basefmt = number_format($__baseTime, 0);
     $__disfmt  = number_format($__discounted, 0);
@@ -4605,7 +4700,23 @@ $nameconfig";
     }
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
     $eextraprice = json_decode($marzban_list_get['priceextratime'], true);
-    $extratimepricevalue = $eextraprice[$user['agent']];
+    $extratimepricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'extra_time');
+    $fxTimeQty = null;
+    if (fx_context($marzban_list_get, 'extra_time') !== null) {
+        $fxTimeKey = fx_quote_context_key('extra_time', (string) $nameloc['id_invoice']);
+        $fxTimeQuote = fx_quote_get($from_id, $fxTimeKey);
+        $fxTimeQty = is_array($fxTimeQuote) ? (int) ($fxTimeQuote['meta']['qty'] ?? 0) : 0;
+        if ($fxTimeQty <= 0) {
+            sendmessage($from_id, $datatextbot['dyn_errors_extra_time_restart_process'] ?? "❌ مراحل خرید زمان اضافه را مجددا انجام دهید", $keyboard, 'HTML');
+            return;
+        }
+        $fxTimeFresh = fx_finalize_amount($extratimepricevalue * $fxTimeQty, $marzban_list_get, 'extra_time');
+        if (!fx_quote_check($from_id, $fxTimeKey, $fxTimeFresh, $marzban_list_get, 'extra_time') || (int) round((float) $tmieextra) !== (int) $fxTimeFresh) {
+            fx_quote_store($from_id, $fxTimeKey, $fxTimeFresh, $marzban_list_get, 'extra_time', ['qty' => $fxTimeQty]);
+            sendmessage($from_id, fx_price_changed_text($fxTimeFresh), json_encode(['inline_keyboard' => [[['text' => $textbotlang['users']['Extra_time']['extratimecheck'], 'callback_data' => 'confirmaextratime-' . $fxTimeFresh]]]]), 'HTML');
+            return;
+        }
+    }
     if ($user['Balance'] < $__timeCharge && $user['agent'] != "n2") {
         $marzbandirectpay = panel_feature_enabled($marzban_list_get, 'directbuy') ? "ondirectbuy" : "offdirectbuy";
         if ($marzbandirectpay == "offdirectbuy") {
@@ -4622,12 +4733,13 @@ $nameconfig";
             step('getprice', $from_id);
             return;
         } else {
-            $valuetime = $tmieextra / $extratimepricevalue;
+            $valuetime = $fxTimeQty ?? $tmieextra / $extratimepricevalue;
             if (intval($user['pricediscount']) != 0) {
                 $result = ($__timeCharge * $user['pricediscount']) / 100;
                 $pricelasttime = $__timeCharge - $result;
                 sendmessage($from_id, sprintf($textbotlang['users']['Discount']['discountapplied'], $user['pricediscount']), null, 'HTML');
             }
+            $pricelasttime = fx_finalize_amount($pricelasttime, $marzban_list_get, 'extra_time');
             if (intval($pricelasttime) != 0) {
                 $Balance_prim = $pricelasttime - $user['Balance'];
                 update("user", "Processing_value", $Balance_prim, "id", $from_id);
@@ -4648,6 +4760,7 @@ $nameconfig";
         $pricelasttime = $__timeCharge - $result;
         sendmessage($from_id, sprintf($textbotlang['users']['Discount']['discountapplied'], $user['pricediscount']), null, 'HTML');
     }
+    $pricelasttime = fx_finalize_amount($pricelasttime, $marzban_list_get, 'extra_time');
     $Balance_Low_user = $user['Balance'] - $pricelasttime;
     if (intval($user['maxbuyagent']) != 0 and $user['agent'] == "n2") {
         if ($Balance_Low_user < intval("-" . $user['maxbuyagent'])) {
@@ -4672,7 +4785,7 @@ $nameconfig";
     }
     $__chargedEtUser = true;
     update("invoice", "Status", "active", "id_invoice", $nameloc['id_invoice']);
-    $extratimeday = $tmieextra / $extratimepricevalue;
+    $extratimeday = $fxTimeQty ?? $tmieextra / $extratimepricevalue;
     $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
     $data_for_database = json_encode(array(
         'day' => $extratimeday,
@@ -4680,6 +4793,7 @@ $nameconfig";
         'old_volume' => $DataUserOut['data_limit'],
         'expire_old' => $DataUserOut['expire']
     ));
+    $data_for_database = fx_value_with_snapshot($data_for_database, fx_pricing_snapshot($marzban_list_get, 'extra_time', ($fxTimeQty ?? 0) * (fx_panel_raw_unit_price($marzban_list_get, 'priceextratime', $user['agent']) ?? 0), $pricelasttime, (float) $tmieextra - (float) $pricelasttime, ['quantity' => $fxTimeQty, 'unit_price' => $extratimepricevalue]));
     $timeservice = $DataUserOut['expire'] - time();
     $day = floor($timeservice / 86400);
     $extra_time = $ManagePanel->extra_time($nameloc['username'], $marzban_list_get['code_panel'], $extratimeday);
@@ -4767,7 +4881,7 @@ $nameconfig";
 
 ▫️مبلغ افزایش زمان : $volumesformat تومان";
     sendmessage($from_id, $textextratime, $keyboardextrafnished, 'HTML');
-    $volumes = $tmieextra / $extratimepricevalue;
+    $volumes = $fxTimeQty ?? $tmieextra / $extratimepricevalue;
     $text_report = "⭕️ یک کاربر زمان اضافه خریده است
 
 اطلاعات کاربر :

@@ -1142,7 +1142,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         if (!panel_feature_enabled($location, 'categorytime')) {
             $marzban_list_get = $locationproduct;
             $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
-            $custompricevalue = $eextraprice[$user['agent']];
+            $custompricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_volume');
             $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
             $mainvolume = $mainvolume[$user['agent']];
             $maxvolume = json_decode($marzban_list_get['maxvolume'], true);
@@ -1287,7 +1287,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     $nullproduct = (int)$productCountStmt->fetchColumn();
     if ($nullproduct == 0) {
         $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
-        $custompricevalue = $eextraprice[$user['agent']];
+        $custompricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_volume');
         $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
         $mainvolume = $mainvolume[$user['agent']];
         $maxvolume = json_decode($marzban_list_get['maxvolume'], true);
@@ -1439,7 +1439,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     $userdate = json_decode($user['Processing_value'], true);
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
-    $custompricevalue = $eextraprice[$user['agent']];
+    $custompricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_volume');
     $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
     $mainvolume = $mainvolume[$user['agent']];
     $maxvolume = json_decode($marzban_list_get['maxvolume'], true);
@@ -1473,7 +1473,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     }
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
     $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
-    $customtimevalueprice = $eextraprice[$user['agent']];
+    $customtimevalueprice = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_time');
     update("user", "Processing_value_one", $text, "id", $from_id);
     $textcustom = "⌛️ زمان سرویس خود را انتخاب نمایید
 📌 تعرفه هر روز  : " . rxFormatToman($customtimevalueprice) . "  تومان
@@ -1569,9 +1569,9 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     }
     update("user", "Processing_value_one", $loc, "id", $from_id);
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
-    $custompricevalue = $eextraprice[$user['agent']];
+    $custompricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_volume');
     $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
-    $customtimevalueprice = $eextraprice[$user['agent']];
+    $customtimevalueprice = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_time');
     $parts = explode("_", $loc);
     if ($parts[0] == "customvolume") {
         $info_product['Volume_constraint'] = $parts[2];
@@ -1600,10 +1600,16 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         step('home', $from_id);
         return;
     }
+    $fxBuyKinds = $parts[0] == "customvolume" ? ['custom_volume', 'custom_time'] : 'product';
+    if ($parts[0] != "customvolume") {
+        $info_product = fx_apply_to_product($info_product, $marzban_list_get);
+    }
     if (intval($user['pricediscount']) != 0) {
         $resultper = ($info_product['price_product'] * $user['pricediscount']) / 100;
         $info_product['price_product'] = $info_product['price_product'] - $resultper;
     }
+    $info_product['price_product'] = fx_finalize_amount($info_product['price_product'], $marzban_list_get, $fxBuyKinds);
+    fx_quote_store($from_id, fx_quote_context_key('buy', (string) $loc), $info_product['price_product'], $marzban_list_get, $fxBuyKinds);
     $randomString = bin2hex(random_bytes(2));
     $text = strtolower($text);
     $username_ac = generateUsername($from_id, $marzban_list_get['MethodUsername'], $username, $randomString, $text, $marzban_list_get['namecustom'], $user['namecustom']);
@@ -1686,9 +1692,9 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         return;
     }
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
-    $custompricevalue = $eextraprice[$user['agent']];
+    $custompricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_volume');
     $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
-    $customtimevalueprice = $eextraprice[$user['agent']];
+    $customtimevalueprice = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_time');
     if ($parts[0] == "customvolume") {
         $info_product['Volume_constraint'] = $parts[2];
         $info_product['name_product'] = $textbotlang['users']['customsellvolume']['title'];
@@ -1724,6 +1730,10 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     if (!array_key_exists('note', $info_product)) {
         $info_product['note'] = '';
     }
+    $fxBuyKinds = $parts[0] == "customvolume" ? ['custom_volume', 'custom_time'] : 'product';
+    if ($parts[0] != "customvolume") {
+        $info_product = fx_apply_to_product($info_product, $marzban_list_get);
+    }
     if ($datain == "confirmandgetserviceDiscount") {
         $discountcode = select("DiscountSell", "*", "codeDiscount", $partsdic[0], "count");
         if ($discountcode == 0) {
@@ -1731,9 +1741,35 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
             return;
         }
         $priceproduct = $partsdic[1];
+        $fxBuyDiscountKey = fx_quote_context_key('buy_discount', (string) $user['Processing_value_one']);
+        if (!fx_quote_check($from_id, $fxBuyDiscountKey, $priceproduct, $marzban_list_get, $fxBuyKinds)) {
+            $fxRecheck = MiniDiscount::validateSell((string) $partsdic[0], 'buy', (string)($info_product['code_product'] ?? ''), (string)($marzban_list_get['code_panel'] ?? ''), (string)($info_product['category'] ?? ''), $user);
+            if (empty($fxRecheck['ok'])) {
+                sendmessage($from_id, (string)($fxRecheck['reason'] ?? $textbotlang['Admin']['Discount']['invalidcodedis']), null, 'HTML');
+                return;
+            }
+            $fxNewDiscounted = fx_apply_discount_rule(fx_finalize_amount($info_product['price_product'], $marzban_list_get, $fxBuyKinds), (string) $fxRecheck['value_type'], (float) $fxRecheck['value']);
+            $fxNewDiscounted = fx_finalize_amount($fxNewDiscounted, $marzban_list_get, $fxBuyKinds);
+            update("user", "Processing_value_four", $partsdic[0] . "_" . $fxNewDiscounted, "id", $from_id);
+            fx_quote_store($from_id, $fxBuyDiscountKey, $fxNewDiscounted, $marzban_list_get, $fxBuyKinds);
+            $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
+            sendmessage($from_id, fx_price_changed_text($fxNewDiscounted), json_encode(['inline_keyboard' => [
+                [['text' => "💰 پرداخت و دریافت سرویس", 'callback_data' => "confirmandgetserviceDiscount"]],
+                [rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser"], 'backuser', $_rx_nav_s)],
+            ]]), 'HTML');
+            return;
+        }
     } else {
         $priceproduct = $info_product['price_product'];
+        $fxBuyCheckAmount = fx_finalize_amount(fx_apply_user_discount($priceproduct, $user['pricediscount']), $marzban_list_get, $fxBuyKinds);
+        $fxBuyQuoteKey = fx_quote_context_key('buy', (string) $user['Processing_value_one']);
+        if (!fx_quote_check($from_id, $fxBuyQuoteKey, $fxBuyCheckAmount, $marzban_list_get, $fxBuyKinds)) {
+            fx_quote_store($from_id, $fxBuyQuoteKey, $fxBuyCheckAmount, $marzban_list_get, $fxBuyKinds);
+            sendmessage($from_id, fx_price_changed_text($fxBuyCheckAmount), $paymentom, 'HTML');
+            return;
+        }
     }
+    $fxBuyListPrice = $info_product['price_product'];
     $username_ac = strtolower($user['Processing_value_tow']);
     $DataUserOut = $marzban_list_get['type'] != "Manualsale" ? $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_ac) : null;
     if (isset($DataUserOut['username']) || rxTableValueExists('invoice', 'username', $username_ac)) {
@@ -1763,6 +1799,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         $priceproduct = $priceproduct - $result;
         sendmessage($from_id, sprintf($textbotlang['users']['Discount']['discountapplied'], $user['pricediscount']), null, 'HTML');
     }
+    $priceproduct = fx_finalize_amount($priceproduct, $marzban_list_get, $fxBuyKinds);
     $notifctions = json_encode(array(
         'volume' => false,
         'time' => false,
@@ -1776,6 +1813,8 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     $stmt->bind_param("sssssssssssssssss", $from_id, $randomString, $username_ac, $date, $marzban_list_get['name_panel'], $info_product['name_product'], $priceproduct, $info_product['Volume_constraint'], $info_product['Service_time'], $Status, $userdate['nameconfig'], $user['affiliates'], $notifctions, $invoiceIpLimit, $invoiceHwidLimit, $invoiceSymbolicLimitEnabled, $invoiceSymbolicLimitUsers);
     $stmt->execute();
     $stmt->close();
+    $fxBuyBasePrice = $parts[0] == "customvolume" ? fx_custom_base_price($marzban_list_get, $user['agent'], $parts[2], $parts[1]) : ($info_product['fx_base_price'] ?? $fxBuyListPrice);
+    fx_store_invoice_snapshot($randomString, fx_pricing_snapshot($marzban_list_get, $fxBuyKinds, $fxBuyBasePrice, $priceproduct, (float) $fxBuyListPrice - (float) $priceproduct, ['product' => (string)($info_product['code_product'] ?? '')]));
     if ($priceproduct > $user['Balance'] && $user['agent'] != "n2" && intval($priceproduct) != 0) {
         $marzbandirectpay = panel_feature_enabled($marzban_list_get, 'directbuy') ? "ondirectbuy" : "offdirectbuy";
         $Balance_prim = $priceproduct - $user['Balance'];
@@ -2121,9 +2160,9 @@ $textonebuy
     step('payment', $from_id);
     $parts = explode("_", $user['Processing_value_one']);
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
-    $custompricevalue = $eextraprice[$user['agent']];
+    $custompricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_volume');
     $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
-    $customtimevalueprice = $eextraprice[$user['agent']];
+    $customtimevalueprice = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_time');
     if ($parts[0] == "customvolume") {
         $info_product['Volume_constraint'] = $parts[2];
         $info_product['name_product'] = $textbotlang['users']['customsellvolume']['title'];
@@ -2149,6 +2188,11 @@ $textonebuy
         step('home', $from_id);
         return;
     }
+    $fxBuyKinds = $parts[0] == "customvolume" ? ['custom_volume', 'custom_time'] : 'product';
+    if ($parts[0] != "customvolume") {
+        $info_product = fx_apply_to_product($info_product, $marzban_list_get);
+    }
+    $info_product['price_product'] = fx_finalize_amount($info_product['price_product'], $marzban_list_get, $fxBuyKinds);
     $info_productmain = $info_product['price_product'];
     if ($__dvt === 'free') {
         $info_product['price_product'] = 0;
@@ -2165,6 +2209,7 @@ $textonebuy
         $info_product['Volume_constraint'] = $textbotlang['users']['stateus']['Unlimited'];
     if ($info_product['price_product'] < 0)
         $info_product['price_product'] = 0;
+    $info_product['price_product'] = fx_finalize_amount($info_product['price_product'], $marzban_list_get, $fxBuyKinds);
     $rxFmtInfoProductmain = rxFormatToman($info_productmain);
     $rxFmtInfoProductPriceDiscounted = rxFormatToman($info_product['price_product']);
     $rxFmtUserBalanceInvoicePreview = rxFormatToman($user['Balance']);
@@ -2188,6 +2233,7 @@ $textonebuy
     ]);
     $parametrsendvalue = $text . "_" . $info_product['price_product'];
     update("user", "Processing_value_four", $parametrsendvalue, "id", $from_id);
+    fx_quote_store($from_id, fx_quote_context_key('buy_discount', (string) $user['Processing_value_one']), $info_product['price_product'], $marzban_list_get, $fxBuyKinds);
     sendmessage($from_id, $textin, $paymentDiscount, 'HTML');
 } elseif ($text == "🗂 خرید انبوه" || $datain == "kharidanbuh") {
     if ($setting['bulkbuy'] == "offbulk") {
@@ -2261,7 +2307,7 @@ $textonebuy
 } elseif ($datain == "customsellvolumeom") {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
-    $custompricevalue = $eextraprice[$user['agent']];
+    $custompricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_volume');
     $textcustom = "🔋 لطفا مقدار حجم سرویس مورد نظر را وارد کنید ( برحسب گیگابایت ) :
 📌 تعرفه هر گیگ :  " . rxFormatToman($custompricevalue) . "
 🔔 حداقل حجم 1 گیگابایت و حداکثر 1000 گیگابایت می باشد.";
@@ -2272,7 +2318,7 @@ $textonebuy
     if (!isset($update['message']) && empty($text)) { return; }
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
     $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
-    $customtimevalueprice = $eextraprice[$user['agent']];
+    $customtimevalueprice = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_time');
     $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
     $mainvolume = $mainvolume[$user['agent']];
     $maxvolume = json_decode($marzban_list_get['maxvolume'], true);
@@ -2368,9 +2414,9 @@ $textonebuy
     }
     update("user", "Processing_value_one", $loc, "id", $from_id);
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
-    $custompricevalue = $eextraprice[$user['agent']];
+    $custompricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_volume');
     $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
-    $customtimevalueprice = $eextraprice[$user['agent']];
+    $customtimevalueprice = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_time');
     $parts = explode("_", $loc);
     if ($parts[0] == "customvolume") {
         $info_product['Volume_constraint'] = $parts[2];
@@ -2405,8 +2451,14 @@ $textonebuy
         $info_product['Volume_constraint'] = $textbotlang['users']['stateus']['Unlimited'];
     if ($info_product['Service_time'] == 0)
         $info_product['Service_time'] = $textbotlang['users']['stateus']['Unlimited'];
+    $fxBulkKinds = $parts[0] == "customvolume" ? ['custom_volume', 'custom_time'] : 'product';
+    if ($parts[0] != "customvolume") {
+        $info_product = fx_apply_to_product($info_product, $marzban_list_get);
+    }
     $info_product['price_product'] = intval($info_product['price_product']) * intval($user['Processing_value_four']);
+    $info_product['price_product'] = fx_finalize_amount($info_product['price_product'], $marzban_list_get, $fxBulkKinds);
     update("user", "Processing_value_price", $info_product['price_product'], "id", $from_id);
+    fx_quote_store($from_id, fx_quote_context_key('bulk', (string) $loc . '|' . (string) $user['Processing_value_four']), $info_product['price_product'], $marzban_list_get, $fxBulkKinds);
     $price_product_format = number_format($info_product['price_product']);
     $userbalancepish = number_format($user['Balance']);
     $textin = "
@@ -2425,9 +2477,9 @@ $textonebuy
 } elseif ($user['step'] == "payments" && $datain == "confirmandgetservice") {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
-    $custompricevalue = $eextraprice[$user['agent']];
+    $custompricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_volume');
     $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
-    $customtimevalueprice = $eextraprice[$user['agent']];
+    $customtimevalueprice = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_time');
     $parts = explode("_", $user['Processing_value_one']);
     if ($parts[0] == "customvolume") {
         $info_product['Volume_constraint'] = $parts[2];
@@ -2455,10 +2507,24 @@ $textonebuy
         step('home', $from_id);
         return;
     }
+    $fxBulkKinds = $parts[0] == "customvolume" ? ['custom_volume', 'custom_time'] : 'product';
+    if ($parts[0] != "customvolume") {
+        $info_product = fx_apply_to_product($info_product, $marzban_list_get);
+    }
     if ($user['Processing_value_price'] !== null && $user['Processing_value_price'] !== '') {
         $priceproduct = (float) $user['Processing_value_price'];
     } else {
         $priceproduct = $info_product['price_product'] * $user['Processing_value_four'];
+    }
+    if (fx_context($marzban_list_get, $fxBulkKinds) !== null) {
+        $fxBulkFresh = fx_finalize_amount(intval($info_product['price_product']) * intval($user['Processing_value_four']), $marzban_list_get, $fxBulkKinds);
+        $fxBulkQuoteKey = fx_quote_context_key('bulk', (string) $user['Processing_value_one'] . '|' . (string) $user['Processing_value_four']);
+        if (!fx_quote_check($from_id, $fxBulkQuoteKey, $fxBulkFresh, $marzban_list_get, $fxBulkKinds) || (int) round($priceproduct) !== (int) $fxBulkFresh) {
+            update("user", "Processing_value_price", $fxBulkFresh, "id", $from_id);
+            fx_quote_store($from_id, $fxBulkQuoteKey, $fxBulkFresh, $marzban_list_get, $fxBulkKinds);
+            Editmessagetext($from_id, $message_id, fx_price_changed_text($fxBulkFresh), $paymentom);
+            return;
+        }
     }
     Editmessagetext($from_id, $message_id, $text_inline, null);
     $username_ac = $user['Processing_value_tow'];
@@ -2468,6 +2534,7 @@ $textonebuy
         $priceproduct = $priceproduct - $result;
         sendmessage($from_id, sprintf($textbotlang['users']['Discount']['discountapplied'], $user['pricediscount']), null, 'HTML');
     }
+    $priceproduct = fx_finalize_amount($priceproduct, $marzban_list_get, $fxBulkKinds);
     if ($priceproduct > $user['Balance'] && $user['agent'] != "n2") {
         $marzbandirectpay = panel_feature_enabled($user['Processing_value'], 'directbuy') ? "ondirectbuy" : "offdirectbuy";
         if ($marzbandirectpay == "offdirectbuy") {

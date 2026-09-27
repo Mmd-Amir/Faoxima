@@ -52,11 +52,14 @@ final class ServiceRenewOptionsHandler extends BaseHandler
                 continue;
             }
 
+            $basePrice = $product['price_product'];
+            $product = fx_apply_to_product($product, $panel);
             $price = (float)$product['price_product'];
             if ($userDiscount !== 0) {
                 $price = $price - (($price * $userDiscount) / 100);
             }
             $price = (int) round($price);
+            $price = (int) fx_finalize_amount($price, $panel, 'product');
 
             $list[] = [
                 'code'         => (string)$product['code_product'],
@@ -64,6 +67,7 @@ final class ServiceRenewOptionsHandler extends BaseHandler
                 'volume_gb'    => (int)($product['Volume_constraint'] ?? 0),
                 'time_days'    => (int)($product['Service_time'] ?? 0),
                 'price'        => $price,
+                'base_price'   => (float) $basePrice,
                 'show_price'   => $statusShowPrice !== 'offshowprice',
                 'note'         => (string)($product['note'] ?? ''),
                 'ip_limit'     => (int)($product['ip_limit'] ?? 0),
@@ -110,6 +114,12 @@ final class ServiceRenewOptionsHandler extends BaseHandler
 
         $customPriceVol  = $this->jsonAgentValue($panel['pricecustomvolume'] ?? '', $agent);
         $customPriceTime = $this->jsonAgentValue($panel['pricecustomtime']   ?? '', $agent);
+        if ($customPriceVol !== '' && $customPriceVol !== null) {
+            $customPriceVol = fx_adjust_base_toman($customPriceVol, $panel, 'custom_volume');
+        }
+        if ($customPriceTime !== '' && $customPriceTime !== null) {
+            $customPriceTime = fx_adjust_base_toman($customPriceTime, $panel, 'custom_time');
+        }
         $customStatus    = (string) $this->jsonAgentValue($panel['customvolume'] ?? '', $agent);
         $minVol  = (int) $this->jsonAgentValue($panel['mainvolume'] ?? '', $agent);
         $maxVol  = (int) $this->jsonAgentValue($panel['maxvolume']  ?? '', $agent);
@@ -138,6 +148,11 @@ final class ServiceRenewOptionsHandler extends BaseHandler
             'products'        => $list,
             'show_price'      => $statusShowPrice !== 'offshowprice',
             'discount'        => $userDiscount,
+            'fx_enabled'      => fx_context($panel, ['product', 'custom_volume', 'custom_time']) !== null,
+            'fx_quote'        => [
+                'product' => fx_quote_token($panel, 'product'),
+                'custom'  => fx_quote_token($panel, ['custom_volume', 'custom_time']),
+            ],
             'balance'         => (float)($this->user['Balance'] ?? 0),
             'custom'          => [
                 'enabled'        => $customEnabled,
@@ -148,6 +163,7 @@ final class ServiceRenewOptionsHandler extends BaseHandler
                 'min_time_days'  => $minTime,
                 'max_time_days'  => $maxTime,
                 'force'          => ($custom_only && !$nationalPanel),
+                'fx_round_step'  => fx_context($panel, ['custom_volume', 'custom_time'])['round_step'] ?? null,
             ],
         ]);
     }

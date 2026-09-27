@@ -1,7 +1,7 @@
 import { home } from './pages/home.js?v=0.0.59';
 import { services as servicesPage } from './pages/services.js?v=0.0.53';
 
-import { buy as buyPage } from './pages/buy.js?v=0.0.54';
+import { buy as buyPage } from './pages/buy.js?v=0.0.55';
 import { account as accountPage } from './pages/account.js?v=0.0.52';
 import { settings as settingsPage } from './pages/settings.js?v=0.0.52';
 import { recharge as rechargePage } from './pages/recharge.js?v=0.0.57';
@@ -161,7 +161,7 @@ function loadServicePage() {
 
 
     const url = new URL('./pages/service.js', import.meta.url);
-    url.searchParams.set('v', `${ver}-0.0.55`);
+    url.searchParams.set('v', `${ver}-0.0.56`);
     _serviceModulePromise = import(url.href).catch((err) => {
 
 

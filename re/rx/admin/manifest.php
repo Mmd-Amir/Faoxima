@@ -5,4 +5,5 @@ return array (
   2 => 'finance.php',
   3 => 'settings.php',
   4 => 'maintenance.php',
+  5 => 'pricing.php',
 );

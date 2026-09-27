@@ -803,6 +803,9 @@ $rxAdminPanelBtn = function (string $text, string $menuKey, string $default = 'd
     ];
     return $btn;
 };
+$rxFxPricingRow = function (string $menuKey) use ($rxAdminPanelBtn) {
+    return [$rxAdminPanelBtn(fx_admin_button_label(), $menuKey)];
+};
 
 $optionMarzban = rx_finalizeInlineAdminKb(json_encode([
     'keyboard' => [
@@ -814,6 +817,7 @@ $optionMarzban = rx_finalizeInlineAdminKb(json_encode([
         [$rxAdminPanelBtn("🔋 روش تمدید سرویس", 'admin_panel_marzban'), $rxAdminPanelBtn("💡 ساخت نام کاربری", 'admin_panel_marzban')],
         [$rxAdminPanelBtn("🚨 محدودیت اکانت", 'admin_panel_marzban'), $rxAdminPanelBtn("📍 تغییر گروه", 'admin_panel_marzban')],
         [$rxAdminPanelBtn("🧪 تنظیمات تست", 'admin_panel_marzban')],
+        $rxFxPricingRow('admin_panel_marzban'),
         [$rxAdminPanelBtn("⚙️ قیمت حجم دلخواه", 'admin_panel_marzban'), $rxAdminPanelBtn("➕ قیمت حجم اضافه", 'admin_panel_marzban')],
         [$rxAdminPanelBtn("⏳ قیمت زمان اضافه", 'admin_panel_marzban'), $rxAdminPanelBtn("⏳ قیمت زمان دلخواه", 'admin_panel_marzban')],
         [$rxAdminPanelBtn("🌍 قیمت تغییر مکان", 'admin_panel_marzban')],

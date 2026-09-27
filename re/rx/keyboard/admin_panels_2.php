@@ -174,6 +174,8 @@ function KeyboardProduct($location,$query,$pricediscount,$datakeyboard,$statuscu
         if ($pa !== $pb) return $pa - $pb;
         return (int)($a['id'] ?? 0) - (int)($b['id'] ?? 0);
     });
+    $fxPanelRow = select("marzban_panel", "*", "name_panel", $location, "select");
+    if (!is_array($fxPanelRow)) $fxPanelRow = [];
     $nmPanelRow = null;
     if (function_exists('nmPanelNationalEnabled') && function_exists('nmStockHasAvailableForProduct')) {
         $nmPanelRow = select("marzban_panel", "*", "name_panel", $location, "select");
@@ -202,10 +204,12 @@ function KeyboardProduct($location,$query,$pricediscount,$datakeyboard,$statuscu
         }
 
 
+        $result = fx_apply_to_product($result, $fxPanelRow);
         if(intval($pricediscount) != 0){
             $resultper = ($result['price_product'] * $pricediscount) / 100;
             $result['price_product'] = $result['price_product'] -$resultper;
         }
+        $result['price_product'] = fx_finalize_amount($result['price_product'], $fxPanelRow, 'product');
         $callbackToken = trim((string)($result['code_product'] ?? ''));
         $callbackData = "{$datakeyboard}{$callbackToken}{$valuetow}";
         if ($callbackToken === '' || strlen($callbackData) > 64) {

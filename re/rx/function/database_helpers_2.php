@@ -3575,6 +3575,10 @@ $textonebuy
             }
             return rx_pf_fail($order_id, $rxToken, 'renewal_product_unavailable', $__refundPr);
         }
+        $fxOrderValue = json_decode((string) ($data_order['value'] ?? ''), true);
+        if (is_array($fxOrderValue) && isset($fxOrderValue['pricing_snapshot']) && is_numeric($data_order['price'] ?? null)) {
+            $prodcut['price_product'] = $data_order['price'];
+        }
         if ($nameloc['name_product'] == "سرویس تست") {
             update("invoice", "name_product", $prodcut['name_product'], "id_invoice", $nameloc['id_invoice']);
             update("invoice", "price_product", $prodcut['price_product'], "id_invoice", $nameloc['id_invoice']);

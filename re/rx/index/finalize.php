@@ -132,6 +132,12 @@ if (isset($update['pre_checkout_query'])) {
         sendmessage($from_id, $textbotlang['users']['erroroccurred'], $keyboard, 'html');
         return;
     }
+    $fxExternalRenewPanel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
+    if (is_array($fxExternalRenewPanel)) {
+        $prodcut = fx_apply_to_product($prodcut, $fxExternalRenewPanel);
+        $prodcut['price_product'] = fx_finalize_amount($prodcut['price_product'], $fxExternalRenewPanel, 'product');
+        fx_quote_store($from_id, fx_quote_context_key('renew_external', (string) $username . '|' . (string) $codeproduct), fx_finalize_amount(fx_apply_user_discount($prodcut['price_product'], $user['pricediscount']), $fxExternalRenewPanel, 'product'), $fxExternalRenewPanel, 'product');
+    }
     $keyboardextend = json_encode([
         'inline_keyboard' => [
             [
@@ -174,6 +180,15 @@ if (isset($update['pre_checkout_query'])) {
         sendmessage($from_id, $textbotlang['users']['extend']['renewalerror'], $keyboard, 'HTML');
         return;
     }
+    $prodcut = fx_apply_to_product($prodcut, $marzban_list_get);
+    $prodcut['price_product'] = fx_finalize_amount($prodcut['price_product'], $marzban_list_get, 'product');
+    $fxExternalRenewKey = fx_quote_context_key('renew_external', (string) $usernamePanelExtends . '|' . (string) $codeproduct);
+    $fxExternalRenewAmount = fx_finalize_amount(fx_apply_user_discount($prodcut['price_product'], $user['pricediscount']), $marzban_list_get, 'product');
+    if (!fx_quote_check($from_id, $fxExternalRenewKey, $fxExternalRenewAmount, $marzban_list_get, 'product')) {
+        fx_quote_store($from_id, $fxExternalRenewKey, $fxExternalRenewAmount, $marzban_list_get, 'product');
+        sendmessage($from_id, fx_price_changed_text($fxExternalRenewAmount), json_encode(['inline_keyboard' => [[['text' => $textbotlang['users']['extend']['confirm'], 'callback_data' => "confirmserivces-" . $codeproduct . "-" . $usernamePanelExtends]]]]), 'HTML');
+        return;
+    }
     $nameloc = false;
     if (!empty($user['Processing_value_one'])) {
         $nameloc = select("invoice", "*", "id_invoice", $user['Processing_value_one'], "select");
@@ -204,6 +219,7 @@ if (isset($update['pre_checkout_query'])) {
                 $prodcut['price_product'] = $prodcut['price_product'] - $result;
                 sendmessage($from_id, sprintf($textbotlang['users']['Discount']['discountapplied'], $user['pricediscount']), null, 'HTML');
             }
+            $prodcut['price_product'] = fx_finalize_amount($prodcut['price_product'], $marzban_list_get, 'product');
             $Balance_prim = $prodcut['price_product'] - $user['Balance'];
             update("user", "Processing_value", $Balance_prim, "id", $from_id);
             sendmessage($from_id, $textbotlang['users']['sell']['None-credit'], $step_payment, 'HTML');
@@ -222,6 +238,7 @@ if (isset($update['pre_checkout_query'])) {
         $prodcut['price_product'] = $prodcut['price_product'] - $result;
         sendmessage($from_id, sprintf($textbotlang['users']['Discount']['discountapplied'], $user['pricediscount']), null, 'HTML');
     }
+    $prodcut['price_product'] = fx_finalize_amount($prodcut['price_product'], $marzban_list_get, 'product');
     if (function_exists('nmPanelNationalEnabled') && nmPanelNationalEnabled($marzban_list_get)) {
         if (!is_array($nameloc)) {
             sendmessage($from_id, $textbotlang['users']['extend']['renewalerror'], $keyboard, 'HTML');
@@ -333,6 +350,7 @@ if (isset($update['pre_checkout_query'])) {
         "oldtime" => $DataUserOut['expire'],
         'code_product' => $prodcut['code_product'],
     ));
+    $value = fx_value_with_snapshot($value, fx_pricing_snapshot($marzban_list_get, 'product', $prodcut['fx_base_price'] ?? $prodcut['price_product'], $prodcut['price_product'], 0, ['product' => (string) ($prodcut['code_product'] ?? '')]));
     $dateacc = date('Y/m/d H:i:s');
     $type = "extends_not_user";
     $stmt->execute([

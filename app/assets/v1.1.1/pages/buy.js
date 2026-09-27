@@ -329,7 +329,7 @@ export async function buy(view) {
                 target.innerHTML = `
                     <div class="list mt-sm">
                         ${list.map((p) => `
-                            <button class="plan" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}" data-traffic="${escapeHtml(p.traffic_gb)}" data-time="${escapeHtml(p.time_days)}" data-price="${escapeHtml(p.price)}" data-iplimit="${escapeHtml(p.ip_limit || 0)}" data-ipguard="${p.ip_limit_guard_active ? '1' : '0'}" data-symlimit="${p.symbolic_limit_enabled ? '1' : '0'}" data-symlimitusers="${escapeHtml(p.symbolic_limit_users || 0)}" data-hwidlimit="${escapeHtml(p.hwid_limit || 0)}" data-hwidsupported="${p.hwid_limit_supported ? '1' : '0'}">
+                            <button class="plan" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}" data-traffic="${escapeHtml(p.traffic_gb)}" data-time="${escapeHtml(p.time_days)}" data-price="${escapeHtml(p.price)}" data-iplimit="${escapeHtml(p.ip_limit || 0)}" data-ipguard="${p.ip_limit_guard_active ? '1' : '0'}" data-symlimit="${p.symbolic_limit_enabled ? '1' : '0'}" data-symlimitusers="${escapeHtml(p.symbolic_limit_users || 0)}" data-hwidlimit="${escapeHtml(p.hwid_limit || 0)}" data-hwidsupported="${p.hwid_limit_supported ? '1' : '0'}" data-fxquote="${escapeHtml(p.fx_quote || '')}">
                                 <div class="plan-info">
                                     <div class="plan-title">${escapeHtml(p.name)}</div>
                                     <div class="plan-meta">
@@ -360,6 +360,7 @@ export async function buy(view) {
                             symbolic_limit_users: Number(btn.dataset.symlimitusers),
                             hwid_limit: Number(btn.dataset.hwidlimit),
                             hwid_limit_supported: btn.dataset.hwidsupported === '1',
+                            fx_quote: btn.dataset.fxquote || '',
                             custom: false,
                         };
                         delete draft.customService;
@@ -448,6 +449,7 @@ export async function buy(view) {
                             traffic_gb: trafficVal,
                             time_days: timeVal,
                             price,
+                            fx_quote: r?.obj?.fx_quote || '',
                             custom: true,
                         };
                         draft.customService = { traffic_gb: trafficVal, time_days: timeVal };
@@ -567,6 +569,7 @@ export async function buy(view) {
                 if (customUsername) body.custom_username = customUsername;
                 if (customNote)     body.custom_note     = customNote;
                 if (discountCode)   body.discount_code   = discountCode;
+                if (p.fx_quote)     body.fx_quote        = p.fx_quote;
 
                 const res = await call('purchase', { method: 'POST', body });
 
@@ -603,6 +606,15 @@ export async function buy(view) {
                 hapticNotify('error');
                 const msg = String(err.message || '');
                 const data = err.data || {};
+
+                if (err.status === 409 && data.obj && data.obj.code === 'price_changed') {
+                    p.price = Number(data.obj.price || 0);
+                    p.fx_quote = data.obj.fx_quote || '';
+                    setBuyDraft(draft);
+                    toast(`${msg} مبلغ جدید: ${fmtPrice(p.price)}`, 'warn', 7000);
+                    renderConfirmStep(host);
+                    return;
+                }
 
 
                 if (data && (data.requires_payment || (data.obj && data.obj.requires_payment))) {
