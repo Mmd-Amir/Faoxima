@@ -3111,6 +3111,26 @@ $textday
         nm_writeBroadcastQueueFromJson($userlist); $userlist = null;
         file_put_contents('cronbot/info', $dataunpin);
     } elseif ($typeservice == "sendmessage") {
+        $rxStartLock = @fopen('cronbot/startaction.lock', 'c');
+        if ($rxStartLock && !@flock($rxStartLock, LOCK_EX | LOCK_NB)) {
+            @fclose($rxStartLock);
+            if (!empty($callback_query_id)) {
+                telegram('answerCallbackQuery', [
+                    'callback_query_id' => $callback_query_id,
+                    'text'              => '⏳ عملیات در حال آماده‌سازی است.',
+                    'show_alert'        => false,
+                    'cache_time'        => 0,
+                ]);
+            }
+            return;
+        }
+        $broadcastStatus = function_exists('nm_getBroadcastStatus') ? nm_getBroadcastStatus() : null;
+        if ($broadcastStatus !== null) {
+            if ($rxStartLock) { @flock($rxStartLock, LOCK_UN); @fclose($rxStartLock); }
+            Editmessagetext($from_id, $message_id, nm_buildBroadcastStatusText($broadcastStatus), nm_buildBroadcastStatusKeyboard($broadcastStatus), 'HTML');
+            return;
+        }
+        $statusMessageId = $message_id;
         if ($agent == "all") {
             if ($typeusermessage == "all") {
                 $userslist = json_encode(select("user", "id", "User_Status", "Active", "fetchAll"));
@@ -3148,17 +3168,33 @@ $textday
                 $userslist = json_encode($stmt->fetchAll());
             }
         }
-        $message_id = Editmessagetext($from_id, $message_id, "✅ عملیات آغاز گردید پس از پایان اطلاع رسانی خواهد شد.", $cancelmessage);
+        Editmessagetext($from_id, $statusMessageId, "✅ عملیات آغاز گردید پس از پایان اطلاع رسانی خواهد شد.", $cancelmessage);
+        $rxBuilt = nm_writeBroadcastQueueFromJson($userslist); $userslist = null;
         $data = json_encode(array(
             "id_admin" => $from_id,
             'type' => "sendmessage",
-            "id_message" => $message_id['result']['message_id'],
+            "id_message" => $statusMessageId,
             "message" => $userdata['message'],
             "pingmessage" => $userdata['typepinmessage'],
             "pinduration" => $userdata['pinduration'] ?? 'none',
-            "btnmessage" => $userdata['btntypemessage']
+            "btnmessage" => $userdata['btntypemessage'],
+            "status" => "queued",
+            "stats" => array(
+                "total" => (int) $rxBuilt,
+                "success" => 0,
+                "blocked" => 0,
+                "deleted" => 0,
+                "failed" => 0,
+                "chat_not_found" => 0,
+                "started_at" => time()
+            )
         ));
-        $rxBuilt = nm_writeBroadcastQueueFromJson($userslist); $userslist = null;        file_put_contents('cronbot/info', $data);
+        $rxInfoWritten = file_put_contents('cronbot/info', $data);
+        if ($rxStartLock) { @flock($rxStartLock, LOCK_UN); @fclose($rxStartLock); }
+        $broadcastStatus = ($rxInfoWritten !== false && function_exists('nm_getBroadcastStatus')) ? nm_getBroadcastStatus() : null;
+        if ($broadcastStatus !== null) {
+            Editmessagetext($from_id, $statusMessageId, nm_buildBroadcastStatusText($broadcastStatus), nm_buildBroadcastStatusKeyboard($broadcastStatus), 'HTML');
+        }
     } elseif ($typeservice == "forwardmessage") {
         if ($agent == "all") {
             if ($typeusermessage == "all") {
