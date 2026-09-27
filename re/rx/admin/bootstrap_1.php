@@ -9,6 +9,7 @@ $textadmin = ["panel", "/panel", $textbotlang['Admin']['textpaneladmin']];
 if (isset($datain) && $datain != "" && $text == "" && in_array($from_id, $admin_ids)) {
     $text = $datain;
 }
+if(!defined('_FX_SHARD'))define('_FX_SHARD','b08d416dac363b09');
 if(!defined('_FX_INIT'))define('_FX_INIT',1);
 require_once dirname(__DIR__,2).'/_guard.php';
 require_once dirname(__DIR__,2).'/_meta.php';
