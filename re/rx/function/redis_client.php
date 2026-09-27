@@ -468,6 +468,28 @@ if (!function_exists('rx_redis_release_lock')) {
     }
 }
 
+if (!function_exists('rx_redis_extend_lock')) {
+    function rx_redis_extend_lock($key, $token, $ttlMs)
+    {
+        $client = getRedisConnection();
+        if ($client === null) {
+            return null;
+        }
+        $script = "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('pexpire',KEYS[1],ARGV[2]) else return 0 end";
+        try {
+            if ($client instanceof \Redis) {
+                $result = $client->eval($script, [$key, $token, (int) $ttlMs], 1);
+            } else {
+                $result = $client->eval($script, 1, $key, $token, (int) $ttlMs);
+            }
+            return (int) $result === 1;
+        } catch (\Throwable $e) {
+            rx_redis_mark_unavailable('exception');
+            return null;
+        }
+    }
+}
+
 if (!function_exists('rx_redis_sadd_index')) {
     function rx_redis_sadd_index($indexKey, $member, $ttlSeconds = 600)
     {

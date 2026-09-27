@@ -11,6 +11,291 @@ if (!function_exists('rx_iranpay_label')) {
     }
 }
 
+if (!function_exists('rx_optimizer_state')) {
+    if (!defined('RX_OPT_LOCK_KEY')) {
+        define('RX_OPT_LOCK_KEY', 'faoxima:optimizer:cleanup:lock');
+        define('RX_OPT_PROGRESS_KEY', 'faoxima:optimizer:cleanup:progress');
+        define('RX_OPT_CANCEL_PREFIX', 'faoxima:optimizer:cleanup:cancel:');
+        define('RX_OPT_LOCK_TTL', 3600);
+        define('RX_OPT_ACTIVE_TTL', 7200);
+        define('RX_OPT_FINAL_TTL', 86400);
+        define('RX_OPT_STALE_AFTER', 60);
+        define('RX_OPT_TOTAL_STAGES', 10);
+    }
+
+    function rx_optimizer_path($name)
+    {
+        static $dir = null;
+        if ($dir === null) {
+            $candidate = REFACTORED_LEGACY_ROOT . '/storage/cache';
+            if (!is_dir($candidate)) {
+                @mkdir($candidate, 0775, true);
+            }
+            $dir = (is_dir($candidate) && is_writable($candidate)) ? $candidate . DIRECTORY_SEPARATOR : sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'faoxima_';
+        }
+        $files = [
+            'lock' => 'optimizer_cleanup.lock',
+            'progress' => 'optimizer_progress.json',
+            'cancel' => 'optimizer_cancel.json',
+            'state' => 'optimizer_state.lock',
+        ];
+        return $dir . $files[$name];
+    }
+
+    function rx_optimizer_file_read($name)
+    {
+        $path = rx_optimizer_path($name);
+        $guard = @fopen(rx_optimizer_path('state'), 'c');
+        if ($guard !== false) {
+            @flock($guard, LOCK_SH);
+        }
+        $raw = is_file($path) ? @file_get_contents($path) : false;
+        if ($guard !== false) {
+            @flock($guard, LOCK_UN);
+            @fclose($guard);
+        }
+        $data = (is_string($raw) && $raw !== '') ? json_decode($raw, true) : null;
+        return is_array($data) ? $data : null;
+    }
+
+    function rx_optimizer_file_write($name, $data, $keepSameRun = false)
+    {
+        $path = rx_optimizer_path($name);
+        $guard = @fopen(rx_optimizer_path('state'), 'c');
+        if ($guard !== false) {
+            @flock($guard, LOCK_EX);
+        }
+        try {
+            if ($data === null) {
+                if (is_file($path)) {
+                    @unlink($path);
+                }
+                return null;
+            }
+            if ($keepSameRun && is_file($path)) {
+                $existing = json_decode((string) @file_get_contents($path), true);
+                if (is_array($existing) && ($existing['run_id'] ?? null) === ($data['run_id'] ?? null)) {
+                    return $existing;
+                }
+            }
+            $tmp = $path . '.' . getmypid() . '.tmp';
+            if (@file_put_contents($tmp, json_encode($data, JSON_UNESCAPED_UNICODE)) === false || !@rename($tmp, $path)) {
+                @unlink($tmp);
+                error_log('[optimizebot] progress file write failed');
+            }
+            return $data;
+        } finally {
+            if ($guard !== false) {
+                @flock($guard, LOCK_UN);
+                @fclose($guard);
+            }
+        }
+    }
+
+    function rx_optimizer_redis_on()
+    {
+        try {
+            return function_exists('rx_redis_is_active') && rx_redis_is_active();
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    function rx_optimizer_progress_read()
+    {
+        $best = rx_optimizer_file_read('progress');
+        if (rx_optimizer_redis_on()) {
+            $raw = rx_redis_get(RX_OPT_PROGRESS_KEY);
+            $fromRedis = is_string($raw) ? json_decode($raw, true) : null;
+            if (is_array($fromRedis) && (!is_array($best) || (int) ($fromRedis['updated_at'] ?? 0) >= (int) ($best['updated_at'] ?? 0))) {
+                $best = $fromRedis;
+            }
+        }
+        if (is_array($best) && in_array($best['status'] ?? '', ['completed', 'cancelled', 'failed', 'stale'], true)
+            && (time() - (int) ($best['updated_at'] ?? 0)) > RX_OPT_FINAL_TTL) {
+            return null;
+        }
+        return $best;
+    }
+
+    function rx_optimizer_progress_write(array $progress)
+    {
+        $progress['updated_at'] = time();
+        $final = in_array($progress['status'] ?? '', ['completed', 'cancelled', 'failed', 'stale'], true);
+        if (rx_optimizer_redis_on()) {
+            try {
+                rx_redis_set(RX_OPT_PROGRESS_KEY, json_encode($progress, JSON_UNESCAPED_UNICODE), $final ? RX_OPT_FINAL_TTL : RX_OPT_ACTIVE_TTL);
+            } catch (Throwable $e) {
+            }
+        }
+        rx_optimizer_file_write('progress', $progress);
+        return $progress;
+    }
+
+    function rx_optimizer_cancel_get($runId, $ownerToken = null)
+    {
+        $runId = (string) $runId;
+        if ($runId === '') {
+            return null;
+        }
+        $cancel = null;
+        if (rx_optimizer_redis_on()) {
+            $raw = rx_redis_get(RX_OPT_CANCEL_PREFIX . $runId);
+            $cancel = is_string($raw) ? json_decode($raw, true) : null;
+        }
+        if (!is_array($cancel)) {
+            $cancel = rx_optimizer_file_read('cancel');
+        }
+        if (!is_array($cancel) || ($cancel['run_id'] ?? '') !== $runId) {
+            return null;
+        }
+        if ($ownerToken !== null && ($cancel['owner_token'] ?? '') !== $ownerToken) {
+            return null;
+        }
+        return $cancel;
+    }
+
+    function rx_optimizer_cancel_request(array $progress, $adminId)
+    {
+        $runId = (string) ($progress['run_id'] ?? '');
+        $existing = rx_optimizer_cancel_get($runId);
+        if ($existing !== null) {
+            return $existing;
+        }
+        $cancel = [
+            'run_id' => $runId,
+            'owner_token' => (string) ($progress['owner_token'] ?? ''),
+            'requested_at' => time(),
+            'requested_by' => (string) $adminId,
+        ];
+        if (rx_optimizer_redis_on()) {
+            try {
+                if (rx_redis_set_nx(RX_OPT_CANCEL_PREFIX . $runId, json_encode($cancel), RX_OPT_ACTIVE_TTL * 1000) === false) {
+                    $winner = rx_optimizer_cancel_get($runId);
+                    if ($winner !== null) {
+                        return $winner;
+                    }
+                }
+            } catch (Throwable $e) {
+            }
+        }
+        return rx_optimizer_file_write('cancel', $cancel, true);
+    }
+
+    function rx_optimizer_cancel_clear($runId)
+    {
+        if ((string) $runId !== '' && rx_optimizer_redis_on()) {
+            try {
+                rx_redis_del(RX_OPT_CANCEL_PREFIX . $runId);
+            } catch (Throwable $e) {
+            }
+        }
+        rx_optimizer_file_write('cancel', null);
+    }
+
+    function rx_optimizer_state()
+    {
+        $progress = rx_optimizer_progress_read();
+        if (!is_array($progress) || !in_array($progress['status'] ?? '', ['starting', 'running', 'cancelling'], true)) {
+            return $progress;
+        }
+        $cancel = rx_optimizer_cancel_get($progress['run_id'] ?? '');
+        if ($cancel !== null) {
+            $progress['status'] = 'cancelling';
+            $progress['cancel_requested_at'] = $cancel['requested_at'] ?? null;
+            $progress['cancel_requested_by'] = $cancel['requested_by'] ?? null;
+        }
+        if ((time() - (int) ($progress['updated_at'] ?? 0)) < RX_OPT_STALE_AFTER) {
+            return $progress;
+        }
+        $probe = @fopen(rx_optimizer_path('lock'), 'c');
+        if ($probe === false) {
+            return $progress;
+        }
+        if (!@flock($probe, LOCK_EX | LOCK_NB)) {
+            @fclose($probe);
+            return $progress;
+        }
+        try {
+            if (rx_optimizer_redis_on() && rx_redis_get(RX_OPT_LOCK_KEY) !== null) {
+                return $progress;
+            }
+            $current = rx_optimizer_progress_read();
+            if (!is_array($current) || ($current['run_id'] ?? '') !== ($progress['run_id'] ?? '')
+                || !in_array($current['status'] ?? '', ['starting', 'running', 'cancelling'], true)) {
+                return is_array($current) ? $current : $progress;
+            }
+            $current['status'] = 'stale';
+            $current['completed_at'] = time();
+            $current = rx_optimizer_progress_write($current);
+            rx_optimizer_cancel_clear($current['run_id'] ?? '');
+            return $current;
+        } finally {
+            @flock($probe, LOCK_UN);
+            @fclose($probe);
+        }
+    }
+
+    function rx_optimizer_elapsed($seconds)
+    {
+        $seconds = max(0, (int) $seconds);
+        return sprintf('%02d:%02d:%02d', intdiv($seconds, 3600), intdiv($seconds % 3600, 60), $seconds % 60);
+    }
+
+    function rx_optimizer_render($progress)
+    {
+        $back = ['text' => "🔙 بازگشت به منوی مدیریت", 'callback_data' => 'admin'];
+        $again = ['text' => "🔁 اجرای مجدد", 'callback_data' => 'optimizebot'];
+        $retry = ['text' => "🔁 تلاش مجدد", 'callback_data' => 'optimizebot'];
+        $refresh = ['text' => "🔄 بروزرسانی وضعیت", 'callback_data' => 'optimizebot_refresh'];
+        $cancel = ['text' => "❌ درخواست لغو عملیات", 'callback_data' => 'optimizebot_cancel'];
+        if (!is_array($progress)) {
+            return ["ℹ️ در حال حاضر هیچ عملیات پاک‌سازی ثبت نشده است.", json_encode(['inline_keyboard' => [[$again], [$back]]])];
+        }
+        $status = (string) ($progress['status'] ?? '');
+        $final = in_array($status, ['completed', 'cancelled', 'failed', 'stale'], true);
+        $startedAt = (int) ($progress['started_at'] ?? time());
+        $endedAt = $final ? (int) ($progress['completed_at'] ?? $progress['updated_at'] ?? time()) : time();
+        $elapsed = rx_optimizer_elapsed($endedAt - $startedAt);
+        $stage = (string) ($progress['stage'] ?? '');
+        $processed = (int) ($progress['processed'] ?? 0);
+        $deleted = (int) ($progress['deleted'] ?? 0);
+        $marked = (int) ($progress['marked'] ?? 0);
+        $valid = (int) ($progress['valid'] ?? 0);
+        $errors = (int) ($progress['errors'] ?? 0);
+        $completedTime = date('Y/m/d H:i:s', $endedAt);
+        if ($status === 'completed') {
+            $text = "✅ عملیات پاک‌سازی با موفقیت تمام شد\n\n📦 بررسی‌شده: {$processed}\n🗑 حذف‌شده: {$deleted}\n🏷 علامت‌گذاری‌شده: {$marked}\n✅ معتبر و بدون تغییر: {$valid}\n⚠️ خطاهای موقت: {$errors}\n⏱ زمان کل: {$elapsed}\n🕐 زمان پایان: {$completedTime}";
+            if (!empty($progress['details'])) {
+                $text .= "\n\n" . $progress['details'];
+            }
+            return [$text, json_encode(['inline_keyboard' => [[$again], [$back]]])];
+        }
+        if ($status === 'cancelled') {
+            $text = "❌ عملیات پاک‌سازی لغو شد\n\n📦 بررسی‌شده تا زمان لغو: {$processed}\n🗑 حذف‌شده تا زمان لغو: {$deleted}\n🏷 علامت‌گذاری‌شده: {$marked}\n✅ معتبر و بدون تغییر: {$valid}\n⚠️ خطاها: {$errors}\n⚙️ آخرین مرحله: {$stage}\n⏱ زمان کل: {$elapsed}\n🕐 زمان توقف: {$completedTime}\n\nعملیات انجام‌شده قبل از لغو بازگردانی نشده‌اند.";
+            return [$text, json_encode(['inline_keyboard' => [[$again], [$back]]])];
+        }
+        if ($status === 'failed') {
+            $text = "❌ عملیات پاک‌سازی کامل نشد\n\n⚙️ آخرین مرحله: {$stage}\n📦 بررسی‌شده: {$processed}\n🗑 حذف‌شده تا این لحظه: {$deleted}\n🏷 علامت‌گذاری‌شده: {$marked}\n⚠️ خطاها: {$errors}\n⏱ زمان سپری‌شده: {$elapsed}\n\nعملیات انجام‌شده قبل از بروز خطا بازگردانی نشده‌اند.";
+            return [$text, json_encode(['inline_keyboard' => [[$retry], [$back]]])];
+        }
+        if ($status === 'stale') {
+            $text = "⚠️ عملیات پاک‌سازی قبلی به‌صورت ناقص متوقف شده است\n\n⚙️ آخرین مرحله: {$stage}\n📦 بررسی‌شده: {$processed}\n🗑 حذف‌شده تا این لحظه: {$deleted}\n🏷 علامت‌گذاری‌شده: {$marked}\n⚠️ خطاها: {$errors}\n⏱ زمان سپری‌شده: {$elapsed}\n\nعملیات انجام‌شده قبل از توقف بازگردانی نشده‌اند.";
+            return [$text, json_encode(['inline_keyboard' => [[$again], [$back]]])];
+        }
+        if ($status === 'cancelling') {
+            $text = "⏳ درخواست لغو ثبت شد\n\nعملیات پس از پایان دسته فعلی به‌صورت امن متوقف خواهد شد.\n\n⚙️ مرحله فعلی: {$stage}\n📦 بررسی‌شده: {$processed}\n🗑 حذف‌شده تا این لحظه: {$deleted}\n🏷 علامت‌گذاری‌شده: {$marked}\n⏱ زمان سپری‌شده: {$elapsed}";
+            return [$text, json_encode(['inline_keyboard' => [[$refresh], [$back]]])];
+        }
+        $batch = (int) ($progress['current_batch'] ?? 0);
+        $stageNumber = (int) ($progress['stage_number'] ?? 0);
+        $totalStages = (int) ($progress['total_stages'] ?? RX_OPT_TOTAL_STAGES);
+        $updatedTime = date('H:i:s', (int) ($progress['updated_at'] ?? time()));
+        $text = "⏳ عملیات پاک‌سازی در حال انجام است\n\n⚙️ مرحله فعلی: {$stage}\n📦 بررسی‌شده: {$processed}\n🗑 حذف‌شده: {$deleted}\n🏷 علامت‌گذاری‌شده: {$marked}\n✅ معتبر و بدون تغییر: {$valid}\n⚠️ خطاها: {$errors}\n📚 دسته فعلی: {$batch}\n📊 مرحله: {$stageNumber} از {$totalStages}\n⏱ زمان سپری‌شده: {$elapsed}\n🕐 آخرین بروزرسانی: {$updatedTime}\n\nبرای مشاهده آخرین وضعیت، روی «بروزرسانی» بزنید.";
+        return [$text, json_encode(['inline_keyboard' => [[$refresh], [$cancel], [$back]]])];
+    }
+}
+
 if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, $textbotlang['Admin']['cronjob']['setdayremove'] . $setting['removedayc'] . "روز", $backadmin, 'HTML');
     step("getdaycron", $from_id);
@@ -1517,247 +1802,427 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         Editmessagetext($from_id, $message_id, $warningText, null);
         nm_adminInstantReply($from_id, $warningText, null, 'HTML');
     }
-} elseif ($datain == "optimizebot") {
-    if (function_exists('set_time_limit')) {
-        @set_time_limit(0);
+} elseif ($datain == "optimizebot_refresh" && $adminrulecheck['rule'] == "administrator") {
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'cache_time' => 0]);
     }
-    $thirtyDaysAgo = time() - (30 * 24 * 60 * 60);
-    $sixtyDaysAgo = time() - (60 * 24 * 60 * 60);
-    $ninetyDaysAgo = time() - (90 * 24 * 60 * 60);
-
-    $chk = $pdo->query("SHOW COLUMNS FROM invoice LIKE 'invalidated_at'");
-    if ($chk && $chk->rowCount() !== 1) {
-        $pdo->exec("ALTER TABLE invoice ADD invalidated_at INT UNSIGNED NULL DEFAULT NULL");
+    [$rxOptText, $rxOptKeyboard] = rx_optimizer_render(rx_optimizer_state());
+    Editmessagetext($from_id, $message_id, $rxOptText, $rxOptKeyboard);
+} elseif ($datain == "optimizebot_cancel" && $adminrulecheck['rule'] == "administrator") {
+    $rxOptState = rx_optimizer_state();
+    $rxOptActive = is_array($rxOptState) && in_array($rxOptState['status'] ?? '', ['starting', 'running', 'cancelling'], true);
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => $rxOptActive ? "⏳ درخواست لغو ثبت شد" : "", 'cache_time' => 0]);
     }
-
-    $nowStamp = time();
-    $stmt = $pdo->prepare(
-        "UPDATE invoice SET Status = 'Unsuccessful', invalidated_at = :now
-         WHERE Status IN ('active','end_of_time','end_of_volume','sendedwarn','send_on_hold')
-         AND Service_location IS NOT NULL AND Service_location <> ''
-         AND Service_location NOT IN (SELECT name_panel FROM marzban_panel WHERE name_panel IS NOT NULL)"
-    );
-    $stmt->execute([':now' => $nowStamp]);
-    $countorphanedpanel = $stmt->rowCount();
-
-    $countorphanedservice = 0;
-    $countunusedservice = 0;
-    $countunreachablepanel = 0;
-    $countexpiredservice = 0;
-    $stmt = $pdo->prepare(
-        "SELECT id_invoice, Service_location, username, time_sell, Status, invalidated_at FROM invoice
-         WHERE Status IN ('active','end_of_time','end_of_volume','sendedwarn','send_on_hold')
-         AND Service_location IS NOT NULL AND Service_location <> ''
-         AND username IS NOT NULL AND username <> ''"
-    );
-    $stmt->execute();
-    $liveInvoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    foreach ($liveInvoices as $liveInvoice) {
+    if ($rxOptActive) {
+        $rxOptCancel = rx_optimizer_cancel_request($rxOptState, $from_id);
+        $rxOptState['status'] = 'cancelling';
+        $rxOptState['cancel_requested_at'] = $rxOptCancel['requested_at'] ?? time();
+        $rxOptState['cancel_requested_by'] = $rxOptCancel['requested_by'] ?? (string) $from_id;
+    }
+    [$rxOptText, $rxOptKeyboard] = rx_optimizer_render($rxOptState);
+    Editmessagetext($from_id, $message_id, $rxOptText, $rxOptKeyboard);
+} elseif ($datain == "optimizebot" && $adminrulecheck['rule'] == "administrator") {
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'cache_time' => 0]);
+    }
+    $rxOptRedisKey = RX_OPT_LOCK_KEY;
+    $rxOptRedisToken = null;
+    $rxOptRedisTtlMs = RX_OPT_LOCK_TTL * 1000;
+    $rxOptLastRefresh = time();
+    $rxOptBusy = false;
+    $rxOptLockHandle = @fopen(rx_optimizer_path('lock'), 'c');
+    if ($rxOptLockHandle !== false && !flock($rxOptLockHandle, LOCK_EX | LOCK_NB)) {
+        fclose($rxOptLockHandle);
+        $rxOptLockHandle = false;
+        $rxOptBusy = true;
+    }
+    if (!$rxOptBusy) {
         try {
-            $scanResult = $ManagePanel->DataUser($liveInvoice['Service_location'], $liveInvoice['username']);
+            if (rx_optimizer_redis_on()) {
+                $rxOptToken = bin2hex(random_bytes(16));
+                $rxOptAcquired = rx_redis_set_nx($rxOptRedisKey, $rxOptToken, $rxOptRedisTtlMs);
+                if ($rxOptAcquired === true) {
+                    $rxOptRedisToken = $rxOptToken;
+                } elseif ($rxOptAcquired === false) {
+                    $rxOptBusy = true;
+                }
+            }
         } catch (Throwable $e) {
-            if (empty($liveInvoice['invalidated_at'])) {
-                update("invoice", "invalidated_at", $nowStamp, "id_invoice", $liveInvoice['id_invoice']);
-                $countunreachablepanel++;
-            }
-            continue;
-        }
-        if (isset($scanResult['msg']) && $scanResult['msg'] == "User not found") {
-            update("invoice", "invalidated_at", $nowStamp, "id_invoice", $liveInvoice['id_invoice']);
-            update("invoice", "Status", "disabledn", "id_invoice", $liveInvoice['id_invoice']);
-            $countorphanedservice++;
-        } elseif (isset($scanResult['status']) && $scanResult['status'] == "Unsuccessful" && isset($scanResult['msg']) && $scanResult['msg'] == "Panel Not Found") {
-            update("invoice", "invalidated_at", $nowStamp, "id_invoice", $liveInvoice['id_invoice']);
-            update("invoice", "Status", "Unsuccessful", "id_invoice", $liveInvoice['id_invoice']);
-            $countorphanedservice++;
-        } elseif ((int)($scanResult['used_traffic'] ?? 0) === 0) {
-            $purchasedAt = is_numeric($liveInvoice['time_sell']) ? (int)$liveInvoice['time_sell'] : null;
-            if ($purchasedAt !== null && $purchasedAt < $thirtyDaysAgo) {
-                update("invoice", "invalidated_at", $nowStamp, "id_invoice", $liveInvoice['id_invoice']);
-                update("invoice", "Status", "unusedservice", "id_invoice", $liveInvoice['id_invoice']);
-                $countunusedservice++;
-            }
-        } elseif (in_array($liveInvoice['Status'], ['end_of_time', 'end_of_volume'], true)) {
-            if (empty($liveInvoice['invalidated_at'])) {
-                update("invoice", "invalidated_at", $nowStamp, "id_invoice", $liveInvoice['id_invoice']);
-                $countexpiredservice++;
-            }
-        } elseif (!empty($liveInvoice['invalidated_at'])) {
-            update("invoice", "invalidated_at", null, "id_invoice", $liveInvoice['id_invoice']);
         }
     }
-
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE Status = 'unpaid' AND name_product != 'سرویس تست' AND CAST(time_sell AS UNSIGNED) < :cutoff");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $countunpiadorder = (int)$stmt->fetchColumn();
-
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE Status = 'disabled' AND name_product != 'سرویس تست' AND CAST(time_sell AS UNSIGNED) < :cutoff");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $countdisableorder = (int)$stmt->fetchColumn();
-
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE (Status = 'removebyadmin' OR Status = 'removedbyadmin') AND CAST(time_sell AS UNSIGNED) < :cutoff");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $countremoveadminorder = (int)$stmt->fetchColumn();
-
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE Status = 'disabled' AND name_product = 'سرویس تست' AND CAST(time_sell AS UNSIGNED) < :cutoff");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $countdisableordtester = (int)$stmt->fetchColumn();
-
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE Status = 'unpaid' AND name_product = 'سرویس تست' AND CAST(time_sell AS UNSIGNED) < :cutoff");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $countoldunpaid = (int)$stmt->fetchColumn();
-
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE (Status = 'removeTime' OR Status = 'removevolume' OR Status = 'removebyuser') AND CAST(time_sell AS UNSIGNED) < :cutoff");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $countremovedservices = (int)$stmt->fetchColumn();
-
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE (Status = 'disabledn' OR Status = 'Unsuccessful') AND COALESCE(invalidated_at, CAST(time_sell AS UNSIGNED)) < :cutoff");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $countfailedorder = (int)$stmt->fetchColumn();
-
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE Status = 'unusedservice' AND invalidated_at IS NOT NULL AND invalidated_at < :cutoff");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $countunusedexpired = (int)$stmt->fetchColumn();
-
-    $stmt = $pdo->prepare(
-        "SELECT COUNT(*) FROM invoice
-         WHERE Status IN ('active','end_of_time','end_of_volume','sendedwarn','send_on_hold')
-         AND invalidated_at IS NOT NULL AND invalidated_at < :cutoff"
-    );
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $countstalelive = (int)$stmt->fetchColumn();
-
-    $paymentCutoff = date('Y/m/d H:i:s', $thirtyDaysAgo);
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM Payment_report WHERE payment_Status IN ('expire','reject') AND time < :cutoff");
-    $stmt->execute([':cutoff' => $paymentCutoff]);
-    $countpayexpired = (int)$stmt->fetchColumn();
-
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM wallet_ledger WHERE created_at < FROM_UNIXTIME(:cutoff)");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $countledgerexpired = (int)$stmt->fetchColumn();
-
-    $countdiscountexpired = 0;
-    $chk = $pdo->query("SHOW COLUMNS FROM DiscountSell LIKE 'status'");
-    if ($chk && $chk->rowCount() === 1) {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM DiscountSell WHERE status = 'expired' AND time IS NOT NULL AND time <> '' AND CAST(time AS UNSIGNED) < :cutoff");
-        $stmt->execute([':cutoff' => $ninetyDaysAgo]);
-        $countdiscountexpired += (int)$stmt->fetchColumn();
-    }
-    $chk = $pdo->query("SHOW COLUMNS FROM Discount LIKE 'expire_at'");
-    if ($chk && $chk->rowCount() === 1) {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM Discount WHERE status = 'expired' AND expire_at IS NOT NULL AND expire_at <> '' AND CAST(expire_at AS UNSIGNED) < :cutoff");
-        $stmt->execute([':cutoff' => $ninetyDaysAgo]);
-        $countdiscountexpired += (int)$stmt->fetchColumn();
-    }
-
-    $countcancelrequests = 0;
-    $chk = $pdo->query("SHOW COLUMNS FROM cancel_service LIKE 'resolved_at'");
-    if ($chk && $chk->rowCount() === 1) {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM cancel_service WHERE status IN ('accept','reject') AND resolved_at IS NOT NULL AND resolved_at <> '' AND CAST(resolved_at AS UNSIGNED) < :cutoff");
-        $stmt->execute([':cutoff' => $sixtyDaysAgo]);
-        $countcancelrequests = (int)$stmt->fetchColumn();
-    }
-
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM Requestagent WHERE status IN ('accept','reject') AND time IS NOT NULL AND time <> '' AND CAST(time AS UNSIGNED) < :cutoff");
-    $stmt->execute([':cutoff' => $sixtyDaysAgo]);
-    $countagentrequests = (int)$stmt->fetchColumn();
-
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM Giftcodeconsumed WHERE consumed_at IS NOT NULL AND consumed_at <> '' AND CAST(consumed_at AS UNSIGNED) < :cutoff");
-    $stmt->execute([':cutoff' => $ninetyDaysAgo]);
-    $countgiftcodes = (int)$stmt->fetchColumn();
-
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM crypto_verified_hashes WHERE verified_at < FROM_UNIXTIME(:cutoff)");
-    $stmt->execute([':cutoff' => $ninetyDaysAgo]);
-    $countcryptologs = (int)$stmt->fetchColumn();
-
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM crypto_sender_locks WHERE COALESCE(last_used_at, first_seen_at) < FROM_UNIXTIME(:cutoff)");
-    $stmt->execute([':cutoff' => $ninetyDaysAgo]);
-    $countcryptologs += (int)$stmt->fetchColumn();
-
-    $stmt = $pdo->prepare("DELETE FROM invoice WHERE Status = 'unpaid' AND name_product != 'سرویس تست' AND CAST(time_sell AS UNSIGNED) < :cutoff");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $stmt = $pdo->prepare("DELETE FROM invoice WHERE Status = 'disabled' AND name_product != 'سرویس تست' AND CAST(time_sell AS UNSIGNED) < :cutoff");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $stmt = $pdo->prepare("DELETE FROM invoice WHERE Status = 'removebyadmin' AND CAST(time_sell AS UNSIGNED) < :cutoff");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $stmt = $pdo->prepare("DELETE FROM invoice WHERE Status = 'removedbyadmin' AND CAST(time_sell AS UNSIGNED) < :cutoff");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $stmt = $pdo->prepare("DELETE FROM invoice WHERE Status = 'disabled' AND name_product = 'سرویس تست' AND CAST(time_sell AS UNSIGNED) < :cutoff");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $stmt = $pdo->prepare("DELETE FROM invoice WHERE Status = 'removeTime' AND CAST(time_sell AS UNSIGNED) < :cutoff");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $stmt = $pdo->prepare("DELETE FROM invoice WHERE Status = 'removevolume' AND CAST(time_sell AS UNSIGNED) < :cutoff");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $stmt = $pdo->prepare("DELETE FROM invoice WHERE Status = 'removebyuser' AND CAST(time_sell AS UNSIGNED) < :cutoff");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $stmt = $pdo->prepare("DELETE FROM invoice WHERE Status = 'unpaid' AND name_product = 'سرویس تست' AND CAST(time_sell AS UNSIGNED) < :cutoff");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $stmt = $pdo->prepare("DELETE FROM invoice WHERE (Status = 'disabledn' OR Status = 'Unsuccessful') AND COALESCE(invalidated_at, CAST(time_sell AS UNSIGNED)) < :cutoff");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $stmt = $pdo->prepare("DELETE FROM invoice WHERE Status = 'unusedservice' AND invalidated_at IS NOT NULL AND invalidated_at < :cutoff");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $stmt = $pdo->prepare(
-        "DELETE FROM invoice
-         WHERE Status IN ('active','end_of_time','end_of_volume','sendedwarn','send_on_hold')
-         AND invalidated_at IS NOT NULL AND invalidated_at < :cutoff"
-    );
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-    $stmt = $pdo->prepare("DELETE FROM Payment_report WHERE payment_Status IN ('expire','reject') AND time < :cutoff");
-    $stmt->execute([':cutoff' => $paymentCutoff]);
-
-    $stmt = $pdo->prepare("DELETE FROM wallet_ledger WHERE created_at < FROM_UNIXTIME(:cutoff)");
-    $stmt->execute([':cutoff' => $thirtyDaysAgo]);
-
-    $chk = $pdo->query("SHOW COLUMNS FROM DiscountSell LIKE 'status'");
-    if ($chk && $chk->rowCount() === 1) {
-        $stmt = $pdo->prepare("DELETE FROM DiscountSell WHERE status = 'expired' AND time IS NOT NULL AND time <> '' AND CAST(time AS UNSIGNED) < :cutoff");
-        $stmt->execute([':cutoff' => $ninetyDaysAgo]);
-    }
-    $chk = $pdo->query("SHOW COLUMNS FROM Discount LIKE 'expire_at'");
-    if ($chk && $chk->rowCount() === 1) {
-        $stmt = $pdo->prepare("DELETE FROM Discount WHERE status = 'expired' AND expire_at IS NOT NULL AND expire_at <> '' AND CAST(expire_at AS UNSIGNED) < :cutoff");
-        $stmt->execute([':cutoff' => $ninetyDaysAgo]);
-    }
-
-    $chk = $pdo->query("SHOW COLUMNS FROM cancel_service LIKE 'resolved_at'");
-    if ($chk && $chk->rowCount() === 1) {
-        $stmt = $pdo->prepare("DELETE FROM cancel_service WHERE status IN ('accept','reject') AND resolved_at IS NOT NULL AND resolved_at <> '' AND CAST(resolved_at AS UNSIGNED) < :cutoff");
-        $stmt->execute([':cutoff' => $sixtyDaysAgo]);
-    }
-
-    $stmt = $pdo->prepare("DELETE FROM Requestagent WHERE status IN ('accept','reject') AND time IS NOT NULL AND time <> '' AND CAST(time AS UNSIGNED) < :cutoff");
-    $stmt->execute([':cutoff' => $sixtyDaysAgo]);
-
-    $stmt = $pdo->prepare("DELETE FROM Giftcodeconsumed WHERE consumed_at IS NOT NULL AND consumed_at <> '' AND CAST(consumed_at AS UNSIGNED) < :cutoff");
-    $stmt->execute([':cutoff' => $ninetyDaysAgo]);
-
-    $stmt = $pdo->prepare("DELETE FROM crypto_verified_hashes WHERE verified_at < FROM_UNIXTIME(:cutoff)");
-    $stmt->execute([':cutoff' => $ninetyDaysAgo]);
-
-    $stmt = $pdo->prepare("DELETE FROM crypto_sender_locks WHERE COALESCE(last_used_at, first_seen_at) < FROM_UNIXTIME(:cutoff)");
-    $stmt->execute([':cutoff' => $ninetyDaysAgo]);
-
-    $ticketCutoff = date('Y/m/d H:i:s', $thirtyDaysAgo);
-    $stmt = $pdo->prepare("SELECT Tracking FROM support_message GROUP BY Tracking HAVING MIN(time) < :cutoff");
-    $stmt->execute([':cutoff' => $ticketCutoff]);
-    $oldTrackings = $stmt->fetchAll(PDO::FETCH_COLUMN);
-
-    $countoldtickets = 0;
-    if (!empty($oldTrackings)) {
-        $delReact = $pdo->prepare(
-            "DELETE r FROM support_message_reaction r
-             INNER JOIN support_message m ON m.id = r.message_id
-             WHERE m.Tracking = :t"
-        );
-        $delMsg = $pdo->prepare("DELETE FROM support_message WHERE Tracking = :t");
-        foreach ($oldTrackings as $tracking) {
-            $delReact->execute([':t' => $tracking]);
-            $delMsg->execute([':t' => $tracking]);
-            $countoldtickets++;
+    $rxOptRelease = function () use (&$rxOptLockHandle, &$rxOptRedisToken, $rxOptRedisKey) {
+        if ($rxOptRedisToken !== null) {
+            $rxOptHeldToken = $rxOptRedisToken;
+            $rxOptRedisToken = null;
+            try {
+                rx_redis_release_lock($rxOptRedisKey, $rxOptHeldToken);
+            } catch (Throwable $e) {
+            }
         }
-    }
+        if ($rxOptLockHandle !== false) {
+            $rxOptHeldHandle = $rxOptLockHandle;
+            $rxOptLockHandle = false;
+            @flock($rxOptHeldHandle, LOCK_UN);
+            @fclose($rxOptHeldHandle);
+        }
+    };
+    $rxOptRefresh = function () use (&$rxOptRedisToken, &$rxOptLastRefresh, $rxOptRedisKey, $rxOptRedisTtlMs) {
+        if ($rxOptRedisToken === null || (time() - $rxOptLastRefresh) < 60) {
+            return;
+        }
+        $rxOptLastRefresh = time();
+        try {
+            rx_redis_extend_lock($rxOptRedisKey, $rxOptRedisToken, $rxOptRedisTtlMs);
+        } catch (Throwable $e) {
+        }
+    };
+    if ($rxOptBusy) {
+        $rxOptRelease();
+        [$rxOptText, $rxOptKeyboard] = rx_optimizer_render(rx_optimizer_state());
+        Editmessagetext($from_id, $message_id, $rxOptText, $rxOptKeyboard);
+    } else {
+        $rxOptPrevious = rx_optimizer_progress_read();
+        if (is_array($rxOptPrevious) && in_array($rxOptPrevious['status'] ?? '', ['starting', 'running', 'cancelling'], true)) {
+            error_log('[optimizebot] superseding unfinished run ' . ($rxOptPrevious['run_id'] ?? '') . ' (' . $rxOptPrevious['status'] . ')');
+        }
+        rx_optimizer_cancel_clear($rxOptPrevious['run_id'] ?? '');
+        $rxOptProgress = rx_optimizer_progress_write([
+            'run_id' => bin2hex(random_bytes(8)),
+            'owner_token' => $rxOptRedisToken ?? bin2hex(random_bytes(16)),
+            'status' => 'starting',
+            'stage' => 'آماده‌سازی',
+            'stage_number' => 0,
+            'total_stages' => RX_OPT_TOTAL_STAGES,
+            'processed' => 0,
+            'deleted' => 0,
+            'marked' => 0,
+            'valid' => 0,
+            'errors' => 0,
+            'current_batch' => 0,
+            'started_at' => time(),
+            'completed_at' => null,
+            'cancel_requested_at' => null,
+            'cancel_requested_by' => null,
+            'last_error' => null,
+            'chat_id' => (string) $from_id,
+            'message_id' => (int) $message_id,
+        ]);
+        [$rxOptText, $rxOptKeyboard] = rx_optimizer_render($rxOptProgress);
+        $rxOptEdit = Editmessagetext($from_id, $message_id, $rxOptText, $rxOptKeyboard);
+        if (is_array($rxOptEdit) && !empty($rxOptEdit['result']['message_id'])) {
+            $rxOptProgress['message_id'] = (int) $rxOptEdit['result']['message_id'];
+        }
+        $rxOptFinalized = false;
+        $rxOptTouched = [];
+        $rxOptCancelSignal = new RuntimeException('optimizer cancelled');
+        $rxOptSave = function () use (&$rxOptProgress) {
+            $rxOptProgress = rx_optimizer_progress_write($rxOptProgress);
+        };
+        $rxOptFlushCache = function () use (&$rxOptTouched) {
+            foreach (array_keys($rxOptTouched) as $rxOptTable) {
+                clearSelectCache($rxOptTable);
+            }
+            $rxOptTouched = [];
+        };
+        $rxOptCheckpoint = function () use (&$rxOptProgress, $rxOptCancelSignal, $rxOptRefresh) {
+            $rxOptRefresh();
+            $rxOptCancel = rx_optimizer_cancel_get($rxOptProgress['run_id'], $rxOptProgress['owner_token']);
+            if ($rxOptCancel !== null) {
+                $rxOptProgress['cancel_requested_at'] = $rxOptCancel['requested_at'] ?? time();
+                $rxOptProgress['cancel_requested_by'] = $rxOptCancel['requested_by'] ?? null;
+                throw $rxOptCancelSignal;
+            }
+        };
+        $rxOptStage = function ($number, $name) use (&$rxOptProgress, $rxOptCheckpoint, $rxOptSave, $rxOptFlushCache) {
+            $rxOptFlushCache();
+            $rxOptCheckpoint();
+            $rxOptProgress['status'] = 'running';
+            $rxOptProgress['stage_number'] = $number;
+            $rxOptProgress['stage'] = $name;
+            $rxOptProgress['current_batch'] = 0;
+            $rxOptSave();
+        };
+        $rxOptFinish = function ($status) use (&$rxOptProgress, &$rxOptFinalized, $rxOptRelease, $rxOptFlushCache) {
+            if ($rxOptFinalized) {
+                $rxOptRelease();
+                return;
+            }
+            $rxOptFinalized = true;
+            try {
+                $rxOptFlushCache();
+            } catch (Throwable $e) {
+                error_log('[optimizebot] cache flush failed: ' . $e->getMessage());
+            }
+            $rxOptProgress['status'] = $status;
+            $rxOptProgress['completed_at'] = time();
+            try {
+                $rxOptProgress = rx_optimizer_progress_write($rxOptProgress);
+                rx_optimizer_cancel_clear($rxOptProgress['run_id']);
+            } catch (Throwable $e) {
+                error_log('[optimizebot] final progress write failed: ' . $e->getMessage());
+            }
+            $rxOptRelease();
+            try {
+                [$rxOptFinalText, $rxOptFinalKeyboard] = rx_optimizer_render($rxOptProgress);
+                Editmessagetext($rxOptProgress['chat_id'], $rxOptProgress['message_id'], $rxOptFinalText, $rxOptFinalKeyboard);
+            } catch (Throwable $e) {
+                error_log('[optimizebot] final status message failed: ' . $e->getMessage());
+            }
+        };
+        register_shutdown_function(function () use (&$rxOptProgress, $rxOptFinish) {
+            if (($rxOptProgress['last_error'] ?? null) === null) {
+                $rxOptProgress['last_error'] = 'unexpected_termination';
+            }
+            $rxOptFinish('failed');
+        });
+        $rxOptOutcome = 'completed';
+        try {
+            if (function_exists('set_time_limit')) {
+                @set_time_limit(0);
+            }
+            $thirtyDaysAgo = time() - (30 * 24 * 60 * 60);
+            $sixtyDaysAgo = time() - (60 * 24 * 60 * 60);
+            $ninetyDaysAgo = time() - (90 * 24 * 60 * 60);
 
-    $optimizebot = "✅ بهینه سازی با موفقیت انجام شد
+            $rxOptStage(1, 'بررسی سرویس‌های متصل به پنل حذف‌شده');
+            $chk = $pdo->query("SHOW COLUMNS FROM invoice LIKE 'invalidated_at'");
+            if ($chk && $chk->rowCount() !== 1) {
+                $pdo->exec("ALTER TABLE invoice ADD invalidated_at INT UNSIGNED NULL DEFAULT NULL");
+            }
+
+            $nowStamp = time();
+            $stmt = $pdo->prepare(
+                "UPDATE invoice SET Status = 'Unsuccessful', invalidated_at = :now
+                 WHERE Status IN ('active','end_of_time','end_of_volume','sendedwarn','send_on_hold')
+                 AND Service_location IS NOT NULL AND Service_location <> ''
+                 AND Service_location NOT IN (SELECT name_panel FROM marzban_panel WHERE name_panel IS NOT NULL)"
+            );
+            $stmt->execute([':now' => $nowStamp]);
+            $countorphanedpanel = $stmt->rowCount();
+            $rxOptProgress['marked'] += $countorphanedpanel;
+            $rxOptProgress['processed'] += $countorphanedpanel;
+            if ($countorphanedpanel > 0) {
+                $rxOptTouched['invoice'] = true;
+            }
+
+            $countorphanedservice = 0;
+            $countunusedservice = 0;
+            $countunreachablepanel = 0;
+            $countexpiredservice = 0;
+            $rxOptStage(2, 'استعلام سرویس‌های فعال از پنل');
+            $rxOptScanBatch = 100;
+            $rxOptScanSql = "SELECT id_invoice, Service_location, username, time_sell, Status, invalidated_at FROM invoice
+                 WHERE Status IN ('active','end_of_time','end_of_volume','sendedwarn','send_on_hold')
+                 AND Service_location IS NOT NULL AND Service_location <> ''
+                 AND username IS NOT NULL AND username <> ''";
+            $rxOptScanFirst = $pdo->prepare($rxOptScanSql . " ORDER BY id_invoice ASC LIMIT " . $rxOptScanBatch);
+            $rxOptScanNext = $pdo->prepare($rxOptScanSql . " AND id_invoice > ? ORDER BY id_invoice ASC LIMIT " . $rxOptScanBatch);
+            $rxOptSetInvalidated = $pdo->prepare("UPDATE invoice SET invalidated_at = ? WHERE id_invoice = ?");
+            $rxOptSetInvalidatedStatus = $pdo->prepare("UPDATE invoice SET invalidated_at = ?, Status = ? WHERE id_invoice = ?");
+            $rxOptClearInvalidated = $pdo->prepare("UPDATE invoice SET invalidated_at = NULL WHERE id_invoice = ?");
+            $lastId = null;
+            do {
+                $rxOptCheckpoint();
+                if ($lastId === null) {
+                    $rxOptScanFirst->execute();
+                    $rxOptScanStmt = $rxOptScanFirst;
+                } else {
+                    $rxOptScanNext->execute([$lastId]);
+                    $rxOptScanStmt = $rxOptScanNext;
+                }
+                $liveInvoices = $rxOptScanStmt->fetchAll(PDO::FETCH_ASSOC);
+                $rxOptScanStmt->closeCursor();
+                $rxOptScanCount = count($liveInvoices);
+                $rxOptProgress['current_batch']++;
+                $rxOptBatchChanged = false;
+                $rxOptSinceCheck = 0;
+                try {
+                    foreach ($liveInvoices as $liveInvoice) {
+                        $lastId = $liveInvoice['id_invoice'];
+                        $rxOptProgress['processed']++;
+                        $rxOptScanFailed = false;
+                        try {
+                            $scanResult = $ManagePanel->DataUser($liveInvoice['Service_location'], $liveInvoice['username']);
+                        } catch (Throwable $e) {
+                            $rxOptScanFailed = true;
+                            $rxOptProgress['errors']++;
+                            if (empty($liveInvoice['invalidated_at'])) {
+                                $rxOptSetInvalidated->execute([$nowStamp, $liveInvoice['id_invoice']]);
+                                $rxOptBatchChanged = true;
+                                $countunreachablepanel++;
+                                $rxOptProgress['marked']++;
+                            }
+                        }
+                        if (!$rxOptScanFailed) {
+                            $rxOptMarkedNow = true;
+                            if (isset($scanResult['msg']) && $scanResult['msg'] == "User not found") {
+                                $rxOptSetInvalidatedStatus->execute([$nowStamp, 'disabledn', $liveInvoice['id_invoice']]);
+                                $countorphanedservice++;
+                            } elseif (isset($scanResult['status']) && $scanResult['status'] == "Unsuccessful" && isset($scanResult['msg']) && $scanResult['msg'] == "Panel Not Found") {
+                                $rxOptSetInvalidatedStatus->execute([$nowStamp, 'Unsuccessful', $liveInvoice['id_invoice']]);
+                                $countorphanedservice++;
+                            } elseif ((int)($scanResult['used_traffic'] ?? 0) === 0) {
+                                $purchasedAt = is_numeric($liveInvoice['time_sell']) ? (int)$liveInvoice['time_sell'] : null;
+                                if ($purchasedAt !== null && $purchasedAt < $thirtyDaysAgo) {
+                                    $rxOptSetInvalidatedStatus->execute([$nowStamp, 'unusedservice', $liveInvoice['id_invoice']]);
+                                    $countunusedservice++;
+                                } else {
+                                    $rxOptMarkedNow = false;
+                                }
+                            } elseif (in_array($liveInvoice['Status'], ['end_of_time', 'end_of_volume'], true)) {
+                                if (empty($liveInvoice['invalidated_at'])) {
+                                    $rxOptSetInvalidated->execute([$nowStamp, $liveInvoice['id_invoice']]);
+                                    $countexpiredservice++;
+                                } else {
+                                    $rxOptMarkedNow = false;
+                                }
+                            } else {
+                                $rxOptMarkedNow = false;
+                                if (!empty($liveInvoice['invalidated_at'])) {
+                                    $rxOptClearInvalidated->execute([$liveInvoice['id_invoice']]);
+                                    $rxOptBatchChanged = true;
+                                }
+                            }
+                            if ($rxOptMarkedNow) {
+                                $rxOptBatchChanged = true;
+                                $rxOptProgress['marked']++;
+                            } else {
+                                $rxOptProgress['valid']++;
+                            }
+                        }
+                        if (++$rxOptSinceCheck >= 10) {
+                            $rxOptSinceCheck = 0;
+                            $rxOptCheckpoint();
+                        }
+                    }
+                } finally {
+                    if ($rxOptBatchChanged) {
+                        clearSelectCache('invoice');
+                    }
+                }
+                unset($liveInvoices, $liveInvoice, $scanResult);
+                $rxOptSave();
+            } while ($rxOptScanCount === $rxOptScanBatch);
+
+            $rxOptDeleteBatch = 500;
+            $rxOptCachedTables = ['invoice' => true, 'Payment_report' => true, 'DiscountSell' => true, 'Discount' => true, 'cancel_service' => true, 'Requestagent' => true, 'support_message' => true];
+            $rxOptDelete = function ($table, $sql, array $params) use ($pdo, &$rxOptProgress, &$rxOptTouched, $rxOptCachedTables, $rxOptCheckpoint, $rxOptSave, $rxOptDeleteBatch) {
+                $rxOptDelStmt = $pdo->prepare($sql . " LIMIT " . $rxOptDeleteBatch);
+                $rxOptDeleted = 0;
+                do {
+                    $rxOptCheckpoint();
+                    $rxOptDelStmt->execute($params);
+                    $rxOptAffected = $rxOptDelStmt->rowCount();
+                    $rxOptDeleted += $rxOptAffected;
+                    $rxOptProgress['deleted'] += $rxOptAffected;
+                    $rxOptProgress['processed'] += $rxOptAffected;
+                    $rxOptProgress['current_batch']++;
+                    if ($rxOptAffected > 0 && isset($rxOptCachedTables[$table])) {
+                        $rxOptTouched[$table] = true;
+                    }
+                    $rxOptSave();
+                } while ($rxOptAffected >= $rxOptDeleteBatch);
+                return $rxOptDeleted;
+            };
+
+            $rxOptStage(3, 'حذف سفارش‌ها و سرویس‌های قدیمی');
+            $countunpiadorder = $rxOptDelete('invoice', "DELETE FROM invoice WHERE Status = 'unpaid' AND name_product != 'سرویس تست' AND CAST(time_sell AS UNSIGNED) < :cutoff", [':cutoff' => $thirtyDaysAgo]);
+            $countdisableorder = $rxOptDelete('invoice', "DELETE FROM invoice WHERE Status = 'disabled' AND name_product != 'سرویس تست' AND CAST(time_sell AS UNSIGNED) < :cutoff", [':cutoff' => $thirtyDaysAgo]);
+            $countremoveadminorder = $rxOptDelete('invoice', "DELETE FROM invoice WHERE Status = 'removebyadmin' AND CAST(time_sell AS UNSIGNED) < :cutoff", [':cutoff' => $thirtyDaysAgo]);
+            $countremoveadminorder += $rxOptDelete('invoice', "DELETE FROM invoice WHERE Status = 'removedbyadmin' AND CAST(time_sell AS UNSIGNED) < :cutoff", [':cutoff' => $thirtyDaysAgo]);
+            $countdisableordtester = $rxOptDelete('invoice', "DELETE FROM invoice WHERE Status = 'disabled' AND name_product = 'سرویس تست' AND CAST(time_sell AS UNSIGNED) < :cutoff", [':cutoff' => $thirtyDaysAgo]);
+            $countremovedservices = $rxOptDelete('invoice', "DELETE FROM invoice WHERE Status = 'removeTime' AND CAST(time_sell AS UNSIGNED) < :cutoff", [':cutoff' => $thirtyDaysAgo]);
+            $countremovedservices += $rxOptDelete('invoice', "DELETE FROM invoice WHERE Status = 'removevolume' AND CAST(time_sell AS UNSIGNED) < :cutoff", [':cutoff' => $thirtyDaysAgo]);
+            $countremovedservices += $rxOptDelete('invoice', "DELETE FROM invoice WHERE Status = 'removebyuser' AND CAST(time_sell AS UNSIGNED) < :cutoff", [':cutoff' => $thirtyDaysAgo]);
+            $countoldunpaid = $rxOptDelete('invoice', "DELETE FROM invoice WHERE Status = 'unpaid' AND name_product = 'سرویس تست' AND CAST(time_sell AS UNSIGNED) < :cutoff", [':cutoff' => $thirtyDaysAgo]);
+            $countfailedorder = $rxOptDelete('invoice', "DELETE FROM invoice WHERE (Status = 'disabledn' OR Status = 'Unsuccessful') AND COALESCE(invalidated_at, CAST(time_sell AS UNSIGNED)) < :cutoff", [':cutoff' => $thirtyDaysAgo]);
+            $countunusedexpired = $rxOptDelete('invoice', "DELETE FROM invoice WHERE Status = 'unusedservice' AND invalidated_at IS NOT NULL AND invalidated_at < :cutoff", [':cutoff' => $thirtyDaysAgo]);
+            $countstalelive = $rxOptDelete(
+                'invoice',
+                "DELETE FROM invoice
+                 WHERE Status IN ('active','end_of_time','end_of_volume','sendedwarn','send_on_hold')
+                 AND invalidated_at IS NOT NULL AND invalidated_at < :cutoff",
+                [':cutoff' => $thirtyDaysAgo]
+            );
+
+            $rxOptStage(4, 'حذف گزارش‌های پرداخت منقضی/رد شده');
+            $paymentCutoff = date('Y/m/d H:i:s', $thirtyDaysAgo);
+            $countpayexpired = $rxOptDelete('Payment_report', "DELETE FROM Payment_report WHERE payment_Status IN ('expire','reject') AND time < :cutoff", [':cutoff' => $paymentCutoff]);
+
+            $rxOptStage(5, 'حذف تراکنش‌های قدیمی کیف پول');
+            $countledgerexpired = $rxOptDelete('wallet_ledger', "DELETE FROM wallet_ledger WHERE created_at < FROM_UNIXTIME(:cutoff)", [':cutoff' => $thirtyDaysAgo]);
+
+            $rxOptStage(6, 'حذف کدهای تخفیف منقضی‌شده');
+            $countdiscountexpired = 0;
+            $chk = $pdo->query("SHOW COLUMNS FROM DiscountSell LIKE 'status'");
+            if ($chk && $chk->rowCount() === 1) {
+                $countdiscountexpired += $rxOptDelete('DiscountSell', "DELETE FROM DiscountSell WHERE status = 'expired' AND time IS NOT NULL AND time <> '' AND CAST(time AS UNSIGNED) < :cutoff", [':cutoff' => $ninetyDaysAgo]);
+            }
+            $chk = $pdo->query("SHOW COLUMNS FROM Discount LIKE 'expire_at'");
+            if ($chk && $chk->rowCount() === 1) {
+                $countdiscountexpired += $rxOptDelete('Discount', "DELETE FROM Discount WHERE status = 'expired' AND expire_at IS NOT NULL AND expire_at <> '' AND CAST(expire_at AS UNSIGNED) < :cutoff", [':cutoff' => $ninetyDaysAgo]);
+            }
+
+            $rxOptStage(7, 'حذف درخواست‌های بررسی‌شده');
+            $countcancelrequests = 0;
+            $chk = $pdo->query("SHOW COLUMNS FROM cancel_service LIKE 'resolved_at'");
+            if ($chk && $chk->rowCount() === 1) {
+                $countcancelrequests = $rxOptDelete('cancel_service', "DELETE FROM cancel_service WHERE status IN ('accept','reject') AND resolved_at IS NOT NULL AND resolved_at <> '' AND CAST(resolved_at AS UNSIGNED) < :cutoff", [':cutoff' => $sixtyDaysAgo]);
+            }
+            $countagentrequests = $rxOptDelete('Requestagent', "DELETE FROM Requestagent WHERE status IN ('accept','reject') AND time IS NOT NULL AND time <> '' AND CAST(time AS UNSIGNED) < :cutoff", [':cutoff' => $sixtyDaysAgo]);
+
+            $rxOptStage(8, 'حذف کدهای هدیه مصرف‌شده');
+            $countgiftcodes = $rxOptDelete('Giftcodeconsumed', "DELETE FROM Giftcodeconsumed WHERE consumed_at IS NOT NULL AND consumed_at <> '' AND CAST(consumed_at AS UNSIGNED) < :cutoff", [':cutoff' => $ninetyDaysAgo]);
+
+            $rxOptStage(9, 'حذف لاگ‌های قدیمی کریپتو');
+            $countcryptologs = $rxOptDelete('crypto_verified_hashes', "DELETE FROM crypto_verified_hashes WHERE verified_at < FROM_UNIXTIME(:cutoff)", [':cutoff' => $ninetyDaysAgo]);
+            $countcryptologs += $rxOptDelete('crypto_sender_locks', "DELETE FROM crypto_sender_locks WHERE COALESCE(last_used_at, first_seen_at) < FROM_UNIXTIME(:cutoff)", [':cutoff' => $ninetyDaysAgo]);
+
+            $rxOptStage(10, 'حذف تیکت‌های قدیمی');
+            $ticketCutoff = date('Y/m/d H:i:s', $thirtyDaysAgo);
+            $rxOptTicketBatch = 100;
+            $rxOptTicketFirst = $pdo->prepare("SELECT Tracking FROM support_message GROUP BY Tracking HAVING MIN(time) < ? ORDER BY Tracking ASC LIMIT " . $rxOptTicketBatch);
+            $rxOptTicketNext = $pdo->prepare("SELECT Tracking FROM support_message WHERE Tracking > ? GROUP BY Tracking HAVING MIN(time) < ? ORDER BY Tracking ASC LIMIT " . $rxOptTicketBatch);
+            $countoldtickets = 0;
+            $delReact = null;
+            $delMsg = null;
+            $rxOptLastTracking = null;
+            do {
+                $rxOptCheckpoint();
+                if ($rxOptLastTracking === null) {
+                    $rxOptTicketFirst->execute([$ticketCutoff]);
+                    $rxOptTicketStmt = $rxOptTicketFirst;
+                } else {
+                    $rxOptTicketNext->execute([$rxOptLastTracking, $ticketCutoff]);
+                    $rxOptTicketStmt = $rxOptTicketNext;
+                }
+                $oldTrackings = $rxOptTicketStmt->fetchAll(PDO::FETCH_COLUMN);
+                $rxOptTicketStmt->closeCursor();
+                $rxOptTicketCount = count($oldTrackings);
+                if ($rxOptTicketCount > 0 && $delReact === null) {
+                    $delReact = $pdo->prepare(
+                        "DELETE r FROM support_message_reaction r
+                         INNER JOIN support_message m ON m.id = r.message_id
+                         WHERE m.Tracking = :t"
+                    );
+                    $delMsg = $pdo->prepare("DELETE FROM support_message WHERE Tracking = :t");
+                }
+                foreach ($oldTrackings as $tracking) {
+                    $delReact->execute([':t' => $tracking]);
+                    $delMsg->execute([':t' => $tracking]);
+                    $countoldtickets++;
+                    $rxOptProgress['deleted']++;
+                    $rxOptProgress['processed']++;
+                    $rxOptLastTracking = $tracking;
+                    $rxOptTouched['support_message'] = true;
+                }
+                unset($oldTrackings);
+                $rxOptProgress['current_batch']++;
+                $rxOptSave();
+            } while ($rxOptTicketCount === $rxOptTicketBatch);
+
+            $optimizebot = "✅ بهینه سازی با موفقیت انجام شد
 
 📊 خلاصه عملیات:
 ✅ {$countunpiadorder} سفارش پرداخت نشده (بیش از ۳۰ روز) حذف گردید
@@ -1783,14 +2248,23 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
 ✅ {$countexpiredservice} سرویس با حجم/زمان تمام‌شده که تمدید نشده شناسایی و برای حذف (پس از ۳۰ روز) علامت‌گذاری شد
 ✅ {$countstalelive} سرویس علامت‌خورده (پنل غیرقابل‌دسترس یا حجم/زمان تمام‌شده) که مهلتش تمام شده حذف گردید";
 
-    if (!empty($message_id)) {
-        Editmessagetext($from_id, $message_id, $optimizebot, null);
+            $time = time();
+            $logss = "optimize_{$countunpiadorder}_{$countdisableorder}_{$countremoveadminorder}_{$countdisableordtester}_{$countdiscountexpired}_{$countcancelrequests}_{$countagentrequests}_{$countgiftcodes}_{$countcryptologs}_{$countorphanedpanel}_{$countorphanedservice}_{$countunusedservice}_{$countunusedexpired}_{$countunreachablepanel}_{$countexpiredservice}_{$countstalelive}_$time";
+            file_put_contents('log.txt', "\n" . $logss, FILE_APPEND);
+            $rxOptProgress['details'] = strstr($optimizebot, '📊') ?: $optimizebot;
+        } catch (Throwable $e) {
+            if ($e === $rxOptCancelSignal) {
+                $rxOptOutcome = 'cancelled';
+            } else {
+                $rxOptOutcome = 'failed';
+                $rxOptProgress['errors']++;
+                $rxOptProgress['last_error'] = $e instanceof PDOException ? 'database_error' : 'internal_error';
+                error_log('[optimizebot] run ' . $rxOptProgress['run_id'] . ' failed at stage ' . $rxOptProgress['stage_number'] . ' batch ' . $rxOptProgress['current_batch'] . ': ' . get_class($e) . ': ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+            }
+        } finally {
+            $rxOptFinish($rxOptOutcome);
+        }
     }
-    nm_adminInstantReply($from_id, $optimizebot, $setting_panel, 'HTML');
-
-    $time = time();
-    $logss = "optimize_{$countunpiadorder}_{$countdisableorder}_{$countremoveadminorder}_{$countdisableordtester}_{$countdiscountexpired}_{$countcancelrequests}_{$countagentrequests}_{$countgiftcodes}_{$countcryptologs}_{$countorphanedpanel}_{$countorphanedservice}_{$countunusedservice}_{$countunusedexpired}_{$countunreachablepanel}_{$countexpiredservice}_{$countstalelive}_$time";
-    file_put_contents('log.txt', "\n" . $logss, FILE_APPEND);
 } elseif ($datain == "settimecornvolume") {
     nm_adminInstantReply($from_id, "📌 در این بخش می توانید تنظیم کنید که اگر حجم کاربر به x رسید پیام اخطار ارسال شود. حجم را براساس گیگ ارسال نمایید.", $backadmin, 'HTML');
     step("getvolumewarn", $from_id);
