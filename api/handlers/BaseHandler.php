@@ -157,6 +157,44 @@ abstract class BaseHandler
         return $value;
     }
 
+    protected function serverPurchaseDueAmount(string $purchaseUsername): int
+    {
+        $price = FaoximaDb::fetchScalar(
+            "SELECT price_product FROM invoice
+              WHERE username = :u AND id_user = :uid AND Status = 'unpaid'
+              ORDER BY time_sell DESC LIMIT 1",
+            [':u' => $purchaseUsername, ':uid' => $this->user['id']]
+        );
+        if ($price === null || $price === false || !is_numeric($price)) {
+            FaoximaResponse::fail(404, faoxima_textbot_get('dyn_paymentinit_unpaid_invoice_not_found', '❌ فاکتور خرید ناتمامی برای این نام کاربری پیدا نشد.'));
+        }
+        $due = (int) ceil((float) $price - (float) ($this->user['Balance'] ?? 0));
+        if ($due <= 1) {
+            FaoximaResponse::fail(409, faoxima_textbot_get('dyn_paymentinit_restart_purchase', '❌ مبلغ این خرید تغییر کرده است. لطفاً خرید را دوباره انجام دهید.'));
+        }
+        return $due;
+    }
+
+    protected function serverPendingActionAmount(?string $expectedAction = null, ?string $expectedOne = null): int
+    {
+        $tow = (string) ($this->user['Processing_value_tow'] ?? '');
+        $one = (string) ($this->user['Processing_value_one'] ?? '');
+        $allowedTow = ['getextenduser', 'getextravolumeuser', 'getextratimeuser'];
+        $stateValid = in_array($tow, $allowedTow, true) && $one !== '' && strpos($one, '%') !== false;
+        if ($stateValid && $expectedAction !== null && !hash_equals($tow, $expectedAction)) {
+            $stateValid = false;
+        }
+        if ($stateValid && $expectedOne !== null && !hash_equals($one, $expectedOne)) {
+            $stateValid = false;
+        }
+        $stored = $this->user['Processing_value'] ?? null;
+        $due = is_numeric($stored) ? (int) ceil((float) $stored) : 0;
+        if (!$stateValid || $due <= 0) {
+            FaoximaResponse::fail(409, faoxima_textbot_get('dyn_paymentinit_renew_steps_incomplete', '❌ مراحل تمدید کامل نشده است. لطفاً تمدید را از ابتدا انجام دهید.'));
+        }
+        return $due;
+    }
+
     abstract public function handle(): void;
 }
 

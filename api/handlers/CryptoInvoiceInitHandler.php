@@ -31,6 +31,18 @@ final class CryptoInvoiceInitHandler extends BaseHandler
         $pendingKind  = FaoximaInput::string($this->data, 'pending_kind');
         $pendingOne   = FaoximaInput::string($this->data, 'pending_one');
 
+        $serverPendingActionMap = [
+            'renew'         => 'getextenduser',
+            'extra_time'    => 'getextratimeuser',
+            'extra_volume'  => 'getextravolumeuser',
+        ];
+        if ($purchaseUser !== null && $purchaseUser !== '') {
+            $amount = $this->serverPurchaseDueAmount($purchaseUser);
+        } elseif ($pendingKind !== '' && isset($serverPendingActionMap[$pendingKind])) {
+            $amount = $this->serverPendingActionAmount($serverPendingActionMap[$pendingKind]);
+            $pendingOne = (string) ($this->user['Processing_value_one'] ?? '');
+        }
+
         if ($amount <= 0) {
             FaoximaResponse::badRequest('amount must be > 0');
         }

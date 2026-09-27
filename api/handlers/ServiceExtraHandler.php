@@ -153,6 +153,7 @@ final class ServiceExtraHandler extends BaseHandler
 
 
             $extendStateTow = $kind === 'time' ? 'getextratimeuser' : 'getextravolumeuser';
+            update('user', 'Processing_value',     $amountDue,                              'id', $this->user['id']);
             update('user', 'Processing_value_one', $invoice['username'] . '%' . $amount, 'id', $this->user['id']);
             update('user', 'Processing_value_tow', $extendStateTow,                       'id', $this->user['id']);
 

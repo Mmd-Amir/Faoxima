@@ -6,6 +6,9 @@ if (!defined('FX_DEFAULT_PAIR')) {
 if (!defined('FX_QUOTE_TTL_SECONDS')) {
     define('FX_QUOTE_TTL_SECONDS', 600);
 }
+if (!defined('FX_SERVER_QUOTE_TTL_SECONDS')) {
+    define('FX_SERVER_QUOTE_TTL_SECONDS', 86400);
+}
 if (!defined('FX_PENDING_TOLERANCE_PERCENT')) {
     define('FX_PENDING_TOLERANCE_PERCENT', 1.0);
 }
@@ -672,7 +675,7 @@ if (!function_exists('fx_quote_context_key')) {
 }
 
 if (!function_exists('fx_quote_put')) {
-    function fx_quote_put($userId, string $contextKey, $amount, array $meta = []): bool
+    function fx_quote_put($userId, string $contextKey, $amount, array $meta = [], int $ttlSeconds = FX_QUOTE_TTL_SECONDS): bool
     {
         $pdo = fx_pdo();
         if (!($pdo instanceof PDO) || !fx_ensure_schema($pdo)) {
@@ -681,7 +684,7 @@ if (!function_exists('fx_quote_put')) {
         $now = time();
         try {
             $stmt = $pdo->prepare('INSERT INTO fx_price_quote (user_id, context, amount, meta, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE amount = VALUES(amount), meta = VALUES(meta), created_at = VALUES(created_at), expires_at = VALUES(expires_at)');
-            $stmt->execute([(string) $userId, $contextKey, (int) round((float) $amount), json_encode($meta, JSON_UNESCAPED_UNICODE), $now, $now + FX_QUOTE_TTL_SECONDS]);
+            $stmt->execute([(string) $userId, $contextKey, (int) round((float) $amount), json_encode($meta, JSON_UNESCAPED_UNICODE), $now, $now + max(60, $ttlSeconds)]);
             if (mt_rand(1, 50) === 1) {
                 $pdo->prepare('DELETE FROM fx_price_quote WHERE expires_at < ?')->execute([$now - 86400]);
             }
@@ -754,6 +757,54 @@ if (!function_exists('fx_quote_store')) {
         $meta['base_rate'] = $context['base_rate'];
         $meta['rate_ts'] = $context['fetched_at'];
         return fx_quote_put($userId, $contextKey, $amount, $meta);
+    }
+}
+
+if (!function_exists('fx_quote_store_server')) {
+    function fx_quote_store_server($userId, string $contextKey, $amount, array $panel, $priceKinds, array $meta = []): bool
+    {
+        $context = fx_context($panel, $priceKinds);
+        if ($context !== null) {
+            $meta['f'] = fx_context_fingerprint($context);
+            $meta['rate'] = $context['current_rate'];
+            $meta['base_rate'] = $context['base_rate'];
+            $meta['rate_ts'] = $context['fetched_at'];
+        }
+        return fx_quote_put($userId, $contextKey, $amount, $meta, FX_SERVER_QUOTE_TTL_SECONDS);
+    }
+}
+
+if (!function_exists('fx_quote_server_amount_matches')) {
+    function fx_quote_server_amount_matches($userId, string $contextKey, $amount): bool
+    {
+        $quote = fx_quote_get($userId, $contextKey);
+        return $quote !== null && is_numeric($amount) && $quote['amount'] === (int) round((float) $amount);
+    }
+}
+
+if (!function_exists('fx_extra_quote_verify')) {
+    function fx_extra_quote_verify($userId, string $contextKey, $unitPrice, $requestedAmount, array $panel, string $priceKind): array
+    {
+        $quote = fx_quote_get($userId, $contextKey);
+        $quantity = is_array($quote) ? (int) ($quote['meta']['qty'] ?? 0) : 0;
+        $unit = fx_normalize_amount($unitPrice);
+        if ($quantity <= 0 || $unit === null || $unit <= 0) {
+            return ['status' => 'missing', 'qty' => 0, 'amount' => 0];
+        }
+        $fresh = fx_finalize_amount($unit * $quantity, $panel, $priceKind);
+        $freshAmount = (int) round((float) $fresh);
+        $matches = $quote['amount'] === $freshAmount
+            && is_numeric($requestedAmount)
+            && (int) round((float) $requestedAmount) === $freshAmount
+            && fx_quote_rate_unchanged($userId, $contextKey, $panel, $priceKind);
+        if ($matches) {
+            return ['status' => 'ok', 'qty' => $quantity, 'amount' => $freshAmount];
+        }
+        if (fx_context($panel, $priceKind) === null) {
+            return ['status' => 'missing', 'qty' => 0, 'amount' => 0];
+        }
+        fx_quote_store_server($userId, $contextKey, $freshAmount, $panel, $priceKind, ['qty' => $quantity]);
+        return ['status' => 'changed', 'qty' => $quantity, 'amount' => $freshAmount];
     }
 }
 

@@ -24,6 +24,14 @@ final class PaymentInitHandler extends BaseHandler
         $method = FaoximaInput::string($this->data, 'method');
         $amount = FaoximaInput::int($this->data, 'amount', 0);
 
+        $serverRenewUsername = FaoximaInput::nullableString($this->data, 'renew_username');
+        $serverPurchaseUsername = FaoximaInput::nullableString($this->data, 'purchase_username');
+        if ($serverRenewUsername !== null && $serverRenewUsername !== '') {
+            $amount = $this->serverPendingActionAmount();
+        } elseif ($serverPurchaseUsername !== null && $serverPurchaseUsername !== '') {
+            $amount = $this->serverPurchaseDueAmount($serverPurchaseUsername);
+        }
+
         if ($method === '') {
             FaoximaResponse::badRequest('method is required');
         }

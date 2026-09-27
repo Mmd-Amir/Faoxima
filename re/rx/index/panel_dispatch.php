@@ -1395,7 +1395,7 @@ $text_porsant
     $extrapricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'extra_volume');
     $priceextra = $extrapricevalue * $text;
     $priceextra = fx_finalize_amount($priceextra, $marzban_list_get, 'extra_volume');
-    fx_quote_store($from_id, fx_quote_context_key('extra_volume_external', (string) $user['Processing_value'] . '|' . (string) $user['Processing_value_one']), $priceextra, $marzban_list_get, 'extra_volume', ['qty' => (int) $text]);
+    fx_quote_store_server($from_id, fx_quote_context_key('extra_volume_external', (string) $user['Processing_value'] . '|' . (string) $user['Processing_value_one']), $priceextra, $marzban_list_get, 'extra_volume', ['qty' => (int) $text]);
     $keyboardsetting = json_encode([
         'inline_keyboard' => [
             [
@@ -1410,24 +1410,22 @@ $text_porsant
     step('home', $from_id);
 } elseif (preg_match('/confirmaextras_(\w+)/', $datain, $dataget)) {
     $volume = $dataget[1];
-    $fxExternalQty = null;
     $fxExternalPanel = select("marzban_panel", "*", "name_panel", $user['Processing_value_one'], "select");
-    if (is_array($fxExternalPanel) && fx_context($fxExternalPanel, 'extra_volume') !== null) {
-        $fxExternalKey = fx_quote_context_key('extra_volume_external', (string) $user['Processing_value'] . '|' . (string) $user['Processing_value_one']);
-        $fxExternalQuote = fx_quote_get($from_id, $fxExternalKey);
-        $fxExternalQty = is_array($fxExternalQuote) ? (int) ($fxExternalQuote['meta']['qty'] ?? 0) : 0;
-        if ($fxExternalQty <= 0) {
-            sendmessage($from_id, $textbotlang['users']['stateus']['error'], null, 'html');
-            return;
-        }
-        $fxExternalUnit = fx_adjust_base_toman(json_decode($fxExternalPanel['priceextravolume'], true)[$user['agent']] ?? null, $fxExternalPanel, 'extra_volume');
-        $fxExternalFresh = fx_finalize_amount((float) $fxExternalUnit * $fxExternalQty, $fxExternalPanel, 'extra_volume');
-        if (!fx_quote_check($from_id, $fxExternalKey, $fxExternalFresh, $fxExternalPanel, 'extra_volume') || (int) round((float) $volume) !== (int) $fxExternalFresh) {
-            fx_quote_store($from_id, $fxExternalKey, $fxExternalFresh, $fxExternalPanel, 'extra_volume', ['qty' => $fxExternalQty]);
-            sendmessage($from_id, fx_price_changed_text($fxExternalFresh), json_encode(['inline_keyboard' => [[['text' => $textbotlang['users']['Extra_volume']['extracheck'], 'callback_data' => 'confirmaextras_' . $fxExternalFresh]]]]), 'HTML');
-            return;
-        }
+    if (!is_array($fxExternalPanel)) {
+        sendmessage($from_id, $textbotlang['users']['stateus']['error'], null, 'html');
+        return;
     }
+    $fxExternalUnit = fx_adjust_base_toman(json_decode((string) $fxExternalPanel['priceextravolume'], true)[$user['agent']] ?? null, $fxExternalPanel, 'extra_volume');
+    $fxExternalVerify = fx_extra_quote_verify($from_id, fx_quote_context_key('extra_volume_external', (string) $user['Processing_value'] . '|' . (string) $user['Processing_value_one']), $fxExternalUnit, $volume, $fxExternalPanel, 'extra_volume');
+    if ($fxExternalVerify['status'] === 'missing') {
+        sendmessage($from_id, $textbotlang['users']['stateus']['error'], null, 'html');
+        return;
+    }
+    if ($fxExternalVerify['status'] === 'changed') {
+        sendmessage($from_id, fx_price_changed_text($fxExternalVerify['amount']), json_encode(['inline_keyboard' => [[['text' => $textbotlang['users']['Extra_volume']['extracheck'], 'callback_data' => 'confirmaextras_' . $fxExternalVerify['amount']]]]]), 'HTML');
+        return;
+    }
+    $fxExternalQty = $fxExternalVerify['qty'];
     if ($user['Balance'] < $volume && $user['agent'] != "n2") {
         $marzbandirectpay = panel_feature_enabled($user['Processing_value_one'], 'directbuy') ? "ondirectbuy" : "offdirectbuy";
         if ($marzbandirectpay == "offdirectbuy") {
@@ -1449,9 +1447,7 @@ $text_porsant
                 $volume = $volume - $result;
                 sendmessage($from_id, sprintf($textbotlang['users']['Discount']['discountapplied'], $user['pricediscount']), null, 'HTML');
             }
-            if (is_array($fxExternalPanel)) {
-                $volume = fx_finalize_amount($volume, $fxExternalPanel, 'extra_volume');
-            }
+            $volume = fx_finalize_amount($volume, $fxExternalPanel, 'extra_volume');
             $Balance_prim = $volume - $user['Balance'];
             update("user", "Processing_value", $Balance_prim, "id", $from_id);
             sendmessage($from_id, $textbotlang['users']['sell']['None-credit'], $step_payment, 'HTML');
