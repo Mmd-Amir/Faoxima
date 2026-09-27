@@ -12,9 +12,18 @@ if (!defined('FAOXIMA_LAZY_MYSQLI')) {
 require_once 'config.php';
 require_once REFACTORED_LEGACY_ROOT . '/lib/WebhookAuth.php';
 FaoximaWebhookAuth::enforce((string) ($APIKEY ?? ''));
+if (!defined('RX_DEFER_UPDATE_DEDUPE')) {
+    define('RX_DEFER_UPDATE_DEDUPE', true);
+}
 require_once 'botapi.php';
 require_once 'jdf.php';
 require_once 'function.php';
+if (isset($update_id) && isDuplicateUpdate($update_id)) {
+    if (!headers_sent()) {
+        http_response_code(200);
+    }
+    exit;
+}
 require_once 'keyboard.php';
 require_once 'vendor/autoload.php';
 require_once 'panels.php';
@@ -1109,10 +1118,13 @@ if ($shouldCheckChannel && !in_array($from_id, $admin_ids)) {
     }
 }
 if ($text == "/start" || $datain == "start" || $text == "start" || $rxStartLanding) {
-    update("user", "Processing_value", "0", "id", $from_id);
-    update("user", "Processing_value_one", "0", "id", $from_id);
-    update("user", "Processing_value_tow", "0", "id", $from_id);
-    update("user", "Processing_value_four", "0", "id", $from_id);
+    $rxStartResetStmt = $pdo->prepare("UPDATE user SET Processing_value = '0', Processing_value_one = '0', Processing_value_tow = '0', Processing_value_four = '0' WHERE id = ?");
+    $rxStartResetStmt->execute([$from_id]);
+    if (function_exists('clearSelectCacheRow')) {
+        clearSelectCacheRow('user', 'id', $from_id);
+    } else {
+        clearSelectCache('user');
+    }
     step('home', $from_id);
     if (function_exists('removeReplyKeyboardOnStartIfNeeded')) {
         removeReplyKeyboardOnStartIfNeeded($from_id);

@@ -2962,7 +2962,7 @@ FaoximaWebhookAuth::enforce((string) ($APIKEY ?? ''));
 
 $update = $rx_update_probe;
 $update_id = $update['update_id'] ?? 0;
-if (isDuplicateUpdate($update_id)) {
+if (!defined('RX_DEFER_UPDATE_DEDUPE') && isDuplicateUpdate($update_id)) {
     if (!headers_sent()) {
         http_response_code(200);
     }
