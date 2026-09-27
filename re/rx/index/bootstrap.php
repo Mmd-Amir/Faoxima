@@ -658,7 +658,7 @@ if ($rxAntispamStatus === '1' && !in_array((string)$from_id, $admin_ids_str, tru
                 . "redis.call('EXPIRE', key, ttl + 5) "
                 . "return {win_start, win_count, muted_until, should_drop, sync_needed}";
 
-            $rxAsRedisKey = 'faoxima:antispam:' . $from_id;
+            $rxAsRedisKey = rx_redis_key('faoxima:antispam:' . $from_id);
             $rxAsRedisClient = getRedisConnection();
             if ($rxAsRedisClient instanceof \Redis) {
                 $rxAsLuaResult = $rxAsRedisClient->eval($rxAsLuaScript, [$rxAsRedisKey, $timebot, $rxAsSeconds, $rxAsMsgCount, $rxAsMuteSeconds], 1);

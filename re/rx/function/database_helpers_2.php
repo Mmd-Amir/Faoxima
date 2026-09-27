@@ -1423,6 +1423,7 @@ function tonpayRateLimitRedisEval($script, array $keys, array $args)
     if ($client === null) {
         return null;
     }
+    $keys = array_map('rx_redis_key', array_values($keys));
     try {
         if ($client instanceof \Redis) {
             $result = $client->eval($script, array_merge($keys, $args), count($keys));

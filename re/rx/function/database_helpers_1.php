@@ -46,10 +46,11 @@ if (!function_exists('faoxima_bust_bot_selectcache')) {
             $password = (string) ($GLOBALS['redis_password'] ?? '');
             if ($password !== '') $client->auth($password);
             $client->select((int) ($GLOBALS['redis_database'] ?? 0));
-            $indexKey = 'faoxima:selectcache:tableindex:' . $table;
+            $rxKey = function_exists('rx_redis_key') ? 'rx_redis_key' : 'strval';
+            $indexKey = $rxKey('faoxima:selectcache:tableindex:' . $table);
             $members = $client->sMembers($indexKey);
             if (is_array($members) && !empty($members)) {
-                $client->del($members);
+                $client->del(array_map($rxKey, $members));
             }
             $client->del($indexKey);
             $client->close();

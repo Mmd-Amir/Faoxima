@@ -12,6 +12,33 @@ if (!function_exists('rx_redis_config')) {
     }
 }
 
+if (!function_exists('rx_redis_namespace')) {
+    function rx_redis_namespace()
+    {
+        static $namespace = null;
+        if ($namespace !== null) {
+            return $namespace;
+        }
+        $db = trim((string) ($GLOBALS['dbname'] ?? ''));
+        if ($db === '') {
+            return 'default';
+        }
+        $host = strtolower(trim((string) ($GLOBALS['dbhost'] ?? '')));
+        return $namespace = substr(sha1($host . '|' . $db), 0, 12);
+    }
+}
+
+if (!function_exists('rx_redis_key')) {
+    function rx_redis_key($key)
+    {
+        $key = (string) $key;
+        if (strpos($key, 'faoxima:') === 0) {
+            $key = substr($key, 8);
+        }
+        return 'faoxima:' . rx_redis_namespace() . ':' . $key;
+    }
+}
+
 if (!function_exists('rx_redis_extension_available')) {
     function rx_redis_extension_available()
     {
@@ -322,7 +349,7 @@ if (!function_exists('rx_redis_get')) {
             return null;
         }
         try {
-            $value = $client->get($key);
+            $value = $client->get(rx_redis_key($key));
             return $value === false ? null : $value;
         } catch (\Throwable $e) {
             rx_redis_mark_unavailable('exception');
@@ -340,9 +367,9 @@ if (!function_exists('rx_redis_set')) {
         }
         try {
             if ($ttlSeconds > 0) {
-                return (bool) $client->setex($key, $ttlSeconds, $value);
+                return (bool) $client->setex(rx_redis_key($key), $ttlSeconds, $value);
             }
-            return (bool) $client->set($key, $value);
+            return (bool) $client->set(rx_redis_key($key), $value);
         } catch (\Throwable $e) {
             rx_redis_mark_unavailable('exception');
             return false;
@@ -365,7 +392,7 @@ if (!function_exists('rx_redis_del')) {
             return true;
         }
         try {
-            $client->del($keys);
+            $client->del(array_map('rx_redis_key', $keys));
             return true;
         } catch (\Throwable $e) {
             rx_redis_mark_unavailable('exception');
@@ -388,6 +415,7 @@ if (!function_exists('rx_redis_scan_delete')) {
             $isPhpRedis = $client instanceof \Redis;
             $cursor = $isPhpRedis ? 0 : 0;
             $started = false;
+            $pattern = rx_redis_key($pattern);
 
             while ($iterations < $maxIterations) {
                 $iterations++;
@@ -402,7 +430,7 @@ if (!function_exists('rx_redis_scan_delete')) {
                         break;
                     }
                     if (is_array($batch) && !empty($batch)) {
-                        rx_redis_del(array_values($batch));
+                        $client->del(array_values($batch));
                         $deleted += count($batch);
                     }
                 } else {
@@ -412,7 +440,7 @@ if (!function_exists('rx_redis_scan_delete')) {
                     }
                     [$cursor, $batch] = $scanResult;
                     if (is_array($batch) && !empty($batch)) {
-                        rx_redis_del(array_values($batch));
+                        $client->del(array_values($batch));
                         $deleted += count($batch);
                     }
                 }
@@ -432,6 +460,7 @@ if (!function_exists('rx_redis_set_nx')) {
         if ($client === null) {
             return null;
         }
+        $key = rx_redis_key($key);
         try {
             if ($client instanceof \Redis) {
                 $result = $client->set($key, $value, ['NX', 'PX' => $ttlMs]);
@@ -454,6 +483,7 @@ if (!function_exists('rx_redis_release_lock')) {
             return false;
         }
         $script = "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end";
+        $key = rx_redis_key($key);
         try {
             if ($client instanceof \Redis) {
                 $client->eval($script, [$key, $token], 1);
@@ -476,6 +506,7 @@ if (!function_exists('rx_redis_extend_lock')) {
             return null;
         }
         $script = "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('pexpire',KEYS[1],ARGV[2]) else return 0 end";
+        $key = rx_redis_key($key);
         try {
             if ($client instanceof \Redis) {
                 $result = $client->eval($script, [$key, $token, (int) $ttlMs], 1);
@@ -497,6 +528,7 @@ if (!function_exists('rx_redis_sadd_index')) {
         if ($client === null) {
             return false;
         }
+        $indexKey = rx_redis_key($indexKey);
         try {
             $client->sAdd($indexKey, $member);
             $client->expire($indexKey, $ttlSeconds);
@@ -516,6 +548,7 @@ if (!function_exists('rx_redis_incr_with_ttl')) {
             return null;
         }
         $script = "local c = redis.call('incr', KEYS[1]) if c == 1 then redis.call('expire', KEYS[1], ARGV[1]) end return c";
+        $key = rx_redis_key($key);
         try {
             if ($client instanceof \Redis) {
                 return (int) $client->eval($script, [$key, $ttlSeconds], 1);

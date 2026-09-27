@@ -925,7 +925,7 @@ function rx_redis_clear_selectcache_table($table)
         return;
     }
     try {
-        $members = $client->sMembers($indexKey);
+        $members = $client->sMembers(rx_redis_key($indexKey));
         if (is_array($members) && !empty($members)) {
             rx_redis_del($members);
         }
@@ -946,7 +946,7 @@ function rx_redis_clear_selectcache_row($table, $whereField, $whereValue)
     foreach ([$rowIdx, $allRowsIdx] as $idx) {
         $indexKey = 'faoxima:selectcache:rowindex:' . $idx;
         try {
-            $members = $client->sMembers($indexKey);
+            $members = $client->sMembers(rx_redis_key($indexKey));
             if (is_array($members) && !empty($members)) {
                 rx_redis_del($members);
             }
