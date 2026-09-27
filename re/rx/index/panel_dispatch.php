@@ -119,20 +119,24 @@ if (preg_match('/Confirmpay_user_(\w+)_(\w+)/', $datain, $dataget)) {
 if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     $timefivemin = time() - 120;
     $timefivemin = date('Y/m/d H:i:s', intval($timefivemin));
-    $sql = "SELECT * FROM Payment_report WHERE id_user = '$from_id' AND Payment_Method = 'cart to cart' AND at_updated > '$timefivemin'";
+    $sql = "SELECT * FROM Payment_report WHERE id_user = :u AND Payment_Method = 'cart to cart' AND at_updated > :t AND COALESCE(payment_Status, '') NOT IN ('cancelled', 'expire')";
     $stmt = $pdo->prepare($sql);
-    $stmt->execute();
+    $stmt->execute([':u' => (string) $from_id, ':t' => $timefivemin]);
     $paymentcount = $stmt->rowCount();
     if ($paymentcount != 0 and !in_array($from_id, $admin_ids)) {
         sendmessage($from_id, "❗ شما در ۲ دقیقه اخیر رسید ارسال کرده اید لطفا ۲ دقیقه دیگر رسید جدید را ارسال نمایید.", null, 'HTML');
         return;
     }
-    $payemntcheck = select("Payment_report", "*", "id_order", $dataget[1], "select");
+    $payemntcheck = select("Payment_report", "*", "id_order", $dataget[1], "select", ['cache' => false]);
+    if (!is_array($payemntcheck) || (string) ($payemntcheck['id_user'] ?? '') !== (string) $from_id) {
+        sendmessage($from_id, faoxima_textbot_get('dyn_errors_data_fetch_restart', '❌ خطایی در هنگام دریافت اطلاعات رخ داده است لطفا مراحل را از اول انجام دهید'), null, 'HTML');
+        return;
+    }
     if ($payemntcheck['payment_Status'] == "paid") {
         sendmessage($from_id, "❗️ تراکنش شما توسط ربات تایید گردیده است.", null, 'HTML');
         return;
     }
-    if ($payemntcheck['payment_Status'] == "expire") {
+    if ($payemntcheck['payment_Status'] == "expire" || $payemntcheck['payment_Status'] == "cancelled") {
         sendmessage($from_id, "❗زمان این تراکنش به پایان رسیده و امکان پرداخت این تراکنش وجود ندارد.", null, 'HTML');
         return;
     }
@@ -976,6 +980,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
         $rxReceiptUserText = $textbotlang['users']['Balance']['Send-receipt'];
     }
     $_card_fid = (string)($PaymentReport['card_photo_file_id'] ?? '');
+    $_receipt_delivered = false;
     $_receipt_route = rxReceiptDeliveryRoute();
     $_receipt_report_group = trim((string)($_receipt_route['chat_id'] ?? ''));
     if (!empty($_receipt_route['topic_enabled']) && $_receipt_report_group !== '') {
@@ -1007,6 +1012,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
         ]);
         $_receipt_report_msg_id = is_array($_receipt_report_result) ? (int) ($_receipt_report_result['result']['message_id'] ?? 0) : 0;
         if ($_receipt_report_msg_id > 0) {
+            $_receipt_delivered = true;
             $pdo->prepare("UPDATE Payment_report SET report_chat_id = ?, report_message_id = ?, report_thread_id = ? WHERE id_order = ?")
                 ->execute([$_receipt_report_group, $_receipt_report_msg_id, $_receipt_thread, $PaymentReport['id_order']]);
         }
@@ -1039,12 +1045,29 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             }
         }
         if (!empty($_receipt_private_targets)) {
+            $_receipt_delivered = true;
             $pdo->prepare("UPDATE Payment_report SET report_chat_id = ?, report_message_id = ? WHERE id_order = ?")
                 ->execute([$_receipt_private_targets[0]['chat_id'], $_receipt_private_targets[0]['message_id'], $PaymentReport['id_order']]);
             if (function_exists('update')) {
                 update("Payment_report", "private_receipt_targets", json_encode($_receipt_private_targets, JSON_UNESCAPED_UNICODE), "id_order", $PaymentReport['id_order']);
             }
         }
+    }
+    if (!$_receipt_delivered) {
+        $pdo->prepare("UPDATE Payment_report SET payment_Status = 'Unpaid', dec_not_confirmed = NULL, at_updated = NULL WHERE id_order = :id_order AND payment_Status = 'pending' AND dec_not_confirmed = 'receipt-uploading'")
+            ->execute([':id_order' => $PaymentReport['id_order']]);
+        if (function_exists('clearSelectCache')) {
+            clearSelectCache('Payment_report');
+        }
+        if (function_exists('rx_log_event')) {
+            rx_log_event('RECEIPT_ADMIN_DELIVERY_FAILED', 'No administrator delivery reference for card receipt', [
+                'id_order' => $PaymentReport['id_order'],
+                'id_user' => $from_id,
+            ]);
+        }
+        step('cart_to_cart_user', $from_id);
+        sendmessage($from_id, faoxima_textbot_get('dyn_receipt_admin_delivery_failed', '❌ ارسال رسید به ادمین ناموفق بود. لطفاً دوباره تلاش کنید.'), $backuser, 'HTML');
+        return;
     }
     $dateacc = date('Y/m/d H:i:s');
     $stmt = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'waiting', dec_not_confirmed = 'receipt-submitted', card_photo_file_id = :card_photo_file_id, at_updated = :at_updated WHERE id_order = :id_order AND payment_Status = 'pending' AND dec_not_confirmed = 'receipt-uploading'");

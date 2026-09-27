@@ -137,6 +137,30 @@ final class PaymentReceiptHandler extends BaseHandler
         ], JSON_UNESCAPED_UNICODE);
 
 
+        try {
+            $reserveStmt = FaoximaDb::pdo()->prepare(
+                'UPDATE Payment_report
+                    SET payment_Status = \'pending\', dec_not_confirmed = \'receipt-uploading\', at_updated = :au
+                  WHERE id_order = :o AND id_user = :u AND source = \'miniapp\' AND payment_Status = \'Unpaid\'
+                    AND (dec_not_confirmed IS NULL OR dec_not_confirmed = \'\')'
+            );
+            $reserveStmt->execute([
+                ':au' => date('Y/m/d H:i:s'),
+                ':o'  => $orderId,
+                ':u'  => $this->user['id'],
+            ]);
+            $reserved = $reserveStmt->rowCount() === 1;
+        } catch (Throwable $e) {
+            FaoximaLogger::error('Receipt reservation failed', ['err' => $e->getMessage(), 'order' => $orderId, 'user_id' => $this->user['id']]);
+            FaoximaResponse::serverError(faoxima_textbot_get('dyn_receipt_admin_delivery_failed', '❌ ارسال رسید به ادمین ناموفق بود. لطفاً دوباره تلاش کنید.'));
+        }
+        if (!$reserved) {
+            FaoximaResponse::fail(409, faoxima_textbot_get('dyn_receipt_already_pending_review', '⏳ رسید این پرداخت قبلاً ارسال شده و در انتظار بررسی ادمین است.'));
+        }
+        if (function_exists('rx_redis_del')) {
+            rx_redis_del('faoxima:paystatus:' . $orderId . ':' . (string)$this->user['id']);
+        }
+
         $reqCardTmp  = null;
         $reqCardMime = 'image/jpeg';
         $reqLast4    = '';
@@ -236,6 +260,7 @@ final class PaymentReceiptHandler extends BaseHandler
                 }
                 if (!$textOk) {
                     FaoximaLogger::warn('Receipt+card album: all admins unreachable', ['admins' => $failedAdmins]);
+                    $this->releaseReceiptReservation($orderId);
                     FaoximaResponse::fail(502, faoxima_textbot_get('dyn_receipt_admin_delivery_failed', '❌ ارسال رسید به ادمین ناموفق بود. لطفاً دوباره تلاش کنید.'));
                 }
                 $receiptSentSuccessfully = true;
@@ -286,6 +311,7 @@ final class PaymentReceiptHandler extends BaseHandler
                 }
                 if (!$textOk) {
                     FaoximaLogger::warn('Receipt: all admins unreachable', ['admins' => $failedAdmins]);
+                    $this->releaseReceiptReservation($orderId);
                     FaoximaResponse::fail(502, faoxima_textbot_get('dyn_receipt_admin_delivery_failed', '❌ ارسال رسید به ادمین ناموفق بود. لطفاً دوباره تلاش کنید.'));
                 } else {
                     $receiptSentSuccessfully = true;
@@ -343,7 +369,8 @@ final class PaymentReceiptHandler extends BaseHandler
                 $stmt = $pdo->prepare(
                     'UPDATE Payment_report
                         SET payment_Status = :s, dec_not_confirmed = :d, at_updated = :au
-                      WHERE id_order = :o AND id_user = :u AND source = \'miniapp\' AND payment_Status = \'Unpaid\''
+                      WHERE id_order = :o AND id_user = :u AND source = \'miniapp\'
+                        AND payment_Status = \'pending\' AND dec_not_confirmed = \'receipt-uploading\''
                 );
                 $stmt->execute([
                     ':s' => 'waiting',
@@ -376,6 +403,25 @@ final class PaymentReceiptHandler extends BaseHandler
         ]);
     }
 
+
+    private function releaseReceiptReservation(string $orderId): void
+    {
+        try {
+            FaoximaDb::pdo()->prepare(
+                'UPDATE Payment_report
+                    SET payment_Status = \'Unpaid\', dec_not_confirmed = NULL, at_updated = NULL
+                  WHERE id_order = :o AND id_user = :u AND source = \'miniapp\'
+                    AND payment_Status = \'pending\' AND dec_not_confirmed = \'receipt-uploading\'
+                    AND (report_message_id IS NULL OR report_message_id = 0)
+                    AND (private_receipt_targets IS NULL OR private_receipt_targets = \'\')'
+            )->execute([':o' => $orderId, ':u' => $this->user['id']]);
+        } catch (Throwable $e) {
+            FaoximaLogger::error('Receipt reservation release failed', ['err' => $e->getMessage(), 'order' => $orderId, 'user_id' => $this->user['id']]);
+        }
+        if (function_exists('rx_redis_del')) {
+            rx_redis_del('faoxima:paystatus:' . $orderId . ':' . (string)$this->user['id']);
+        }
+    }
 
     private function sendReceiptPhoto(string $apiKey, string $chatId, string $localPath, string $mime, string $caption, string $keyboardJson, ?int $threadId = null): ?array
     {

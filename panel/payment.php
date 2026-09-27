@@ -38,6 +38,7 @@ $payStatusOptions = [
     'Unpaid'  => 'ناموفق',
     'expire'  => 'منقضی شده',
     'reject'  => 'رد شده',
+    'cancelled' => 'لغو شده',
     'waiting' => 'در انتظار تایید',
 ];
 $payStatus = fx_status_filter_current();
@@ -178,6 +179,7 @@ $listpayment = $query->fetchAll();
                                 case 'Unpaid':  $statusText='ناموفق';        $badgeClass='badge-danger';  break;
                                 case 'expire':  $statusText='منقضی شده';     $badgeClass='badge-gray';    break;
                                 case 'reject':  $statusText='رد شده';        $badgeClass='badge-danger';  break;
+                                case 'cancelled': $statusText='لغو شده';     $badgeClass='badge-gray';    break;
                                 case 'waiting': $statusText='در انتظار تایید'; $badgeClass='badge-warning'; break;
                             }
                         ?>

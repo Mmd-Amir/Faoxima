@@ -2148,7 +2148,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
 
             $rxOptStage(4, 'حذف گزارش‌های پرداخت منقضی/رد شده');
             $paymentCutoff = date('Y/m/d H:i:s', $thirtyDaysAgo);
-            $countpayexpired = $rxOptDelete('Payment_report', "DELETE FROM Payment_report WHERE payment_Status IN ('expire','reject') AND time < :cutoff", [':cutoff' => $paymentCutoff]);
+            $countpayexpired = $rxOptDelete('Payment_report', "DELETE FROM Payment_report WHERE payment_Status IN ('expire','reject','cancelled') AND time < :cutoff", [':cutoff' => $paymentCutoff]);
 
             $rxOptStage(5, 'حذف تراکنش‌های قدیمی کیف پول');
             $countledgerexpired = $rxOptDelete('wallet_ledger', "DELETE FROM wallet_ledger WHERE created_at < FROM_UNIXTIME(:cutoff)", [':cutoff' => $thirtyDaysAgo]);

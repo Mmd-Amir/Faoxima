@@ -76,6 +76,13 @@ $rows = array_merge($rows, $tonpayRows);
 
 $expireStmt = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'expire' WHERE id_order = :o AND payment_Status = 'Unpaid'");
 
+if (function_exists('rxRecoverStaleReceiptUploads')) {
+    $rxReceiptRecovery = rxRecoverStaleReceiptUploads(600, 50);
+    if (($rxReceiptRecovery['waiting'] + $rxReceiptRecovery['unpaid'] + $rxReceiptRecovery['failed']) > 0 && function_exists('rx_log_event')) {
+        rx_log_event('RECEIPT_UPLOAD_RECOVERY', 'Recovered stale receipt-uploading card payments', $rxReceiptRecovery);
+    }
+}
+
 foreach ($rows as $result) {
     if (function_exists('rx_cron_time_up') && rx_cron_time_up()) break;
     $status_var_map = [
@@ -109,9 +116,18 @@ foreach ($rows as $result) {
 📌 کد فاکتور : <code>{$result['id_order']}</code>
 🪙 مبلغ فاکتور :  " . rxFormatToman($result['price']) . " تومان";
 
-    $expireStmt->execute([':o' => $result['id_order']]);
-    if ($expireStmt->rowCount() !== 1) {
-        continue;
+    $rxCardExpired = null;
+    if (function_exists('rxCancelAbandonedCardPayment') && in_array((string) $result['Payment_Method'], rxCardPaymentMethods(), true)) {
+        $rxCardExpired = rxCancelAbandonedCardPayment((string) $result['id_order'], (string) $result['id_user'], 'timeout', ['status' => 'expire']);
+    }
+    if (!is_array($rxCardExpired) || empty($rxCardExpired['ok'])) {
+        if (is_array($rxCardExpired) && ($rxCardExpired['reason'] ?? '') === 'db_error') {
+            continue;
+        }
+        $expireStmt->execute([':o' => $result['id_order']]);
+        if ($expireStmt->rowCount() !== 1) {
+            continue;
+        }
     }
     if (function_exists('rx_redis_del') && isset($result['id_user'])) {
         rx_redis_del('faoxima:paystatus:' . $result['id_order'] . ':' . (string)$result['id_user']);

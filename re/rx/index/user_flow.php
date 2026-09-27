@@ -3308,16 +3308,17 @@ $textonebuy
     if ($datain == "cart_to_offline") {
         $from_id_sql = (string) $from_id;
 
+        $_cc_keep_invoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
         $stale_cutoff = date('Y/m/d H:i:s', time() - 15 * 60);
-        $_purge = $connect->prepare("DELETE FROM Payment_report WHERE id_user = ? AND payment_Status = 'Unpaid' AND Payment_Method = 'cart to cart' AND time < ?");
-        $_purge->bind_param("ss", $from_id_sql, $stale_cutoff);
-        $_purge->execute();
-        $_purge->close();
-
-        $_purge_ab = $connect->prepare("DELETE FROM Payment_report WHERE id_user = ? AND payment_Status IN ('Unpaid','pending') AND Payment_Method = 'cart to cart' AND (dec_not_confirmed IS NULL OR dec_not_confirmed = '')");
-        $_purge_ab->bind_param("s", $from_id_sql);
-        $_purge_ab->execute();
-        $_purge_ab->close();
+        rxCancelAbandonedCardPaymentsForUser($from_id_sql, 'stale_unpaid', [
+            'methods' => ['cart to cart'],
+            'created_before' => $stale_cutoff,
+            'preserve_invoice_key' => $_cc_keep_invoice,
+        ]);
+        rxCancelAbandonedCardPaymentsForUser($from_id_sql, 'superseded', [
+            'methods' => ['cart to cart'],
+            'preserve_invoice_key' => $_cc_keep_invoice,
+        ]);
 
         $_stmt = $connect->prepare("SELECT id FROM Payment_report WHERE id_user = ? AND (payment_Status = 'Unpaid' OR payment_Status = 'waiting' OR payment_Status = 'pending') AND Payment_Method = 'cart to cart' LIMIT 1");
         $_stmt->bind_param("s", $from_id_sql);
@@ -3398,11 +3399,33 @@ $textonebuy
         $invoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
         $dateacc = date('Y/m/d H:i:s');
         $randomString = bin2hex(random_bytes(5));
-        $stmt = $connect->prepare("INSERT INTO Payment_report (id_user,id_order,time,price,payment_Status,Payment_Method,id_invoice) VALUES (?,?,?,?,?,?,?)");
         $payment_Status = "Unpaid";
         $Payment_Method = "cart to cart";
-        $stmt->bind_param("sssssss", $from_id, $randomString, $dateacc, $user['Processing_value'], $payment_Status, $Payment_Method, $invoice);
-        $stmt->execute();
+        $_cc_insert_ok = false;
+        try {
+            $stmt = $connect->prepare("INSERT INTO Payment_report (id_user,id_order,time,price,payment_Status,Payment_Method,id_invoice) VALUES (?,?,?,?,?,?,?)");
+            if ($stmt) {
+                $stmt->bind_param("sssssss", $from_id, $randomString, $dateacc, $user['Processing_value'], $payment_Status, $Payment_Method, $invoice);
+                $_cc_insert_ok = $stmt->execute() && $stmt->affected_rows === 1;
+                $_cc_insert_err = $stmt->error;
+                $stmt->close();
+            } else {
+                $_cc_insert_err = $connect->error;
+            }
+        } catch (Throwable $_cc_insert_e) {
+            $_cc_insert_ok = false;
+            $_cc_insert_err = $_cc_insert_e->getMessage();
+        }
+        if (!$_cc_insert_ok) {
+            if (function_exists('rx_log_event')) {
+                rx_log_event('CARD_PAYMENT_INSERT_FAILED', (string) ($_cc_insert_err ?? 'unknown'), [
+                    'id_user' => $from_id,
+                    'id_order' => $randomString,
+                ]);
+            }
+            sendmessage($from_id, faoxima_textbot_get('dyn_errors_purchase_or_payment_restart', '❌ خطایی رخ داده است لطفا مراحل خرید یا پرداخت  را مجدد انجام دهید'), $keyboard, 'HTML');
+            return;
+        }
 
         $_cv_active = !in_array($from_id, $admin_ids)
             && ($setting['card_verify_status'] ?? 'offcardverify') === 'oncardverify'

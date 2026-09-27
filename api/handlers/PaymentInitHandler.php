@@ -75,8 +75,11 @@ final class PaymentInitHandler extends BaseHandler
 
         try {
             if ($method === 'carttocart' || $method === 'carttocart_pv') {
-                $this->purgeStaleCarttocart((int)$this->user['id']);
-                $this->purgeAbandonedCarttocart((int)$this->user['id']);
+                $keepInvoiceKey = ($serverPurchaseUsername !== null && $serverPurchaseUsername !== '')
+                    ? 'getconfigafterpay|' . $serverPurchaseUsername
+                    : null;
+                $this->purgeStaleCarttocart((int)$this->user['id'], $keepInvoiceKey);
+                $this->purgeAbandonedCarttocart((int)$this->user['id'], $keepInvoiceKey);
 
                 $pendingFresh = (int) FaoximaDb::fetchScalar(
                     "SELECT COUNT(*) FROM Payment_report
@@ -257,7 +260,7 @@ final class PaymentInitHandler extends BaseHandler
     }
 
 
-    private function purgeStaleCarttocart(int $userId): void
+    private function purgeStaleCarttocart(int $userId, ?string $keepInvoiceKey = null): void
     {
         try {
             $rows = FaoximaDb::fetchAll(
@@ -276,54 +279,33 @@ final class PaymentInitHandler extends BaseHandler
         if (!is_array($rows) || empty($rows)) return;
 
         $cutoff = time() - (self::STALE_UNPAID_MINUTES * 60);
-        $stale = [];
+        $opts = ['source' => 'miniapp'];
+        if ($keepInvoiceKey !== null) {
+            $opts['preserve_invoice_key'] = $keepInvoiceKey;
+        }
+        $cancelled = 0;
         foreach ($rows as $r) {
             $ts = $this->parseLegacyTime((string)($r['time'] ?? ''));
-
-
             if ($ts === null || $ts <= $cutoff) {
-                $stale[] = (string)$r['id_order'];
+                $res = rxCancelAbandonedCardPayment((string)$r['id_order'], (string)$userId, 'stale_unpaid', $opts);
+                if (!empty($res['ok'])) $cancelled++;
             }
         }
-        if (empty($stale)) return;
-
-        try {
-            $pdo = FaoximaDb::pdo();
-            $placeholders = implode(',', array_fill(0, count($stale), '?'));
-            $sql = "DELETE FROM Payment_report
-                     WHERE id_user = ?
-                       AND payment_Status = 'Unpaid'
-                       AND (Payment_Method = 'cart to cart' OR Payment_Method = 'carttocart_pv')
-                       AND source = 'miniapp'
-                       AND id_order IN ($placeholders)";
-            $stmt = $pdo->prepare($sql);
-            $params = array_merge([$userId], $stale);
-            $stmt->execute($params);
-            FaoximaLogger::debug('Purged stale carttocart Unpaid rows', [
+        if ($cancelled > 0) {
+            FaoximaLogger::debug('Cancelled stale carttocart Unpaid rows', [
                 'user_id' => $userId,
-                'count'   => count($stale),
+                'count'   => $cancelled,
             ]);
-        } catch (Throwable $e) {
-            FaoximaLogger::userFacing('purgeStaleCarttocart delete failed', ['err' => $e->getMessage()]);
         }
     }
 
-    private function purgeAbandonedCarttocart(int $userId): void
+    private function purgeAbandonedCarttocart(int $userId, ?string $keepInvoiceKey = null): void
     {
-        try {
-            $pdo = FaoximaDb::pdo();
-            $stmt = $pdo->prepare(
-                "DELETE FROM Payment_report
-                  WHERE id_user = :u
-                    AND payment_Status IN ('Unpaid','pending')
-                    AND (Payment_Method = 'cart to cart' OR Payment_Method = 'carttocart_pv')
-                    AND source = 'miniapp'
-                    AND (dec_not_confirmed IS NULL OR dec_not_confirmed = '')"
-            );
-            $stmt->execute([':u' => $userId]);
-        } catch (Throwable $e) {
-            FaoximaLogger::userFacing('purgeAbandonedCarttocart delete failed', ['err' => $e->getMessage()]);
+        $opts = ['source' => 'miniapp'];
+        if ($keepInvoiceKey !== null) {
+            $opts['preserve_invoice_key'] = $keepInvoiceKey;
         }
+        rxCancelAbandonedCardPaymentsForUser((string)$userId, 'superseded', $opts);
     }
 
     private function purgeStaleGatewayOrders(int $userId, string $method): void
@@ -1164,13 +1146,20 @@ final class PaymentInitHandler extends BaseHandler
             $params[':dpbd'] = (string)$this->chargePriceBeforeDiscount;
         }
 
+        $inserted = false;
         try {
             $pdo = FaoximaDb::pdo();
             $sql = 'INSERT INTO Payment_report (' . implode(', ', $cols) . ') VALUES (' . implode(', ', $vals) . ')';
             $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
+            $inserted = $stmt->execute($params) && $stmt->rowCount() === 1;
+            if (!$inserted) {
+                FaoximaLogger::error('Payment_report insert affected no rows', ['order' => $orderId, 'method' => $method, 'user_id' => $this->user['id']]);
+            }
         } catch (Throwable $e) {
-            FaoximaLogger::warn('Payment_report insert failed', ['err' => $e->getMessage(), 'has_ext' => $extId !== null]);
+            FaoximaLogger::error('Payment_report insert failed', ['err' => $e->getMessage(), 'order' => $orderId, 'method' => $method, 'user_id' => $this->user['id'], 'has_ext' => $extId !== null]);
+        }
+        if (!$inserted) {
+            FaoximaResponse::serverError(faoxima_textbot_get('dyn_paymentinit_payment_record_failed', '❌ ثبت درخواست پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.'));
         }
     }
 

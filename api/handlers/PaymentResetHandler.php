@@ -44,7 +44,13 @@ final class PaymentResetHandler extends BaseHandler
         if ($currentStatus === 'expire') {
             FaoximaResponse::fail(409, '❌ این پرداخت منقضی شده و نمی‌توان آن را بازنشانی کرد.');
         }
-        $allowedStatuses = ['pending', 'waiting', 'unpaid'];
+        if ($currentStatus === 'cancelled') {
+            FaoximaResponse::ok([
+                'order_id' => $orderId,
+                'message'  => '✅ درخواست پرداخت قبلی لغو شد. اکنون می‌توانید دوباره پرداخت جدید ثبت کنید.',
+            ]);
+        }
+        $allowedStatuses = ['pending', 'unpaid'];
         if (!in_array($currentStatus, $allowedStatuses, true)) {
             FaoximaResponse::fail(409, '❌ وضعیت پرداخت فعلی قابل بازنشانی نیست: ' . $currentStatus);
         }
@@ -52,31 +58,27 @@ final class PaymentResetHandler extends BaseHandler
             FaoximaResponse::fail(409, '❌ رسید این پرداخت قبلاً برای ادمین ارسال شده و قابل بازنشانی نیست.');
         }
 
-        try {
-            $pdo = FaoximaDb::pdo();
-            $stmt = $pdo->prepare(
-                'DELETE FROM Payment_report
-                  WHERE id_order = :o AND id_user = :u AND source = \'miniapp\''
-            );
-            $stmt->execute([
-                ':o' => $orderId,
-                ':u' => $this->user['id'],
-            ]);
-        } catch (Throwable $e) {
-            FaoximaLogger::warn('Payment_report status reset failed', ['err' => $e->getMessage()]);
-            FaoximaResponse::serverError('❌ خطا در بازنشانی وضعیت پرداخت');
+        $result = rxCancelAbandonedCardPayment($orderId, (string)$this->user['id'], 'user_reset', ['source' => 'miniapp']);
+        if (empty($result['ok'])) {
+            $reason = (string)($result['reason'] ?? '');
+            FaoximaLogger::warn('Payment_report cancel failed', ['order' => $orderId, 'user_id' => $this->user['id'], 'reason' => $reason]);
+            if ($reason === 'db_error' || $reason === 'pdo_unavailable') {
+                FaoximaResponse::serverError('❌ خطا در بازنشانی وضعیت پرداخت');
+            }
+            FaoximaResponse::fail(409, '❌ رسید این پرداخت قبلاً برای ادمین ارسال شده و قابل بازنشانی نیست.');
         }
 
         FaoximaLogger::debug('Payment status reset', [
             'order'      => $orderId,
             'user_id'    => $this->user['id'],
             'old_status' => $currentStatus,
-            'new_status' => 'deleted',
+            'new_status' => 'cancelled',
+            'invoice_invalidated' => !empty($result['invoice_invalidated']),
         ]);
 
         FaoximaResponse::ok([
             'order_id' => $orderId,
-            'message'  => '✅ درخواست پرداخت قبلی حذف شد. اکنون می‌توانید دوباره پرداخت جدید ثبت کنید.',
+            'message'  => '✅ درخواست پرداخت قبلی لغو شد. اکنون می‌توانید دوباره پرداخت جدید ثبت کنید.',
         ]);
     }
 }
