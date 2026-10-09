@@ -26,8 +26,8 @@ final class ServiceRenewConfirmHandler extends BaseHandler
             FaoximaResponse::notFound('Service not found');
         }
 
-        if (!in_array((string)$invoice['Status'], ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold'], true)) {
-            FaoximaResponse::fail(409, faoxima_textbot_get('dyn_renewconfirm_status_invalid_restart', '❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.'));
+        if (!in_array((string)$invoice['Status'], ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin', 'disabledn', 'expired', 'limited'], true)) {
+                        FaoximaResponse::fail(409, faoxima_textbot_get('dyn_renewconfirm_status_invalid_restart', '❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.'));
         }
 
         $panel = select('marzban_panel', '*', 'name_panel', $invoice['Service_location'], 'select');

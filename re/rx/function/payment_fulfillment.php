@@ -1016,12 +1016,71 @@ if (!function_exists('rxRenewalModes')) {
     function rxRenewalModes(): array
     {
         return [
-            'ریست حجم و زمان' => ['key' => 'reset_usage_keep_remaining', 'reset_usage' => true, 'queued' => false, 'legacy_discarded' => ['time', 'traffic']],
-            'اضافه شدن زمان و حجم به ماه بعد' => ['key' => 'append_time_and_volume', 'reset_usage' => false, 'queued' => false, 'legacy_discarded' => []],
-            'ریست زمان و اضافه کردن حجم قبلی' => ['key' => 'append_time_and_volume', 'reset_usage' => false, 'queued' => false, 'legacy_discarded' => ['time']],
-            'ریست شدن حجم و اضافه شدن زمان' => ['key' => 'reset_usage_keep_remaining', 'reset_usage' => true, 'queued' => false, 'legacy_discarded' => ['traffic']],
-            'اضافه شدن زمان و تبدیل حجم کل به حجم باقی مانده' => ['key' => 'reset_usage_keep_remaining', 'reset_usage' => true, 'queued' => false, 'legacy_discarded' => []],
-            'رزرو اشتراک' => ['key' => 'queued', 'reset_usage' => false, 'queued' => true, 'legacy_discarded' => []],
+            // ═══════════════════════════════════════════════════════════
+            // «ریست حجم و زمان» — FULL RESET
+            //   زمان: now + days   (روزهای باقی‌مونده دور ریخته می‌شن)
+            //   حجم: remaining + new   (مصرف صفر، باقی‌مونده حفظ)
+            // ═══════════════════════════════════════════════════════════
+            'ریست حجم و زمان' => [
+                'key'              => 'reset_time_reset_usage',
+                'reset_usage'      => true,
+                'reset_expire'     => true,
+                'queued'           => false,
+                'legacy_discarded' => ['time', 'traffic'],
+            ],
+
+            // ═══════════════════════════════════════════════════════════
+            // «اضافه شدن زمان و حجم به ماه بعد» — APPEND BOTH
+            // ═══════════════════════════════════════════════════════════
+            'اضافه شدن زمان و حجم به ماه بعد' => [
+                'key'              => 'append_time_append_usage',
+                'reset_usage'      => false,
+                'reset_expire'     => false,
+                'queued'           => false,
+                'legacy_discarded' => [],
+            ],
+
+            // ═══════════════════════════════════════════════════════════
+            // «ریست زمان و اضافه کردن حجم قبلی» — RESET TIME, APPEND VOLUME
+            // ═══════════════════════════════════════════════════════════
+            'ریست زمان و اضافه کردن حجم قبلی' => [
+                'key'              => 'reset_time_append_usage',
+                'reset_usage'      => false,
+                'reset_expire'     => true,
+                'queued'           => false,
+                'legacy_discarded' => ['time'],
+            ],
+
+            // ═══════════════════════════════════════════════════════════
+            // «ریست شدن حجم و اضافه شدن زمان» — RESET VOLUME, APPEND TIME
+            // ═══════════════════════════════════════════════════════════
+            'ریست شدن حجم و اضافه شدن زمان' => [
+                'key'              => 'append_time_reset_usage',
+                'reset_usage'      => true,
+                'reset_expire'     => false,
+                'queued'           => false,
+                'legacy_discarded' => ['traffic'],
+            ],
+
+            // ═══════════════════════════════════════════════════════════
+            // «اضافه شدن زمان و تبدیل حجم کل به حجم باقی مانده»
+            // ═══════════════════════════════════════════════════════════
+            'اضافه شدن زمان و تبدیل حجم کل به حجم باقی مانده' => [
+                'key'              => 'append_time_reset_usage',
+                'reset_usage'      => true,
+                'reset_expire'     => false,
+                'queued'           => false,
+                'legacy_discarded' => [],
+            ],
+
+            // ═══════════════════════════════════════════════════════════
+            'رزرو اشتراک' => [
+                'key'              => 'queued',
+                'reset_usage'      => false,
+                'reset_expire'     => false,
+                'queued'           => true,
+                'legacy_discarded' => [],
+            ],
         ];
     }
 }
@@ -1052,9 +1111,14 @@ if (!function_exists('rxRenewalModeLabel')) {
     function rxRenewalModeLabel(string $key): string
     {
         $labels = [
-            'reset_usage_keep_remaining' => 'ریست مصرف؛ حجم باقی‌مانده + حجم جدید، زمان باقی‌مانده + زمان جدید',
-            'append_time_and_volume' => 'حفظ مصرف؛ حجم کل + حجم جدید، زمان باقی‌مانده + زمان جدید',
-            'queued' => 'رزرو؛ پس از پایان سرویس فعلی فعال می‌شود',
+            'reset_time_reset_usage'  => 'ریست کامل زمان و حجم؛ حجم باقی‌مانده حفظ می‌شود',
+            'append_time_append_usage' => 'حفظ زمان و حجم؛ زمان و حجم جدید اضافه می‌شود',
+            'reset_time_append_usage' => 'ریست زمان؛ حجم باقی‌مانده + حجم جدید',
+            'append_time_reset_usage' => 'حفظ زمان؛ حجم از باقی‌مانده + حجم جدید محاسبه می‌شود',
+            'queued'                  => 'رزرو؛ پس از پایان سرویس فعلی فعال می‌شود',
+            // کلیدهای legacy برای سازگاری با دیتای قبلی
+            'reset_usage_keep_remaining' => 'ریست مصرف؛ حجم باقی‌مانده + حجم جدید',
+            'append_time_and_volume'     => 'حفظ مصرف؛ حجم و زمان جدید اضافه می‌شود',
         ];
         return $labels[$key] ?? $key;
     }
@@ -1084,7 +1148,7 @@ if (!function_exists('rxBuildRenewalTarget')) {
         $unlimitedVolume = $oldLimit <= 0;
         $unlimitedExpire = $oldExpire <= 0;
         $remaining = $unlimitedVolume ? null : max(0, $oldLimit - $used);
-        $plan = [
+             $plan = [
             'ok' => true,
             'reason' => 'ok',
             'method' => $mode['method'],
@@ -1092,6 +1156,7 @@ if (!function_exists('rxBuildRenewalTarget')) {
             'label' => rxRenewalModeLabel($mode['key']),
             'queued' => (bool) $mode['queued'],
             'reset_usage' => (bool) $mode['reset_usage'],
+            'reset_expire' => !empty($mode['reset_expire']),
             'destructive' => false,
             'manual_review' => false,
             'now' => $now,
@@ -1110,25 +1175,54 @@ if (!function_exists('rxBuildRenewalTarget')) {
         if ($unlimitedExpire && $days > 0 && $status === 'on_hold') {
             return $fail('on_hold_subscription');
         }
+
+        // ═══════════════════════════════════════════════════════════
+        // محاسبه‌ی زمان انقضای جدید
+        // ═══════════════════════════════════════════════════════════
         if ($days == 0 || $unlimitedExpire) {
             $targetExpire = 0;
+        } elseif (!empty($mode['reset_expire'])) {
+            // 🆕 ریست زمان: از همین لحظه به بعد، روزهای باقی‌مونده دور ریخته می‌شه
+            $targetExpire = $now + $daySeconds;
         } else {
+            // اضافه‌ای: زمان باقی‌مونده + زمان خریداری‌شده
             $targetExpire = max($now, $oldExpire) + $daySeconds;
         }
+
+        // ═══════════════════════════════════════════════════════════
+        // محاسبه‌ی حجم جدید
+        // ═══════════════════════════════════════════════════════════
         if ($volume == 0 || $unlimitedVolume) {
             $targetLimit = 0;
         } elseif ($mode['reset_usage']) {
+            // حجم: باقی‌مونده فعلی + حجم جدید (مصرف صفر می‌شه)
             $targetLimit = (int) $remaining + $volumeBytes;
         } else {
+            // حجم: کل فعلی + حجم جدید
             $targetLimit = $oldLimit + $volumeBytes;
         }
         $targetUsed = $mode['reset_usage'] ? 0 : $used;
-        if (!$unlimitedExpire && $targetExpire > 0 && $oldExpire > $now && $targetExpire < $oldExpire + $daySeconds) {
-            return $fail('invariant_time_discarded');
+
+        // ═══════════════════════════════════════════════════════════
+        // Invariant های ایمنی — با آگاهی از reset_expire
+        // ═══════════════════════════════════════════════════════════
+        if (!$unlimitedExpire && $targetExpire > 0) {
+            if (!empty($mode['reset_expire'])) {
+                // در حالت reset: فقط مطمئن شو کمتر از now+days نشده
+                if ($targetExpire < $now + $daySeconds) {
+                    return $fail('invariant_time_discarded');
+                }
+            } else {
+                // در حالت append: مطمئن شو کمتر از old+days نشده
+                if ($oldExpire > $now && $targetExpire < $oldExpire + $daySeconds) {
+                    return $fail('invariant_time_discarded');
+                }
+            }
         }
         if (!$unlimitedVolume && $targetLimit > 0 && ($targetLimit - $targetUsed) < (int) $remaining + $volumeBytes) {
             return $fail('invariant_traffic_discarded');
         }
+
         $plan['expire'] = $targetExpire;
         $plan['data_limit'] = $targetLimit;
         $plan['target_used_traffic'] = $targetUsed;

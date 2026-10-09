@@ -46,8 +46,15 @@ foreach ($queuedRows as $row) {
         continue;
     }
 
-    $extend = $ManagePanel->extend("ریست حجم و زمان", $row['new_limit_gb'], $row['time_day'], $row['username'], $row['code_product'], $row['code_panel']);
-
+    // 🆕 از Methodextend خود پنل استفاده کن (نه hardcode)
+    $methodForRenewal = "ریست حجم و زمان";
+    if (!empty($row['name_panel'])) {
+        $panelRowForRenewal = select("marzban_panel", "*", "name_panel", $row['name_panel'], "select");
+        if (is_array($panelRowForRenewal) && !empty($panelRowForRenewal['Methodextend'])) {
+            $methodForRenewal = (string) $panelRowForRenewal['Methodextend'];
+        }
+    }
+    $extend = $ManagePanel->extend($methodForRenewal, $row['new_limit_gb'], $row['time_day'], $row['username'], $row['code_product'], $row['code_panel']);
     if (is_array($extend) && ($extend['status'] ?? false) === true) {
         update("queued_renewal", "status", "applied", "id", $row['id']);
         update("queued_renewal", "applied_at", date('Y/m/d H:i:s'), "id", $row['id']);

@@ -658,7 +658,7 @@ if ($rxAntispamStatus === '1' && !in_array((string)$from_id, $admin_ids_str, tru
                 . "redis.call('EXPIRE', key, ttl + 5) "
                 . "return {win_start, win_count, muted_until, should_drop, sync_needed}";
 
-            $rxAsRedisKey = rx_redis_key('faoxima:antispam:' . $from_id);
+            $rxAsRedisKey = 'faoxima:antispam:' . $from_id;
             $rxAsRedisClient = getRedisConnection();
             if ($rxAsRedisClient instanceof \Redis) {
                 $rxAsLuaResult = $rxAsRedisClient->eval($rxAsLuaScript, [$rxAsRedisKey, $timebot, $rxAsSeconds, $rxAsMsgCount, $rxAsMuteSeconds], 1);
@@ -3385,8 +3385,8 @@ $nameconfig";
         $prodcut = $stmt->fetch(PDO::FETCH_ASSOC);
     }
     $pricelastextend = $prodcut['price_product'];
-    if ($prodcut == false || !in_array($nameloc['Status'], ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold'])) {
-        sendmessage($from_id, $datatextbot['dyn_errors_renewal_failed_restart'] ?? "❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.", null, 'HTML');
+if ($prodcut == false || !in_array($nameloc['Status'], ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin', 'disabledn', 'expired', 'limited'])) {
+            sendmessage($from_id, $datatextbot['dyn_errors_renewal_failed_restart'] ?? "❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.", null, 'HTML');
         return;
     }
     $fxRenewCustom = ($nameloc['name_product'] == "🛍 حجم دلخواه" || $nameloc['name_product'] == "⚙️ سرویس دلخواه");
