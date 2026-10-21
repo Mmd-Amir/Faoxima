@@ -1151,6 +1151,18 @@ final class PaymentInitHandler extends BaseHandler
 
         update('Payment_report', 'dec_not_confirmed', (string) $pay['authority'], 'id_order', $orderId);
 
+        // «کارت داخل ربات»: the card and the exact amount also go to the
+        // buyer's chat, so a page that will not open does not end the sale.
+        // Its id is kept like the bot's own payment message, for the expiry
+        // cron to delete it with the invoice.
+        $cardInvoice = function_exists('abangatewayCardInvoice') ? abangatewayCardInvoice($pay, $orderId) : null;
+        if ($cardInvoice !== null) {
+            $sent = sendmessage($this->user['id'], $cardInvoice['text'], $cardInvoice['keyboard'], 'HTML');
+            if (function_exists('updatePaymentMessageId')) {
+                updatePaymentMessageId($sent, $orderId);
+            }
+        }
+
         FaoximaResponse::ok([
             'kind'     => 'url',
             'url'      => (string) $pay['pay_url'],

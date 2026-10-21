@@ -4904,7 +4904,13 @@ $textonebuy
                 }
             }
         }
-        $message_id = sendmessage($from_id, $textabangatewaypay, $paymentkeyboard, 'HTML');
+        // With «کارت داخل ربات» on, the card and the exact amount go in this
+        // same message; should Telegram refuse it, the usual one still goes.
+        $cardInvoice = abangatewayCardInvoice($payment, $randomString);
+        $message_id = $cardInvoice === null ? null : sendmessage($from_id, $cardInvoice['text'], $cardInvoice['keyboard'], 'HTML');
+        if (empty($message_id['ok'])) {
+            $message_id = sendmessage($from_id, $textabangatewaypay, $paymentkeyboard, 'HTML');
+        }
         updatePaymentMessageId($message_id, $randomString);
     } elseif ($datain == "digitaltron") {
 

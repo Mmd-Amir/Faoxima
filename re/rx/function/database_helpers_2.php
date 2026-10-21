@@ -2691,7 +2691,69 @@ function abangatewayCreatePayment($order_id, $amount_toman, $user_id = null)
         'success' => true,
         'authority' => $authority,
         'pay_url' => $payUrl,
+        // «Card in the bot»: the invoice's own card and its exact amount, when
+        // the seller has it on. abangatewayCardInvoice() reads these.
+        'card_in_bot' => !empty($data['card_in_bot']),
+        'card' => is_array($data['card'] ?? null) ? $data['card'] : [],
+        'payable_rial' => (int) ($data['payable_rial'] ?? 0),
+        'payable_toman' => (int) ($data['payable_toman'] ?? 0),
+        'minutes_left' => (int) ($data['minutes_left'] ?? 0),
     ];
+}
+
+/**
+ * The payment message with the card itself in it, or null for the usual one.
+ *
+ * When the seller leaves «کارت داخل ربات» on in AbanGateway, the create answer
+ * carries the invoice's card, its holder and the exact payable amount. The
+ * buyer then has all of it in the chat, with copy buttons for the card number
+ * and for the amount in Rial and in Toman, and the payment page one button
+ * below: someone whose network will not open the page can still pay. It is
+ * one message, not an extra one, so the expiry cron deletes it with the
+ * invoice and no stale card is left in the chat. Anything missing or odd in
+ * the answer and the caller sends its usual message instead.
+ */
+function abangatewayCardInvoice(array $pay, $order_id)
+{
+    global $textbotlang;
+
+    $number = preg_replace('/\D/', '', (string) ($pay['card']['number'] ?? ''));
+    $rial = (int) ($pay['payable_rial'] ?? 0);
+    $toman = (int) ($pay['payable_toman'] ?? 0);
+    $minutes = (int) ($pay['minutes_left'] ?? 0);
+    $payUrl = trim((string) ($pay['pay_url'] ?? ''));
+    if (empty($pay['card_in_bot']) || $number === '' || $rial < 1 || $toman < 1 || $minutes < 1 || stripos($payUrl, 'https://') !== 0) {
+        return null;
+    }
+
+    $holder = htmlspecialchars(trim((string) ($pay['card']['holder'] ?? '')), ENT_QUOTES, 'UTF-8');
+    $bank = trim((string) ($pay['card']['bank'] ?? ''));
+    if ($bank !== '') {
+        $holder .= ' (' . htmlspecialchars($bank, ENT_QUOTES, 'UTF-8') . ')';
+    }
+
+    $text = faoxima_render_text(faoxima_textbot_get('dyn_abangateway_card_invoice', "✅ تراکنش شما ایجاد شد\n\n🛒 کد پیگیری: <code>{order}</code>\n\n💳 شماره کارت:\n<code>{card}</code>\n👤 به نام: {holder}\n\n💰 مبلغ دقیق: <b>{amount} تومان</b>\nبه ریال: <code>{rial}</code>\nبه تومان: <code>{toman}</code>\n\n⏳ مهلت پرداخت: {minutes} دقیقه\n\n⚠️ دقیقا همین مبلغ را کارت به کارت کنید، نه بیشتر و نه کمتر؛ تایید خودکار با همین عدد انجام میشود. بعد از واریز لازم نیست رسید بفرستید؛ نتیجه همین جا به شما خبر داده میشود.\n💡 اگر صفحه پرداخت را ترجیح میدهید، دکمه «پرداخت» را بزنید."), [
+        'order' => htmlspecialchars((string) $order_id, ENT_QUOTES, 'UTF-8'),
+        'card' => $number,
+        'holder' => $holder,
+        'amount' => number_format($toman),
+        'rial' => $rial,
+        'toman' => $toman,
+        'minutes' => $minutes,
+    ]);
+
+    $keyboard = json_encode([
+        'inline_keyboard' => [
+            [['text' => faoxima_textbot_get('dyn_abangateway_copy_card', '📋 کپی شماره کارت'), 'copy_text' => ['text' => $number]]],
+            [
+                ['text' => faoxima_textbot_get('dyn_abangateway_copy_rial', '📋 کپی مبلغ به ریال'), 'copy_text' => ['text' => (string) $rial]],
+                ['text' => faoxima_textbot_get('dyn_abangateway_copy_toman', '📋 کپی مبلغ به تومان'), 'copy_text' => ['text' => (string) $toman]],
+            ],
+            [['text' => $textbotlang['users']['Balance']['payments'] ?? 'پرداخت', 'url' => $payUrl]],
+        ],
+    ], JSON_UNESCAPED_UNICODE);
+
+    return ['text' => $text, 'keyboard' => $keyboard];
 }
 
 /**
