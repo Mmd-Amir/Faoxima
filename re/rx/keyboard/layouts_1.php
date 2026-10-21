@@ -199,7 +199,7 @@ if (is_array($keyboardLayout) && isset($keyboardLayout['keyboard']) && is_array(
 }
 
 $rxMiniAppDomain = (string)($domainhosts ?? ($GLOBALS['domainhosts'] ?? ''));
-$rxMiniAppApply = function (array $rows) use ($datatextbot, $rxMiniAppDomain) {
+$rxMiniAppApply = function (array $rows, bool $inline) use ($datatextbot, $rxMiniAppDomain) {
     $rxMiniAppUrl = '';
     $rxMiniAppHost = rtrim((string)preg_replace('#^https?://#i', '', trim($rxMiniAppDomain)), '/');
     if ($rxMiniAppHost !== '') {
@@ -221,9 +221,13 @@ $rxMiniAppApply = function (array $rows) use ($datatextbot, $rxMiniAppDomain) {
             if (is_array($rxMiniAppBtn) && isset($rxMiniAppBtn['text']) && $rxMiniAppBtn['text'] === 'text_miniapp_button') {
                 $rxMiniAppFound = true;
                 if ($rxMiniAppUrl === '') continue;
-                unset($rxMiniAppBtn['callback_data'], $rxMiniAppBtn['_rxsk']);
+                unset($rxMiniAppBtn['callback_data'], $rxMiniAppBtn['_rxsk'], $rxMiniAppBtn['url'], $rxMiniAppBtn['web_app']);
                 $rxMiniAppBtn['text'] = $rxMiniAppLabel;
-                $rxMiniAppBtn['web_app'] = ['url' => $rxMiniAppUrl];
+                // Reply-keyboard Web Apps receive no initData. Send a text
+                // command there so the bot can offer an authenticated inline launch.
+                if ($inline) {
+                    $rxMiniAppBtn['web_app'] = ['url' => $rxMiniAppUrl];
+                }
             }
             $rxMiniAppNewRow[] = $rxMiniAppBtn;
         }
@@ -299,7 +303,7 @@ if (($setting['inlinebtnmain'] == "oninline" || (function_exists('rx_richSection
     $keyboard = ['inline_keyboard' => []];
     $keyboardcustom = $trace_keyboard;
     $keyboardcustom = json_decode(strtr(strval(json_encode($keyboardcustom)), $replacements), true);
-    if (is_array($keyboardcustom)) $keyboardcustom = $rxMiniAppApply($keyboardcustom);
+    if (is_array($keyboardcustom)) $keyboardcustom = $rxMiniAppApply($keyboardcustom, true);
     if (!empty($temp_addtional_key)) $keyboardcustom[] = $temp_addtional_key;
     $keyboard['inline_keyboard'] = $keyboardcustom;
     $keyboard = function_exists('rx_finalizeInlineAdminKb')
@@ -329,7 +333,7 @@ if (($setting['inlinebtnmain'] == "oninline" || (function_exists('rx_richSection
     $keyboard = ['keyboard' => [], 'resize_keyboard' => true];
     $keyboardcustom = $keyboardRows;
     $keyboardcustom = json_decode(strtr(strval(json_encode($keyboardcustom)), $replacements), true);
-    if (is_array($keyboardcustom)) $keyboardcustom = $rxMiniAppApply($keyboardcustom);
+    if (is_array($keyboardcustom)) $keyboardcustom = $rxMiniAppApply($keyboardcustom, false);
     if (!empty($temp_addtional_key)) $keyboardcustom[] = $temp_addtional_key;
     $keyboard['keyboard'] = $keyboardcustom;
     $keyboard = function_exists('rx_finalizeInlineAdminKb')

@@ -735,6 +735,9 @@ $edgeRejectedKeys = isset($_GET['edge_rejected']) ? array_values(array_filter(ex
                                             <?php echo icon('circle-exclamation', 'svg-icon'); ?> متغیر
                                         </span>
                                     <?php endif; ?>
+                                    <?php if ($k === 'text_start'): ?>
+                                        <span class="text-key__hint" dir="ltr"><?php echo '{name}, {first_name}, {last_name}, {username}, {shanase}, {referral_code}, {phone}, {register_date}, {balance}, {order_count}, {payment_count}, {affiliate_count}, {group}, {date_now}, {time_now}, {time}, {version}'; ?></span>
+                                    <?php endif; ?>
                                     <?php if (tonpayTemplateIsKnown($k)): ?>
                                         <span class="text-key__hint" dir="ltr"><?php echo htmlspecialchars(tonpayTemplatePlaceholderHint($k) !== '' ? tonpayTemplatePlaceholderHint($k) : 'بدون متغیر', ENT_QUOTES, 'UTF-8'); ?></span>
                                     <?php endif; ?>

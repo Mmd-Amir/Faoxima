@@ -551,10 +551,41 @@ $time_string = "📆 $date_start → ⏰ $time_Start";
 $varable_start = [
     '{username}' => $username,
     '{first_name}' => $first_name,
+    '{name}' => $first_name,
     '{last_name}' => $last_name,
     '{time}' => $time_string,
     '{version}' => $version
 ];
+$startPhone = (string) ($user['number'] ?? 'none');
+if ($startPhone === 'none' || $startPhone === '') {
+    $startPhone = '🔴 ارسال نشده است 🔴';
+} elseif ($startPhone === 'confrim number by admin') {
+    $startPhone = '✅ تایید شده توسط ادمین';
+}
+$startRegister = $user['register'] ?? null;
+$varable_start += [
+    '{shanase}' => (string) $from_id,
+    '{referral_code}' => htmlspecialchars((string) ($user['codeInvitation'] ?? ''), ENT_QUOTES, 'UTF-8'),
+    '{phone}' => htmlspecialchars($startPhone, ENT_QUOTES, 'UTF-8'),
+    '{register_date}' => is_numeric($startRegister) && (int) $startRegister > 0
+        ? jdate('Y/m/d H:i:s', (int) $startRegister) : '',
+    '{balance}' => number_format((float) ($user['Balance'] ?? 0), 0),
+    '{affiliate_count}' => (int) ($user['affiliatescount'] ?? 0),
+    '{group}' => ['f' => 'عادی', 'n' => 'نماینده', 'n2' => 'نمایندگی پیشرفته'][$user['agent'] ?? 'f'] ?? 'عادی',
+    '{date_now}' => $time_Start,
+    '{time_now}' => $date_start,
+];
+// Only count orders/payments when the start template actually uses them.
+if (strpos($datatextbot['text_start'], '{order_count}') !== false) {
+    $startOrderStmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE id_user = :id_user AND name_product != 'سرویس تست' AND status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold')");
+    $startOrderStmt->execute([':id_user' => $from_id]);
+    $varable_start['{order_count}'] = (int) $startOrderStmt->fetchColumn();
+}
+if (strpos($datatextbot['text_start'], '{payment_count}') !== false) {
+    $startPaymentStmt = $pdo->prepare("SELECT COUNT(*) FROM Payment_report WHERE id_user = :from_id AND payment_Status = 'paid'");
+    $startPaymentStmt->execute([':from_id' => $from_id]);
+    $varable_start['{payment_count}'] = (int) $startPaymentStmt->fetchColumn();
+}
 $datatextbot['text_start'] = strtr($datatextbot['text_start'], $varable_start);
 if (function_exists('rx_resolveInlineButtonText') && isset($datain) && is_string($datain) && strpos($datain, 'rxb_') === 0) {
     $rxResolvedInlineText = rx_resolveInlineButtonText($datain);
@@ -1119,6 +1150,25 @@ if ($shouldCheckChannel && !in_array($from_id, $admin_ids)) {
         }
     }
 }
+$rxMiniAppLabel = trim((string)($datatextbot['text_miniapp_button'] ?? ''));
+if ($rxMiniAppLabel === '') $rxMiniAppLabel = '🚀 Open Mini App';
+if ($Chat_type === 'private' && empty($callback_query_id)
+    && is_string($text) && trim($text) === $rxMiniAppLabel) {
+    $rxMiniAppHost = rtrim((string)preg_replace('#^https?://#i', '', trim((string)($domainhosts ?? ''))), '/');
+    $rxMiniAppUrl = $rxMiniAppHost !== '' ? 'https://' . $rxMiniAppHost . '/app/' : '';
+    if ($rxMiniAppUrl === '' || filter_var($rxMiniAppUrl, FILTER_VALIDATE_URL) === false
+        || (string)parse_url($rxMiniAppUrl, PHP_URL_HOST) === '') {
+        sendmessage($from_id, 'آدرس مینی‌اپ تنظیم نشده است. لطفاً با پشتیبانی تماس بگیرید.', null, 'html');
+        return;
+    }
+    $rxMiniAppKeyboard = json_encode(['inline_keyboard' => [[[
+        'text' => $rxMiniAppLabel,
+        'web_app' => ['url' => $rxMiniAppUrl],
+    ]]]], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    sendmessage($from_id, 'برای ورود به مینی‌اپ، دکمهٔ زیر را بزنید.', $rxMiniAppKeyboard, 'html');
+    return;
+}
+
 if ($text == "/start" || $datain == "start" || $text == "start" || $rxStartLanding) {
     $rxStartResetStmt = $pdo->prepare("UPDATE user SET Processing_value = '0', Processing_value_one = '0', Processing_value_tow = '0', Processing_value_four = '0' WHERE id = ?");
     $rxStartResetStmt->execute([$from_id]);
