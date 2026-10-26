@@ -59,6 +59,7 @@ final class PaymentMethodsHandler extends BaseHandler
             'cubepay'       => ['minbalancecubepay',       'maxbalancecubepay'],
             'blupal'        => ['minbalanceblupal',        'maxbalanceblupal'],
             'variza'        => ['minbalancevariza',        'maxbalancevariza'],
+            'noapay'   => ['minbalancenoapay',   'maxbalancenoapay'],
             'abangateway'   => ['minbalanceabangateway',   'maxbalanceabangateway'],
             'atlaspay'      => ['minbalanceatlaspay',      'maxbalanceatlaspay'],
         ];
@@ -202,6 +203,9 @@ final class PaymentMethodsHandler extends BaseHandler
                 'icon'  => '💳',
                 'kind'  => 'form',
             ];
+        }
+        if (function_exists('noapayIsReady') && noapayIsReady()) {
+            $methods[] = ['id' => 'noapay', 'label' => $L('noapay', '💳 NoaPay'), 'icon' => '💳', 'kind' => 'form'];
         }
         // Listed only when it can take money: on, with an https address and a key.
         if ($abangatewayActive === 'onabangateway' && stripos($abangatewayUrl, 'https://') === 0 && $abangatewayKey !== '' && $abangatewayKey !== '0') {

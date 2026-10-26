@@ -1336,6 +1336,43 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $blupal, 'HTML');
 } elseif ($datain == "varizasetting" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $variza, 'HTML');
+} elseif (preg_match('/^noapay_fee(?:_(buyer|seller|split))?$/D', (string) $datain, $noapayFeeMatch) && $adminrulecheck['rule'] == 'administrator') {
+    if (isset($noapayFeeMatch[1]) && $noapayFeeMatch[1] !== '') {
+        update('PaySetting', 'ValuePay', $noapayFeeMatch[1], 'NamePay', 'noapay_fee_mode');
+    }
+    $feeMode = $noapayFeeMatch[1] ?? noapaySetting('noapay_fee_mode', 'seller');
+    $feeRows = [];
+    foreach (['buyer' => 'خریدار (fee_on_user=true)', 'seller' => 'فروشنده (fee_on_user=false)', 'split' => 'نصف‌نصف (split_fee=true)'] as $mode => $label) {
+        $feeRows[] = [['text' => ($feeMode === $mode ? '✅ ' : '') . $label, 'callback_data' => 'noapay_fee_' . $mode]];
+    }
+    $feeRows[] = [['text' => '🔙 تنظیمات NoaPay', 'callback_data' => 'noapaysetting']];
+    nm_adminInstantReply($from_id, '⚖️ پرداخت‌کننده کارمزد NoaPay را انتخاب کنید. این انتخاب برای فاکتورهای جدید اعمال می‌شود.', json_encode(['inline_keyboard' => $feeRows], JSON_UNESCAPED_UNICODE), 'HTML');
+} elseif (($datain == 'noapay_webhooksecret' || $datain == 'noapay_apikey' || $datain == 'noapay_url' || in_array($text, ['🔑 ثبت کلید اتصال NoaPay', '🔗 ثبت آدرس درگاه NoaPay'], true)) && $adminrulecheck['rule'] == 'administrator') {
+    $noapayField = $datain == 'noapay_webhooksecret' ? 'noapay_webhook_secret' : (($datain == 'noapay_url' || $text == '🔗 ثبت آدرس درگاه NoaPay') ? 'urlnoapay' : 'apinoapay');
+    $noapayPrompt = $noapayField === 'urlnoapay'
+        ? 'آدرس اصلی NoaPay را بدون /api/v1 بفرستید. آدرس داکیومنت: http://noapay.mirname.xyz'
+        : ($noapayField === 'apinoapay' ? 'کلید API تأییدشده NoaPay را بفرستید.' : 'Webhook Secret دریافتی از NoaPay را بفرستید.');
+    nm_adminInstantReply($from_id, $noapayPrompt, $backadmin, 'HTML');
+    step($noapayField, $from_id);
+} elseif (in_array($user['step'], ['apinoapay', 'urlnoapay', 'noapay_webhook_secret'], true) && $adminrulecheck['rule'] == 'administrator') {
+    $noapayValue = trim((string) $text);
+    if ($noapayValue === '' || preg_match('/[\r\n]/', $noapayValue)) {
+        nm_adminInstantReply($from_id, '❌ مقدار معتبر را در یک خط بفرستید.', $backadmin, 'HTML');
+        return;
+    }
+    if ($user['step'] === 'urlnoapay') {
+        $noapayValue = rtrim($noapayValue, '/');
+        if (!filter_var($noapayValue, FILTER_VALIDATE_URL) || !in_array(parse_url($noapayValue, PHP_URL_SCHEME), ['http', 'https'], true)
+            || parse_url($noapayValue, PHP_URL_QUERY) !== null || parse_url($noapayValue, PHP_URL_USER) !== null || parse_url($noapayValue, PHP_URL_FRAGMENT) !== null) {
+            nm_adminInstantReply($from_id, '❌ آدرس اصلی HTTP یا HTTPS معتبر را بفرستید.', $backadmin, 'HTML');
+            return;
+        }
+    }
+    update('PaySetting', 'ValuePay', $noapayValue, 'NamePay', $user['step']);
+    step('home', $from_id);
+    nm_adminInstantReply($from_id, '✅ تنظیمات NoaPay ذخیره شد.', $noapay, 'HTML');
+} elseif ($datain == "noapaysetting" && $adminrulecheck['rule'] == "administrator") {
+    nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $noapay, 'HTML');
 } elseif ($datain == "abangatewaysetting" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $abangateway, 'HTML');
 } elseif ($datain == "atlaspaysetting" && $adminrulecheck['rule'] == "administrator") {
@@ -1719,10 +1756,18 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $variza, 'HTML');
     update("textbot", "text", $text, "id_text", "variza");
     step("home", $from_id);
+} elseif ($text == "🏷️ نام نمایشی درگاه NoaPay") {
+    $prompt = "🏷️ نام نمایشی دلخواه برای درگاه NoaPay را ارسال کنید.";
+    nm_adminInstantReply($from_id, $prompt, $backadmin, 'HTML');
+    step("gettextnoapay", $from_id);
 } elseif ($text == "🏷️ نام نمایشی درگاه آبان گیت وی") {
     $prompt = "🏷️ نام نمایشی دلخواه برای درگاه آبان گیت وی را ارسال کنید.";
     nm_adminInstantReply($from_id, $prompt, $backadmin, 'HTML');
     step("gettextabangateway", $from_id);
+} elseif ($user['step'] == "gettextnoapay") {
+    nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $noapay, 'HTML');
+    update("textbot", "text", $text, "id_text", "noapay");
+    step("home", $from_id);
 } elseif ($user['step'] == "gettextabangateway") {
     nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $abangateway, 'HTML');
     update("textbot", "text", $text, "id_text", "abangateway");
@@ -2992,6 +3037,13 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
             $valuenew = "onvariza";
         }
         update("PaySetting", "ValuePay", $valuenew, "NamePay", "statusvariza");
+    } elseif ($type == "noapay") {
+        if ($value == "onnoapay") {
+            $valuenew = "offnoapay";
+        } else {
+            $valuenew = "onnoapay";
+        }
+        update("PaySetting", "ValuePay", $valuenew, "NamePay", "statusnoapay");
     } elseif ($type == "abangateway") {
         if ($value == "onabangateway") {
             $valuenew = "offabangateway";
@@ -3083,9 +3135,22 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     savedata("save", "cashback_menu", "variza");
     nm_adminInstantReply($from_id, "📌 جامعه هدف این کش‌بک را انتخاب نمایید", rx_cashbackTargetKeyboard(), 'HTML');
     step("getcashtarget", $from_id);
+} elseif ($text == "💰 کش بک NoaPay") {
+    nm_adminInstantReply($from_id, "📌 در این بخش می توانید تعیین کنید کاربر پس از پرداخت چه درصدی به عنوان هدیه به حسابش واریز شود. ( برای غیرفعال کردن عدد صفر ارسال کنید )", $backadmin, 'HTML');
+    step("getcashnoapay", $from_id);
 } elseif ($text == "💰 کش بک آبان گیت وی") {
     nm_adminInstantReply($from_id, "📌 در این بخش می توانید تعیین کنید کاربر پس از پرداخت چه درصدی به عنوان هدیه به حسابش واریز شود. ( برای غیرفعال کردن عدد صفر ارسال کنید )", $backadmin, 'HTML');
     step("getcashabangateway", $from_id);
+} elseif ($user['step'] == "getcashnoapay") {
+    if (!ctype_digit($text)) {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
+        return;
+    }
+    savedata("clear", "cashback_percent", $text);
+    savedata("save", "cashback_key", "chashbacknoapay");
+    savedata("save", "cashback_menu", "noapay");
+    nm_adminInstantReply($from_id, "📌 جامعه هدف این کش‌بک را انتخاب نمایید", rx_cashbackTargetKeyboard(), 'HTML');
+    step("getcashtarget", $from_id);
 } elseif ($user['step'] == "getcashabangateway") {
     if (!ctype_digit($text)) {
         nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
@@ -3234,6 +3299,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         'trnado' => $trnado,
         'tonpay' => $tonpay,
         'blupal' => $blupal,
+        'noapay' => $noapay,
         'abangateway' => $abangateway,
         'cubepay' => $cubepay,
         'NowPaymentsManage' => $NowPaymentsManage,
@@ -4022,9 +4088,20 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی تنظیم گردید.", $variza, 'HTML');
     step("home", $from_id);
     update("PaySetting", "ValuePay", $text, "NamePay", "maxbalancevariza");
+} elseif ($text == "⬇️ کف NoaPay") {
+    nm_adminInstantReply($from_id, "📌 حداقل مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
+    step("getmainnoapay", $from_id);
 } elseif ($text == "⬇️ کف آبان گیت وی") {
     nm_adminInstantReply($from_id, "📌 حداقل مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
     step("getmainabangateway", $from_id);
+} elseif ($user['step'] == "getmainnoapay") {
+    if (!ctype_digit($text)) {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
+        return;
+    }
+    nm_adminInstantReply($from_id, "✅ حداقل مبلغ واریزی تنظیم گردید.", $noapay, 'HTML');
+    step("home", $from_id);
+    update("PaySetting", "ValuePay", $text, "NamePay", "minbalancenoapay");
 } elseif ($user['step'] == "getmainabangateway") {
     if (!ctype_digit($text)) {
         nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
@@ -4033,9 +4110,20 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     nm_adminInstantReply($from_id, "✅ حداقل مبلغ واریزی تنظیم گردید.", $abangateway, 'HTML');
     step("home", $from_id);
     update("PaySetting", "ValuePay", $text, "NamePay", "minbalanceabangateway");
+} elseif ($text == "⬆️ سقف NoaPay") {
+    nm_adminInstantReply($from_id, "📌 حداکثر مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
+    step("getmaxnoapay", $from_id);
 } elseif ($text == "⬆️ سقف آبان گیت وی") {
     nm_adminInstantReply($from_id, "📌 حداکثر مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
     step("getmaxabangateway", $from_id);
+} elseif ($user['step'] == "getmaxnoapay") {
+    if (!ctype_digit($text)) {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
+        return;
+    }
+    nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی تنظیم گردید.", $noapay, 'HTML');
+    step("home", $from_id);
+    update("PaySetting", "ValuePay", $text, "NamePay", "maxbalancenoapay");
 } elseif ($user['step'] == "getmaxabangateway") {
     if (!ctype_digit($text)) {
         nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
@@ -5088,11 +5176,47 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     }
     step('home', $from_id);
     nm_adminInstantReply($from_id, "✅ آموزش با موفقیت ذخیره گردید.", $variza, 'HTML');
+} elseif ($text == "📚 آموزش NoaPay" && $adminrulecheck['rule'] == "administrator") {
+    nm_adminInstantReply($from_id, "📌آموزش خود را ارسال نمایید .
+۱ - در صورتی که میخواید اموزشی نشان داده نشود عدد 2 را ارسال کنید
+۲ - شما می توانید آموزش بصورت فیلم ُ  متن ُ تصویر ارسال نمایید", $backadmin, 'HTML');
+    step("helpnoapay", $from_id);
 } elseif ($text == "📚 آموزش آبان گیت وی" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, "📌آموزش خود را ارسال نمایید .
 ۱ - در صورتی که میخواید اموزشی نشان داده نشود عدد 2 را ارسال کنید
 ۲ - شما می توانید آموزش بصورت فیلم ُ  متن ُ تصویر ارسال نمایید", $backadmin, 'HTML');
     step("helpabangateway", $from_id);
+} elseif ($user['step'] == "helpnoapay") {
+    if ($text) {
+        if (intval($text) == 2) {
+            update("PaySetting", "ValuePay", "2", "NamePay", "helpnoapay");
+        } else {
+            $data = json_encode(array(
+                'type' => "text",
+                'text' => $text
+            ));
+            update("PaySetting", "ValuePay", $data, "NamePay", "helpnoapay");
+        }
+    } elseif ($photo) {
+        $data = json_encode(array(
+            'type' => "photo",
+            'text' => $caption,
+            'photoid' => $photoid
+        ));
+        update("PaySetting", "ValuePay", $data, "NamePay", "helpnoapay");
+    } elseif ($video) {
+        $data = json_encode(array(
+            'type' => "video",
+            'text' => $caption,
+            'videoid' => $videoid
+        ));
+        update("PaySetting", "ValuePay", $data, "NamePay", "helpnoapay");
+    } else {
+        nm_adminInstantReply($from_id, "❌ محتوای ارسال نامعتبر است.", $backadmin, 'HTML');
+        return;
+    }
+    step('home', $from_id);
+    nm_adminInstantReply($from_id, "✅ آموزش با موفقیت ذخیره گردید.", $noapay, 'HTML');
 } elseif ($user['step'] == "helpabangateway") {
     if ($text) {
         if (intval($text) == 2) {

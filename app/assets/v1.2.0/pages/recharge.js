@@ -12,6 +12,7 @@ function iconForMethod(m) {
     if (id === 'cubepay')              return 'tronado';
     if (id === 'blupal')               return 'tronado';
     if (id === 'variza')               return 'tronado';
+    if (id === 'noapay')          return 'tronado';
     if (id === 'abangateway')          return 'tronado';
     if (id === 'atlaspay')             return 'tronado';
     if (id.startsWith('iranpay'))      return 'flower';
@@ -425,7 +426,7 @@ function isAutoConfirmGatewayId(id) {
     return (
         x === 'plisio' || x === 'nowpayment' || x === 'digitaltron' ||
         x.startsWith('iranpay') || x === 'tonpay' || x === 'cubepay' ||
-        x === 'zarinpal' || x === 'blupal' || x === 'variza' || x === 'abangateway' || x === 'atlaspay'
+        x === 'zarinpal' || x === 'blupal' || x === 'variza' || x === 'noapay' || x === 'abangateway' || x === 'atlaspay'
     );
 }
 
@@ -1063,7 +1064,7 @@ async function startAtlaspayCustomForRecharge(view, obj) {
 }
 
 async function startGatewayWatchForRecharge(view, methodId, obj) {
-    if (obj.url) openLink(obj.url);
+    if (obj.url) openLink(obj.url, { keepMiniAppOpen: methodId === 'noapay' });
     try {
         const mod = await import( './gateway-watch.js');
         if (!mod || typeof mod.startGatewayWatch !== 'function') {
@@ -1085,12 +1086,16 @@ async function startGatewayWatchForRecharge(view, methodId, obj) {
         mod.startGatewayWatch(view, {
             orderId: obj.order_id,
             title: isCrypto ? 'در انتظار تایید پرداخت ارزی…' : 'در انتظار تایید پرداخت…',
-            subtitle: 'به‌محض تایید درگاه، نتیجه نمایش داده می‌شود.',
+            subtitle: methodId === 'noapay'
+                ? `مبلغ قابل‌پرداخت: ${Number(obj.payable_amount || 0).toLocaleString('fa-IR')} تومان؛ شامل گرد کردن به هزار تومان و کارمزد انتخاب‌شده. پس از تکمیل پرداخت، نتیجه نمایش داده می‌شود.`
+                : 'به‌محض تایید درگاه، نتیجه نمایش داده می‌شود.',
             gatewayUrl: obj.url,
+            keepMiniAppOpen: methodId === 'noapay',
+            expiresAtSec: methodId === 'noapay' ? Number(obj.expires_at || 0) : 0,
             isCrypto,
             mode: 'recharge',
             method: methodId,
-            timeoutSec: methodId === 'cubepay' ? 3600 : (methodId === 'atlaspay' ? 1200 : (methodId === 'tonpay' ? 86400 : 1800)),
+            timeoutSec: (methodId === 'cubepay' || methodId === 'noapay') ? 3600 : (methodId === 'atlaspay' ? 1200 : (methodId === 'tonpay' ? 86400 : 1800)),
             pollEverySec: 5,
             onSuccess: (st) => {
                 const amount = Number(st.amount || 0).toLocaleString('en-US');

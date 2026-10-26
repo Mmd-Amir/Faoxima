@@ -28,7 +28,7 @@ final class PendingPaymentsHandler extends BaseHandler
                    FROM Payment_report
                   WHERE id_user = :u
                     AND payment_Status IN ('Unpaid','waiting','AwaitingHash','pending','expire')
-                     AND Payment_Method IN ('plisio','nowpayment','digitaltron','arze digital offline','cart to cart','carttocart_pv','iranpay2','tonpay','cubepay','blupal','variza','abangateway','atlaspay')
+                     AND Payment_Method IN ('plisio','nowpayment','digitaltron','arze digital offline','cart to cart','carttocart_pv','iranpay2','tonpay','cubepay','blupal','variza','noapay','abangateway','atlaspay')
                     AND (source = 'miniapp'" . $sbvSourceSql . " OR (Payment_Method = 'tonpay' AND tonpay_gateway_mode = 'custom') OR (Payment_Method = 'atlaspay' AND atlaspay_gateway_mode = 'custom'))
                   ORDER BY id DESC
                   LIMIT 8",
@@ -95,6 +95,8 @@ final class PendingPaymentsHandler extends BaseHandler
                     return !empty($labels['blupal']) ? $labels['blupal'] : 'بلوپال';
                 case 'variza':
                     return !empty($labels['variza']) ? $labels['variza'] : 'واریزا';
+                case 'noapay':
+                    return !empty($labels['noapay']) ? $labels['noapay'] : 'NoaPay';
                 case 'abangateway':
                     return !empty($labels['abangateway']) ? $labels['abangateway'] : 'آبان گیت وی';
                 case 'atlaspay':
@@ -141,7 +143,7 @@ final class PendingPaymentsHandler extends BaseHandler
                 if (trim((string)($r['blupal_invoice_id'] ?? '')) === '') continue;
             } elseif ($methodLc === 'atlaspay') {
                 if (trim((string)($r['atlaspay_order_id'] ?? '')) === '') continue;
-            } elseif (in_array($methodLc, ['plisio', 'nowpayment', 'digitaltron', 'iranpay2', 'variza', 'abangateway'], true)) {
+            } elseif (in_array($methodLc, ['plisio', 'nowpayment', 'digitaltron', 'iranpay2', 'variza', 'noapay', 'abangateway'], true)) {
                 if ($decVal === '') continue;
             }
 
@@ -202,6 +204,7 @@ final class PendingPaymentsHandler extends BaseHandler
         if (strtolower($method) === 'cubepay') {
             return 3600;
         }
+        if (strtolower($method) === 'noapay') { return 3600; }
         if (strtolower($method) === 'variza') {
             return 3600;
         }

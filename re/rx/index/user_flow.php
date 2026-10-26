@@ -4815,6 +4815,76 @@ $textonebuy
         }
         $message_id = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
         updatePaymentMessageId($message_id, $randomString);
+    } elseif (preg_match('/^noapay_check_([a-zA-Z0-9_-]{1,64})$/D', (string) $datain, $noapayCheck)) {
+        $noapayReport = select('Payment_report', '*', 'id_order', $noapayCheck[1], 'select', ['cache' => false]);
+        if (!is_array($noapayReport) || (string) $noapayReport['id_user'] !== (string) $from_id || ($noapayReport['Payment_Method'] ?? '') !== 'noapay') {
+            return;
+        }
+        $noapayResult = ['ok' => true];
+        try {
+            if (!in_array($noapayReport['payment_Status'], ['paid', 'cancelled'], true)) {
+                require_once REFACTORED_LEGACY_ROOT . '/lib/PaymentConfirm.php';
+                $noapayResult = noapayRefresh($noapayCheck[1]);
+            }
+            $noapayReport = select('Payment_report', '*', 'id_order', $noapayCheck[1], 'select', ['cache' => false]);
+            $noapayStatus = $noapayReport['payment_Status'] ?? '';
+            $noapayStatusText = $noapayStatus === 'paid' ? '✅ پرداخت شما تأیید شده است.' : (in_array($noapayStatus, ['reject', 'expire', 'cancelled'], true) ? 'این فاکتور رد، منقضی یا لغو شده است.' : '⏳ پرداخت هنوز تکمیل نشده یا رسید در حال بررسی است.');
+            if (empty($noapayResult['ok'])) { $noapayStatusText = 'بررسی NoaPay در دسترس نیست؛ کمی بعد دوباره تلاش کنید.'; }
+        } catch (Throwable $e) {
+            $noapayStatusText = 'بررسی NoaPay در دسترس نیست؛ کمی بعد دوباره تلاش کنید.';
+        }
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => $noapayStatusText, 'show_alert' => true, 'cache_time' => 0]);
+    } elseif ($datain == "noapay") {
+        if (!noapayIsReady()) {
+            sendmessage($from_id, '❌ درگاه NoaPay در دسترس نیست.', $keyboard, 'HTML');
+            return;
+        }
+        $noapayAmount = (int) $user['Processing_value'];
+        $noapayMin = (int) noapaySetting('minbalancenoapay', '20000');
+        $noapayMax = (int) noapaySetting('maxbalancenoapay', '1000000');
+        if ($noapayAmount <= 0 || $noapayAmount < $noapayMin || $noapayAmount > $noapayMax) {
+            sendmessage($from_id, '❌ مبلغ باید بین ' . number_format($noapayMin) . ' و ' . number_format($noapayMax) . ' تومان باشد.', null, 'HTML');
+            return;
+        }
+        $noapayPending = findPendingGatewayInvoice($from_id, 'noapay');
+        if ($noapayPending !== null) {
+            $noapaySaved = noapayInvoice((string) $noapayPending['id_order']);
+            if ($noapaySaved !== null) {
+                sendmessage($from_id, '⏳ یک فاکتور NoaPay در انتظار پرداخت دارید.', json_encode(['inline_keyboard' => [
+                    [['text' => '💳 ادامه پرداخت', 'url' => $noapaySaved['payment_url']]],
+                    [['text' => '🔄 بررسی پرداخت', 'callback_data' => 'noapay_check_' . $noapayPending['id_order']]],
+                ]], JSON_UNESCAPED_UNICODE), 'HTML');
+                return;
+            }
+        }
+        $noapayOrder = bin2hex(random_bytes(5));
+        $noapayDate = date('Y/m/d H:i:s');
+        $noapayTarget = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
+        $stmt = $pdo->prepare("INSERT INTO Payment_report (id_user,id_order,time,price,payment_Status,Payment_Method,id_invoice) VALUES (?,?,?,?,'Unpaid','noapay',?)");
+        $stmt->execute([(string) $from_id, $noapayOrder, $noapayDate, $noapayAmount, $noapayTarget]);
+        try {
+            $noapayPayment = noapayCreatePayment($noapayOrder, $noapayAmount, $from_id);
+        } catch (Throwable $e) {
+            $noapayPayment = ['success' => false];
+        }
+        if (empty($noapayPayment['success'])) {
+            update('Payment_report', 'payment_Status', 'reject', 'id_order', $noapayOrder);
+            sendmessage($from_id, '❌ ساخت فاکتور NoaPay ناموفق بود؛ کمی بعد دوباره تلاش کنید.', $keyboard, 'HTML');
+            return;
+        }
+        $noapayText = "✅ فاکتور NoaPay ساخته شد.\n\n🛒 کد پیگیری: <code>{$noapayOrder}</code>\n💰 مبلغ اعتبار یا سفارش: " . number_format($noapayAmount) . " تومان\n💳 مبلغ قابل‌پرداخت در درگاه: " . number_format($noapayPayment['total_toman']) . " تومان\n\nهر واحد درگاه ۱٬۰۰۰ تومان است؛ مبلغ پایه به هزار تومان بعدی گرد می‌شود. کارمزد طبق تنظیم درگاه اعمال شده است.\nرسید را در NoaPay ارسال کنید. پس از تکمیل سفارش درگاه، پرداخت اینجا تأیید می‌شود.";
+        $noapayKeyboard = json_encode(['inline_keyboard' => [
+            [['text' => '💳 پرداخت با NoaPay', 'url' => $noapayPayment['pay_url']]],
+            [['text' => '🔄 بررسی پرداخت', 'callback_data' => 'noapay_check_' . $noapayOrder]],
+        ]], JSON_UNESCAPED_UNICODE);
+        $noapayHelp = json_decode(noapaySetting('helpnoapay', '2'), true);
+        if (is_array($noapayHelp)) {
+            if (($noapayHelp['type'] ?? '') === 'text') { sendmessage($from_id, $noapayHelp['text'], null, 'HTML'); }
+            elseif (($noapayHelp['type'] ?? '') === 'photo') { sendphoto($from_id, $noapayHelp['photoid'], null); }
+            elseif (($noapayHelp['type'] ?? '') === 'video') { sendvideo($from_id, $noapayHelp['videoid'], null); }
+        }
+        $noapayMessage = sendmessage($from_id, $noapayText, $noapayKeyboard, 'HTML');
+        updatePaymentMessageId($noapayMessage, $noapayOrder);
     } elseif ($datain == "abangateway") {
         $mainbalanceabangateway = select("PaySetting", "ValuePay", "NamePay", "minbalanceabangateway", "select")['ValuePay'];
         $maxbalanceabangateway = select("PaySetting", "ValuePay", "NamePay", "maxbalanceabangateway", "select")['ValuePay'];

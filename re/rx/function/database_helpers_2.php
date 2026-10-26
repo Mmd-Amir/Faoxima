@@ -4799,3 +4799,5 @@ if (!function_exists('rxReferralGiftNotify')) {
         }
     }
 }
+
+require_once REFACTORED_LEGACY_ROOT . '/lib/NoaPay.php';

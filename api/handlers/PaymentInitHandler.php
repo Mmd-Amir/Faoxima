@@ -247,6 +247,10 @@ final class PaymentInitHandler extends BaseHandler
                     $this->handleVariza($amount);
                     return;
 
+                case 'noapay':
+                    $this->handleNoaPay($amount);
+                    return;
+
                 case 'abangateway':
                     $this->handleAbanGateway($amount);
                     return;
@@ -454,6 +458,7 @@ final class PaymentInitHandler extends BaseHandler
         if ($method === 'cubepay') {
             return 60;
         }
+        if ($method === 'noapay') { return 60; }
         if ($method === 'variza') {
             return 60;
         }
@@ -504,6 +509,7 @@ final class PaymentInitHandler extends BaseHandler
             'cubepay'       => ['minbalancecubepay',       'maxbalancecubepay'],
             'blupal'        => ['minbalanceblupal',        'maxbalanceblupal'],
             'variza'        => ['minbalancevariza',        'maxbalancevariza'],
+            'noapay'   => ['minbalancenoapay',   'maxbalancenoapay'],
             'abangateway'   => ['minbalanceabangateway',   'maxbalanceabangateway'],
             'atlaspay'      => ['minbalanceatlaspay',      'maxbalanceatlaspay'],
         ];
@@ -1108,6 +1114,59 @@ final class PaymentInitHandler extends BaseHandler
             'url'      => $paymentLink,
             'order_id' => $orderId,
             'message'  => faoxima_textbot_get('dyn_paymentinit_click_link_to_pay', '🌸 برای تکمیل پرداخت روی لینک زیر کلیک کنید.'),
+        ]);
+    }
+
+
+    private function handleNoaPay(int $amount): void
+    {
+        if (!function_exists('noapayIsReady') || !noapayIsReady()) {
+            FaoximaResponse::fail(503, '❌ درگاه NoaPay فعال یا کامل تنظیم نشده است.');
+        }
+        if (!function_exists('noapayCreatePayment')) {
+            FaoximaResponse::fail(503, faoxima_textbot_get('dyn_paymentinit_noapay_function_missing', '❌ تابع درگاه NoaPay روی این سرور موجود نیست.'));
+        }
+
+        $minRow = select('PaySetting', 'ValuePay', 'NamePay', 'minbalancenoapay', 'select');
+        $maxRow = select('PaySetting', 'ValuePay', 'NamePay', 'maxbalancenoapay', 'select');
+        $min = is_array($minRow) ? (int)($minRow['ValuePay'] ?? 0) : 0;
+        $max = is_array($maxRow) ? (int)($maxRow['ValuePay'] ?? 0) : 0;
+        if ($min > 0 && $amount < $min) {
+            FaoximaResponse::fail(422, faoxima_render_text(faoxima_textbot_get('dyn_paymentinit_min_amount', '❌ حداقل مبلغ پرداخت {min} تومان است.'), ['min' => number_format($min)]));
+        }
+        if ($max > 0 && $amount > $max) {
+            FaoximaResponse::fail(422, faoxima_render_text(faoxima_textbot_get('dyn_paymentinit_max_amount', '❌ حداکثر مبلغ پرداخت {max} تومان است.'), ['max' => number_format($max)]));
+        }
+
+        $orderId = bin2hex(random_bytes(5));
+
+        $this->insertPaymentReport('noapay', $amount, $orderId);
+
+        try {
+            $pay = noapayCreatePayment($orderId, $amount, $this->user['id'] ?? null);
+        } catch (Throwable $e) {
+            FaoximaLogger::userFacing('noapayCreatePayment() threw', ['err' => $e->getMessage()]);
+            update('Payment_report', 'payment_Status', 'reject', 'id_order', $orderId);
+            FaoximaResponse::fail(502, '❌ خطا در ارتباط با NoaPay.');
+        }
+
+        if (!is_array($pay) || empty($pay['success'])) {
+            $errMsg = is_array($pay) ? json_encode($pay, JSON_UNESCAPED_UNICODE) : 'unknown';
+            FaoximaLogger::userFacing('noapayCreatePayment() returned bad response', ['raw' => $errMsg]);
+            update('Payment_report', 'payment_Status', 'reject', 'id_order', $orderId);
+            update('Payment_report', 'dec_not_confirmed', $errMsg, 'id_order', $orderId);
+            FaoximaResponse::fail(502, faoxima_textbot_get('dyn_paymentinit_payment_link_creation_failed', '❌ ساخت لینک پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.'));
+        }
+
+        update('Payment_report', 'dec_not_confirmed', (string) $pay['authority'], 'id_order', $orderId);
+
+        FaoximaResponse::ok([
+            'kind'     => 'url',
+            'url'      => (string) $pay['pay_url'],
+            'order_id' => $orderId,
+            'payable_amount' => (int) $pay['total_toman'],
+            'expires_at' => (int) $pay['expires_at'],
+            'message'  => faoxima_textbot_get('dyn_paymentinit_click_link_to_pay', 'برای پرداخت NoaPay روی لینک کلیک کنید. مبلغ نهایی با گرد کردن به هزار تومان و کارمزد انتخابی در صفحه درگاه نمایش داده می‌شود.'),
         ]);
     }
 

@@ -33,6 +33,7 @@ $datatextbot = array(
     'cubepay' => '',
     'blupal' => '',
     'variza' => '',
+    'noapay' => '',
     'abangateway' => '',
     'atlaspay' => '',
     'aqayepardakht' => '',
@@ -63,12 +64,36 @@ if ($table_exists) {
         }
     }
 }
+// Reconcile NoaPay using the existing cron; no additional daemon or schedule is needed.
+// Its provider expiry and review states are authoritative, so exclude it from the generic 30-minute expiry below.
+if (function_exists('noapayRefresh') && trim(noapaySetting('apinoapay')) !== '') {
+    try {
+        $noapayPendingStmt = $pdo->prepare("SELECT n.id_order FROM noapay_invoice n JOIN Payment_report p ON p.id_order = n.id_order
+            WHERE p.Payment_Method = 'noapay' AND p.payment_Status NOT IN ('paid','cancelled')
+              AND n.gateway_status NOT IN ('completed','rejected','expired') AND n.checked_at < ?
+            ORDER BY n.checked_at ASC LIMIT 5");
+        $noapayPendingStmt->execute([time() - 60]);
+        $noapayPendingOrders = $noapayPendingStmt->fetchAll(PDO::FETCH_COLUMN);
+        if ($noapayPendingOrders !== []) {
+            rxPaymentV2PrepareContext();
+            require_once __DIR__ . '/../keyboard.php';
+            require_once __DIR__ . '/../jdf.php';
+            require_once __DIR__ . '/../lib/PaymentConfirm.php';
+            foreach ($noapayPendingOrders as $noapayPendingOrder) {
+                if (function_exists('rx_cron_time_up') && rx_cron_time_up()) { break; }
+                noapayRefresh((string) $noapayPendingOrder);
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[noapay] Pending invoice reconciliation failed');
+    }
+}
 $month_date_time_start = date('Y/m/d H:i:s', time() - 1800);
 if (function_exists('rx_sbv_has_schema') && rx_sbv_has_schema()) {
-    $stmt = $pdo->prepare("SELECT * FROM Payment_report WHERE payment_Status = 'Unpaid' AND (crypto_currency IS NULL OR crypto_currency = '') AND Payment_Method <> 'tonpay' AND (atlaspay_gateway_mode IS NULL OR atlaspay_gateway_mode <> 'custom') AND (payment_processing_version IS NULL OR payment_processing_version < 2 OR (COALESCE(atlaspay_local_state,'') <> 'manual_review' AND COALESCE(tronado_local_state,'') NOT IN ('manual_review','dispute_review'))) AND ((time < :cutoff AND NOT EXISTS (SELECT 1 FROM card_sms_payment csp WHERE csp.id_order = Payment_report.id_order)) OR EXISTS (SELECT 1 FROM card_sms_payment csp2 WHERE csp2.id_order = Payment_report.id_order AND csp2.state = 'open' AND csp2.deposit_id IS NULL AND csp2.expires_at + :grace <= :nowts)) ORDER BY id ASC LIMIT 120");
+    $stmt = $pdo->prepare("SELECT * FROM Payment_report WHERE payment_Status = 'Unpaid' AND (crypto_currency IS NULL OR crypto_currency = '') AND Payment_Method NOT IN ('tonpay','noapay') AND (atlaspay_gateway_mode IS NULL OR atlaspay_gateway_mode <> 'custom') AND (payment_processing_version IS NULL OR payment_processing_version < 2 OR (COALESCE(atlaspay_local_state,'') <> 'manual_review' AND COALESCE(tronado_local_state,'') NOT IN ('manual_review','dispute_review'))) AND ((time < :cutoff AND NOT EXISTS (SELECT 1 FROM card_sms_payment csp WHERE csp.id_order = Payment_report.id_order)) OR EXISTS (SELECT 1 FROM card_sms_payment csp2 WHERE csp2.id_order = Payment_report.id_order AND csp2.state = 'open' AND csp2.deposit_id IS NULL AND csp2.expires_at + :grace <= :nowts)) ORDER BY id ASC LIMIT 120");
     $stmt->execute([':cutoff' => $month_date_time_start, ':grace' => RX_SBV_EXPIRE_GRACE, ':nowts' => time()]);
 } else {
-    $stmt = $pdo->prepare("SELECT * FROM Payment_report WHERE time < :cutoff AND payment_Status = 'Unpaid' AND (crypto_currency IS NULL OR crypto_currency = '') AND Payment_Method <> 'tonpay' AND (atlaspay_gateway_mode IS NULL OR atlaspay_gateway_mode <> 'custom') AND (payment_processing_version IS NULL OR payment_processing_version < 2 OR (COALESCE(atlaspay_local_state,'') <> 'manual_review' AND COALESCE(tronado_local_state,'') NOT IN ('manual_review','dispute_review'))) ORDER BY id ASC LIMIT 120");
+    $stmt = $pdo->prepare("SELECT * FROM Payment_report WHERE time < :cutoff AND payment_Status = 'Unpaid' AND (crypto_currency IS NULL OR crypto_currency = '') AND Payment_Method NOT IN ('tonpay','noapay') AND (atlaspay_gateway_mode IS NULL OR atlaspay_gateway_mode <> 'custom') AND (payment_processing_version IS NULL OR payment_processing_version < 2 OR (COALESCE(atlaspay_local_state,'') <> 'manual_review' AND COALESCE(tronado_local_state,'') NOT IN ('manual_review','dispute_review'))) ORDER BY id ASC LIMIT 120");
     $stmt->execute([':cutoff' => $month_date_time_start]);
 }
 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -112,6 +137,7 @@ foreach ($rows as $result) {
         'cubepay' => $datatextbot['cubepay'],
         'blupal' => $datatextbot['blupal'],
         'variza' => $datatextbot['variza'],
+        'noapay' => $datatextbot['noapay'],
         'abangateway' => $datatextbot['abangateway'],
         'atlaspay' => $datatextbot['atlaspay'],
         'Currency Rial tow' => "پرداخت ارزی ریالی",

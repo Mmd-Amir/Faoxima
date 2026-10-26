@@ -73,6 +73,18 @@ final class PaymentStatusHandler extends BaseHandler
             FaoximaResponse::notFound('Payment not found');
         }
 
+        $noapayView = null;
+        if (($report['Payment_Method'] ?? '') === 'noapay') {
+            if (($report['payment_Status'] ?? '') !== 'paid' && ($report['payment_Status'] ?? '') !== 'cancelled') {
+                try {
+                    noapayRefresh($orderId);
+                    $report = FaoximaDb::fetchOne('SELECT * FROM Payment_report WHERE id_order = :o AND id_user = :u LIMIT 1', [':o' => $orderId, ':u' => (string) $this->user['id']]) ?? $report;
+                } catch (Throwable $e) {
+                    FaoximaLogger::userFacing('NoaPay status refresh failed');
+                }
+            }
+            $noapayView = noapayInvoice($orderId);
+        }
         $paymentStatus = (string)($report['payment_Status'] ?? 'Unpaid');
         $reasonRaw = trim((string)($report['dec_not_confirmed'] ?? ''));
         $reasonFa  = $this->resolveReason($paymentStatus, $reasonRaw);
@@ -163,6 +175,8 @@ final class PaymentStatusHandler extends BaseHandler
             $atlaspayCustomView = atlaspayCustomPublicView($report);
         }
 
+        if ($noapayView !== null) { $expiresAt = (int) $noapayView['expires_at']; }
+
         $payload = [
             'order_id'         => $orderId,
             'payment_status'   => $paymentStatus,
@@ -184,7 +198,7 @@ final class PaymentStatusHandler extends BaseHandler
             'tonpay_custom'    => $tonpayCustomView,
             'atlaspay_custom'  => $atlaspayCustomView,
             'fulfillment'      => ($sbvView !== null && function_exists('rx_sbv_fulfillment_outcome')) ? rx_sbv_fulfillment_outcome($orderId) : null,
-            'gateway_url'      => trim((string)($report['tronado_payment_url'] ?? '')) ?: ($tonpayGatewayUrl ?: (trim((string)($report['cubepay_payment_link'] ?? '')) ?: (trim((string)($report['blupal_payment_link'] ?? '')) ?: (trim((string)($report['atlaspay_payment_url'] ?? '')) ?: (trim((string)($report['tetrapay_payment_link'] ?? '')) ?: $abangatewayUrl))))),
+            'gateway_url'      => ($noapayView['payment_url'] ?? '') ?: trim((string)($report['tronado_payment_url'] ?? '')) ?: ($tonpayGatewayUrl ?: (trim((string)($report['cubepay_payment_link'] ?? '')) ?: (trim((string)($report['blupal_payment_link'] ?? '')) ?: (trim((string)($report['atlaspay_payment_url'] ?? '')) ?: (trim((string)($report['tetrapay_payment_link'] ?? '')) ?: $abangatewayUrl))))),
         ];
 
         FaoximaResponse::ok($payload);
@@ -295,6 +309,7 @@ final class PaymentStatusHandler extends BaseHandler
         if ((string)($report['Payment_Method'] ?? '') === 'cubepay') {
             return 3600;
         }
+        if ((string)($report['Payment_Method'] ?? '') === 'noapay') { return 3600; }
         if ((string)($report['Payment_Method'] ?? '') === 'variza') {
             return 3600;
         }

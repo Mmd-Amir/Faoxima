@@ -203,6 +203,8 @@ function buildPaymentGatewayKeyboard(array $textbotlang)
     $blupalstatus = $blupal_status_raw === 'onblupal' ? $statusOn : $statusOff;
     $variza_status_raw = getPaySettingValue('statusvariza', 'offvariza');
     $varizastatus = $variza_status_raw === 'onvariza' ? $statusOn : $statusOff;
+    $noapay_status_raw = getPaySettingValue('statusnoapay', 'offnoapay');
+    $noapaystatus = $noapay_status_raw === 'onnoapay' ? $statusOn : $statusOff;
     $abangateway_status_raw = getPaySettingValue('statusabangateway', 'offabangateway');
     $abangatewaystatus = $abangateway_status_raw === 'onabangateway' ? $statusOn : $statusOff;
     $atlaspaystatus = $atlaspay_status_raw === 'onatlaspay' ? $statusOn : $statusOff;
@@ -256,6 +258,11 @@ function buildPaymentGatewayKeyboard(array $textbotlang)
             ['text' => '⚙️ تنظیمات', 'callback_data' => 'varizasetting'],
             ['text' => $varizastatus, 'callback_data' => "editpayment-variza-$variza_status_raw"],
             ['text' => '💳 واریزا', 'callback_data' => 'variza'],
+        ],
+        [
+            ['text' => '⚙️ تنظیمات', 'callback_data' => 'noapaysetting'],
+            ['text' => $noapaystatus, 'callback_data' => "editpayment-noapay-$noapay_status_raw"],
+            ['text' => '💳 NoaPay', 'callback_data' => 'noapay'],
         ],
         [
             ['text' => '⚙️ تنظیمات', 'callback_data' => 'abangatewaysetting'],
@@ -956,14 +963,23 @@ if (!empty($datain) && in_array($from_id, $admin_ids ?? [])) {
         'variza_back'         => $textbotlang['Admin']['backadmin'],
         'variza_backmenu'     => $textbotlang['Admin']['backmenu'],
 
+        'noapay_name'     => "🏷️ نام نمایشی درگاه NoaPay",
         'abangateway_name'     => "🏷️ نام نمایشی درگاه آبان گیت وی",
+        'noapay_url'      => "🔗 ثبت آدرس درگاه NoaPay",
         'abangateway_url'      => "🔗 ثبت آدرس درگاه آبان گیت وی",
+        'noapay_apikey'   => "🔑 ثبت کلید اتصال NoaPay",
         'abangateway_apikey'   => "🔑 ثبت کلید اتصال آبان گیت وی",
+        'noapay_cashback' => "💰 کش بک NoaPay",
         'abangateway_cashback' => "💰 کش بک آبان گیت وی",
+        'noapay_min'      => "⬇️ کف NoaPay",
         'abangateway_min'      => "⬇️ کف آبان گیت وی",
+        'noapay_max'      => "⬆️ سقف NoaPay",
         'abangateway_max'      => "⬆️ سقف آبان گیت وی",
+        'noapay_edu'      => "📚 آموزش NoaPay",
         'abangateway_edu'      => "📚 آموزش آبان گیت وی",
+        'noapay_back'     => $textbotlang['Admin']['backadmin'],
         'abangateway_back'     => $textbotlang['Admin']['backadmin'],
+        'noapay_backmenu' => $textbotlang['Admin']['backmenu'],
         'abangateway_backmenu' => $textbotlang['Admin']['backmenu'],
 
         'atlaspay_name'     => "🏷️ نام نمایشی درگاه اطلس‌پی",
@@ -1057,6 +1073,7 @@ if (!empty($datain) && in_array($from_id, $admin_ids ?? [])) {
         'cubepay_backmenu' => 'finance',
         'blupal_backmenu' => 'finance',
         'variza_backmenu' => 'finance',
+        'noapay_backmenu' => 'finance',
         'abangateway_backmenu' => 'finance',
         'atlaspay_backmenu' => 'finance',
         'zpal_backmenu'   => 'finance',

@@ -12,6 +12,7 @@ export function iconForMethod(m) {
     if (id === 'cubepay')              return 'tronado';
     if (id === 'blupal')               return 'tronado';
     if (id === 'variza')               return 'tronado';
+    if (id === 'noapay')          return 'tronado';
     if (id === 'abangateway')          return 'tronado';
     if (id === 'atlaspay')             return 'tronado';
     if (id.startsWith('iranpay'))      return 'flower';
@@ -36,6 +37,7 @@ export function methodLabel(m) {
     if (id === 'cubepay')                   return 'کیوب‌پی';
     if (id === 'blupal')                    return 'بلوپال';
     if (id === 'variza')                    return 'واریزا';
+    if (id === 'noapay')               return 'NoaPay';
     if (id === 'abangateway')               return 'آبان گیت وی';
     if (id === 'atlaspay')                  return 'اطلس‌پی';
     if (id === 'zarinpal')                  return 'زرین‌پال';
@@ -420,7 +422,7 @@ function isAutoConfirmGateway(methodId) {
     return (
         id === 'plisio' || id === 'nowpayment' || id === 'digitaltron' ||
         id.startsWith('iranpay') || id === 'tonpay' || id === 'cubepay' ||
-        id === 'zarinpal' || id === 'blupal' || id === 'variza' || id === 'abangateway' || id === 'atlaspay'
+        id === 'zarinpal' || id === 'blupal' || id === 'variza' || id === 'noapay' || id === 'abangateway' || id === 'atlaspay'
     );
 }
 
@@ -432,6 +434,7 @@ function isCryptoMethod(methodId) {
 function gatewayTimeoutSec(methodId) {
     const id = String(methodId || '').toLowerCase();
     if (id === 'cubepay') return 3600;
+    if (id === 'noapay') return 3600;
     if (id === 'variza') return 3600;
     if (id === 'atlaspay') return 1200;
     if (id === 'tonpay') return 86400;
@@ -588,7 +591,7 @@ export function startAtlaspayCustomFlow(rootView, obj, opts = {}) {
 export function startUrlGatewayFlow(rootView, methodId, obj, opts = {}) {
     const orderId = String(obj.order_id || '');
     const url = String(obj.url || '');
-    if (url) openLink(url);
+    if (url) openLink(url, { keepMiniAppOpen: methodId === 'noapay' });
 
 
     const watchHost = rootView || (opts.host ? opts.host : null);
@@ -599,8 +602,12 @@ export function startUrlGatewayFlow(rootView, methodId, obj, opts = {}) {
         const cleanup = mod.startGatewayWatch(watchHost, {
             orderId,
             title: isCryptoMethod(methodId) ? 'در انتظار تایید پرداخت ارزی…' : 'در انتظار تایید پرداخت…',
-            subtitle: 'به‌محض تایید درگاه، صفحه به‌روزرسانی می‌شود.',
+            subtitle: methodId === 'noapay'
+                ? `مبلغ قابل‌پرداخت: ${Number(obj.payable_amount || 0).toLocaleString('fa-IR')} تومان؛ شامل گرد کردن به هزار تومان و کارمزد انتخاب‌شده. پس از تکمیل پرداخت، نتیجه نمایش داده می‌شود.`
+                : 'به‌محض تایید درگاه، صفحه به‌روزرسانی می‌شود.',
             gatewayUrl: url,
+            keepMiniAppOpen: methodId === 'noapay',
+            expiresAtSec: methodId === 'noapay' ? Number(obj.expires_at || 0) : 0,
             isCrypto: isCryptoMethod(methodId),
             mode: opts.purchaseUsername ? 'direct_buy' : 'recharge',
             method: methodId,

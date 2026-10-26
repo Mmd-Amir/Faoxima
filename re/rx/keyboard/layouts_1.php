@@ -132,6 +132,7 @@ $datatextbot = array(
     'tonpay' => '',
     'cubepay' => '',
     'blupal' => '',
+    'noapay' => '',
     'abangateway' => '',
     'atlaspay' => '',
     'zarinpal' => '',
@@ -630,6 +631,23 @@ $variza = rx_kb_encode([
             ['text' => $textbotlang['Admin']['backmenu'], 'callback_data' => 'variza_backmenu']
         ]
     ]);
+$noapay = rx_kb_encode([
+        [rx_kb_style(['text' => "🏷️ نام نمایشی درگاه NoaPay", 'callback_data' => 'noapay_name'], 'noapay_name', $_rx_gw_styles)],
+        [rx_kb_style(['text' => "🔗 ثبت آدرس درگاه NoaPay", 'callback_data' => 'noapay_url'], 'noapay_url', $_rx_gw_styles)],
+        [rx_kb_style(['text' => "🔑 ثبت کلید اتصال NoaPay", 'callback_data' => 'noapay_apikey'], 'noapay_apikey', $_rx_gw_styles)],
+        [['text' => '🔐 ثبت کلید وب‌هوک NoaPay', 'callback_data' => 'noapay_webhooksecret']],
+        [['text' => '⚖️ انتخاب نوع کارمزد', 'callback_data' => 'noapay_fee']],
+        [rx_kb_style(['text' => "💰 کش بک NoaPay", 'callback_data' => 'noapay_cashback'], 'noapay_cashback', $_rx_gw_styles)],
+        [
+            rx_kb_style(['text' => "⬇️ کف NoaPay", 'callback_data' => 'noapay_min'], 'noapay_min', $_rx_gw_styles),
+            rx_kb_style(['text' => "⬆️ سقف NoaPay", 'callback_data' => 'noapay_max'], 'noapay_max', $_rx_gw_styles)
+        ],
+        [rx_kb_style(['text' => "📚 آموزش NoaPay", 'callback_data' => 'noapay_edu'], 'noapay_edu', $_rx_gw_styles)],
+        [
+            rx_kb_style(['text' => $textbotlang['Admin']['backadmin'], 'callback_data' => 'noapay_back'], 'noapay_back', $_rx_gw_styles),
+            ['text' => $textbotlang['Admin']['backmenu'], 'callback_data' => 'noapay_backmenu']
+        ]
+    ]);
 $abangateway = rx_kb_encode([
         [rx_kb_style(['text' => "🏷️ نام نمایشی درگاه آبان گیت وی", 'callback_data' => 'abangateway_name'], 'abangateway_name', $_rx_gw_styles)],
         [rx_kb_style(['text' => "🔗 ثبت آدرس درگاه آبان گیت وی", 'callback_data' => 'abangateway_url'], 'abangateway_url', $_rx_gw_styles)],
@@ -819,6 +837,11 @@ $step_payment = [
         $step_payment['inline_keyboard'][] = [
             rx_kb_style(['text' => $datatextbot['variza'] ?: '💳 واریزا', 'callback_data' => "variza"], 'variza', $_rx_pay_styles)
     ];
+    }
+   if (function_exists('noapayIsReady') && noapayIsReady()) {
+        $step_payment['inline_keyboard'][] = [
+            rx_kb_style(['text' => $datatextbot['noapay'] ?: '💳 NoaPay', 'callback_data' => 'noapay'], 'noapay', $_rx_pay_styles)
+        ];
     }
    // Offered only when it can take money: on, with an https address and a key.
    if($abangatewayStatus == "onabangateway" && stripos($abangatewayUrl, 'https://') === 0 && $abangatewayKey !== '' && $abangatewayKey !== '0'){

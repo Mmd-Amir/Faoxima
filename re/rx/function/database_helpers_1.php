@@ -871,6 +871,7 @@ if (!function_exists('rx_gateway_payment_method_map')) {
             'atlaspay'    => 'atlaspay',
             'cubepay'     => 'cubepay',
             'variza'      => 'variza',
+            'noapay' => 'noapay',
             'abangateway' => 'abangateway',
         ];
     }
@@ -879,6 +880,7 @@ if (!function_exists('rx_gateway_payment_method_map')) {
 if (!function_exists('rx_gateway_stale_minutes')) {
     function rx_gateway_stale_minutes($paymentMethod)
     {
+        if ($paymentMethod === 'noapay') { return 60; }
         if ($paymentMethod === 'tonpay') {
             return 1440;
         }
@@ -1064,6 +1066,7 @@ if (!function_exists('rx_gateway_display_name')) {
             'atlaspay'    => 'اطلس‌پی',
             'cubepay'     => 'کیوب‌پی',
             'variza'      => 'واریزا',
+            'noapay' => 'NoaPay',
             'abangateway' => 'آبان گیت‌وی',
         ];
         return $labels[$gatewayKey] ?? $gatewayKey;

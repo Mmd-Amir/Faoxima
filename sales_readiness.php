@@ -468,6 +468,7 @@ function rx_sr_payment_methods(PDO $pdo)
     $gateway('تون‌پی', $v('statustonpay') === 'ontonpay', ['کلید API' => ['apitonpay']]);
     $gateway('کیوب‌پی', $v('statuscubepay') === 'oncubepay', ['توکن API' => ['apicubepay']]);
     $gateway('بلوپال', $v('statusblupal') === 'onblupal', ['کلید API' => ['apiblupal']]);
+    $gateway('NoaPay', $v('statusnoapay') === 'onnoapay', ['کلید API' => ['apinoapay'], 'کلید وب‌هوک' => ['noapay_webhook_secret']]);
     $gateway('واریزا', $v('statusvariza') === 'onvariza', ['توکن API' => ['apivariza'], 'کلید وب‌هوک' => ['variza_webhook_secret']]);
     if ($v('statusabangateway') === 'onabangateway') {
         $ready = function_exists('abangatewayIsReady') ? abangatewayIsReady() : (stripos(trim($v('urlabangateway')), 'https://') === 0 && !rx_sr_blank($v('apiabangateway')));

@@ -57,6 +57,7 @@ $payMethodLabels = [
     'plisio'               => 'Plisio',
     'arze digital offline' => 'ارز دیجیتال آفلاین',
     'Star Telegram'        => 'استارز تلگرام',
+    'noapay'               => 'NoaPay',
     'nowpayment'           => 'NowPayment',
 ];
 $payMethodOptions = [];

@@ -41,6 +41,7 @@ if (!function_exists('rxNavParent')) {
                 'gw_cubepay'                => 'finance',
                 'gw_blupal'                 => 'finance',
                 'gw_variza'                 => 'finance',
+                'gw_noapay'            => 'finance',
                 'gw_abangateway'            => 'finance',
                 'gw_atlaspay'               => 'finance',
                 'gw_zarinpal'               => 'finance',
@@ -154,12 +155,20 @@ if (!function_exists('rxNavParent')) {
                 'getmaxvariza'              => 'gw_variza',
                 'helpvariza'                => 'gw_variza',
                 'gettextvariza'             => 'gw_variza',
+                'urlnoapay'            => 'gw_noapay',
                 'urlabangateway'            => 'gw_abangateway',
+                'noapay_webhook_secret' => 'gw_noapay',
+                'apinoapay'            => 'gw_noapay',
                 'apiabangateway'            => 'gw_abangateway',
+                'getcashnoapay'        => 'gw_noapay',
                 'getcashabangateway'        => 'gw_abangateway',
+                'getmainnoapay'        => 'gw_noapay',
                 'getmainabangateway'        => 'gw_abangateway',
+                'getmaxnoapay'         => 'gw_noapay',
                 'getmaxabangateway'         => 'gw_abangateway',
+                'helpnoapay'           => 'gw_noapay',
                 'helpabangateway'           => 'gw_abangateway',
+                'gettextnoapay'        => 'gw_noapay',
                 'gettextabangateway'        => 'gw_abangateway',
                 'apiatlaspay'               => 'gw_atlaspay',
                 'getcashatlaspay'           => 'gw_atlaspay',
@@ -489,7 +498,7 @@ if (!function_exists('rxIsRenderableState')) {
                 'featcat_lottery', 'featcat_antispam', 'featcat_redis',
                 'featnav_affiliates', 'affiliates_antifraud_menu', 'featnav_changeloc',
                 'gw_cart', 'gw_cart_auto', 'gw_trnado', 'gw_tonpay', 'gw_cubepay', 'gw_blupal',
-                'gw_variza', 'gw_abangateway',
+                'gw_variza', 'gw_noapay', 'gw_abangateway',
                 'gw_atlaspay',
                 'gw_zarinpal', 'gw_plisio', 'gw_iranpay', 'gw_tron', 'gw_star', 'gw_nowpayment',
             ]);
@@ -551,8 +560,13 @@ if (!function_exists('rxNavMenuSignatures')) {
                     'variza_name'            => 'gw_variza',
                     'variza_apikey'          => 'gw_variza',
                     'variza_webhooksecret'   => 'gw_variza',
+                    'noapay_name'       => 'gw_noapay',
                     'abangateway_name'       => 'gw_abangateway',
+                    'noapay_url'        => 'gw_noapay',
                     'abangateway_url'        => 'gw_abangateway',
+                    'noapay_fee' => 'gw_noapay',
+                    'noapay_webhooksecret' => 'gw_noapay',
+                    'noapay_apikey'     => 'gw_noapay',
                     'abangateway_apikey'     => 'gw_abangateway',
                     'atlaspay_apikey'        => 'gw_atlaspay',
                     'atlaspay_paymode'       => 'gw_atlaspay',
@@ -1021,7 +1035,7 @@ if (!function_exists('rxRenderMenuState')) {
                $change_product, $setting_panel, $keyboardhelpadmin, $helpedit,
                $channelkeyboard, $supportcenter, $textbotlang, $user,
                $affiliates, $affiliatesAntiFraud, $keyboardchangelimit, $autoconfirm_advanced_keyboard,
-               $CartManage, $trnado, $tonpay, $cubepay, $blupal, $atlaspay, $keyboardzarinpal,
+               $CartManage, $trnado, $tonpay, $cubepay, $blupal, $noapay, $atlaspay, $keyboardzarinpal,
                $NowPaymentsManage, $iranpaykeyboard, $tronnowpayments, $Startelegram, $nowpayment_setting_keyboard,
                $backadmin;
 
@@ -1045,6 +1059,7 @@ if (!function_exists('rxRenderMenuState')) {
         };
 
         $gateways = [
+            'gw_noapay'     => [isset($noapay) ? $noapay : null, 'home'],
             'gw_cart'       => [isset($CartManage) ? $CartManage : null, 'admin_nav_cart_settings'],
             'gw_cart_auto'  => [isset($autoconfirm_advanced_keyboard) ? $autoconfirm_advanced_keyboard : null, 'home'],
             'gw_trnado'     => [isset($trnado) ? $trnado : null, 'home'],
@@ -1255,6 +1270,7 @@ if (!function_exists('rxNavCashbackGatewayParent')) {
             'tonpay'                      => 'gw_tonpay',
             'cubepay'                     => 'gw_cubepay',
             'blupal'                      => 'gw_blupal',
+            'noapay'                 => 'gw_noapay',
             'abangateway'                 => 'gw_abangateway',
             'atlaspay'                    => 'gw_atlaspay',
             'NowPaymentsManage'           => 'gw_plisio',
@@ -1351,7 +1367,7 @@ if (!function_exists('rxAssertUniqueMenuCallbacks')) {
             'aqaye_backmenu', 'plisio_backmenu', 'help_backmenu', 'feat_backmenu',
             'ch_backmenu', 'set_backmenu', 'shop_backmenu', 'cat_back', 'shopitem_back',
             'usershub_backmenu', 'panelshub_backmenu', 'channelhub_backmenu', 'wallet_backmenu',
-            'tonpay_backmenu', 'cubepay_backmenu', 'blupal_backmenu', 'variza_backmenu', 'abangateway_backmenu', 'atlaspay_backmenu',
+            'tonpay_backmenu', 'cubepay_backmenu', 'blupal_backmenu', 'variza_backmenu', 'noapay_backmenu', 'abangateway_backmenu', 'atlaspay_backmenu',
         ]);
         $seen = [];
         $collisions = [];

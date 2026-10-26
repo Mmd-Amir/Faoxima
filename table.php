@@ -1722,6 +1722,7 @@ try {
         ['cubepay', '🟦 کیوب‌پی'],
         ['blupal', '💙 بلوپال'],
         ['variza', '💳 واریزا'],
+        ['noapay', '💳 NoaPay'],
         ['abangateway', '💳 آبان گیت وی'],
         ['atlaspay', '🌐 اطلس‌پی'],
         ['tetrapay', '🔷 تتراپی'],
@@ -2350,6 +2351,16 @@ try {
         ['minbalancevariza', $main],
         ['maxbalancevariza', $max],
         ['helpvariza', '2'],
+        ['statusnoapay', 'offnoapay'],
+        ['urlnoapay', 'http://noapay.mirname.xyz'],
+        ['apinoapay', ''],
+        ['noapay_webhook_secret', ''],
+        ['noapay_fee_mode', 'seller'],
+        ['chashbacknoapay', '0'],
+        ['chashbacknoapay_target', 'all'],
+        ['minbalancenoapay', $main],
+        ['maxbalancenoapay', $max],
+        ['helpnoapay', '2'],
         ['statusabangateway', 'offabangateway'],
         ['urlabangateway', ''],
         ['apiabangateway', ''],
@@ -4030,3 +4041,21 @@ try {
     file_put_contents('error_log', '[table.php kb defaults cleanup] ' . $rxSeedErr->getMessage() . "\n", FILE_APPEND);
 }
 
+
+
+// Separate provider snapshot: unique tokens cannot be rebound to another local order.
+try {
+    $connect->query("CREATE TABLE IF NOT EXISTS noapay_invoice (
+        id_order VARCHAR(64) NOT NULL PRIMARY KEY,
+        invoice_token CHAR(64) NOT NULL UNIQUE,
+        quantity BIGINT UNSIGNED NOT NULL,
+        total_toman BIGINT UNSIGNED NOT NULL,
+        payment_url TEXT NOT NULL,
+        expires_at BIGINT NOT NULL,
+        gateway_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+        checked_at BIGINT NOT NULL DEFAULT 0,
+        INDEX noapay_pending (gateway_status, checked_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+} catch (Throwable $e) {
+    error_log('[noapay] Schema setup failed');
+}
