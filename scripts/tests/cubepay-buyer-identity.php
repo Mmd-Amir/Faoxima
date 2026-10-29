@@ -38,6 +38,7 @@ function select($table, $field, $whereField = null, $whereValue = null, $type = 
 function cubepayCurlJson($method, $endpoint, $payload, $token)
 {
     $GLOBALS['state']['requests'][] = [$method, $endpoint, $payload, $token];
+    if (isset($GLOBALS['state']['response'])) return $GLOBALS['state']['response'];
     return ['success' => true, 'method' => 'card', 'authority' => 'fixture-authority',
         'pay_page_url' => 'https://gateway.example.test/pay', 'card' => ['number' => '0000'],
         'pay_amount_toman' => 50037, 'expires_in_minutes' => 15, 'show_card_in_bot' => true];

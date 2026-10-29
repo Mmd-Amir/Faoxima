@@ -4572,7 +4572,7 @@ $textonebuy
         $Payment_Method = "cubepay";
         $stmt->bind_param("sssssss", $from_id, $randomString, $dateacc, $user['Processing_value'], $payment_Status, $Payment_Method, $invoice);
         $stmt->execute();
-        $payment = cubepayCreatePayment($randomString, (int) $user['Processing_value'], $from_id);
+        $payment = cubepayCreatePayment($randomString, (int) $user['Processing_value'], $from_id, '', true);
 
         $paymentErrorData = null;
         if (!is_array($payment)) {
@@ -4643,24 +4643,7 @@ $textonebuy
         update("Payment_report", "cubepay_authority", $authority, "id_order", $randomString);
         update("Payment_report", "cubepay_payment_link", $paymentLink, "id_order", $randomString);
         update("Payment_report", "cubepay_method", (string) ($payment['method'] ?? 'choice'), "id_order", $randomString);
-        $paymentkeyboard = json_encode([
-            'inline_keyboard' => [
-                [
-                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $paymentLink]
-                ]
-            ]
-        ]);
-        $pricetoman = number_format($user['Processing_value'], 0);
-        $textnowpayments = "✅ تراکنش شما ایجاد شد
-
-🛒 کد پیگیری:  <code>$randomString</code>
-💲 مبلغ تراکنش به تومان  : <code>$pricetoman</code>
-
-💢 لطفا به این نکات قبل از پرداخت توجه کنید 👇
-
-🔹 تراکنش تا ۳۰ دقیقه اعتبار و پس از آن در صورت پرداخت تایید نخواهد شد .
-
-✅ در صورت مشکل میتوانید با پشتیبانی در ارتباط باشید";
+        $cubepayInvoice = cubepayBotInvoice($randomString, (int)$user['Processing_value'], $payment, $textbotlang['users']['Balance']['payments']);
         $gethelp = select("PaySetting", "ValuePay", "NamePay", "helpcubepay", "select")['ValuePay'];
         if ($gethelp != 2) {
             $data = json_decode($gethelp, true);
@@ -4672,25 +4655,9 @@ $textonebuy
                 sendvideo($from_id, $data['videoid'], null);
             }
         }
-        $message_id = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
+        $message_id = sendmessage($from_id, $cubepayInvoice['text'], $cubepayInvoice['reply_markup'], 'HTML');
         updatePaymentMessageId($message_id, $randomString);
 
-        // 🤖 اگر فروشنده در پنل کیوب‌پی گزینه‌ی «نمایش کارت در ربات» را روشن کرده
-        // باشد، شماره‌کارت را همین‌جا داخل چت هم می‌فرستیم تا مشتری لازم نباشد از
-        // تلگرام بیرون برود. این پیام «کنارِ» پیامِ بالا می‌نشیند، نه جای آن.
-        if (!empty($payment['show_card_in_bot']) && !empty($payment['card']['number'])) {
-            $cubepayCard = $payment['card'];
-            $cubepayAmount = (int) ($payment['pay_amount_toman'] ?? 0);
-            $cubepayMinutes = (int) ($payment['expires_in_minutes'] ?? 30);
-            $cubepayCardText = "💳 <b>پرداخت کارت‌به‌کارت</b>\n"
-                . "━━━━━━━━━━━━━━━\n\n"
-                . "🔢 شماره کارت:\n<code>" . htmlspecialchars((string) $cubepayCard['number'], ENT_QUOTES, 'UTF-8') . "</code>\n"
-                . (!empty($cubepayCard['holder']) ? "👤 به نام: " . htmlspecialchars((string) $cubepayCard['holder'], ENT_QUOTES, 'UTF-8') . "\n" : '')
-                . "\n💰 مبلغ دقیق: <b>" . number_format($cubepayAmount) . "</b> تومان\n"
-                . "⏳ مهلت پرداخت: " . $cubepayMinutes . " دقیقه\n\n"
-                . "⚠️ مبلغ باید رقم‌به‌رقم دقیق باشد — تاییدِ خودکار فقط با همین عدد انجام می‌شود.";
-            sendmessage($from_id, $cubepayCardText, null, 'HTML');
-        }
     } elseif ($datain == "variza") {
         $mainbalancevariza = select("PaySetting", "ValuePay", "NamePay", "minbalancevariza", "select")['ValuePay'];
         $maxbalancevariza = select("PaySetting", "ValuePay", "NamePay", "maxbalancevariza", "select")['ValuePay'];

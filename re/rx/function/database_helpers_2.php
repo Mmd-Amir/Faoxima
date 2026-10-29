@@ -2281,7 +2281,7 @@ function cubepayPayableAmount($amount_toman)
         : $amount + (int) round($fee);
 }
 
-function cubepayCreatePayment($order_id, $amount_toman, $customer_user_id = null, $description = '')
+function cubepayCreatePayment($order_id, $amount_toman, $customer_user_id = null, $description = '', $inlineInBot = false)
 {
     global $domainhosts;
 
@@ -2300,6 +2300,10 @@ function cubepayCreatePayment($order_id, $amount_toman, $customer_user_id = null
         'callback_url' => $callbackUrl,
         'redirect_after_payment' => false,
     ];
+    // Only Telegram opts in; existing API/mini-app callers keep the method chooser.
+    if ($inlineInBot === true) {
+        $requestPayload['inline_card'] = true;
+    }
 
     // Forward the buyer ID already supplied by the bot or authenticated API caller.
     $buyerId = (is_int($customer_user_id) || is_string($customer_user_id))
@@ -2343,17 +2347,75 @@ function cubepayCreatePayment($order_id, $amount_toman, $customer_user_id = null
         'payment_link' => (string) $decoded['pay_page_url'],
     ];
 
-    // مسیرِ کارتی: کیوب‌پی اطلاعات کارتِ همین فاکتور و تنظیمِ show_card_in_bot
-    // فروشنده را هم برمی‌گرداند. اگر هم کارت و هم ارز دیجیتال فعال باشد، در این
-    // لحظه هنوز کارتی اختصاص نیافته (مشتری انتخاب نکرده) و این بلوک رد می‌شود.
+    // Card and the optional crypto link must come from this one order response.
+    // Older gateways can still return only the method-selection page.
     if (!empty($decoded['card']['number'])) {
         $normalized['card'] = $decoded['card'];
         $normalized['pay_amount_toman'] = (int) ($decoded['pay_amount_toman'] ?? 0);
         $normalized['expires_in_minutes'] = (int) ($decoded['expires_in_minutes'] ?? 30);
         $normalized['show_card_in_bot'] = !empty($decoded['show_card_in_bot']);
     }
+    if (array_key_exists('pay_amount_rial', $decoded)) {
+        $normalized['pay_amount_rial'] = $decoded['pay_amount_rial'];
+    }
+    if (is_string($decoded['crypto_payment_url'] ?? null)) {
+        $url = $decoded['crypto_payment_url'];
+        $parts = parse_url($url);
+        if (filter_var($url, FILTER_VALIDATE_URL) && ($parts['scheme'] ?? '') === 'https'
+            && strtolower($parts['host'] ?? '') === 'cubevps.ir'
+            && !isset($parts['user']) && !isset($parts['pass']) && !isset($parts['port'])) {
+            $normalized['crypto_payment_url'] = $url;
+        }
+    }
 
     return $normalized;
+}
+
+/** Build one Telegram invoice; the payment/fulfilment flow stays unchanged. */
+function cubepayBotInvoice($orderId, $baseToman, array $payment, $paymentLabel)
+{
+    $escape = static fn($value) => htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $positiveInt = static function ($value) {
+        if (!is_int($value) && !is_string($value)) return null;
+        $text = (string) $value;
+        if (!preg_match('/\A[1-9][0-9]{0,14}\z/D', $text)) return null;
+        return (int) $text;
+    };
+    $rial = array_key_exists('pay_amount_rial', $payment) ? $positiveInt($payment['pay_amount_rial']) : null;
+    // Legacy responses expose whole toman. Never truncate an explicit rial value.
+    if (!array_key_exists('pay_amount_rial', $payment)) {
+        $toman = $positiveInt($payment['pay_amount_toman'] ?? null);
+        if ($toman !== null) $rial = $toman * 10;
+    }
+    $card = $payment['card'] ?? [];
+    $cardNumber = is_array($card) && is_string($card['number'] ?? null) ? preg_replace('/[\s-]+/', '', $card['number']) : '';
+    $inline = !empty($payment['show_card_in_bot']) && preg_match('/\A[0-9]{16}\z/D', $cardNumber) && $rial !== null;
+    $text = "✅ فاکتور پرداخت شما\n\n🧾 شماره سفارش: <code>" . $escape($orderId) . "</code>\n";
+    $buttons = [];
+    if ($inline) {
+        $tomanText = number_format(intdiv($rial, 10), 0, '.', ',') . ($rial % 10 ? '.' . ($rial % 10) : '');
+        $text .= "\n💳 <b>پرداخت کارت‌به‌کارت</b>\n🔢 شماره کارت:\n<code>" . $cardNumber . "</code>\n";
+        if (!empty($card['holder'])) $text .= "👤 به نام: " . $escape($card['holder']) . "\n";
+        $text .= "\n⚠️ <b>مبلغ دقیق به تومان:</b> <code>" . $tomanText . "</code>\n"
+            . "⚠️ <b>مبلغ دقیق به ریال:</b> <code>" . number_format($rial, 0, '.', ',') . "</code>\n"
+            . "\nمبلغِ واحد انتخاب‌شده در برنامهٔ بانکی را دقیق وارد کنید؛ تأیید خودکار با همین مبلغ انجام می‌شود.";
+        if (isset($payment['expires_in_minutes']) && is_numeric($payment['expires_in_minutes'])) {
+            $text .= "\n⏳ مهلت پرداخت: " . max(0, (int)$payment['expires_in_minutes']) . " دقیقه";
+        }
+        if (!empty($payment['crypto_payment_url'])) {
+            $buttons[] = [['text'=>'💎 پرداخت با کریپتو', 'url'=>$payment['crypto_payment_url']]];
+            $text .= "\n\nفقط یکی از روش‌ها را پرداخت کنید. اگر کارت‌به‌کارت کرده‌اید، روش پرداخت را تغییر ندهید.";
+        }
+    } else {
+        $base = $positiveInt($baseToman);
+        if ($base !== null) {
+            $text .= "\n💰 مبلغ سفارش به تومان: <code>" . number_format($base, 0, '.', ',') . "</code>\n"
+                . "💰 مبلغ سفارش به ریال: <code>" . number_format($base * 10, 0, '.', ',') . "</code>\n";
+        }
+        $text .= "\nمبلغ نهایی و مهلت پرداخت را در صفحهٔ پرداخت ببینید.";
+    }
+    $buttons[] = [['text'=>(string)$paymentLabel, 'url'=>(string)$payment['payment_link']]];
+    return ['text'=>$text, 'reply_markup'=>json_encode(['inline_keyboard'=>$buttons], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
 }
 
 function cubepayCheckOrderStatus($order_id)
