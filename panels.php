@@ -9,6 +9,7 @@ require_once __DIR__ . '/x-ui_single.php';
 require_once __DIR__ . '/WGDashboard.php';
 require_once __DIR__ . '/remnawave.php';
 require_once __DIR__ . '/rebecca.php';
+require_once __DIR__ . '/jovadpanel.php';
 require_once __DIR__ . '/panel_capability.php';
 
 if (!function_exists('rx_panel_http_status_fa')) {
@@ -796,13 +797,35 @@ class ManagePanel
                 $Output['subscription_url'] = $subscriptionUrl;
                 $Output['configs'] = $configs;
             }
+        } elseif ($Get_Data_Panel['type'] == "jovadpanel") {
+            $jovadOutput = jovadpanelCreateUser(
+                $Get_Data_Panel,
+                $code_product,
+                $usernameC,
+                $Data_Config,
+                is_array($Get_Data_Product) ? $Get_Data_Product : array(),
+                $note
+            );
+            if (($jovadOutput['status'] ?? '') === 'successful' && !empty($jovadOutput['username'])) {
+                $Output['status'] = 'successful';
+                $Output['username'] = $jovadOutput['username'];
+                $Output['subscription_url'] = $jovadOutput['subscription_url'];
+                $Output['configs'] = $jovadOutput['configs'];
+            } else {
+                $Output['status'] = 'Unsuccessful';
+                $Output['msg'] = $jovadOutput['msg'] ?? 'JovadPanel create failed';
+                if (!empty($jovadOutput['code'])) {
+                    $Output['code'] = $jovadOutput['code'];
+                }
+            }
         } else {
             $Output['status'] = 'Unsuccessful';
             $Output['msg'] = 'Panel Not Found';
         }
         if (function_exists('normalizeServiceConfigs')) {
+            $rxNormalizeSubUrl = (($Get_Data_Panel['type'] ?? '') === 'jovadpanel') ? null : ($Output['subscription_url'] ?? null);
             if (isset($Output['status']) && $Output['status'] === 'successful') {
-                $Output['configs'] = normalizeServiceConfigs($Output['configs'] ?? null, $Output['subscription_url'] ?? null);
+                $Output['configs'] = normalizeServiceConfigs($Output['configs'] ?? null, $rxNormalizeSubUrl);
             } else {
                 $Output['configs'] = normalizeServiceConfigs($Output['configs'] ?? null);
             }
@@ -1467,6 +1490,8 @@ class ManagePanel
                 'ip_limit' => intval($userData['ip_limit'] ?? 0),
                 'on_hold_expire_duration' => $userData['on_hold_expire_duration'] ?? null,
             );
+        } elseif ($Get_Data_Panel['type'] == "jovadpanel") {
+            $Output = jovadpanelDataUser($Get_Data_Panel, $username);
         } else {
             $Output = array(
                 'status' => 'Unsuccessful',
@@ -1591,6 +1616,21 @@ class ManagePanel
                     'status' => 'successful',
                     'configs' => $Data_User['links'] ?? array(),
                     'subscription_url' => $Data_User['subscription_url'] ?? null
+                );
+            }
+        } elseif ($Get_Data_Panel['type'] == "jovadpanel") {
+            $rotate = jovadpanelRotate($Get_Data_Panel, $username);
+            if (($rotate['status'] ?? '') !== 'successful') {
+                $Output = array(
+                    'status' => 'Unsuccessful',
+                    'msg' => $rotate['msg'] ?? 'revoke failed'
+                );
+            } else {
+                $Data_User = $ManagePanel->DataUser($name_panel, $username);
+                $Output = array(
+                    'status' => 'successful',
+                    'configs' => $Data_User['links'] ?? array(),
+                    'subscription_url' => $Data_User['subscription_url'] ?? ($rotate['subscription_url'] ?? null)
                 );
             }
         } else {
@@ -1725,6 +1765,19 @@ class ManagePanel
                 $Output = array(
                     'status' => 'Unsuccessful',
                     'msg' => $removeResponse['msg']
+                );
+            } else {
+                $Output = array(
+                    'status' => 'successful',
+                    'username' => $username,
+                );
+            }
+        } elseif ($Get_Data_Panel['type'] == "jovadpanel") {
+            $removeResponse = jovadpanelRemoveUser($Get_Data_Panel, $username);
+            if (($removeResponse['status'] ?? '') !== 'successful') {
+                $Output = array(
+                    'status' => 'Unsuccessful',
+                    'msg' => $removeResponse['msg'] ?? 'remove failed'
                 );
             } else {
                 $Output = array(
@@ -1987,6 +2040,8 @@ class ManagePanel
                 'status' => true,
                 'data' => $modify
             );
+        } elseif ($Get_Data_Panel['type'] == "jovadpanel") {
+            return jovadpanelModifyUser($Get_Data_Panel, $username, is_array($config) ? $config : array());
         }
     }
     function Change_status($username, $name_panel)
@@ -2099,6 +2154,8 @@ class ManagePanel
                 'status' => 'successful',
                 'msg' => null
             );
+        } elseif ($Get_Data_Panel['type'] == "jovadpanel") {
+            return jovadpanelSetStatus($Get_Data_Panel, $username, $DataUserOut);
         }
 
         return $Output;
@@ -2258,6 +2315,18 @@ class ManagePanel
             }
             return array(
                 'status' => true
+            );
+        } elseif ($panel['type'] == "jovadpanel") {
+            $reset = jovadpanelResetUsage($panel, $username);
+            if (($reset['status'] ?? false) !== true) {
+                return array(
+                    'status' => false,
+                    'msg' => $reset['msg'] ?? 'reset failed'
+                );
+            }
+            return array(
+                'status' => true,
+                'data' => $reset['data'] ?? null
             );
         }
     }
@@ -2602,6 +2671,9 @@ class ManagePanel
         $idInvoice = (string) ($invoice['id_invoice'] ?? ($opts['id_invoice'] ?? ''));
         $serviceKey = (string) ($opts['service_key'] ?? rx_rn_service_key($idInvoice, $panel['code_panel'] ?? '', $username));
         $opId = (string) ($opts['op_id'] ?? rx_pf_new_token());
+        if (($panel['type'] ?? '') === 'jovadpanel' && in_array((string) ($opts['source'] ?? ''), ['payment', 'reservation'], true) && trim((string) ($opts['ref'] ?? '')) !== '') {
+            $opId = hash('sha256', 'jovad|' . $opts['source'] . '|' . $opts['ref'] . '|' . $serviceKey);
+        }
         $lockOwner = isset($opts['lock_owner']) ? (string) $opts['lock_owner'] : '';
         $ownLock = $lockOwner === '';
         $source = (string) ($opts['source'] ?? 'wallet');
@@ -2668,7 +2740,7 @@ class ManagePanel
                 return array('status' => false, 'code' => 'operation_persist_failed', 'no_mutation' => true, 'operation_id' => $opId, 'msg' => 'renewal operation could not be persisted');
             }
             $resetDone = false;
-            if (!empty($plan['reset_usage']) && rx_pf_int($data_user['used_traffic'] ?? 0) > 0) {
+            if (!empty($plan['reset_usage']) && ($panel['type'] ?? '') !== 'jovadpanel' && rx_pf_int($data_user['used_traffic'] ?? 0) > 0) {
                 rx_rn_op_update($opId, array('stage' => 'reset_sent'));
                 $reset = $this->ResetUserDataUsage($username, $panel['name_panel']);
                 if (!is_array($reset) || empty($reset['status'])) {
@@ -2688,9 +2760,12 @@ class ManagePanel
                 rx_rn_op_update($opId, array('stage' => 'reset_done'));
             }
             rx_rn_op_update($opId, array('stage' => 'modify_sent'));
-            $write = $this->rxRenewalPanelWrite($panel, $data_user, $invoice, $product, $plan, $username);
+            $write = $this->rxRenewalPanelWrite($panel, $data_user, $invoice, $product, $plan, $username, $opId);
             if (empty($write['status'])) {
                 $writeMsg = is_scalar($write['msg'] ?? null) ? (string) $write['msg'] : json_encode($write['msg'] ?? '');
+                if (($panel['type'] ?? '') === 'jovadpanel' && !empty($write['uncertain'])) {
+                    return $this->rxRenewalUncertain($opId, $plan, $before, null, $writeMsg, $diag);
+                }
                 $probe = rx_pf_panel_snapshot($this, (string) $panel['name_panel'], $username, (string) $panel['type']);
                 $class = rxRenewalClassify($probe, $plan);
                 $untouched = !empty($probe['ok']) && !empty($probe['exists'])
@@ -2703,7 +2778,7 @@ class ManagePanel
                     return array('status' => false, 'code' => 'panel_write_failed', 'no_mutation' => true, 'operation_id' => $opId, 'msg' => $writeMsg);
                 }
                 if ($class === 'before') {
-                    $write = $this->rxRenewalPanelWrite($panel, $data_user, $invoice, $product, $plan, $username);
+                    $write = $this->rxRenewalPanelWrite($panel, $data_user, $invoice, $product, $plan, $username, $opId);
                     if (empty($write['status'])) {
                         return $this->rxRenewalUncertain($opId, $plan, $before, rx_pf_limits($probe), 'partial_write: ' . $writeMsg, $diag);
                     }
@@ -2803,7 +2878,7 @@ class ManagePanel
         );
     }
 
-    private function rxRenewalPanelWrite(array $panel, array $data_user, array $invoice, array $product, array $plan, $username)
+    private function rxRenewalPanelWrite(array $panel, array $data_user, array $invoice, array $product, array $plan, $username, $opId = '')
     {
         global $pdo;
         $data_limit_new = (int) $plan['data_limit'];
@@ -2936,6 +3011,8 @@ class ManagePanel
                 'data_limit' => $data_limit_new,
                 'expire' => $pending ? 0 : $time_new,
             );
+        } elseif ($panel['type'] == "jovadpanel") {
+            return jovadpanelApplyRenewalPlan($panel, $data_user, $plan, (string) $username, (string) $opId);
         } else {
             return array('status' => false, 'msg' => 'unsupported panel type for renewal');
         }
@@ -3118,6 +3195,13 @@ class ManagePanel
             $data = array(
                 'data_limit' => $new_limit,
             );
+        } elseif ($panel['type'] == "jovadpanel") {
+            $extra_volume = jovadpanelAddVolume($panel, (string) $username_account, (int) $new_limit);
+            return array(
+                'status' => !empty($extra_volume['status']),
+                'data' => $extra_volume['data'] ?? null,
+                'msg' => $extra_volume['msg'] ?? null
+            );
         }
         $extra_volume = $this->Modifyuser($username_account, $panel['name_panel'], $data);
         if ($extra_volume['status'] == false) {
@@ -3286,6 +3370,13 @@ class ManagePanel
         } elseif ($panel['type'] == "rebecca") {
             $data = array(
                 'expire' => $new_limit,
+            );
+        } elseif ($panel['type'] == "jovadpanel") {
+            $extra_time = jovadpanelAddTime($panel, (string) $username_account, (int) $new_limit);
+            return array(
+                'status' => !empty($extra_time['status']),
+                'data' => $extra_time['data'] ?? null,
+                'msg' => $extra_time['msg'] ?? null
             );
         }
         $extra_time = $this->Modifyuser($username_account, $panel['name_panel'], $data);

@@ -374,6 +374,7 @@ function rx_panel_capability_report(array $panel)
         'pasarguard' => 'pasarguardCapabilityReport',
         'marzban' => 'marzbanCapabilityReport',
         'rebecca' => 'rebeccaCapabilityReport',
+        'jovadpanel' => 'jovadpanelCapabilityReport',
         'guard' => 'guardCapabilityReport',
         'remnawave' => 'remnawave_capability_report',
         'x-ui_single' => 'xui_capability_report',

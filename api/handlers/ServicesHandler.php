@@ -16,6 +16,9 @@ final class ServicesHandler extends BaseHandler
             FaoximaResponse::badRequest('country_id is required');
         }
         $panel = $this->loadPanelByCode($codePanel);
+        if (jovadMiniAppReject($panel)) {
+            return;
+        }
 
         $categoryId = FaoximaInput::nullableString($this->data, 'category_id');
         $timeRangeDay = FaoximaInput::nullableString($this->data, 'time_range_day');

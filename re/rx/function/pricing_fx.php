@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/custom_duration_pricing.php';
+
 if (!defined('FX_DEFAULT_PAIR')) {
     define('FX_DEFAULT_PAIR', 'USDT/IRT');
 }
@@ -620,6 +622,9 @@ if (!function_exists('fx_panel_raw_unit_price')) {
 if (!function_exists('fx_custom_base_price')) {
     function fx_custom_base_price(array $panel, $agent, $volumeGb, $days): float
     {
+        if (fx_duration_config($panel, (string) $agent)['enabled']) {
+            return fx_custom_resolve($panel, (string) $agent, $volumeGb, $days)['base_price'];
+        }
         $volumeUnit = fx_panel_raw_unit_price($panel, 'pricecustomvolume', $agent) ?? 0.0;
         $timeUnit = fx_panel_raw_unit_price($panel, 'pricecustomtime', $agent) ?? 0.0;
         return ((float) $volumeGb * $volumeUnit) + ((float) $days * $timeUnit);
@@ -748,7 +753,7 @@ if (!function_exists('fx_quote_forget')) {
 if (!function_exists('fx_quote_store')) {
     function fx_quote_store($userId, string $contextKey, $amount, array $panel, $priceKinds, array $meta = []): bool
     {
-        $context = fx_context($panel, $priceKinds);
+        $context = fx_custom_quote_context($panel, $priceKinds);
         if ($context === null) {
             return false;
         }
@@ -763,7 +768,7 @@ if (!function_exists('fx_quote_store')) {
 if (!function_exists('fx_quote_store_server')) {
     function fx_quote_store_server($userId, string $contextKey, $amount, array $panel, $priceKinds, array $meta = []): bool
     {
-        $context = fx_context($panel, $priceKinds);
+        $context = fx_custom_quote_context($panel, $priceKinds);
         if ($context !== null) {
             $meta['f'] = fx_context_fingerprint($context);
             $meta['rate'] = $context['current_rate'];
@@ -811,7 +816,7 @@ if (!function_exists('fx_extra_quote_verify')) {
 if (!function_exists('fx_quote_check')) {
     function fx_quote_check($userId, string $contextKey, $amount, array $panel, $priceKinds): bool
     {
-        $context = fx_context($panel, $priceKinds);
+        $context = fx_custom_quote_context($panel, $priceKinds);
         if ($context === null) {
             return true;
         }
@@ -826,7 +831,7 @@ if (!function_exists('fx_quote_check')) {
 if (!function_exists('fx_quote_rate_unchanged')) {
     function fx_quote_rate_unchanged($userId, string $contextKey, array $panel, $priceKinds): bool
     {
-        $context = fx_context($panel, $priceKinds);
+        $context = fx_custom_quote_context($panel, $priceKinds);
         if ($context === null) {
             return true;
         }
@@ -855,14 +860,14 @@ if (!function_exists('fx_price_changed_text')) {
     function fx_price_changed_text($newAmount): string
     {
         $formatted = number_format((float) $newAmount);
-        return "⚠️ به دلیل تغییر نرخ دلار (USDT)، مبلغ فاکتور به‌روزرسانی شد.\n\n💰 مبلغ جدید: {$formatted} تومان\n\n✅ در صورت موافقت، دوباره روی دکمه تایید بزنید.";
+        return "⚠️ به دلیل تغییر تعرفه یا نرخ ارز، مبلغ فاکتور به‌روزرسانی شد.\n\n💰 مبلغ جدید: {$formatted} تومان\n\n✅ در صورت موافقت، دوباره روی دکمه تایید بزنید.";
     }
 }
 
 if (!function_exists('fx_price_changed_api_message')) {
     function fx_price_changed_api_message(): string
     {
-        return 'به دلیل تغییر نرخ دلار (USDT)، قیمت به‌روزرسانی شد. لطفاً مبلغ جدید را تایید کنید.';
+        return 'به دلیل تغییر تعرفه یا نرخ ارز، قیمت به‌روزرسانی شد. لطفاً مبلغ جدید را تایید کنید.';
     }
 }
 
@@ -903,20 +908,24 @@ if (!function_exists('fx_base64url_decode')) {
 if (!function_exists('fx_context_fingerprint')) {
     function fx_context_fingerprint(array $context): string
     {
-        return hash('sha256', implode('|', [
+        $parts = [
             $context['code_panel'],
             number_format($context['current_rate'], 4, '.', ''),
             number_format($context['base_rate'], 4, '.', ''),
             number_format($context['markup_percent'], 4, '.', ''),
             (string) $context['round_step'],
-        ]));
+        ];
+        if (isset($context['custom_fingerprint'])) {
+            $parts[] = $context['custom_fingerprint'];
+        }
+        return hash('sha256', implode('|', $parts));
     }
 }
 
 if (!function_exists('fx_quote_token')) {
     function fx_quote_token(array $panel, $priceKinds): ?string
     {
-        $context = fx_context($panel, $priceKinds);
+        $context = fx_custom_quote_context($panel, $priceKinds);
         if ($context === null) {
             return null;
         }
@@ -933,7 +942,7 @@ if (!function_exists('fx_quote_token')) {
 if (!function_exists('fx_quote_token_valid')) {
     function fx_quote_token_valid($token, array $panel, $priceKinds): bool
     {
-        $context = fx_context($panel, $priceKinds);
+        $context = fx_custom_quote_context($panel, $priceKinds);
         if ($context === null) {
             return true;
         }

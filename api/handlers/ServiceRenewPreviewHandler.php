@@ -4,6 +4,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/BaseHandler.php';
+require_once __DIR__ . '/DiscountSupport.php';
 
 final class ServiceRenewPreviewHandler extends BaseHandler
 {
@@ -29,10 +30,35 @@ final class ServiceRenewPreviewHandler extends BaseHandler
             FaoximaResponse::notFound('Panel not found');
         }
 
+        $panel['_custom_quote_user'] = [(string)$this->user['id'], (string)($this->user['agent'] ?? 'f'), (int)($this->user['pricediscount'] ?? 0)];
         $custom = FaoximaInput::array($this->data, 'custom');
+        $monetary = null;
         if (!empty($custom)) {
             $volume = max(0, (int)($custom['volume_gb'] ?? 0));
             $days = max(0, (int)($custom['time_days'] ?? 0));
+            $agent = (string)($this->user['agent'] ?? 'f');
+            $pricingPanel = fx_custom_renew_panel($panel, $agent);
+            if ($volume < (fx_panel_raw_unit_price($pricingPanel, 'mainvolume', $agent) ?? 0)
+                || $volume > (fx_panel_raw_unit_price($pricingPanel, 'maxvolume', $agent) ?? 0)
+                || $days < (fx_panel_raw_unit_price($pricingPanel, 'maintime', $agent) ?? 0)
+                || $days > (fx_panel_raw_unit_price($pricingPanel, 'maxtime', $agent) ?? 0)) {
+                FaoximaResponse::badRequest('حجم یا زمان نامعتبر است.');
+            }
+            try {
+                $durationPricing = fx_duration_config($panel, $agent)['enabled'];
+                $monetary = fx_custom_resolve($pricingPanel, $agent, $durationPricing ? ($custom['volume_gb'] ?? 0) : $volume, $durationPricing ? ($custom['time_days'] ?? 0) : $days);
+            } catch (InvalidArgumentException $e) {
+                FaoximaResponse::badRequest($e->getMessage());
+            }
+            $kinds = ['custom_volume', 'custom_time'];
+            try {
+                $panel = fx_custom_api_quote_panel($panel, $this->user, ['price_product' => $monetary['price'], 'code_product' => 'customvolume',
+                    'Volume_constraint' => $volume, 'Service_time' => $days], 'extend', FaoximaInput::string($this->data, 'discount_code'));
+            } catch (InvalidArgumentException $e) {
+                FaoximaResponse::badRequest($e->getMessage());
+            }
+            $monetary['price'] = $panel['_custom_quote_total'];
+            $monetary['fx_quote'] = fx_quote_token($panel, $kinds);
         } else {
             $code = FaoximaInput::string($this->data, 'product_code');
             if ($code === '') {
@@ -81,6 +107,7 @@ final class ServiceRenewPreviewHandler extends BaseHandler
         }
 
         FaoximaResponse::ok([
+            'pricing'     => $monetary,
             'available'   => !empty($preview['ok']) && ($plan !== null || ($preview['mode'] ?? '') !== 'immediate'),
             'blocked'     => !empty($preview['blocked']) || ($reservation !== null && empty($reservation['valid'])),
             'mode'        => (string)($preview['mode'] ?? 'immediate'),

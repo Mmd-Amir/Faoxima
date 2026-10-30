@@ -74,6 +74,9 @@ final class TestAccountHandler extends BaseHandler
         $panels = [];
         foreach ($overview['panels'] as $entry) {
             $row = $entry['panel'];
+            if (jovadMiniAppPanelBlocked($row)) {
+                continue;
+            }
             $settings = $entry['settings'];
             $quota = $entry['quota'];
             $panels[] = [
@@ -106,7 +109,7 @@ final class TestAccountHandler extends BaseHandler
         }
 
         FaoximaResponse::ok([
-            'available'      => $overview['gate'] === null && $overview['any_available'],
+            'available'      => $overview['gate'] === null && $overview['any_available'] && !empty($panels),
             'panels'         => $panels,
             'quota_summary'  => $quotaSummary,
             'limit_left'     => $legacyLeft,
@@ -131,6 +134,9 @@ final class TestAccountHandler extends BaseHandler
         }
         $panel = $policy['panel'];
         $settings = $policy['settings'];
+        if (jovadMiniAppPanelBlocked($panel)) {
+            FaoximaResponse::fail(403, faoxima_textbot_get('dyn_testaccount_jovad_unavailable', '❌ دریافت اکانت تست از این موقعیت از طریق مینی‌اپ امکان‌پذیر نیست.'));
+        }
 
         $methodUsername = (string)($panel['MethodUsername'] ?? '');
         $requiresCustom = ($methodUsername === 'نام کاربری دلخواه + عدد رندوم' || $methodUsername === 'متن دلخواه کاربر + رندوم');

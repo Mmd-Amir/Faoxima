@@ -721,6 +721,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             sendmessage($from_id, faoxima_textbot_get('dyn_errors_data_fetch_restart', '❌ خطایی در هنگام دریافت اطلاعات رخ داده است لطفا مراحل را از اول انجام دهید'), $keyboard, 'HTML');
             return;
         }
+        $rxPendingRenewPrice = $service_other['price'] ?? null;
         $service_other = json_decode($service_other['value'], true);
         $nameloc = select("invoice", "*", "username", $usernamepanel, "select");
         $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
@@ -732,7 +733,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
         if ($codeproduct == "custom_volume") {
             $prodcut['code_product'] = "custom_volume";
             $prodcut['name_product'] = $nameloc['name_product'];
-            $prodcut['price_product'] = ($service_other['volumebuy'] * $custompricevalue) + ($nameloc['Service_time'] * $customtimevalueprice);
+            $prodcut['price_product'] = $rxPendingRenewPrice;
             $prodcut['Service_time'] = $service_other['Service_time'];
             $prodcut['Volume_constraint'] = $service_other['volumebuy'];
         } else {
@@ -967,6 +968,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             sendmessage($from_id, faoxima_textbot_get('dyn_errors_data_fetch_restart', '❌ خطایی در هنگام دریافت اطلاعات رخ داده است لطفا مراحل را از اول انجام دهید'), $keyboard, 'HTML');
             return;
         }
+        $rxPendingRenewPrice = $service_other['price'] ?? null;
         $service_other = json_decode($service_other['value'], true);
         $nameloc = select("invoice", "*", "username", $usernamepanel, "select");
         $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
@@ -978,7 +980,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
         if ($codeproduct == "custom_volume") {
             $prodcut['code_product'] = "custom_volume";
             $prodcut['name_product'] = $nameloc['name_product'];
-            $prodcut['price_product'] = ($service_other['volumebuy'] * $custompricevalue) + ($service_other['Service_time'] * $customtimevalueprice);
+            $prodcut['price_product'] = $rxPendingRenewPrice;
             $prodcut['Service_time'] = $service_other['Service_time'];
             $prodcut['Volume_constraint'] = $service_other['volumebuy'];
         } else {

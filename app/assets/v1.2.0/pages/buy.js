@@ -1,3 +1,4 @@
+import { durationCardsHtml, bindDurationCards, customPriceSummaryHtml, updateCustomPriceSummary } from '../custom-duration.js?v=1';
 import { call } from '../api.js?v=0.0.53';
 import {
     escapeHtml, fmtPrice, fmtGb, fmtDays, fmtIpLimit, fmtSymbolicLimit, skeletonList, emptyState, toast, fmtNumber,
@@ -391,7 +392,12 @@ export async function buy(view) {
                 }
 
                 let trafficVal = tMin;
-                let timeVal = dMin;
+                const tariffs = Object.entries(obj.duration_tariffs || {});
+                if (obj.duration_pricing && tariffs.length === 0) {
+                    target.innerHTML = emptyState('تعرفه‌ای موجود نیست', 'برای مدت‌های مجاز تعرفه‌ای تعریف نشده است.');
+                    return;
+                }
+                let timeVal = obj.duration_pricing ? Number(tariffs[0][0]) : dMin;
 
                 target.innerHTML = `
                     <div class="card" style="padding:16px">
@@ -402,62 +408,74 @@ export async function buy(view) {
                         </div>
                         <div class="range-row mt-md">
                             <label>مدت زمان (روز) <span class="v" id="d-val">${fmtNumber(timeVal)}</span></label>
-                            <input id="d-range" class="range-input" type="range" min="${dMin}" max="${dMax}" step="1" value="${timeVal}" />
+                            ${obj.duration_pricing ? durationCardsHtml(obj.duration_tariffs, timeVal) : `<input id="d-range" class="range-input" type="range" min="${dMin}" max="${dMax}" step="1" value="${timeVal}" />`}
                             <div class="muted mono" style="font-size:11px">حداقل: ${fmtNumber(dMin)} روز · حداکثر: ${fmtNumber(dMax)} روز</div>
                         </div>
-                        <div class="kv mt-md"><span class="kv-label">${icon('wallet')} قیمت لحظه‌ای</span><span class="kv-value gold" id="p-val">${escapeHtml(fmtPrice(0))}</span></div>
-                        <button class="btn btn-primary btn-block mt-md" id="pick-custom"><span>تایید و ادامه</span><span class="arrow">${icon('select', 'class="ico"')}</span></button>
+                        ${customPriceSummaryHtml()}
+                        <button class="btn btn-primary btn-block mt-md" id="pick-custom" disabled><span>تایید و ادامه</span><span class="arrow">${icon('select', 'class="ico"')}</span></button>
                     </div>
                 `;
                 const $tRange = target.querySelector('#t-range');
                 const $dRange = target.querySelector('#d-range');
                 const $tVal = target.querySelector('#t-val');
                 const $dVal = target.querySelector('#d-val');
-                const $pVal = target.querySelector('#p-val');
+                const $summary = target.querySelector('[data-price-summary]');
                 const $pick = target.querySelector('#pick-custom');
-
+                let currentQuote = null;
                 let priceFetchSeq = 0;
                 async function recalc() {
                     trafficVal = Number($tRange.value);
-                    timeVal = Number($dRange.value);
-                    $tVal.textContent = fmtNumber(trafficVal);
-                    $dVal.textContent = fmtNumber(timeVal);
+                    if ($dRange) timeVal = Number($dRange.value);
+                    const volume = trafficVal;
+                    const days = timeVal;
+                    $tVal.textContent = fmtNumber(volume);
+                    $dVal.textContent = fmtNumber(days);
                     const seq = ++priceFetchSeq;
+                    currentQuote = null;
+                    $pick.disabled = true;
+                    const knownTariff = obj.duration_pricing ? Number(obj.duration_tariffs?.[days]) : NaN;
+                    updateCustomPriceSummary($summary, { volume, days, tariff: Number.isFinite(knownTariff) ? knownTariff : null });
                     try {
                         const r = await call('custom_price', {
-                            params: { country_id: draft.panel.id, traffic_gb: String(trafficVal), time_days: String(timeVal) },
+                            params: { country_id: draft.panel.id, traffic_gb: String(volume), time_days: String(days) },
                         });
-                        if (seq !== priceFetchSeq) return;
-                        const p = r?.obj?.price;
-                        $pVal.textContent = fmtPrice(p || 0);
-                    } catch (_) {  }
+                        if (seq !== priceFetchSeq || !$summary.isConnected) return;
+                        const quote = r?.obj;
+                        if (!quote || quote.price === false || quote.price === null || quote.price === undefined || !Number.isFinite(quote.price) || Number(quote.price) < 0
+                            || quote.price_per_gb === null || quote.price_per_gb === undefined || !Number.isFinite(quote.price_per_gb) || quote.price_per_gb < 0) {
+                            throw new Error('قیمت معتبر دریافت نشد؛ دوباره تلاش کنید.');
+                        }
+                        currentQuote = { ...quote, volume, days };
+                        updateCustomPriceSummary($summary, { volume, days, tariff: Number(quote.price_per_gb), total: Number(quote.price), state: 'ready' });
+                        $pick.disabled = false;
+                    } catch (err) {
+                        if (seq !== priceFetchSeq || !$summary.isConnected) return;
+                        currentQuote = null;
+                        updateCustomPriceSummary($summary, { volume, days, state: 'error', message: err.message || 'خطا در محاسبه قیمت' });
+                    }
                 }
                 $tRange.addEventListener('input', recalc);
-                $dRange.addEventListener('input', recalc);
+                if ($dRange) $dRange.addEventListener('input', recalc);
+                bindDurationCards(target, (days) => { timeVal = days; recalc(); });
                 recalc();
 
-                $pick.addEventListener('click', async () => {
+                $pick.addEventListener('click', () => {
+                    if ($pick.disabled || !currentQuote || currentQuote.volume !== Number($tRange.value) || currentQuote.days !== timeVal) return;
                     hapticImpact('medium');
-
-                    try {
-                        const r = await call('custom_price', {
-                            params: { country_id: draft.panel.id, traffic_gb: String(trafficVal), time_days: String(timeVal) },
-                        });
-                        const price = Number(r?.obj?.price || 0);
-                        draft.product = {
-                            id: 'customvolume',
-                            name: 'سرویس سفارشی',
-                            traffic_gb: trafficVal,
-                            time_days: timeVal,
-                            price,
-                            fx_quote: r?.obj?.fx_quote || '',
-                            custom: true,
-                        };
-                        draft.customService = { traffic_gb: trafficVal, time_days: timeVal };
-                        persistAndNext();
-                    } catch (err) {
-                        toast(err.message || 'خطا در محاسبه قیمت', 'error');
-                    }
+                    const quote = currentQuote;
+                    draft.product = {
+                        id: 'customvolume',
+                        name: 'سرویس سفارشی',
+                        traffic_gb: quote.volume,
+                        time_days: quote.days,
+                        price: Number(quote.price),
+                        fx_quote: quote.fx_quote || '',
+                        price_per_gb: quote.price_per_gb,
+                        duration_pricing: quote.duration_pricing,
+                        custom: true,
+                    };
+                    draft.customService = { traffic_gb: quote.volume, time_days: quote.days };
+                    persistAndNext();
                 });
             } catch (err) {
                 target.innerHTML = errorBlock(err);
@@ -484,7 +502,8 @@ export async function buy(view) {
                 <div class="kv"><span class="kv-label">${icon('calendar')} مدت زمان</span><span class="kv-value">${escapeHtml(fmtDays(p.time_days))}</span></div>
                 ${fmtSymbolicLimit(p) ? `<div class="kv"><span class="kv-label">${icon('users')} تعداد کاربر مجاز</span><span class="kv-value">${escapeHtml(fmtSymbolicLimit(p))}</span></div>` : (p.ip_limit_guard_active ? `<div class="kv"><span class="kv-label">${icon('users')} تعداد کاربر مجاز</span><span class="kv-value">${escapeHtml(fmtIpLimit(p.ip_limit))}</span></div>` : '')}
                 ${(p.hwid_limit_supported && Number(p.hwid_limit) > 0) ? `<div class="kv"><span class="kv-label">${icon('mobileDevice')} محدودیت دستگاه</span><span class="kv-value">${escapeHtml(String(p.hwid_limit))} دستگاه</span></div>` : ''}
-                <div class="kv"><span class="kv-label">${icon('wallet')} مبلغ قابل پرداخت</span><span class="kv-value gold">${escapeHtml(fmtPrice(p.price))}</span></div>
+                ${p.duration_pricing ? `<div class="kv"><span class="kv-label">تعرفه هر گیگابایت</span><span class="kv-value" id="buy-tariff">${fmtNumber(p.price_per_gb)} تومان/GB</span></div>` : ''}
+                <div class="kv"><span class="kv-label">${icon('wallet')} مبلغ قابل پرداخت</span><span class="kv-value gold" id="buy-price">${escapeHtml(fmtPrice(p.price))}</span></div>
             </div>
 
             ${showUsername ? `
@@ -552,7 +571,33 @@ export async function buy(view) {
                 return;
             }
 
-            const ok = await showConfirm(`آیا از خرید «${p.name}» با مبلغ ${fmtPrice(p.price)} مطمئن هستید؟`);
+            if (p.custom) {
+                $btn.disabled = true;
+                try {
+                    const quoted = await call('custom_price', { params: {
+                        country_id: draft.panel.id, traffic_gb: String(draft.customService.traffic_gb),
+                        time_days: String(draft.customService.time_days), discount_code: discountCode,
+                    } });
+                    p.price = Number(quoted.obj.price);
+                    p.fx_quote = quoted.obj.fx_quote || '';
+                    p.price_per_gb = quoted.obj.price_per_gb;
+                    p.duration_pricing = quoted.obj.duration_pricing;
+                    const shownPrice = host.querySelector('#buy-price');
+                    if (shownPrice) shownPrice.textContent = fmtPrice(p.price);
+                    const shownTariff = host.querySelector('#buy-tariff');
+                    if (shownTariff) {
+                        shownTariff.textContent = `${fmtNumber(p.price_per_gb)} تومان/GB`;
+                        shownTariff.parentElement.hidden = !p.duration_pricing;
+                    }
+                } catch (err) {
+                    toast(err.message || 'خطا در محاسبه قیمت', 'error');
+                    return;
+                } finally {
+                    $btn.disabled = false;
+                }
+            }
+
+            const ok = await showConfirm(`آیا از خرید «${p.name}» با مبلغ ${fmtPrice(p.price)} مطمئن هستید؟${p.duration_pricing ? `\n${p.traffic_gb} GB · ${p.time_days} روز · ${fmtNumber(p.price_per_gb)} تومان/GB` : ''}`);
             if (!ok) return;
 
             $btn.disabled = true;
@@ -619,6 +664,8 @@ export async function buy(view) {
                 if (err.status === 409 && data.obj && data.obj.code === 'price_changed') {
                     p.price = Number(data.obj.price || 0);
                     p.fx_quote = data.obj.fx_quote || '';
+                    if (data.obj.price_per_gb != null) p.price_per_gb = data.obj.price_per_gb;
+                    if (data.obj.duration_pricing != null) p.duration_pricing = data.obj.duration_pricing;
                     setBuyDraft(draft);
                     toast(`${msg} مبلغ جدید: ${fmtPrice(p.price)}`, 'warn', 7000);
                     renderConfirmStep(host);

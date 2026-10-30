@@ -32,6 +32,7 @@ final class ServiceRenewOptionsHandler extends BaseHandler
             FaoximaResponse::fail(409, '❌ امکان تمدید در این پنل وجود ندارد');
         }
 
+        $panel['_custom_quote_user'] = [(string)$this->user['id'], (string)($this->user['agent'] ?? 'f'), (int)($this->user['pricediscount'] ?? 0)];
         $agent = (string)($this->user['agent'] ?? 'f');
         $statusShowPrice = panel_feature_enabled($panel, 'showprice') ? 'onshowprice' : 'offshowprice';
         $userDiscount = (int)($this->user['pricediscount'] ?? 0);
@@ -130,8 +131,9 @@ final class ServiceRenewOptionsHandler extends BaseHandler
         $hasTimePrice = ($customPriceTime !== '' && $customPriceTime !== null);
         $timeVariable = ($maxTime > $minTime);
         $customConfigured = (($panel['type'] ?? '') !== 'Manualsale')
-            && $hasVolPrice
-            && (!$timeVariable || $hasTimePrice);
+            && (fx_duration_config($panel, $agent)['enabled']
+                ? count(fx_duration_tariffs($panel, $agent)) > 0
+                : ($hasVolPrice && (!$timeVariable || $hasTimePrice)));
         $customEnabled   = $customConfigured
             && ($customStatus === '1' || $custom_only)
             && !$nationalPanel;
@@ -156,6 +158,8 @@ final class ServiceRenewOptionsHandler extends BaseHandler
             'balance'         => (float)($this->user['Balance'] ?? 0),
             'custom'          => [
                 'enabled'        => $customEnabled,
+                'duration_pricing' => fx_duration_config($panel, $agent)['enabled'],
+                'duration_tariffs' => fx_duration_public_tariffs($panel, $agent),
                 'price_per_gb'   => (int)$customPriceVol,
                 'price_per_day'  => (int)$customPriceTime,
                 'min_volume_gb'  => $minVol,

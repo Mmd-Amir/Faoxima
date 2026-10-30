@@ -1,5 +1,10 @@
 <?php
 
+require_once REFACTORED_LEGACY_ROOT . '/re/rx/admin/custom_duration.php';
+if (rx_duration_admin_handle()) {
+    return;
+}
+
 if (!function_exists('rx_iranpay_label')) {
     function rx_iranpay_label($datatextbot, $key, $fallback)
     {
@@ -2196,14 +2201,20 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
             }
 
             $nowStamp = time();
-            $stmt = $pdo->prepare(
-                "UPDATE invoice SET Status = 'Unsuccessful', invalidated_at = :now
-                 WHERE Status IN ('active','end_of_time','end_of_volume','sendedwarn','send_on_hold')
-                 AND Service_location IS NOT NULL AND Service_location <> ''
-                 AND Service_location NOT IN (SELECT name_panel FROM marzban_panel WHERE name_panel IS NOT NULL)"
-            );
-            $stmt->execute([':now' => $nowStamp]);
-            $countorphanedpanel = $stmt->rowCount();
+            $countorphanedpanel = 0;
+            do {
+                $rxOptCheckpoint();
+                $rxOptOrphanedBatch = rx_stats_preserve_invoice_batch(
+                    $pdo,
+                    "Status IN ('active','end_of_time','end_of_volume','sendedwarn','send_on_hold')
+                     AND Service_location IS NOT NULL AND Service_location <> ''
+                     AND Service_location NOT IN (SELECT name_panel FROM marzban_panel WHERE name_panel IS NOT NULL)",
+                    [],
+                    "UPDATE invoice SET Status = 'Unsuccessful', invalidated_at = ?",
+                    [$nowStamp]
+                );
+                $countorphanedpanel += $rxOptOrphanedBatch;
+            } while ($rxOptOrphanedBatch === 500);
             $rxOptProgress['marked'] += $countorphanedpanel;
             $rxOptProgress['processed'] += $countorphanedpanel;
             if ($countorphanedpanel > 0) {
@@ -2223,7 +2234,10 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
             $rxOptScanFirst = $pdo->prepare($rxOptScanSql . " ORDER BY id_invoice ASC LIMIT " . $rxOptScanBatch);
             $rxOptScanNext = $pdo->prepare($rxOptScanSql . " AND id_invoice > ? ORDER BY id_invoice ASC LIMIT " . $rxOptScanBatch);
             $rxOptSetInvalidated = $pdo->prepare("UPDATE invoice SET invalidated_at = ? WHERE id_invoice = ?");
-            $rxOptSetInvalidatedStatus = $pdo->prepare("UPDATE invoice SET invalidated_at = ?, Status = ? WHERE id_invoice = ?");
+            $rxOptSetInvalidatedStatus = function ($stamp, $status, $id) use ($pdo) {
+                rx_stats_preserve_invoice_batch($pdo, "id_invoice = ?", [$id],
+                    "UPDATE invoice SET invalidated_at = ?, Status = ?", [$stamp, $status], 1);
+            };
             $rxOptClearInvalidated = $pdo->prepare("UPDATE invoice SET invalidated_at = NULL WHERE id_invoice = ?");
             $lastId = null;
             do {
@@ -2261,15 +2275,15 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
                         if (!$rxOptScanFailed) {
                             $rxOptMarkedNow = true;
                             if (isset($scanResult['msg']) && $scanResult['msg'] == "User not found") {
-                                $rxOptSetInvalidatedStatus->execute([$nowStamp, 'disabledn', $liveInvoice['id_invoice']]);
+                                $rxOptSetInvalidatedStatus($nowStamp, 'disabledn', $liveInvoice['id_invoice']);
                                 $countorphanedservice++;
                             } elseif (isset($scanResult['status']) && $scanResult['status'] == "Unsuccessful" && isset($scanResult['msg']) && $scanResult['msg'] == "Panel Not Found") {
-                                $rxOptSetInvalidatedStatus->execute([$nowStamp, 'Unsuccessful', $liveInvoice['id_invoice']]);
+                                $rxOptSetInvalidatedStatus($nowStamp, 'Unsuccessful', $liveInvoice['id_invoice']);
                                 $countorphanedservice++;
                             } elseif ((int)($scanResult['used_traffic'] ?? 0) === 0) {
                                 $purchasedAt = is_numeric($liveInvoice['time_sell']) ? (int)$liveInvoice['time_sell'] : null;
                                 if ($purchasedAt !== null && $purchasedAt < $thirtyDaysAgo) {
-                                    $rxOptSetInvalidatedStatus->execute([$nowStamp, 'unusedservice', $liveInvoice['id_invoice']]);
+                                    $rxOptSetInvalidatedStatus($nowStamp, 'unusedservice', $liveInvoice['id_invoice']);
                                     $countunusedservice++;
                                 } else {
                                     $rxOptMarkedNow = false;
@@ -2316,8 +2330,14 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
                 $rxOptDeleted = 0;
                 do {
                     $rxOptCheckpoint();
-                    $rxOptDelStmt->execute($params);
-                    $rxOptAffected = $rxOptDelStmt->rowCount();
+                    if ($table === 'invoice') {
+                        $rxOptWhere = preg_split('/\s+WHERE\s+/i', $sql, 2)[1];
+                        $rxOptAffected = rx_stats_preserve_invoice_batch($pdo, $rxOptWhere, $params,
+                            'DELETE FROM invoice', [], $rxOptDeleteBatch);
+                    } else {
+                        $rxOptDelStmt->execute($params);
+                        $rxOptAffected = $rxOptDelStmt->rowCount();
+                    }
                     $rxOptDeleted += $rxOptAffected;
                     $rxOptProgress['deleted'] += $rxOptAffected;
                     $rxOptProgress['processed'] += $rxOptAffected;
@@ -2563,7 +2583,8 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         $output_config_link = $panel['sublink'] == "onsublink" ? rxResolveConnectionLink($panel, $dataoutput['subscription_url'], $dataoutput['file_ext'] ?? null) : "";
         $config = "";
         if ($panel['config'] == "onconfig" && is_array($dataoutput['configs'])) {
-            foreach ($dataoutput['configs'] as $link) {
+            $rxAdminTextConfigs = function_exists('rxDeliveryTextConfigs') ? rxDeliveryTextConfigs($dataoutput['configs']) : $dataoutput['configs'];
+            foreach ($rxAdminTextConfigs as $link) {
                 $config .= "\n" . $link;
             }
         }
@@ -2626,6 +2647,8 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
             nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $optionGuard, 'HTML');
         } elseif ($typepanel == "pasarguard") {
             nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $optionPasarGuard, 'HTML');
+        } elseif ($typepanel == "jovadpanel") {
+            nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $optionJovad, 'HTML');
         } elseif ($typepanel == "Manualsale") {
             nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $optionManualsale, 'HTML');
         }
@@ -3614,67 +3637,6 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     update("user", "Processing_value", $userdata['namepanel'], "id", $from_id);
     step('PanelMenu', $from_id);
 
-} elseif ($text == "⏳ قیمت زمان دلخواه" && $adminrulecheck['rule'] == "administrator") {
-    $panelName = function_exists('nmResolvePanelNameForUser') ? nmResolvePanelNameForUser($user) : (string)$user['Processing_value'];
-    if ($panelName === '') {
-        nm_adminInstantReply($from_id, "❌ پنل انتخاب نشده است. ابتدا از «مدیریت پنل» پنل موردنظر را باز کنید، سپس دوباره این دکمه را بزنید.", $keyboardadmin, 'HTML');
-        return;
-    }
-    savedata("clear", "namepanel", $panelName);
-    nm_adminInstantReply($from_id, "📌 قیمت زمان دلخواه برای این پنل را ارسال نمایید.", $backadmin, 'HTML');
-    step('GetPriceExtratime', $from_id);
-} elseif ($user['step'] == "GetPriceExtratime") {
-    if (!isset($update['message']) && empty($text)) { return; }
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['Balance']['Invalidprice'], $backadmin, 'HTML');
-        return;
-    }
-    $panelName = function_exists('nmResolvePanelNameForUser') ? nmResolvePanelNameForUser($user) : (string)$user['Processing_value'];
-    if ($panelName === '') {
-        nm_adminInstantReply($from_id, "❌ پنل انتخاب نشده است. لطفاً دوباره پنل را انتخاب کنید.", $keyboardadmin, 'HTML');
-        step('home', $from_id);
-        return;
-    }
-    savedata("clear", "namepanel", $panelName);
-    savedata("save", "price", $text);
-    nm_adminInstantReply($from_id, $textbotlang['users']['Extra_volume']['gettypeextra'], rx_agentGroupKeyboard(true), 'HTML');
-    step('gettypeextratimecustom', $from_id);
-} elseif ($user['step'] == "gettypeextratimecustom") {
-    if (!isset($update['message']) && empty($text)) {
-        return;
-    }
-    $agentst = ["n", "n2", "f", "all"];
-    $text = rx_resolveAgentGroupFromReplyButton($text, $agentst);
-    if ($text === null) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidtypeagent'], rx_agentGroupKeyboard(true), 'HTML');
-        return;
-    }
-    $userdata = json_decode($user['Processing_value'], true);
-    if (!is_array($userdata) || empty($userdata['namepanel']) || !array_key_exists('price', $userdata)) {
-        nm_adminInstantReply($from_id, "❌ اطلاعات مرحله قبلی ناقص است. لطفاً دوباره تلاش کنید.", $backadmin, 'HTML');
-        step('home', $from_id);
-        return;
-    }
-    $typepanel = select("marzban_panel", "*", "name_panel", $userdata['namepanel'], "select");
-    if (!is_array($typepanel)) {
-        nm_adminInstantReply($from_id, "❌ پنل انتخاب‌شده پیدا نشد. لطفاً دوباره پنل را انتخاب کنید.", $backadmin, 'HTML');
-        step('home', $from_id);
-        return;
-    }
-    outtypepanel($typepanel['type'], $textbotlang['users']['Extra_volume']['ChangedPrice']);
-    $eextraprice = json_decode($typepanel['pricecustomtime'] ?? '{}', true);
-    if (!is_array($eextraprice)) $eextraprice = [];
-    if ($text == 'all') {
-        $eextraprice["f"] = $userdata['price'];
-        $eextraprice["n"] = $userdata['price'];
-        $eextraprice["n2"] = $userdata['price'];
-    } else {
-        $eextraprice[$text] = $userdata['price'];
-    }
-    $eextraprice = json_encode($eextraprice);
-    update("marzban_panel", "pricecustomtime", $eextraprice, "name_panel", $userdata['namepanel']);
-    update("user", "Processing_value", $userdata['namepanel'], "id", $from_id);
-    step('PanelMenu', $from_id);
 } elseif ($text == "🔒 کارت پس از اولین پرداخت" && $adminrulecheck['rule'] == "administrator") {
     $paymentverify = select("PaySetting", "ValuePay", "NamePay", "checkpaycartfirst", "select")['ValuePay'];
     $keyboardverify = json_encode([
@@ -5785,6 +5747,19 @@ elseif ($text == "🫣 مخفی پنل برای کاربر" && $adminrulecheck['
 📆 تاریخ خرید :  {$paymentUser['time']}";
     nm_adminInstantReply($from_id, $text_order, null, 'HTML');
 } elseif ($text == "🎛 تنظیم اینباند") {
+    $jovadProductPanel = select("marzban_panel", "*", "code_panel", $user['Processing_value_one']);
+    if (($jovadProductPanel['type'] ?? '') === 'jovadpanel') {
+        $jovadProtocolKeyboard = json_encode(['keyboard' => [
+            [['text' => 'xray'], ['text' => 'wireguard'], ['text' => 'openvpn']],
+            [['text' => 'dns'], ['text' => 'xray,wireguard'], ['text' => 'xray,openvpn']],
+            [['text' => 'wireguard,openvpn'], ['text' => 'xray,wireguard,openvpn'], ['text' => 'xray,dns']],
+            [['text' => 'xray,wireguard,dns'], ['text' => 'openvpn,dns'], ['text' => 'xray,wireguard,openvpn,dns']],
+            [['text' => $textbotlang['Admin']['backadmin']]],
+        ], 'resize_keyboard' => true], JSON_UNESCAPED_UNICODE);
+        nm_adminInstantReply($from_id, "کانال‌های این محصول را انتخاب کنید. WireGuard و OpenVPN هنگام دریافت کانفیگ به‌صورت فایل ارسال می‌شوند؛ DNS به‌صورت اطلاعات/پروفایل جداگانه در منوی کانفیگ نمایش داده می‌شود.", $jovadProtocolKeyboard, 'HTML');
+        step("getdatainboundproduct", $from_id);
+        return;
+    }
     nm_adminInstantReply($from_id, "📌 در صورتی که پنل مرزبان  یا مرزنشین هستید یک نام کاربری کانفیگ از پنل کپی و ارسال نمایید در غیراینصورت برای پنل های ثنایی و علیرضا شناسه اینباند را ارسال نمایید", $backadmin, 'HTML');
     step("getdatainboundproduct", $from_id);
 } elseif ($user['step'] == "getdatainboundproduct") {
@@ -5826,6 +5801,13 @@ elseif ($text == "🫣 مخفی پنل برای کاربر" && $adminrulecheck['
         $stmt->bindParam(':agent', $user['Processing_value_tow']);
         $stmt->execute();
         $datainbound = json_encode($DataUserOut['inbounds']);
+    } elseif ($marzban_list_get['type'] == "jovadpanel") {
+        $jovadRequestedChannels = preg_split('/[,\s]+/', strtolower(trim((string) $text)), -1, PREG_SPLIT_NO_EMPTY);
+        if (empty($jovadRequestedChannels) || array_diff($jovadRequestedChannels, ['xray', 'wireguard', 'openvpn', 'dns'])) {
+            nm_adminInstantReply($from_id, "پروتکل معتبر انتخاب کنید: xray، wireguard یا openvpn؛ چند پروتکل را با کامای انگلیسی جدا کنید.", null, 'HTML');
+            return;
+        }
+        $datainbound = json_encode(array_values(array_unique($jovadRequestedChannels)));
     } elseif ($marzban_list_get['type'] == "x-ui_single") {
         $datainbound = $text;
     } else {

@@ -591,6 +591,11 @@ if (false) {
         step('rebecca_edit_api_key', $from_id);
         return;
     }
+    if (is_array($typepanel) && ($typepanel['type'] ?? null) == "jovadpanel") {
+        nm_adminInstantReply($from_id, "🔑 لطفاً API Key جدید پنل JovadPanel را ارسال کنید.", $backadmin, 'HTML');
+        step('jovad_edit_api_key', $from_id);
+        return;
+    }
     if (is_array($typepanel) && ($typepanel['type'] ?? null) == "pasarguard") {
         if (($typepanel['pasarguard_auth_mode'] ?? 'api_key') === 'password') {
             nm_adminInstantReply($from_id, "👤 لطفاً نام کاربری جدید پنل PasarGuard را ارسال کنید.", $backadmin, 'HTML');
@@ -734,6 +739,43 @@ if (false) {
     update("marzban_panel", "api_key", $apiKey, "name_panel", $typepanel['name_panel']);
     outtypepanel("rebecca", "🔑 کلید Rebecca با موفقیت ذخیره شد.\n✅ اتصال برقرار است");
     step('PanelMenu', $from_id);
+} elseif ($user['step'] == "jovad_edit_api_key") {
+    if (!isset($update['message']) && empty($text)) { return; }
+    $panelName = guardResolveUserPanelName($user);
+    $typepanel = $panelName ? select("marzban_panel", "*", "name_panel", $panelName, "select") : null;
+    if (!is_array($typepanel) || ($typepanel['type'] ?? null) != "jovadpanel") {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['invalidapikey'], $backadmin, 'HTML');
+        return;
+    }
+    $apiKey = trim($text);
+    if ($apiKey === '') {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['invalidapikey'], $backadmin, 'HTML');
+        return;
+    }
+    $baseUrl = jovadpanelHostUrl($typepanel['url_panel'] ?? null);
+    $currentKey = trim((string) ($typepanel['api_key'] ?? ''));
+    if ($currentKey !== '' && hash_equals($currentKey, $apiKey)) {
+        $sameKeyMessage = "ℹ️ کلید جدید با کلید قبلی یکسان است. تغییری انجام نشد.";
+        $testResult = jovadpanelTestConnection($baseUrl, $apiKey);
+        if ($testResult['status'] === false) {
+            $sameKeyMessage .= "\n❌ " . ($testResult['msg'] ?? 'اتصال ناموفق بود');
+        } else {
+            $sameKeyMessage .= "\n✅ اتصال برقرار است";
+        }
+        outtypepanel("jovadpanel", $sameKeyMessage);
+        step('PanelMenu', $from_id);
+        return;
+    }
+    $testResult = jovadpanelTestConnection($baseUrl, $apiKey);
+    if ($testResult['status'] === false) {
+        $errorMessage = $testResult['msg'] ?? 'اتصال ناموفق بود';
+        outtypepanel("jovadpanel", "❌ کلید جدید ذخیره نشد، اتصال به JovadPanel ناموفق بود:\n{$errorMessage}");
+        step('PanelMenu', $from_id);
+        return;
+    }
+    update("marzban_panel", "api_key", $apiKey, "name_panel", $typepanel['name_panel']);
+    outtypepanel("jovadpanel", "🔑 کلید JovadPanel با موفقیت ذخیره شد.\n✅ اتصال برقرار است");
+    step('PanelMenu', $from_id);
 } elseif ($user['step'] == "guard_edit_api_key") {
     if (!isset($update['message']) && empty($text)) { return; }
     $panelName = guardResolveUserPanelName($user);
@@ -791,7 +833,7 @@ if (false) {
         nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['invalidserviceid'], $backadmin, 'HTML');
         return;
     }
-    $servicesResponse = rebeccaGetServices($panel['name_panel']);
+    $servicesResponse = rebeccaGetServicePage($panel['name_panel'], 1);
     if ($servicesResponse['status'] === false || empty($servicesResponse['services'])) {
         $errorMsg = $servicesResponse['msg'] ?? 'لیست سرویس‌ها خالی است.';
         outtypepanel("rebecca", "❌ دریافت سرویس‌ها از Rebecca ناموفق بود: {$errorMsg}");
@@ -799,7 +841,7 @@ if (false) {
         return;
     }
     $currentServiceId = trim((string) ($panel['rebecca_service_id'] ?? ''));
-    $rebeccaServiceView = rebeccaBuildServiceKeyboard($servicesResponse['services'], $currentServiceId, 1);
+    $rebeccaServiceView = rebeccaBuildServiceKeyboard($servicesResponse['services'], $currentServiceId, 1, 5, $servicesResponse['has_next']);
     if ($rebeccaServiceView === null) {
         outtypepanel("rebecca", "❌ دریافت سرویس‌ها از Rebecca ناموفق بود: لیست سرویس‌ها خالی است.");
         step('PanelMenu', $from_id);
@@ -823,9 +865,9 @@ if (false) {
         ]);
         return;
     }
-    $servicesResponse = rebeccaGetServices($panel['name_panel']);
+    $servicesResponse = rebeccaGetServicePage($panel['name_panel'], (int) $rebeccaServiceMatch[1]);
     $rebeccaServiceView = ($servicesResponse['status'] !== false && is_array($servicesResponse['services'] ?? null))
-        ? rebeccaBuildServiceKeyboard($servicesResponse['services'], $panel['rebecca_service_id'] ?? '', (int) $rebeccaServiceMatch[1])
+        ? rebeccaBuildServiceKeyboard($servicesResponse['services'], $panel['rebecca_service_id'] ?? '', $servicesResponse['page'], 5, $servicesResponse['has_next'])
         : null;
     if ($rebeccaServiceView === null) {
         telegram('answerCallbackQuery', [
@@ -857,9 +899,9 @@ if (false) {
     }
     $chosenServiceId = (string) intval($rebeccaServiceMatch[1]);
     $rebeccaServicePage = isset($rebeccaServiceMatch[2]) ? (int) $rebeccaServiceMatch[2] : 1;
-    $servicesResponse = rebeccaGetServices($panel['name_panel']);
+    $servicesResponse = rebeccaGetServicePage($panel['name_panel'], $rebeccaServicePage);
     $rebeccaServiceView = ($servicesResponse['status'] !== false && is_array($servicesResponse['services'] ?? null))
-        ? rebeccaBuildServiceKeyboard($servicesResponse['services'], $chosenServiceId, $rebeccaServicePage)
+        ? rebeccaBuildServiceKeyboard($servicesResponse['services'], $chosenServiceId, $servicesResponse['page'], 5, $servicesResponse['has_next'])
         : null;
     if ($rebeccaServiceView === null) {
         telegram('answerCallbackQuery', [
@@ -871,7 +913,7 @@ if (false) {
         return;
     }
     if (!in_array($chosenServiceId, $rebeccaServiceView['ids'], true)) {
-        $rebeccaServiceView = rebeccaBuildServiceKeyboard($servicesResponse['services'], $panel['rebecca_service_id'] ?? '', $rebeccaServicePage);
+        $rebeccaServiceView = rebeccaBuildServiceKeyboard($servicesResponse['services'], $panel['rebecca_service_id'] ?? '', $servicesResponse['page'], 5, $servicesResponse['has_next']);
         if (!empty($message_id)) {
             Editmessagetext($from_id, $message_id, "⚙️ سرویس پیش‌فرض فعلی را انتخاب کنید. با هر بار ضربه زدن روی یک سرویس، همان سرویس به‌عنوان پیش‌فرض ذخیره می‌شود.", $rebeccaServiceView['keyboard'], 'HTML');
         }

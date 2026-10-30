@@ -15,21 +15,52 @@ if (!rx_cron_db_ready('ip_block_notify')) {
     return;
 }
 
-$stmt = $pdo->prepare("
-    SELECT invoice.* FROM invoice
-    INNER JOIN marzban_panel ON marzban_panel.name_panel = invoice.Service_location
-    WHERE marzban_panel.type IN ('x-ui_single', 'rebecca')
-      AND marzban_panel.ip_limit_guard = 'onipguard'
-      AND invoice.Status = 'active'
-      AND invoice.ip_limit IS NOT NULL
-      AND invoice.ip_limit != '0'
-    ORDER BY RAND() LIMIT 25
-");
-$stmt->execute();
-$rxInvoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$rxCursorFile = rx_cron_runtime_dir() . DIRECTORY_SEPARATOR . 'ip_block_notify.cursor';
+$rxCursor = '';
+if (is_file($rxCursorFile)) {
+    $rxCursorRaw = trim((string) @file_get_contents($rxCursorFile));
+    if ($rxCursorRaw !== '' && strlen($rxCursorRaw) <= 200) {
+        $rxCursor = $rxCursorRaw;
+    }
+}
+
+$rxPanelMap = [];
+try {
+    $rxPanelStmt = $pdo->query("SELECT * FROM marzban_panel WHERE type IN ('x-ui_single', 'rebecca') AND ip_limit_guard = 'onipguard'");
+    $rxPanelRows = $rxPanelStmt ? $rxPanelStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+    foreach ($rxPanelRows as $rxPanelRow) {
+        $rxPanelMap[strtolower((string) $rxPanelRow['name_panel'])] = $rxPanelRow;
+    }
+} catch (Throwable $e) {
+    $rxPanelMap = [];
+}
+
+$rxLoadBatch = static function (string $rxBound) use ($pdo): array {
+    $stmt = $pdo->prepare("
+        SELECT invoice.id_invoice, invoice.id_user, invoice.username, invoice.Service_location, invoice.ip_limit, invoice.ip_last_seen
+        FROM invoice
+        INNER JOIN marzban_panel ON marzban_panel.name_panel = invoice.Service_location
+        WHERE marzban_panel.type IN ('x-ui_single', 'rebecca')
+          AND marzban_panel.ip_limit_guard = 'onipguard'
+          AND invoice.Status = 'active'
+          AND invoice.ip_limit IS NOT NULL
+          AND invoice.ip_limit != '0'
+          AND invoice.id_invoice > ?
+        ORDER BY invoice.id_invoice ASC
+        LIMIT 25
+    ");
+    $stmt->execute([$rxBound]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    return is_array($rows) ? $rows : [];
+};
+
+$rxInvoices = $rxLoadBatch($rxCursor);
+if (!$rxInvoices && $rxCursor !== '') {
+    $rxInvoices = $rxLoadBatch('');
+}
 
 foreach ($rxInvoices as $invoice) {
-    $panel = select("marzban_panel", "*", "name_panel", $invoice['Service_location'], "select");
+    $panel = $rxPanelMap[strtolower((string) $invoice['Service_location'])] ?? null;
     if (!is_array($panel)) {
         continue;
     }
@@ -69,5 +100,15 @@ foreach ($rxInvoices as $invoice) {
 
     if ($currentIps !== $previousIps) {
         update("invoice", "ip_last_seen", json_encode($currentIps), "id_invoice", $invoice['id_invoice']);
+    }
+}
+
+if (!empty($rxInvoices)) {
+    $rxNextCursor = (string) $rxInvoices[count($rxInvoices) - 1]['id_invoice'];
+    if ($rxNextCursor !== '' && $rxNextCursor !== $rxCursor) {
+        $rxCursorTmp = $rxCursorFile . '.tmp';
+        if (@file_put_contents($rxCursorTmp, $rxNextCursor, LOCK_EX) !== false) {
+            @rename($rxCursorTmp, $rxCursorFile);
+        }
     }
 }

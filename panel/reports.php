@@ -93,7 +93,7 @@ $discountTopCodes = [];
 try {
     $jToday = explode('-', jdate('Y-n-j', $nowTs, '', 'Asia/Tehran', 'en'));
     $todayStart = (int)jmktime(0, 0, 0, (int)($jToday[1] ?? 1), (int)($jToday[2] ?? 1), (int)($jToday[0] ?? 1400));
-    $st = $pdo->prepare("SELECT COALESCE(SUM(price_product),0) FROM invoice WHERE time_sell >= :a AND " . rx_stats_historical_sale_predicate());
+    $st = $pdo->prepare("SELECT COALESCE(SUM(price_product),0) FROM " . rx_stats_sales_source($pdo) . " sales WHERE time_sell >= :a AND " . rx_stats_historical_sale_predicate());
     $st->bindValue(':a', (int)$todayStart, PDO::PARAM_INT); $st->execute();
     $incomeToday = (float)$st->fetchColumn();
 
@@ -101,7 +101,7 @@ try {
     $totalOrders = rx_stats_total_sales_count($pdo);
     $totalUsers  = rx_stats_total_users($pdo);
     $avg30Start = $nowTs - 30 * 86400;
-    $st30 = $pdo->prepare("SELECT COALESCE(SUM(price_product),0), COUNT(*) FROM invoice WHERE time_sell >= :a AND " . rx_stats_historical_sale_predicate());
+    $st30 = $pdo->prepare("SELECT COALESCE(SUM(price_product),0), COUNT(*) FROM " . rx_stats_sales_source($pdo) . " sales WHERE time_sell >= :a AND " . rx_stats_historical_sale_predicate());
     $st30->bindValue(':a', (int)$avg30Start, PDO::PARAM_INT); $st30->execute();
     $row30 = $st30->fetch(PDO::FETCH_NUM);
     $ord30 = (int)($row30[1] ?? 0);
@@ -111,7 +111,7 @@ try {
 try {
     $prod30Start = $nowTs - 30 * 86400;
     $prodTopN = 8;
-    $st = $pdo->prepare("SELECT name_product, COUNT(*) AS total FROM invoice WHERE time_sell >= :a AND " . rx_stats_historical_sale_predicate() . " GROUP BY name_product ORDER BY total DESC");
+    $st = $pdo->prepare("SELECT name_product, COUNT(*) AS total FROM " . rx_stats_sales_source($pdo) . " sales WHERE time_sell >= :a AND " . rx_stats_historical_sale_predicate() . " GROUP BY name_product ORDER BY total DESC");
     $st->bindValue(':a', (int)$prod30Start, PDO::PARAM_INT); $st->execute();
     $prodRows = [];
     foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
@@ -149,7 +149,7 @@ try {
     $groupUsers = [];
     foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) { $groupUsers[(string)$r['grp']] = (int)$r['users']; }
 
-    $st = $pdo->query("SELECT CASE WHEN a.id_admin IS NOT NULL THEN 'admin' WHEN u.agent = 'n2' THEN 'n2' WHEN u.agent = 'n' THEN 'n' ELSE 'f' END AS grp, COALESCE(SUM(i.price_product),0) AS revenue, COUNT(i.id_invoice) AS orders FROM user u LEFT JOIN admin a ON a.id_admin = u.id LEFT JOIN invoice i ON i.id_user = u.id AND {$validSaleI} GROUP BY grp");
+    $st = $pdo->query("SELECT CASE WHEN a.id_admin IS NOT NULL THEN 'admin' WHEN u.agent = 'n2' THEN 'n2' WHEN u.agent = 'n' THEN 'n' ELSE 'f' END AS grp, COALESCE(SUM(i.price_product),0) AS revenue, COUNT(i.id_invoice) AS orders FROM user u LEFT JOIN admin a ON a.id_admin = u.id LEFT JOIN " . rx_stats_sales_source($pdo) . " i ON i.id_user = u.id AND {$validSaleI} GROUP BY grp");
     $groupSales = [];
     foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) { $groupSales[(string)$r['grp']] = ['revenue' => (float)$r['revenue'], 'orders' => (int)$r['orders']]; }
 
@@ -165,7 +165,7 @@ try {
 } catch (\Throwable $e) { error_log('[reports] groups: ' . $e->getMessage()); }
 
 try {
-    $st = $pdo->query("SELECT i.id_user, COALESCE(NULLIF(MAX(u.username),''), i.id_user) AS uname, COALESCE(SUM(i.price_product),0) AS revenue, COUNT(*) AS orders FROM invoice i LEFT JOIN user u ON u.id = i.id_user WHERE {$validSaleI} GROUP BY i.id_user ORDER BY revenue DESC LIMIT 10");
+    $st = $pdo->query("SELECT i.id_user, COALESCE(NULLIF(MAX(u.username),''), i.id_user) AS uname, COALESCE(SUM(i.price_product),0) AS revenue, COUNT(*) AS orders FROM " . rx_stats_sales_source($pdo) . " i LEFT JOIN user u ON u.id = i.id_user WHERE {$validSaleI} GROUP BY i.id_user ORDER BY revenue DESC LIMIT 10");
     $topBuyers = $st->fetchAll(PDO::FETCH_ASSOC);
 } catch (\Throwable $e) { error_log('[reports] topbuyers: ' . $e->getMessage()); }
 
@@ -185,7 +185,7 @@ try {
 } catch (\Throwable $e) { error_log('[reports] topbalance: ' . $e->getMessage()); }
 
 try {
-    $row = $pdo->query("SELECT COALESCE(SUM(discount_amount),0) AS total, COUNT(*) AS cnt FROM invoice WHERE {$validSale} AND discount_amount + 0 > 0")->fetch(PDO::FETCH_ASSOC);
+    $row = $pdo->query("SELECT COALESCE(SUM(discount_amount),0) AS total, COUNT(*) AS cnt FROM " . rx_stats_sales_source($pdo) . " sales WHERE {$validSale} AND discount_amount + 0 > 0")->fetch(PDO::FETCH_ASSOC);
     $discountTotal = (float)($row['total'] ?? 0);
     $discountCount = (int)($row['cnt'] ?? 0);
 

@@ -29,6 +29,9 @@ final class PurchaseHandler extends BaseHandler
         if (empty($panel)) {
             FaoximaResponse::fail(404, faoxima_textbot_get('dyn_purchase_panel_not_found', 'پنل انتخابی موجود نیست.'));
         }
+        if (jovadMiniAppReject($panel)) {
+            return;
+        }
         if (($panel['status'] ?? '') === 'disable') {
             FaoximaResponse::fail(409, faoxima_textbot_get('dyn_purchase_panel_disabled', 'پنل انتخابی درحال حاضر فعال نیست'));
         }
@@ -37,6 +40,7 @@ final class PurchaseHandler extends BaseHandler
         }
 
 
+        $panel['_custom_quote_user'] = [(string)$this->user['id'], (string)($this->user['agent'] ?? 'f'), (int)($this->user['pricediscount'] ?? 0)];
         $customService = FaoximaInput::array($this->data, 'custom_service');
         if (empty($customService)) {
             $serviceId = FaoximaInput::string($this->data, 'service_id');
@@ -71,11 +75,23 @@ final class PurchaseHandler extends BaseHandler
         if (empty($customService)) {
             $product = fx_apply_to_product($product, $panel);
         }
-        if (fx_context($panel, $fxKinds) !== null && !fx_quote_token_valid(FaoximaInput::string($this->data, 'fx_quote'), $panel, $fxKinds)) {
+        if (!empty($customService)) {
+            try {
+                $panel = fx_custom_api_quote_panel($panel, $this->user, $product, 'buy', FaoximaInput::string($this->data, 'discount_code'));
+            } catch (InvalidArgumentException $e) {
+                FaoximaResponse::badRequest($e->getMessage());
+            }
+        }
+        if (fx_custom_quote_context($panel, $fxKinds) !== null && !fx_quote_token_valid(FaoximaInput::string($this->data, 'fx_quote'), $panel, $fxKinds)) {
             $fxDisplayPrice = empty($customService)
                 ? fx_finalize_amount(fx_apply_user_discount($product['price_product'], (int)($this->user['pricediscount'] ?? 0)), $panel, $fxKinds)
-                : fx_finalize_amount($product['price_product'], $panel, $fxKinds);
-            FaoximaResponse::fail(409, fx_price_changed_api_message(), fx_price_changed_api_obj($fxDisplayPrice, fx_quote_token($panel, $fxKinds)));
+                : $panel['_custom_quote_total'];
+            $changed = fx_price_changed_api_obj($fxDisplayPrice, fx_quote_token($panel, $fxKinds));
+            if (!empty($customService)) {
+                $changed['price_per_gb'] = fx_custom_resolve($panel, $this->user['agent'] ?? 'f', $product['Volume_constraint'], $product['Service_time'])['price_per_gb'];
+                $changed['duration_pricing'] = fx_duration_config($panel, $this->user['agent'] ?? 'f')['enabled'];
+            }
+            FaoximaResponse::fail(409, fx_price_changed_api_message(), $changed);
         }
         $fxListPrice = (float) fx_finalize_amount($product['price_product'], $panel, $fxKinds);
         $fxBasePrice = empty($customService)
@@ -125,6 +141,10 @@ final class PurchaseHandler extends BaseHandler
 
         $product['price_product'] = fx_finalize_amount($product['price_product'], $panel, $fxKinds);
         $fxSnapshot = fx_pricing_snapshot($panel, $fxKinds, $fxBasePrice, $product['price_product'], $fxListPrice - (float) $product['price_product'], ['product' => (string)($product['code_product'] ?? ''), 'source_channel' => 'miniapp']);
+
+        if (!empty($customService)) {
+            $fxSnapshot = fx_custom_snapshot($panel, $this->user['agent'] ?? 'f', $product['Volume_constraint'], $product['Service_time'], $product['price_product'], $fxSnapshot);
+        }
 
         $orderId = bin2hex(random_bytes(4));
         $customUsername = FaoximaInput::nullableString($this->data, 'custom_username');
@@ -558,6 +578,10 @@ final class PurchaseHandler extends BaseHandler
         $template = str_replace('{day}', (string)$displayDays, $template);
         $template = str_replace('{volume}', (string)$displayVolume, $template);
 
+        if (!empty($customService)) {
+            $template .= fx_custom_price_text($panel, $this->user['agent'] ?? 'f', $product['Volume_constraint'], $product['Service_time'], $product['price_product']);
+        }
+
         $usesButtonDelivery = ($panel['type'] ?? '') !== 'Manualsale'
             && !(function_exists('nmPanelNationalEnabled') && nmPanelNationalEnabled($panel));
         $template = $usesButtonDelivery
@@ -849,8 +873,6 @@ final class PurchaseHandler extends BaseHandler
         $max   = $this->decodeJsonField($panel['maxvolume'] ?? null);
         $minT  = $this->decodeJsonField($panel['maintime'] ?? null);
         $maxT  = $this->decodeJsonField($panel['maxtime'] ?? null);
-        $tp    = $this->decodeJsonField($panel['pricecustomvolume'] ?? null);
-        $timeP = $this->decodeJsonField($panel['pricecustomtime'] ?? null);
 
         $minVolume = (int)($main[$agent] ?? 0);
         $maxVolume = (int)($max[$agent] ?? 0);
@@ -867,8 +889,15 @@ final class PurchaseHandler extends BaseHandler
             FaoximaResponse::badRequest(faoxima_textbot_get('dyn_purchase_invalid_time_restart', 'زمان نامعتبر است خرید را از اول انجام دهید'));
         }
 
-        $price = ($volume * (float) fx_adjust_base_toman($tp[$agent] ?? 0, $panel, 'custom_volume'))
-               + ($time   * (float) fx_adjust_base_toman($timeP[$agent] ?? 0, $panel, 'custom_time'));
+        if ((int)($this->decodeJsonField($panel['customvolume'] ?? null)[$agent] ?? 0) !== 1 || ($panel['type'] ?? '') === 'Manualsale') {
+            FaoximaResponse::badRequest('سرویس دلخواه فعال نیست.');
+        }
+        try {
+            $durationPricing = fx_duration_config($panel, $agent)['enabled'];
+            $price = fx_custom_price($panel, $agent, $durationPricing ? ($customService['traffic_gb'] ?? 0) : $volume, $durationPricing ? ($customService['time_days'] ?? 0) : $time);
+        } catch (InvalidArgumentException $e) {
+            FaoximaResponse::badRequest($e->getMessage());
+        }
 
         return [
             'code_product'      => 'customvolume',

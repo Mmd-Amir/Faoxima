@@ -95,6 +95,10 @@ if ($lockFh === false) {
     });
 }
 
+if (function_exists('rx_cron_task_attach')) {
+    rx_cron_task_attach('sendmessage', 120);
+}
+
 $rxBcActive = null;
 register_shutdown_function(static function () use (&$rxBcActive): void {
     $err = error_get_last();
@@ -385,7 +389,10 @@ try {
         'affiliatesbtn'=> json_encode(['inline_keyboard' => [[rx_cron_btn('cron_affiliates',  ['text' => $datatextbot['text_affiliates'],'callback_data' => 'affiliatesbtn'])]]]),
         'addbalance'   => json_encode(['inline_keyboard' => [[rx_cron_btn('cron_addbalance',  ['text' => $datatextbot['text_Add_Balance'],'callback_data' => 'Add_Balance'])]]]),
     ];
-    $cancelmessage = json_encode(['inline_keyboard' => [[['text' => "لغو عملیات", 'callback_data' => 'cancel_sendmessage']]]]);
+    $cancelmessage = json_encode(['inline_keyboard' => [
+        [['text' => "🔄 بروزرسانی", 'callback_data' => 'broadcast_status_refresh']],
+        [['text' => "لغو عملیات", 'callback_data' => 'cancel_sendmessage']],
+    ]], JSON_UNESCAPED_UNICODE);
 
 
     $batchStart    = microtime(true);
@@ -422,6 +429,9 @@ try {
     $rxStop = 'running';
     $idx = 0;
     foreach ($batch as $userId) {
+        if (function_exists('rx_cron_task_heartbeat')) {
+            rx_cron_task_heartbeat();
+        }
         if ((microtime(true) - $batchStart) >= $softTimeLimit) {
             $unprocessedSlice = array_slice($batch, $idx);
             if ($usingJsonMode && !empty($unprocessedSlice)) {
@@ -579,6 +589,7 @@ try {
             . "\n" . rx_broadcast_pause_text($rxInfoNow);
         $rxPauseKb = json_encode(['inline_keyboard' => [
             [rx_broadcast_resume_button($bcToken)],
+            [['text' => "🔄 بروزرسانی", 'callback_data' => 'broadcast_status_refresh']],
             [['text' => "لغو عملیات", 'callback_data' => 'cancel_sendmessage']],
         ]]);
         if (isset($info['id_admin'], $info['id_message'])) {

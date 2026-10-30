@@ -22,7 +22,9 @@ if (!class_exists('RxOptimizerController')) {
             $analyzer = new RxEnvAnalyzer($this->pdo);
             $data     = $analyzer->toArray();
             $this->writeOptimizationConfig($data);
-            $this->writeHostProfileJson($data);
+            if (!$this->writeHostProfileJson($data)) {
+                throw new RuntimeException('Host profile could not be saved');
+            }
             $data['redis_tuning_applied'] = $this->applyRedisTuning($data['redis_status'] ?? []);
             return $this->formatTelegramResult($data);
         }
@@ -77,25 +79,53 @@ if (!class_exists('RxOptimizerController')) {
 
         private function writeHostProfileJson(array $data): bool
         {
+            $baseProfile = function_exists('rx_host_profile') ? rx_host_profile() : [];
             $path     = $this->rootDir . '/cronbot/.runtime/host_profile.json';
-            $existing = [];
-            if (@is_file($path)) {
-                $raw = @file_get_contents($path);
-                $dec = ($raw !== false) ? json_decode($raw, true) : null;
-                if (is_array($dec)) {
-                    $existing = $dec;
-                }
+            $lock = @fopen($path . '.workers.lock', 'c');
+            if ($lock === false) {
+                return false;
             }
-            $merge = array_merge($existing, [
-                'cron_db_budget'         => $data['cron_db_budget'],
-                'cron_time_budget'       => $data['cron_time_budget'],
-                'broadcast_workers'      => $data['broadcast_workers'],
-                'payment_workers'        => $data['payment_workers'],
-                'optimizer_pressure'     => $data['pressure'],
-                'optimizer_generated_at' => $data['generated_at'],
-            ]);
-            $json = json_encode($merge, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-            return @file_put_contents($path, $json, LOCK_EX) !== false;
+            $tmp = null;
+            try {
+                if (!@flock($lock, LOCK_EX | LOCK_NB)) {
+                    return false;
+                }
+                $existing = is_array($baseProfile) ? $baseProfile : [];
+                if (@is_file($path)) {
+                    $raw = @file_get_contents($path);
+                    $dec = ($raw !== false) ? json_decode($raw, true) : null;
+                    if (!is_array($dec)) {
+                        return false;
+                    }
+                    $existing = array_merge($existing, $dec);
+                }
+                $merge = array_merge($existing, [
+                    'cron_db_budget'         => $data['cron_db_budget'],
+                    'cron_time_budget'       => $data['cron_time_budget'],
+                    'broadcast_workers'      => $data['broadcast_workers'],
+                    'payment_workers'        => $data['payment_workers'],
+                    'optimizer_pressure'     => $data['pressure'],
+                    'optimizer_generated_at' => $data['generated_at'],
+                ]);
+                unset($merge['manual_workers']);
+                $json = json_encode($merge, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+                if (!is_string($json)) {
+                    return false;
+                }
+                $tmp = $path . '.tmp.' . bin2hex(random_bytes(8));
+                if (@file_put_contents($tmp, $json, LOCK_EX) !== strlen($json)) {
+                    return false;
+                }
+                $mode = @fileperms($path);
+                @chmod($tmp, $mode === false ? 0660 : ($mode & 0666));
+                return @rename($tmp, $path);
+            } finally {
+                if ($tmp !== null && is_file($tmp)) {
+                    @unlink($tmp);
+                }
+                @flock($lock, LOCK_UN);
+                @fclose($lock);
+            }
         }
 
         private function pressureEmoji(float $pressure): string

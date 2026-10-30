@@ -439,6 +439,9 @@ function rebeccaKeyboardProtocolLabel($config){
         'tg' => 'MTProto',
         'xuifile' => 'WireGuard',
         'xuiawgfile' => 'AmneziaWG',
+        'jovadwg' => 'WireGuard',
+        'jovadovpn' => 'OpenVPN',
+        'jovaddns' => 'DNS',
         'amneziawg' => 'AmneziaWG',
         'awg' => 'AmneziaWG',
     ];

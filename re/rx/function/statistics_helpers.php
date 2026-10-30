@@ -8,6 +8,112 @@ if (!function_exists('rx_stats_historical_sale_predicate')) {
     }
 }
 
+if (!function_exists('rx_stats_sales_history_schema')) {
+    function rx_stats_sales_history_schema()
+    {
+        return "CREATE TABLE IF NOT EXISTS invoice_sales_history (
+            id_invoice VARCHAR(200) PRIMARY KEY,
+            id_user VARCHAR(200) NULL,
+            time_sell VARCHAR(200) NULL,
+            name_product VARCHAR(200) NULL,
+            price_product VARCHAR(200) NULL,
+            discount_amount VARCHAR(200) NULL,
+            discount_code VARCHAR(200) NULL,
+            cleaned_up TINYINT NOT NULL DEFAULT 0,
+            INDEX idx_ish_user (id_user),
+            INDEX idx_ish_time (time_sell)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    }
+}
+
+if (!function_exists('rx_stats_ensure_sales_history')) {
+    function rx_stats_ensure_sales_history(\PDO $pdo)
+    {
+        static $ready;
+        if ($ready === null) {
+            $ready = new \SplObjectStorage();
+        }
+        if (!$ready->contains($pdo)) {
+            $exists = $pdo->query("SHOW TABLES LIKE 'invoice_sales_history'");
+            if (!$exists || $exists->fetchColumn() === false) {
+                if ($pdo->inTransaction() || $pdo->exec(rx_stats_sales_history_schema()) === false) {
+                    throw new RuntimeException('Cannot initialize invoice sales history');
+                }
+            }
+            $ready->attach($pdo);
+        }
+    }
+}
+
+if (!function_exists('rx_stats_sales_source')) {
+    function rx_stats_sales_source(\PDO $pdo)
+    {
+        rx_stats_ensure_sales_history($pdo);
+        return "(SELECT i.id_invoice, i.id_user, i.time_sell, i.name_product, i.price_product,
+                       i.discount_amount, i.discount_code, i.Status
+                FROM invoice i WHERE " . rx_stats_historical_sale_predicate('i') . "
+                UNION ALL
+                SELECT h.id_invoice, h.id_user, h.time_sell, h.name_product, h.price_product,
+                       h.discount_amount, h.discount_code, 'active' AS Status
+                FROM invoice_sales_history h LEFT JOIN invoice i ON i.id_invoice = h.id_invoice
+                WHERE (i.id_invoice IS NULL AND h.cleaned_up = 1) OR i.Status = 'Unsuccessful')";
+    }
+}
+
+if (!function_exists('rx_stats_preserve_invoice_batch')) {
+    function rx_stats_preserve_invoice_batch(\PDO $pdo, $where, array $params, $mutation, array $mutationParams = [], $limit = 500)
+    {
+        rx_stats_ensure_sales_history($pdo);
+        $ownTx = !$pdo->inTransaction();
+        if ($ownTx) {
+            $pdo->beginTransaction();
+        }
+        try {
+            $stmt = $pdo->prepare("SELECT id_invoice, id_user, time_sell, name_product, price_product,
+                discount_amount, discount_code, Status, (" . rx_stats_historical_sale_predicate() . ") AS counted
+                FROM invoice WHERE {$where} ORDER BY id_invoice LIMIT " . (int) $limit . " FOR UPDATE");
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $save = $pdo->prepare("INSERT INTO invoice_sales_history
+                (id_invoice, id_user, time_sell, name_product, price_product, discount_amount, discount_code)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE id_user = VALUES(id_user), time_sell = VALUES(time_sell),
+                name_product = VALUES(name_product), price_product = VALUES(price_product),
+                discount_amount = VALUES(discount_amount), discount_code = VALUES(discount_code), cleaned_up = 0");
+            $remove = $pdo->prepare("DELETE FROM invoice_sales_history WHERE id_invoice = ?");
+            foreach ($rows as $row) {
+                if ($row['counted']) {
+                    $save->execute([$row['id_invoice'], $row['id_user'], $row['time_sell'], $row['name_product'],
+                        $row['price_product'], $row['discount_amount'], $row['discount_code']]);
+                } elseif (strcasecmp((string) $row['Status'], 'Unsuccessful') !== 0) {
+                    $remove->execute([$row['id_invoice']]);
+                }
+            }
+            $affected = 0;
+            if ($rows) {
+                $ids = array_column($rows, 'id_invoice');
+                $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                if ($mutation === 'DELETE FROM invoice') {
+                    $mark = $pdo->prepare("UPDATE invoice_sales_history SET cleaned_up = 1 WHERE id_invoice IN ({$placeholders})");
+                    $mark->execute($ids);
+                }
+                $stmt = $pdo->prepare($mutation . " WHERE id_invoice IN ({$placeholders})");
+                $stmt->execute(array_merge($mutationParams, $ids));
+                $affected = $stmt->rowCount();
+            }
+            if ($ownTx) {
+                $pdo->commit();
+            }
+            return $affected;
+        } catch (\Throwable $e) {
+            if ($ownTx && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+}
+
 if (!function_exists('rx_stats_operational_service_predicate')) {
     function rx_stats_operational_service_predicate($alias = '')
     {
@@ -35,8 +141,9 @@ if (!function_exists('rx_stats_total_users')) {
 if (!function_exists('rx_stats_total_sales_count')) {
     function rx_stats_total_sales_count(\PDO $pdo)
     {
+        $source = rx_stats_sales_source($pdo);
         $predicate = rx_stats_historical_sale_predicate();
-        $stmt = $pdo->query("SELECT COUNT(*) FROM invoice WHERE {$predicate}");
+        $stmt = $pdo->query("SELECT COUNT(*) FROM {$source} sales WHERE {$predicate}");
         return (int) $stmt->fetchColumn();
     }
 }
@@ -44,8 +151,9 @@ if (!function_exists('rx_stats_total_sales_count')) {
 if (!function_exists('rx_stats_total_sales_amount')) {
     function rx_stats_total_sales_amount(\PDO $pdo)
     {
+        $source = rx_stats_sales_source($pdo);
         $predicate = rx_stats_historical_sale_predicate();
-        $stmt = $pdo->query("SELECT COALESCE(SUM(price_product),0) FROM invoice WHERE {$predicate}");
+        $stmt = $pdo->query("SELECT COALESCE(SUM(price_product),0) FROM {$source} sales WHERE {$predicate}");
         return (float) $stmt->fetchColumn();
     }
 }
@@ -53,8 +161,9 @@ if (!function_exists('rx_stats_total_sales_amount')) {
 if (!function_exists('rx_stats_paying_users_count')) {
     function rx_stats_paying_users_count(\PDO $pdo)
     {
+        $source = rx_stats_sales_source($pdo);
         $predicate = rx_stats_historical_sale_predicate();
-        $stmt = $pdo->query("SELECT COUNT(DISTINCT id_user) FROM invoice WHERE {$predicate}");
+        $stmt = $pdo->query("SELECT COUNT(DISTINCT id_user) FROM {$source} sales WHERE {$predicate}");
         return (int) $stmt->fetchColumn();
     }
 }
@@ -62,8 +171,9 @@ if (!function_exists('rx_stats_paying_users_count')) {
 if (!function_exists('rx_stats_sales_between')) {
     function rx_stats_sales_between(\PDO $pdo, $from, $to)
     {
+        $source = rx_stats_sales_source($pdo);
         $predicate = rx_stats_historical_sale_predicate();
-        $stmt = $pdo->prepare("SELECT COUNT(*) AS count, COALESCE(SUM(price_product),0) AS sum FROM invoice WHERE time_sell >= :from AND time_sell < :to AND {$predicate}");
+        $stmt = $pdo->prepare("SELECT COUNT(*) AS count, COALESCE(SUM(price_product),0) AS sum FROM {$source} sales WHERE time_sell >= :from AND time_sell < :to AND {$predicate}");
         $stmt->bindValue(':from', $from);
         $stmt->bindValue(':to', $to);
         $stmt->execute();

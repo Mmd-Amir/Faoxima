@@ -16,6 +16,9 @@ final class CategoriesHandler extends BaseHandler
             FaoximaResponse::badRequest('country_id is required');
         }
         $panel = $this->loadPanelByCode($codePanel);
+        if (jovadMiniAppReject($panel)) {
+            return;
+        }
         if (!panel_feature_enabled($panel, 'categorygeneral')) {
             FaoximaResponse::ok([]);
         }

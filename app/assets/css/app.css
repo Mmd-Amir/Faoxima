@@ -3478,3 +3478,53 @@ div.card-body.info-card > div.info-card-body:nth-of-type(2) > div.info-stats:nth
     text-align: center;
     line-height: 1.8;
 }
+
+.custom-duration-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr));
+    gap: 10px;
+    direction: rtl;
+}
+.custom-duration-option {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 88px;
+    padding: 14px;
+    border: 2px solid var(--border-strong);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    color: var(--text);
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+    touch-action: manipulation;
+}
+.custom-duration-option:hover { border-color: var(--gold); }
+.custom-duration-option.is-selected {
+    border-color: var(--gold);
+    background: var(--gold-soft-2);
+    box-shadow: inset 0 0 0 1px var(--gold);
+}
+.custom-duration-option:focus-visible { outline: 3px solid var(--gold-bright); outline-offset: 3px; }
+.custom-duration-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.custom-duration-check { visibility: hidden; color: var(--text); font-weight: 800; }
+.custom-duration-option.is-selected .custom-duration-check { visibility: visible; }
+.custom-duration-tariff { color: var(--text); font-size: 13px; line-height: 1.8; }
+.custom-duration-tariff b { font-size: 15px; }
+.custom-price-summary {
+    padding: 4px 14px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    direction: rtl;
+}
+.custom-price-summary .kv { gap: 12px; align-items: baseline; }
+.custom-price-summary .kv-label { color: var(--text-muted); }
+.custom-price-summary .kv-value { min-width: 0; white-space: normal; text-align: end; overflow-wrap: anywhere; }
+.custom-price-summary .custom-price-total { border-bottom: none; }
+.custom-price-total .kv-value { font-size: 19px; color: var(--text); }
+.custom-price-status { margin: 8px 0; color: var(--text-muted); font-size: 12px; line-height: 1.8; }
+.custom-price-status:empty { display: none; }
+.custom-price-summary[data-state="error"] .custom-price-status { color: var(--red); }

@@ -1152,7 +1152,7 @@ if (!function_exists('rx_pf_panel_reconcilable')) {
         if (function_exists('nmPanelNationalEnabled') && nmPanelNationalEnabled($panel)) {
             return false;
         }
-        return in_array((string) ($panel['type'] ?? ''), ['marzban', 'pasarguard', 'x-ui_single', 'guard', 'remnawave', 'rebecca'], true);
+        return in_array((string) ($panel['type'] ?? ''), ['marzban', 'pasarguard', 'x-ui_single', 'guard', 'remnawave', 'rebecca', 'jovadpanel'], true);
     }
 }
 
@@ -1222,6 +1222,7 @@ if (!function_exists('rxRenewalTextDefaults')) {
             'reason_trigger_date_required' => '❌ برای فعال‌سازی در تاریخ مشخص، ابتدا تاریخ فعال‌سازی را تعیین کنید.',
             'reason_trigger_date_invalid' => '❌ تاریخ فعال‌سازی نامعتبر است؛ تاریخ باید در آینده و حداکثر تا یک سال بعد باشد.',
             'reason_policy_invalid' => '❌ سیاست اجرای انتخاب‌شده نامعتبر است.',
+            'reason_panel_policy_unsupported' => '⚠️ این روش تمدید با محدودیت‌های پنل JovadPanel برای وضعیت فعلی این سرویس هم‌خوان نیست (مثلاً کاهش حجم سرویس فعال یا حفظ مصرف یک سرویس تمام‌شده). روش یا محصول دیگری انتخاب کنید؛ مبلغی کسر نشد.',
             'reason_reservation_unsupported' => '❌ رزرو اشتراک برای این نوع سرویس پشتیبانی نمی‌شود.',
             'reason_generic' => '❌خطایی در تمدید سرویس رخ داده با پشتیبانی در ارتباط باشید',
             'pending_verification' => '⏳ درخواست تمدید به پنل ارسال شد اما نتیجه نهایی هنوز تأیید نشده است. وضعیت به‌صورت خودکار بررسی می‌شود و نیازی به پرداخت مجدد نیست؛ در صورت بروز مشکل، پشتیبانی پیگیری می‌کند.',
@@ -1813,6 +1814,24 @@ if (!function_exists('rxRenewalCompute')) {
         if ($timeMode === 'append' && !$targetPending && $targetExpire > 0 && $oldExpire > $now && $targetExpire < $oldExpire + $purchasedSeconds) {
             return $fail('invariant_time_discarded');
         }
+        if (($ctx['panel_type'] ?? '') === 'jovadpanel') {
+            if ($status === 'credit_suspended' || ($before['raw']['paused_by'] ?? '') === 'credit') {
+                return $fail('panel_credit_suspended');
+            }
+            if ($days > 0 && floor($days) != $days) {
+                return $fail('panel_policy_unsupported');
+            }
+            if ($targetLimit <= 0 || $oldLimit <= 0) {
+                return $fail('panel_policy_unsupported');
+            }
+            if (in_array($status, ['expired', 'limited'], true)) {
+                if ($targetUsed > 0) {
+                    return $fail('panel_policy_unsupported');
+                }
+            } elseif ($targetLimit < $oldLimit) {
+                return $fail('panel_policy_unsupported');
+            }
+        }
 
         return [
             'ok' => true,
@@ -1900,7 +1919,20 @@ if (!function_exists('rxBuildRenewalTarget')) {
 if (!function_exists('rxRenewalVerify')) {
     function rxRenewalVerify(array $after, array $plan): array
     {
+        $jovadJournal = $after['raw']['jovad_renewal_state'] ?? ($after['jovad_renewal_state'] ?? null);
+        $jovadPending = false;
+        $jovadMatches = is_array($jovadJournal) && function_exists('jovadpanelRenewalSignature')
+            && ($jovadJournal['signature'] ?? '') === jovadpanelRenewalSignature($plan);
+        if ($jovadMatches) {
+            foreach (($jovadJournal['steps'] ?? []) as $jovadStep) {
+                if (($jovadStep['state'] ?? '') !== 'done') $jovadPending = true;
+            }
+        }
+        if (function_exists('jovadpanelVerificationPlan')) {
+            $plan = jovadpanelVerificationPlan($after, $plan);
+        }
         $checks = [];
+        if ($jovadPending) $checks['jovad_steps'] = false;
         if (empty($after['ok']) && array_key_exists('ok', $after)) {
             return ['ok' => false, 'checks' => ['readable' => false], 'reason' => 'unreadable'];
         }
@@ -1914,6 +1946,11 @@ if (!function_exists('rxRenewalVerify')) {
         $beforeUsed = rx_pf_int($plan['before_used_traffic'] ?? 0);
         if (!empty($plan['reset_usage'])) {
             $checks['usage'] = $afterUsed <= RX_RN_USAGE_SLACK || $afterUsed + RX_RN_USAGE_SLACK <= $beforeUsed;
+            if ($jovadMatches) {
+                if (($jovadJournal['steps']['reset']['state'] ?? '') === 'done' || ($jovadJournal['steps']['revive']['state'] ?? '') === 'done') {
+                    $checks['usage'] = true;
+                }
+            }
         } else {
             $checks['usage'] = $afterUsed + RX_RN_USAGE_SLACK >= $beforeUsed;
         }
@@ -1944,14 +1981,23 @@ if (!function_exists('rxRenewalVerify')) {
 if (!function_exists('rxRenewalClassify')) {
     function rxRenewalClassify(array $snapshot, array $plan): string
     {
+        $jovadPlan = $plan;
+        if (function_exists('jovadpanelVerificationPlan')) {
+            $plan = jovadpanelVerificationPlan($snapshot, $plan);
+        }
         if (empty($snapshot['ok'])) {
             return 'unknown';
         }
         if (empty($snapshot['exists'])) {
             return 'ambiguous';
         }
-        if (!empty(rxRenewalVerify($snapshot, $plan)['ok'])) {
+        if (!empty(rxRenewalVerify($snapshot, $jovadPlan)['ok'])) {
             return 'target';
+        }
+        $jovadJournal = $snapshot['raw']['jovad_renewal_state'] ?? null;
+        if (is_array($jovadJournal) && function_exists('jovadpanelRenewalSignature')
+            && ($jovadJournal['signature'] ?? '') === jovadpanelRenewalSignature($jovadPlan)) {
+            return 'before';
         }
         $limitMatches = function ($value, $wanted) {
             $value = rx_pf_int($value);
@@ -2046,6 +2092,10 @@ if (!function_exists('rxRenewalReasonText')) {
                 return rxRenewalText('reason_trigger_date_expired');
             case 'policy_invalid':
                 return rxRenewalText('reason_policy_invalid');
+            case 'panel_policy_unsupported':
+                return rxRenewalText('reason_panel_policy_unsupported');
+            case 'panel_credit_suspended':
+                return '⚠️ سرویس به‌دلیل اعتبار فروشنده متوقف است. پس از رفع مشکل اعتبار دوباره تلاش کنید؛ مبلغی کسر نشد.';
             case 'reservation_unsupported':
                 return rxRenewalText('reason_reservation_unsupported');
         }
@@ -2057,6 +2107,7 @@ if (!function_exists('rxRenewalFailureKnown')) {
     function rxRenewalFailureKnown($extend): bool
     {
         $code = is_array($extend) ? (string) ($extend['code'] ?? '') : '';
+        if (in_array($code, ['panel_policy_unsupported', 'panel_credit_suspended'], true)) return true;
         return in_array($code, ['admin_blocked', 'pending_unsupported', 'result_not_usable', 'invalid_purchase', 'unknown_renewal_method', 'unsupported_renewal_method', 'unknown_policy', 'panel_state_unavailable', 'panel_read_failed', 'user_missing', 'renewal_in_progress', 'queued_renewal_exists', 'trigger_unavailable', 'trigger_date_required', 'trigger_date_invalid', 'trigger_date_expired', 'policy_invalid', 'reservation_unsupported'], true);
     }
 }

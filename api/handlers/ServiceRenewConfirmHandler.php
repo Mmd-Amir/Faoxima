@@ -40,6 +40,7 @@ final class ServiceRenewConfirmHandler extends BaseHandler
 
         $nationalPanel = function_exists('nmPanelNationalEnabled') && nmPanelNationalEnabled($panel);
 
+        $panel['_custom_quote_user'] = [(string)$this->user['id'], (string)($this->user['agent'] ?? 'f'), (int)($this->user['pricediscount'] ?? 0)];
         $agent = (string)($this->user['agent'] ?? 'f');
 
 
@@ -99,11 +100,23 @@ final class ServiceRenewConfirmHandler extends BaseHandler
             $product = fx_apply_to_product($product, $panel);
         }
         $product['price_product'] = fx_finalize_amount($product['price_product'], $panel, $fxKinds);
-        if (fx_context($panel, $fxKinds) !== null && !fx_quote_token_valid(FaoximaInput::string($this->data, 'fx_quote'), $panel, $fxKinds)) {
+        if (!empty($custom)) {
+            try {
+                $panel = fx_custom_api_quote_panel($panel, $this->user, $product, 'extend', FaoximaInput::string($this->data, 'discount_code'));
+            } catch (InvalidArgumentException $e) {
+                FaoximaResponse::badRequest($e->getMessage());
+            }
+        }
+        if (fx_custom_quote_context($panel, $fxKinds) !== null && !fx_quote_token_valid(FaoximaInput::string($this->data, 'fx_quote'), $panel, $fxKinds)) {
             $fxDisplayPrice = empty($custom)
                 ? fx_finalize_amount((int) round(fx_apply_user_discount((float) $product['price_product'], (int)($this->user['pricediscount'] ?? 0))), $panel, $fxKinds)
-                : $product['price_product'];
-            FaoximaResponse::fail(409, fx_price_changed_api_message(), fx_price_changed_api_obj($fxDisplayPrice, fx_quote_token($panel, $fxKinds)));
+                : $panel['_custom_quote_total'];
+            $changed = fx_price_changed_api_obj($fxDisplayPrice, fx_quote_token($panel, $fxKinds));
+            if (!empty($custom)) {
+                $changed['price_per_gb'] = fx_custom_resolve($panel, $this->user['agent'] ?? 'f', $product['Volume_constraint'], $product['Service_time'])['price_per_gb'];
+                $changed['duration_pricing'] = fx_duration_config($panel, $this->user['agent'] ?? 'f')['enabled'];
+            }
+            FaoximaResponse::fail(409, fx_price_changed_api_message(), $changed);
         }
         $fxListPrice = (float) $product['price_product'];
 
@@ -147,6 +160,10 @@ final class ServiceRenewConfirmHandler extends BaseHandler
         $finalPrice = (int) fx_finalize_amount($finalPrice, $panel, $fxKinds);
         $fxSnapshot = fx_pricing_snapshot($panel, $fxKinds, $fxBasePrice, $finalPrice, $fxListPrice - $finalPrice, ['product' => (string)($product['code_product'] ?? ''), 'source_channel' => 'miniapp']);
 
+
+        if (!empty($custom)) {
+            $fxSnapshot = fx_custom_snapshot($panel, $agent, $product['Volume_constraint'], $product['Service_time'], $finalPrice, $fxSnapshot);
+        }
 
         $maxBuyAgent = (int)($this->user['maxbuyagent'] ?? 0);
         $balance = (float)($this->user['Balance'] ?? 0);
@@ -583,6 +600,10 @@ final class ServiceRenewConfirmHandler extends BaseHandler
             $renewMessage = rxRenewalDecorateSuccess(faoxima_textbot_get('dyn_renewconfirm_success', '✅ سرویس شما با موفقیت تمدید شد.'), $extend, (string)$invoice['username'], (string)($panel['name_panel'] ?? ''));
         }
 
+        if (!empty($custom)) {
+            $renewMessage .= fx_custom_price_text($panel, $agent, $product['Volume_constraint'], $product['Service_time'], $finalPrice);
+        }
+
         FaoximaResponse::ok([
             'kind'          => 'done',
             'state'         => $renewPending ? 'pending_verification' : (!empty($extend['queued']) ? 'reserved' : 'applied'),
@@ -611,14 +632,19 @@ final class ServiceRenewConfirmHandler extends BaseHandler
         $maxVol  = (int) $this->jsonAgentValue($panel['maxvolume']  ?? '', $agent);
         $minTime = (int) $this->jsonAgentValue($panel['maintime']   ?? '', $agent);
         $maxTime = (int) $this->jsonAgentValue($panel['maxtime']    ?? '', $agent);
-        $priceV  = (float) fx_adjust_base_toman($this->jsonAgentValue($panel['pricecustomvolume'] ?? '', $agent), $panel, 'custom_volume');
-        $priceT  = (float) fx_adjust_base_toman($this->jsonAgentValue($panel['pricecustomtime']   ?? '', $agent), $panel, 'custom_time');
 
         if ($volume > $maxVol || $volume < $minVol) {
             FaoximaResponse::badRequest(faoxima_render_text(faoxima_textbot_get('dyn_renewconfirm_invalid_volume_range_tpl', '❌ حجم نامعتبر است (بین {min} و {max} گیگابایت)'), ['min' => $minVol, 'max' => $maxVol]));
         }
         if ($time > $maxTime || $time < $minTime) {
             FaoximaResponse::badRequest(faoxima_render_text(faoxima_textbot_get('dyn_renewconfirm_invalid_time_range_tpl', '❌ زمان نامعتبر است (بین {min} و {max} روز)'), ['min' => $minTime, 'max' => $maxTime]));
+        }
+
+        try {
+            $durationPricing = fx_duration_config($panel, $agent)['enabled'];
+            $price = fx_custom_price(fx_custom_renew_panel($panel, $agent), $agent, $durationPricing ? ($custom['volume_gb'] ?? 0) : $volume, $durationPricing ? ($custom['time_days'] ?? 0) : $time);
+        } catch (InvalidArgumentException $e) {
+            FaoximaResponse::badRequest($e->getMessage());
         }
 
         return [
@@ -628,7 +654,7 @@ final class ServiceRenewConfirmHandler extends BaseHandler
             'Service_time'      => $time,
             'Location'          => $panel['name_panel'],
             'agent'             => $agent,
-            'price_product'     => ($volume * $priceV) + ($time * $priceT),
+            'price_product'     => $price,
         ];
     }
 

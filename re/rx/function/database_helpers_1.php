@@ -652,6 +652,7 @@ if (!function_exists('buildCronJobsKeyboard')) {
                 ['text' => $definition['admin_label'], 'callback_data' => 'cronjob_display'],
             ];
         }
+        $rows[] = [['text' => '⚙️ تنظیم ورکرها', 'callback_data' => 'cronworkers_settings']];
         $rows[] = [['text' => '🔙 بازگشت به تنظیمات کرون', 'callback_data' => 'featcat_crons']];
         return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
     }
@@ -1311,6 +1312,328 @@ if (!function_exists('rx_broadcast_resume_now')) {
             $c['temp_streak'] = 0;
         }
         return true;
+    }
+}
+
+if (!function_exists('rx_broadcast_work_available')) {
+    function rx_broadcast_work_available(?string $infoFile = null): ?bool
+    {
+        if ($infoFile === null || $infoFile === '') {
+            $infoFile = dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'cronbot' . DIRECTORY_SEPARATOR . 'info';
+        }
+        if (!is_file($infoFile)) {
+            return false;
+        }
+        $raw = @file_get_contents($infoFile);
+        if ($raw === false) {
+            return null;
+        }
+        $info = json_decode($raw, true);
+        if (!is_array($info)) {
+            return null;
+        }
+        $status = (string) ($info['status'] ?? '');
+        if ($status === 'cancelled' || $status === 'finished') {
+            return false;
+        }
+        if (rx_broadcast_is_paused($status)) {
+            $until = (int) ($info['pause_until'] ?? 0);
+            if (!empty($info['manual_resume']) || $until <= 0 || $until > time()) {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+if (!function_exists('rx_cron_table_exists')) {
+    function rx_cron_table_exists(PDO $pdo, string $table): ?bool
+    {
+        static $cache = [];
+        $key = strtolower($table);
+        if (array_key_exists($key, $cache)) {
+            return $cache[$key];
+        }
+        try {
+            $stmt = $pdo->prepare('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? LIMIT 1');
+            $stmt->execute([$table]);
+            $exists = $stmt->fetchColumn() !== false;
+        } catch (Throwable $e) {
+            $exists = null;
+        }
+        $cache[$key] = $exists;
+        return $exists;
+    }
+}
+
+if (!function_exists('rx_cron_work_probe')) {
+    function rx_cron_work_probe(PDO $pdo, string $sql, array $params = [], ?string $table = null): ?bool
+    {
+        try {
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            return $stmt->fetchColumn() !== false;
+        } catch (Throwable $e) {
+            if ($table !== null && $table !== '' && rx_cron_table_exists($pdo, $table) === false) {
+                return false;
+            }
+            return null;
+        }
+    }
+}
+
+if (!function_exists('rx_cron_work_combine')) {
+    function rx_cron_work_combine(array $results): ?bool
+    {
+        $unknown = false;
+        foreach ($results as $result) {
+            if (is_callable($result)) {
+                try {
+                    $result = $result();
+                } catch (Throwable $e) {
+                    $result = null;
+                }
+            }
+            if ($result === true) {
+                return true;
+            }
+            if ($result !== false) {
+                $unknown = true;
+            }
+        }
+        return $unknown ? null : false;
+    }
+}
+
+if (!function_exists('rx_cron_job_work_available')) {
+    function rx_cron_job_work_available(string $jobKey, ?PDO $pdo = null): ?bool
+    {
+        $pdo = $pdo instanceof PDO ? $pdo : (function_exists('getDatabaseConnection') ? getDatabaseConnection() : null);
+        if (!($pdo instanceof PDO)) {
+            return null;
+        }
+        $now = time();
+        if ($jobKey === 'sendmessage') {
+            return rx_broadcast_work_available();
+        }
+        if ($jobKey === 'gift') {
+            $cronbot = dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'cronbot';
+            return is_file($cronbot . DIRECTORY_SEPARATOR . 'gift') && is_file($cronbot . DIRECTORY_SEPARATOR . 'username.json');
+        }
+        switch ($jobKey) {
+            case 'activeconfig':
+                return rx_cron_work_probe($pdo, "SELECT 1 FROM user WHERE checkstatus = '1' LIMIT 1");
+            case 'disableconfig':
+                return rx_cron_work_probe($pdo, "SELECT 1 FROM user WHERE checkstatus = '2' LIMIT 1");
+            case 'configtest':
+                return rx_cron_work_probe($pdo, "SELECT 1 FROM invoice WHERE name_product = ? AND status != 'disabled' LIMIT 1", ['سرویس تست']);
+            case 'notifications':
+                return rx_cron_work_probe(
+                    $pdo,
+                    "SELECT 1 FROM invoice WHERE Status IN ('active','end_of_time','end_of_volume','sendedwarn','send_on_hold')"
+                    . " AND name_product != ? AND (time_cron <= ? OR time_cron IS NULL) LIMIT 1",
+                    ['سرویس تست', (string) ($now - 3600)]
+                );
+            case 'plisio':
+                return rx_cron_work_probe($pdo, "SELECT 1 FROM Payment_report WHERE payment_Status = 'Unpaid' AND Payment_Method = 'plisio' LIMIT 1");
+            case 'blupalcheck':
+                return rx_cron_work_probe(
+                    $pdo,
+                    "SELECT 1 FROM Payment_report WHERE payment_Status = 'Unpaid' AND Payment_Method = 'blupal'"
+                    . " AND blupal_invoice_id IS NOT NULL AND blupal_invoice_id <> '' LIMIT 1"
+                );
+            case 'nowpaymentcheck':
+                return rx_cron_work_probe(
+                    $pdo,
+                    "SELECT 1 FROM Payment_report WHERE payment_Status = 'Unpaid' AND Payment_Method = 'nowpayment'"
+                    . " AND dec_not_confirmed IS NOT NULL AND dec_not_confirmed <> '' LIMIT 1"
+                );
+            case 'tronadocheck':
+                if (!defined('TRONADO_V2_WINDOW_SECONDS') || !defined('TRONADO_V2_RECENT_SECONDS')
+                    || !defined('TRONADO_V2_POLL_RECENT_SECONDS') || !defined('TRONADO_V2_POLL_OLD_SECONDS')
+                    || !defined('RX_PAYMENT_PROCESSING_VERSION')) {
+                    return null;
+                }
+                return rx_cron_work_probe(
+                    $pdo,
+                    "SELECT 1 FROM Payment_report WHERE Payment_Method IN ('Currency Rial 2','iranpay2')"
+                    . " AND payment_processing_version >= " . (int) RX_PAYMENT_PROCESSING_VERSION
+                    . " AND payment_Status IN ('Unpaid','pending','waiting','expire','reject')"
+                    . " AND (tronado_local_state IS NULL OR tronado_local_state NOT IN ('manual_review','dispute_review','completed'))"
+                    . " AND tronado_created_at >= ?"
+                    . " AND ("
+                    . "   (tronado_created_at >= ? AND (tronado_last_checked_at IS NULL OR tronado_last_checked_at <= ?))"
+                    . "   OR (tronado_created_at < ? AND (tronado_last_checked_at IS NULL OR tronado_last_checked_at <= ?))"
+                    . " ) LIMIT 1",
+                    [
+                        (int) ($now - TRONADO_V2_WINDOW_SECONDS),
+                        (int) ($now - TRONADO_V2_RECENT_SECONDS),
+                        (int) ($now - TRONADO_V2_POLL_RECENT_SECONDS),
+                        (int) ($now - TRONADO_V2_RECENT_SECONDS),
+                        (int) ($now - TRONADO_V2_POLL_OLD_SECONDS),
+                    ]
+                );
+            case 'tonpaycheck':
+                if (!defined('TONPAY_CUSTOM_LATE_RECONCILE_SECONDS') || !defined('TONPAY_CUSTOM_UNPAID_LIFETIME_SECONDS')) {
+                    return null;
+                }
+                return rx_cron_work_probe(
+                    $pdo,
+                    "SELECT 1 FROM Payment_report WHERE Payment_Method = 'tonpay' AND ("
+                    . " (tonpay_invoice_id IS NOT NULL AND tonpay_invoice_id <> ''"
+                    . " AND (payment_Status = 'Unpaid'"
+                    . "   OR (tonpay_gateway_mode = 'custom' AND payment_Status IN ('expire','reject','cancelled')"
+                    . "       AND (tonpay_local_state IS NULL OR tonpay_local_state <> 'closed')"
+                    . "       AND tonpay_created_at >= ?)))"
+                    . " OR (tonpay_gateway_mode = 'custom' AND payment_Status = 'Unpaid' AND ("
+                    . "   (tonpay_receipt_submitted_at IS NOT NULL AND tonpay_receipt_submitted_at > 0 AND tonpay_review_deadline_at < ?)"
+                    . "   OR ((tonpay_receipt_submitted_at IS NULL OR tonpay_receipt_submitted_at = 0) AND tonpay_created_at < ?)"
+                    . " )) ) LIMIT 1",
+                    [(int) ($now - TONPAY_CUSTOM_LATE_RECONCILE_SECONDS), (int) $now, (int) ($now - TONPAY_CUSTOM_UNPAID_LIFETIME_SECONDS)]
+                );
+            case 'atlaspaycheck':
+                if (!defined('ATLASPAY_CUSTOM_LATE_RECONCILE_SECONDS') || !defined('ATLASPAY_CUSTOM_CARD_RETENTION_SECONDS')
+                    || !defined('RX_PAYMENT_PROCESSING_VERSION')) {
+                    return null;
+                }
+                $rxLate = (int) ($now - ATLASPAY_CUSTOM_LATE_RECONCILE_SECONDS);
+                return rx_cron_work_probe(
+                    $pdo,
+                    "SELECT 1 FROM Payment_report WHERE Payment_Method = 'atlaspay' AND ("
+                    . " (atlaspay_order_id IS NOT NULL AND atlaspay_order_id <> '' AND ("
+                    . "   ((atlaspay_gateway_mode IS NULL OR atlaspay_gateway_mode <> 'custom') AND payment_Status = 'Unpaid')"
+                    . "   OR ((atlaspay_gateway_mode IS NULL OR atlaspay_gateway_mode <> 'custom') AND payment_Status = 'expire'"
+                    . "       AND payment_processing_version >= " . (int) RX_PAYMENT_PROCESSING_VERSION
+                    . "       AND atlaspay_created_at >= ?)"
+                    . "   OR (atlaspay_gateway_mode = 'custom' AND payment_Status = 'Unpaid')"
+                    . "   OR (atlaspay_gateway_mode = 'custom' AND payment_Status IN ('expire','reject')"
+                    . "       AND (atlaspay_local_state IS NULL OR atlaspay_local_state <> 'closed')"
+                    . "       AND atlaspay_created_at >= ?)"
+                    . " ))"
+                    . " OR (atlaspay_gateway_mode = 'custom' AND atlaspay_card_number IS NOT NULL AND atlaspay_created_at < ?)"
+                    . " ) LIMIT 1",
+                    [$rxLate, $rxLate, (int) ($now - ATLASPAY_CUSTOM_CARD_RETENTION_SECONDS)]
+                );
+            case 'queued_renewal':
+                return rx_cron_work_combine([
+                    static fn() => rx_cron_work_probe(
+                        $pdo,
+                        "SELECT 1 FROM queued_renewal WHERE status IN ('pending','retry','reconciling')"
+                        . " AND (next_attempt_at IS NULL OR next_attempt_at <= " . (int) $now . ") LIMIT 1"
+                    ),
+                    static fn() => rx_cron_work_probe(
+                        $pdo,
+                        "SELECT 1 FROM queued_renewal WHERE status = 'processing'"
+                        . " AND lease_expires_at IS NOT NULL AND lease_expires_at < " . (int) $now . " LIMIT 1"
+                    ),
+                    static fn() => rx_cron_work_probe($pdo, "SELECT 1 FROM renewal_operation WHERE state IN ('applying','uncertain') LIMIT 1"),
+                    static fn() => rx_cron_work_probe(
+                        $pdo,
+                        "SELECT 1 FROM renewal_operation WHERE source = 'admin' AND state = 'verified'"
+                        . " AND finalize_state IS NOT NULL"
+                        . " AND (finalize_state = 'pending' OR notify_state IN ('pending','failed','sending')) LIMIT 1"
+                    ),
+                ]);
+            case 'payment_expire':
+                $rxCutoff = date('Y/m/d H:i:s', $now - 1800);
+                $rxTonpayCutoff = date('Y/m/d H:i:s', $now - 86400);
+                $rxReceiptCutoff = date('Y/m/d H:i:s', $now - 600);
+                return rx_cron_work_combine([
+                    static fn() => rx_cron_work_probe(
+                        $pdo,
+                        "SELECT 1 FROM Payment_report WHERE payment_Status = 'Unpaid'"
+                        . " AND (crypto_currency IS NULL OR crypto_currency = '')"
+                        . " AND Payment_Method != 'tonpay' AND time < ? LIMIT 1",
+                        [$rxCutoff]
+                    ),
+                    static fn() => rx_cron_work_probe(
+                        $pdo,
+                        "SELECT 1 FROM card_sms_payment csp INNER JOIN Payment_report pr ON pr.id_order = csp.id_order"
+                        . " WHERE csp.state = 'open' AND csp.deposit_id IS NULL AND csp.expires_at <= ?"
+                        . " AND pr.payment_Status = 'Unpaid' LIMIT 1",
+                        [(int) $now],
+                        'card_sms_payment'
+                    ),
+                    static fn() => rx_cron_work_probe(
+                        $pdo,
+                        "SELECT 1 FROM Payment_report WHERE payment_Status = 'Unpaid' AND Payment_Method = 'tonpay' AND time < ? LIMIT 1",
+                        [$rxTonpayCutoff]
+                    ),
+                    static fn() => rx_cron_work_probe(
+                        $pdo,
+                        "SELECT 1 FROM checkout_order WHERE status IN ('awaiting_choice','confirmed')"
+                        . " AND expires_at > 0 AND expires_at <= ? LIMIT 1",
+                        [(int) $now]
+                    ),
+                    static fn() => rx_cron_work_probe(
+                        $pdo,
+                        "SELECT 1 FROM Payment_report WHERE payment_Status = 'pending'"
+                        . " AND dec_not_confirmed = 'receipt-uploading'"
+                        . " AND COALESCE(NULLIF(at_updated, ''), time) < ? LIMIT 1",
+                        [$rxReceiptCutoff]
+                    ),
+                ]);
+            case 'remnawave_usage':
+                return rx_cron_work_probe(
+                    $pdo,
+                    "SELECT 1 FROM remnawave_users WHERE status = 'active'"
+                    . " AND panel_user_id IS NOT NULL AND panel_user_id <> '' LIMIT 1",
+                    [],
+                    'remnawave_users'
+                );
+            case 'pin_expire':
+                return rx_cron_work_probe(
+                    $pdo,
+                    "SELECT 1 FROM pinned_messages WHERE unpin_at IS NOT NULL AND unpin_at <= ? LIMIT 1",
+                    [(int) $now]
+                );
+            case 'notification_expire':
+                return rx_cron_work_probe($pdo, "SELECT 1 FROM notification WHERE expires_at <= ? LIMIT 1", [(int) $now]);
+            case 'public_log_drain':
+                return rx_cron_work_probe(
+                    $pdo,
+                    "SELECT 1 FROM PublicLog_Queue WHERE (sent_at IS NULL AND attempts < 5)"
+                    . " OR (sent_at IS NOT NULL AND sent_at < (NOW() - INTERVAL 3 DAY)) LIMIT 1"
+                );
+            case 'xui_inbound_sync':
+                return rx_cron_work_probe(
+                    $pdo,
+                    "SELECT 1 FROM xui_sync_panel WHERE enabled = 1"
+                    . " OR (enabled = 0 AND reference_email IS NOT NULL AND reference_email <> '' AND last_check_at < ?) LIMIT 1",
+                    [(int) ($now - 600)]
+                );
+            case 'expireagent':
+                return rx_cron_work_probe(
+                    $pdo,
+                    "SELECT 1 FROM user WHERE expire IS NOT NULL AND expire < ? LIMIT 1",
+                    [(int) $now]
+                );
+            case 'discount_expire':
+                return rx_cron_work_combine([
+                    static fn() => rx_cron_work_probe(
+                        $pdo,
+                        "SELECT 1 FROM DiscountSell WHERE (status IS NULL OR status = 'active')"
+                        . " AND time IS NOT NULL AND time <> '' AND time <> '0'"
+                        . " AND CAST(time AS UNSIGNED) <= ? LIMIT 1",
+                        [(int) $now]
+                    ),
+                    static fn() => rx_cron_work_probe(
+                        $pdo,
+                        "SELECT 1 FROM Discount WHERE (status IS NULL OR status = 'active')"
+                        . " AND expire_at IS NOT NULL AND expire_at <> '' AND expire_at <> '0'"
+                        . " AND CAST(expire_at AS UNSIGNED) <= ? LIMIT 1",
+                        [(int) $now]
+                    ),
+                ]);
+            case 'ip_block_notify':
+                return rx_cron_work_probe(
+                    $pdo,
+                    "SELECT 1 FROM invoice INNER JOIN marzban_panel ON marzban_panel.name_panel = invoice.Service_location"
+                    . " WHERE marzban_panel.type IN ('x-ui_single','rebecca') AND marzban_panel.ip_limit_guard = 'onipguard'"
+                    . " AND invoice.Status = 'active' AND invoice.ip_limit IS NOT NULL AND invoice.ip_limit != '0' LIMIT 1"
+                );
+        }
+        return null;
     }
 }
 

@@ -33,14 +33,18 @@ foreach ($datatxtbot as $item) {
         $datatextbot[$item['id_text']] = $item['text'];
     }
 }
-        $stmt = $pdo->prepare("SELECT * FROM invoice WHERE status != 'disabled' AND name_product = 'سرویس تست' ORDER BY RAND() LIMIT 15");
-        $stmt->execute();
-        while ($result = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $rxLimit = rx_cron_batch_size(15);
+        $rxInvoices = rx_cron_bulk_invoices($pdo, 'configtest', "status != 'disabled' AND name_product = ?", ['سرویس تست'], $rxLimit);
+        foreach ($rxInvoices as $result) {
+        if (function_exists('rx_cron_time_up') && rx_cron_time_up()) break;
+        try {
         $resultt  = trim($result['username']);
         $marzban_list_get = select("marzban_panel","*","name_panel",$result['Service_location'],"select");
         if($marzban_list_get == false)continue;
         $user = select("user","*","id",$result['id_user'],"select");
         $get_username_Check = $ManagePanel->DataUser($result['Service_location'],$result['username']);
+        if (($get_username_Check['paused_by'] ?? '') === 'credit') continue;
+        if (!is_array($get_username_Check) || empty($get_username_Check['status'])) continue;
     if (!in_array($get_username_Check['status'],['active','on_hold',"Unsuccessful","disabled"])) {
         try {
             $rxReservationHeld = $pdo->prepare("SELECT id FROM queued_renewal WHERE username = :username AND status IN ('pending', 'processing', 'retry', 'reconciling') LIMIT 1");
@@ -51,9 +55,10 @@ foreach ($datatxtbot as $item) {
         } catch (Throwable $e) {
             continue;
         }
+        if (rx_cron_time_up()) continue;
         $removeRes = $ManagePanel->RemoveUser($result['Service_location'],$resultt);
         if (!empty($removeRes['status']) && $removeRes['status'] === 'successful') {
-            update("invoice","status","disabled","username",$resultt);
+            update("invoice","status","disabled","id_invoice",$result['id_invoice']);
             if(intval($user['status_cron']) != 0){
                 $Response = json_encode([
                     'inline_keyboard' => [
@@ -67,4 +72,9 @@ foreach ($datatxtbot as $item) {
             }
         }
     }
+        } catch (Throwable $e) {
+            error_log('[cron:configtest] invoice ' . $result['id_invoice'] . ': ' . $e->getMessage());
+        } finally {
+            rx_cron_invoice_cursor('configtest', (string) $result['id_invoice']);
+        }
 }

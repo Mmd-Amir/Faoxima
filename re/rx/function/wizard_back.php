@@ -52,6 +52,15 @@ if (!function_exists('rxWizardStepFlow')) {
                 'add_password_panel'   => 'panel',
                 'add_remna_token_setup' => 'panel',
                 'add_guard_api_key'    => 'panel',
+                'add_guard_version'    => 'panel',
+                'add_rebecca_api_key'  => 'panel',
+                'add_jovad_api_key'    => 'panel',
+                'add_pasarguard_auth_method' => 'panel',
+                'add_pasarguard_api_key' => 'panel',
+                'add_pasarguard_username' => 'panel',
+                'add_pasarguard_password' => 'panel',
+                'add_xui_api_mode'     => 'panel',
+                'add_xui_api_token'    => 'panel',
                 'getlimitedpanel'      => 'panel',
 
                 'addchannel'           => 'channel',
@@ -201,7 +210,7 @@ if (!function_exists('rxRenderWizardStep')) {
                 return true;
 
             case 'add_name_panel':
-                nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['addpanelname'], $backadmin, 'HTML');
+                nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['addpanelname'], rxAddPanelBackKeyboard(rxWizardProcessingType($from_id)), 'HTML');
                 return true;
             case 'add_link_panel':
                 nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['addpanelurl'], $backadmin, 'HTML');
@@ -222,6 +231,51 @@ if (!function_exists('rxRenderWizardStep')) {
                 return true;
             case 'getlimitedpanel':
                 nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
+                return true;
+            case 'add_guard_version':
+                $panelChoiceKeyboard = json_encode(['inline_keyboard' => [
+                    [['text' => 'v1', 'callback_data' => 'guardversion#v1']],
+                    [['text' => 'v2', 'callback_data' => 'guardversion#v2']],
+                    [['text' => $textbotlang['Admin']['backmenu'], 'callback_data' => 'backmenu']],
+                ]], JSON_UNESCAPED_UNICODE);
+                nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['guard']['getversion'] ?? '🛡 نسخه پنل Guard را انتخاب کنید:', $panelChoiceKeyboard, 'HTML');
+                return true;
+            case 'add_pasarguard_auth_method':
+                $panelChoiceKeyboard = json_encode(['inline_keyboard' => [
+                    [['text' => '👤 نام کاربری / رمز عبور', 'callback_data' => 'pasarguardauth#password']],
+                    [['text' => '🔑 API Key', 'callback_data' => 'pasarguardauth#api_key']],
+                    [['text' => $textbotlang['Admin']['backmenu'], 'callback_data' => 'backmenu']],
+                ]], JSON_UNESCAPED_UNICODE);
+                nm_adminInstantReply($from_id, '🔐 روش احراز هویت پنل PasarGuard را انتخاب کنید:', $panelChoiceKeyboard, 'HTML');
+                return true;
+            case 'add_xui_api_mode':
+                $panelChoiceKeyboard = json_encode(['inline_keyboard' => [
+                    [['text' => $textbotlang['Admin']['managepanel']['xuimodelegacy'], 'callback_data' => 'xuimode#legacy']],
+                    [['text' => $textbotlang['Admin']['managepanel']['xuimodetoken'], 'callback_data' => 'xuimode#token']],
+                    [['text' => $textbotlang['Admin']['backmenu'], 'callback_data' => 'backmenu']],
+                ]], JSON_UNESCAPED_UNICODE);
+                nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getxuimode'], $panelChoiceKeyboard, 'HTML');
+                return true;
+            case 'add_guard_api_key':
+                nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getapikey'], $backadmin, 'HTML');
+                return true;
+            case 'add_rebecca_api_key':
+                nm_adminInstantReply($from_id, '🔑 لطفاً API Key پنل Rebecca را ارسال کنید.', $backadmin, 'HTML');
+                return true;
+            case 'add_jovad_api_key':
+                nm_adminInstantReply($from_id, '🔑 لطفاً API Key فروشندگی پنل JovadPanel را ارسال کنید.', $backadmin, 'HTML');
+                return true;
+            case 'add_pasarguard_api_key':
+                nm_adminInstantReply($from_id, '🔑 لطفاً API Key پنل PasarGuard را ارسال کنید.', $backadmin, 'HTML');
+                return true;
+            case 'add_pasarguard_username':
+                nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['usernameset'], $backadmin, 'HTML');
+                return true;
+            case 'add_pasarguard_password':
+                nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getpassword'], $backadmin, 'HTML');
+                return true;
+            case 'add_xui_api_token':
+                nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getxuiapitoken'], $backadmin, 'HTML');
                 return true;
 
             case 'addchannel':

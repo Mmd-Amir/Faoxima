@@ -326,6 +326,10 @@ final class ServiceActionHandler extends BaseHandler
             FaoximaResponse::fail(404, faoxima_textbot_get('dyn_serviceaction_new_location_not_found', '❌ موقعیت جدید پیدا نشد.'));
         }
 
+        if (jovadMiniAppPanelBlocked($newPanel)) {
+            FaoximaResponse::fail(403, faoxima_textbot_get('dyn_serviceaction_jovad_location_blocked', '❌ انتقال موقعیت به این پنل از طریق مینی‌اپ امکان‌پذیر نیست.'));
+        }
+
         if (($newPanel['changeloc'] ?? '') === 'offchangeloc') {
             FaoximaResponse::fail(409, faoxima_textbot_get('dyn_serviceaction_changeloc_unavailable_for_target', '❌ این قابلیت برای موقعیت مقصد در دسترس نیست.'));
         }

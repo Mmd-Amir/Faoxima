@@ -1,5 +1,6 @@
 <?php
 
+require_once __DIR__ . '/cron_task_state.php';
 
 if (!defined('RX_CRON_INIT_LOADED')) {
     define('RX_CRON_INIT_LOADED', true);
@@ -75,6 +76,9 @@ if (!function_exists('rx_cron_deadline')) {
 if (!function_exists('rx_cron_time_up')) {
     function rx_cron_time_up(): bool
     {
+        if (function_exists('rx_cron_task_heartbeat')) {
+            rx_cron_task_heartbeat();
+        }
         return microtime(true) >= rx_cron_deadline();
     }
 }
@@ -197,6 +201,10 @@ if (!function_exists('rx_cron_boot')) {
                 @flock($fh, LOCK_UN);
                 @fclose($fh);
             });
+        }
+
+        if (function_exists('rx_cron_task_attach')) {
+            rx_cron_task_attach($jobName, $maxAgeSeconds);
         }
 
         if ($useDbSlot && function_exists('rx_cron_db_slot') && !rx_cron_db_slot()) {
@@ -348,17 +356,19 @@ if (!function_exists('rx_cron_read_profile')) {
             return $cache;
         }
         $defaults = [
-            'profile'           => 'shared',
-            'cron_db_budget'    => 6,
-            'cron_time_budget'  => 22,
-            'broadcast_workers' => 1,
-            'payment_workers'   => 1,
+            'profile'              => 'shared',
+            'cron_db_budget'       => 6,
+            'cron_time_budget'     => 22,
+            'broadcast_workers'    => 1,
+            'payment_workers'      => 1,
+            'cron_max_concurrency' => 2,
+            'batch_size'           => 30,
         ];
         $rxOptCfg = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'optimization_config.php';
         if (@is_file($rxOptCfg)) {
             $rxOptData = @include $rxOptCfg;
             if (is_array($rxOptData) && !empty($rxOptData)) {
-                $rxAllowed = ['cron_db_budget', 'cron_time_budget', 'broadcast_workers', 'payment_workers'];
+                $rxAllowed = ['cron_db_budget', 'cron_time_budget', 'broadcast_workers', 'payment_workers', 'cron_max_concurrency', 'batch_size'];
                 $defaults  = array_merge($defaults, array_intersect_key($rxOptData, array_flip($rxAllowed)));
             }
         }
@@ -371,6 +381,75 @@ if (!function_exists('rx_cron_read_profile')) {
             }
         }
         return $cache = $defaults;
+    }
+}
+
+
+if (!function_exists('rx_cron_batch_size')) {
+
+    function rx_cron_batch_size(int $cap = 50): int
+    {
+        $profile = function_exists('rx_cron_read_profile') ? rx_cron_read_profile() : [];
+        $size    = isset($profile['batch_size']) ? (int) $profile['batch_size'] : 30;
+        $size    = max(1, min($cap, $size));
+        list(, $workers) = function_exists('rx_cron_shard') ? rx_cron_shard() : [0, 1];
+        if ($workers > 1) {
+            $size = max(1, (int) ceil($size / $workers));
+        }
+        return $size;
+    }
+}
+
+
+if (!function_exists('rx_cron_bulk_cursor')) {
+    function rx_cron_bulk_cursor(PDO $pdo, string $job, ?int $invoiceId = null): int
+    {
+        $key = '_bulk_cursor_' . $job;
+        if ($invoiceId !== null) {
+            $invoiceId = max(0, $invoiceId);
+            $stmt = $pdo->prepare("INSERT INTO cron_runtime_state (job_key, last_run, unit, value, enabled) VALUES (?, ?, 'disabled', 1, 0) ON DUPLICATE KEY UPDATE last_run = VALUES(last_run)");
+            $stmt->execute([$key, $invoiceId]);
+            return $invoiceId;
+        }
+        $stmt = $pdo->prepare('SELECT last_run FROM cron_runtime_state WHERE job_key = ?');
+        $stmt->execute([$key]);
+        return max(0, (int) $stmt->fetchColumn());
+    }
+}
+
+if (!function_exists('rx_cron_invoice_cursor')) {
+    function rx_cron_invoice_cursor(string $job, ?string $invoiceId = null): string
+    {
+        $file = rx_cron_runtime_dir() . DIRECTORY_SEPARATOR . 'invoice_cursor_' . hash('sha256', $job) . '.json';
+        if ($invoiceId !== null) {
+            $encoded = json_encode($invoiceId, JSON_UNESCAPED_UNICODE);
+            $tmp = $file . '.tmp';
+            if ($encoded === false || @file_put_contents($tmp, $encoded, LOCK_EX) === false || !@rename($tmp, $file)) {
+                @unlink($tmp);
+                error_log('[cron] invoice cursor persist failed: ' . $job);
+            }
+            return $invoiceId;
+        }
+        if (!is_file($file)) return '';
+        $raw = @file_get_contents($file, false, null, 0, 4096);
+        if ($raw === false) return '';
+        $cursor = json_decode($raw, true);
+        return is_string($cursor) && strlen($cursor) <= 800 ? $cursor : '';
+    }
+}
+
+if (!function_exists('rx_cron_bulk_invoices')) {
+    function rx_cron_bulk_invoices(PDO $pdo, string $job, string $condition, array $params, int $limit): array
+    {
+        $cursor = rx_cron_invoice_cursor($job);
+        $stmt = $pdo->prepare('SELECT invoice.* FROM invoice WHERE (' . $condition . ') AND id_invoice > ? ORDER BY id_invoice LIMIT ' . max(1, min(50, $limit)));
+        $stmt->execute(array_merge($params, [$cursor]));
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (!$rows && $cursor !== '') {
+            $stmt->execute(array_merge($params, ['']));
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+        return $rows;
     }
 }
 

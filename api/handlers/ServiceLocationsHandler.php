@@ -30,6 +30,7 @@ final class ServiceLocationsHandler extends BaseHandler
         $rows = FaoximaDb::fetchAll(
             "SELECT * FROM marzban_panel
               WHERE status = 'active'
+                AND type != 'jovadpanel'
                 AND (agent = :agent OR agent = 'all')
                 AND name_panel != :current ORDER BY (position = 0) ASC, position ASC, id ASC",
             [':agent' => $agent, ':current' => $currentPanel]

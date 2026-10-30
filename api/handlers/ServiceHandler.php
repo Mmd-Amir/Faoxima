@@ -262,6 +262,27 @@ final class ServiceHandler extends BaseHandler
                     'value' => $remote['links'],
                 ];
             }
+        } elseif ($type === 'jovadpanel') {
+            if (($panel['sublink'] ?? '') === 'onsublink' && !empty($remote['subscription_url'])) {
+                $config[] = [
+                    'type'  => 'link',
+                    'value' => $remote['subscription_url'],
+                ];
+            }
+            if (($panel['config'] ?? '') === 'onconfig' && is_array($remote['links'] ?? null)) {
+                $jovadConfigLinks = array_values(array_filter($remote['links'], static function ($entry) {
+                    if (!is_string($entry) || trim($entry) === '') {
+                        return false;
+                    }
+                    return !(function_exists('jovadIsProtocolMarker') && jovadIsProtocolMarker($entry));
+                }));
+                if (!empty($jovadConfigLinks)) {
+                    $config[] = [
+                        'type'  => 'config',
+                        'value' => $jovadConfigLinks,
+                    ];
+                }
+            }
         } elseif ($type === 'Manualsale') {
             $manualItemsOut = is_array($remote['manual_items'] ?? null) ? $remote['manual_items'] : [];
             $config = array_merge($config, faoxima_build_service_output([

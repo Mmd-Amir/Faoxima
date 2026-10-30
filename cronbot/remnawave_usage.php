@@ -31,10 +31,22 @@ try {
     return;
 }
 
+$rxUsageCursor = 0;
+if (function_exists('rx_cron_bulk_cursor')) {
+    try {
+        $rxUsageCursor = rx_cron_bulk_cursor($pdo, 'remnawave_usage');
+    } catch (Throwable $e) {
+        $rxUsageCursor = 0;
+    }
+}
 try {
-    $stmt = $pdo->prepare("SELECT * FROM remnawave_users WHERE status = 'active' AND panel_user_id IS NOT NULL AND panel_user_id <> '' ORDER BY id ASC LIMIT 50");
-    $stmt->execute();
+    $stmt = $pdo->prepare("SELECT id, name_panel, username, status, panel_user_id, subscription_url FROM remnawave_users WHERE status = 'active' AND panel_user_id IS NOT NULL AND panel_user_id <> '' AND id > ? ORDER BY id ASC LIMIT 50");
+    $stmt->execute([$rxUsageCursor]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if (!$rows && $rxUsageCursor > 0) {
+        $stmt->execute([0]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 } catch (Throwable $e) {
     error_log("[REMNAMWAVE-CRON-DISCONNECT] fetch users failed | " . $e->getMessage());
     return;
@@ -45,7 +57,9 @@ if (!is_array($rows) || count($rows) === 0) {
 }
 
 $managers = array();
+$rxLastScannedId = 0;
 foreach ($rows as $row) {
+    $rxLastScannedId = (int) ($row['id'] ?? 0);
     $namePanel = (string) ($row['name_panel'] ?? '');
     if ($namePanel === '') {
         continue;
@@ -79,5 +93,13 @@ foreach ($rows as $row) {
     } catch (Throwable $e) {
         error_log("[REMNAMWAVE-CRON-DISCONNECT] Panel: $namePanel | User: " . ($row['username'] ?? '') . " | " . $e->getMessage());
         continue;
+    }
+}
+
+if ($rxLastScannedId > 0 && function_exists('rx_cron_bulk_cursor')) {
+    try {
+        rx_cron_bulk_cursor($pdo, 'remnawave_usage', $rxLastScannedId);
+    } catch (Throwable $e) {
+        error_log("[REMNAMWAVE-CRON-DISCONNECT] cursor persist failed | " . $e->getMessage());
     }
 }

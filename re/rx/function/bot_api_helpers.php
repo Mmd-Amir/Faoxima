@@ -918,9 +918,79 @@ function panel_limit_menu_render($panel)
         'keyboard' => json_encode($keyboard, JSON_UNESCAPED_UNICODE),
     ];
 }
+function rxAddPanelTypeKeyboard($type = '')
+{
+    global $keyboardpanelcategory, $keyboardtypepanelpublic, $keyboardtypepanelsubscription;
+    $type = (string) $type;
+    if ($type === 'guard' || $type === 'jovadpanel') {
+        return $keyboardtypepanelsubscription;
+    }
+    if (in_array($type, ['marzban', 'rebecca', 'pasarguard', 'remnawave', 'x-ui_single'], true)) {
+        return $keyboardtypepanelpublic;
+    }
+    return $keyboardpanelcategory;
+}
+function rxAddPanelCategory($type = '')
+{
+    if (in_array((string) $type, ['guard', 'jovadpanel', 'subscription'], true)) return 'subscription';
+    if (in_array((string) $type, ['marzban', 'rebecca', 'pasarguard', 'pasargard', 'remnawave', 'x-ui_single', 'public'], true)) return 'public';
+    return 'root';
+}
+function rxAddPanelIsStep($step)
+{
+    return in_array((string) $step, [
+        'add_name_panel', 'add_link_panel', 'add_username_panel', 'add_password_panel',
+        'add_remna_token_setup', 'getlimitedpanel', 'add_guard_version', 'add_guard_api_key',
+        'add_rebecca_api_key', 'add_jovad_api_key', 'add_pasarguard_auth_method',
+        'add_pasarguard_api_key', 'add_pasarguard_username', 'add_pasarguard_password',
+        'add_xui_api_mode', 'add_xui_api_token',
+    ], true);
+}
+function rxAddPanelResetDraft($chatId)
+{
+    global $user;
+    step('home', $chatId);
+    update('user', 'Processing_value', '0', 'id', $chatId);
+    try {
+        update('user', 'step_stack', '[]', 'id', $chatId);
+    } catch (Throwable $e) {
+    }
+    if (is_array($user)) {
+        $user['step'] = 'home';
+        $user['Processing_value'] = '0';
+        $user['step_stack'] = '[]';
+    }
+    if (function_exists('clearSelectCache')) clearSelectCache('user');
+}
+function rxAddPanelBackKeyboard($type = '')
+{
+    global $textbotlang;
+    return json_encode(['inline_keyboard' => [
+        [['text' => '🔙 بازگشت به انتخاب نوع پنل', 'callback_data' => 'panelcat#' . rxAddPanelCategory($type)]],
+        [['text' => $textbotlang['Admin']['backadmin'], 'callback_data' => 'admin']],
+    ]], JSON_UNESCAPED_UNICODE);
+}
+function rxAddPanelShowCategory($chatId, $type = '', $notice = '')
+{
+    global $keyboardpanelcategory, $keyboardtypepanelpublic, $keyboardtypepanelsubscription;
+    $category = rxAddPanelCategory($type);
+    rxAddPanelResetDraft($chatId);
+    if (function_exists('rxNavSetState')) rxNavSetState($chatId, 'panels');
+    $keyboard = $keyboardpanelcategory;
+    $message = 'لطفاً دسته‌بندی پنل موردنظر را انتخاب کنید.';
+    if ($category === 'public') {
+        $keyboard = $keyboardtypepanelpublic;
+        $message = "🌐 پنل‌های عمومی (رایگان)\n\nاین پنل‌ها به‌صورت رایگان از طریق مخازن عمومی مانند GitHub در دسترس هستند. برای استفاده، باید پنل موردنظر را روی سرور خود نصب و راه‌اندازی کنید.\n\nلطفاً نوع پنل خود را انتخاب کنید.";
+    } elseif ($category === 'subscription') {
+        $keyboard = $keyboardtypepanelsubscription;
+        $message = "💳 پنل‌های اشتراکی (پولی)\n\nبرای استفاده از این پنل‌ها، لازم است ابتدا حساب و اشتراک یا اعتبار موردنیاز را از ارائه‌دهندهٔ مربوط تهیه کنید.\n\nپس از فعال‌سازی حساب، می‌توانید با اطلاعات اتصال و کلید API، پنل خود را به ربات متصل کنید.\n\nلطفاً نوع پنل خود را انتخاب کنید.";
+    }
+    if ($notice !== '') $message = htmlspecialchars((string) $notice, ENT_QUOTES, 'UTF-8') . "\n\n" . $message;
+    return nm_adminInstantReply($chatId, $message, $keyboard, 'HTML');
+}
 function outtypepanel($typepanel, $message)
 {
-    global $from_id, $optionMarzban, $optionGuard, $optionX_ui_single, $optionwg, $optioneylanpanel, $option_remnawave, $optionManualsale, $optionRebecca, $optionPasarGuard;
+    global $from_id, $optionMarzban, $optionGuard, $optionX_ui_single, $optionwg, $optioneylanpanel, $option_remnawave, $optionManualsale, $optionRebecca, $optionPasarGuard, $optionJovad;
     if ($typepanel == "marzban") {
         sendmessage($from_id, $message, $optionMarzban, 'HTML');
     } elseif ($typepanel == "pasarguard") {
@@ -937,6 +1007,8 @@ function outtypepanel($typepanel, $message)
         sendmessage($from_id, $message, $option_remnawave, 'HTML');
     } elseif ($typepanel == "rebecca") {
         sendmessage($from_id, $message, $optionRebecca, 'HTML');
+    } elseif ($typepanel == "jovadpanel") {
+        sendmessage($from_id, $message, $optionJovad, 'HTML');
     } elseif ($typepanel == "Manualsale") {
         sendmessage($from_id, $message, $optionManualsale, 'HTML');
     }

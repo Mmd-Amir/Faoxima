@@ -187,8 +187,9 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     $config = "";
     $output_config_link = rxShouldShowConnectionLink($marzban_list_get, $dataoutput['file_ext'] ?? null) ? rxResolveConnectionLink($marzban_list_get, $dataoutput['subscription_url'], $dataoutput['file_ext'] ?? null) : "";
     if ($marzban_list_get['config'] == "onconfig" && is_array($dataoutput['configs'])) {
-        for ($i = 0; $i < count($dataoutput['configs']); ++$i) {
-            $config .= "\n" . $dataoutput['configs'][$i];
+        $rxTestTextConfigs = function_exists('rxDeliveryTextConfigs') ? rxDeliveryTextConfigs($dataoutput['configs']) : $dataoutput['configs'];
+        for ($i = 0; $i < count($rxTestTextConfigs); ++$i) {
+            $config .= "\n" . $rxTestTextConfigs[$i];
         }
     }
 
@@ -1592,7 +1593,11 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     $textcustom = "⌛️ زمان سرویس خود را انتخاب نمایید
 📌 تعرفه هر روز  : " . rxFormatToman($customtimevalueprice) . "  تومان
 ⚠️ حداقل زمان $maintime روز  و حداکثر $maxtime روز  می توانید تهیه کنید";
-    sendmessage($from_id, $textcustom, $backuser, 'html');
+    if (fx_duration_config($marzban_list_get, $user['agent'])['enabled']) {
+        sendmessage($from_id, 'مدت سرویس را انتخاب کنید:', fx_duration_keyboard($marzban_list_get, $user['agent']), 'HTML');
+    } else {
+        sendmessage($from_id, $textcustom, $backuser, 'html');
+    }
     if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") {
         step('getvolumecustomusername', $from_id);
     } else {
@@ -1614,6 +1619,12 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         if (intval($text) > intval($maxtime) || intval($text) < intval($maintime)) {
             $texttime = "❌ زمان ارسال شده نامعتبر است . زمان باید بین $maintime روز تا $maxtime روز باشد";
             sendmessage($from_id, $texttime, $backuser, 'HTML');
+            return;
+        }
+        try {
+            fx_custom_resolve($marzban_list_get, $user['agent'], $user['Processing_value_one'], $text);
+        } catch (InvalidArgumentException $e) {
+            sendmessage($from_id, $e->getMessage(), fx_duration_keyboard($marzban_list_get, $user['agent']), 'HTML');
             return;
         }
         $customvalue = "customvolume_" . $text . "_" . $user['Processing_value_one'];
@@ -1646,6 +1657,12 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         if (intval($text) > intval($maxtime) || intval($text) < intval($maintime)) {
             $texttime = "❌ زمان ارسال شده نامعتبر است . زمان باید بین $maintime روز تا $maxtime روز باشد";
             sendmessage($from_id, $texttime, $backuser, 'HTML');
+            return;
+        }
+        try {
+            fx_custom_resolve($marzban_list_get, $user['agent'], $user['Processing_value_one'], $text);
+        } catch (InvalidArgumentException $e) {
+            sendmessage($from_id, $e->getMessage(), fx_duration_keyboard($marzban_list_get, $user['agent']), 'HTML');
             return;
         }
         $prodcut = "customvolume_" . $text . "_" . $user['Processing_value_one'];
@@ -1692,7 +1709,12 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         $info_product['name_product'] = $textbotlang['users']['customsellvolume']['title'];
         $info_product['code_product'] = $textbotlang['users']['customsellvolume']['title'];
         $info_product['Service_time'] = $parts[1];
-        $info_product['price_product'] = ($parts[2] * $custompricevalue) + ($parts[1] * $customtimevalueprice);
+        try {
+            $info_product['price_product'] = fx_custom_price($marzban_list_get, $user['agent'], $parts[2], $parts[1]);
+        } catch (InvalidArgumentException $e) {
+            sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'backuser']]]]), 'HTML');
+            return;
+        }
     } else {
         if (function_exists('rxResolveProductForPanel')) {
             $info_product = rxResolveProductForPanel($loc, $userdate['name_panel'], $user['agent'], $userdate['category'] ?? null, $userdate['monthproduct'] ?? null);
@@ -1737,7 +1759,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     }
     if (isset($username_ac))
         update("user", "Processing_value_tow", $username_ac, "id", $from_id);
-    if (intval($info_product['Volume_constraint']) == 0)
+    if (($marzban_list_get['type'] ?? '') === 'jovadpanel' ? (is_numeric($info_product['Volume_constraint']) && (float) $info_product['Volume_constraint'] === 0.0) : intval($info_product['Volume_constraint']) == 0)
         $info_product['Volume_constraint'] = $textbotlang['users']['stateus']['Unlimited'];
     if (intval($info_product['Service_time']) == 0)
         $info_product['Service_time'] = $textbotlang['users']['stateus']['Unlimited'];
@@ -1754,10 +1776,13 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         '{userBalance}' => $userBalance
     ];
     $textin = strtr($datatextbot['text_pishinvoice'], $replacements);
+    if (($parts[0] ?? '') === 'customvolume') {
+        $textin .= fx_custom_price_text($marzban_list_get, $user['agent'], $parts[2], $parts[1], $info_product['price_product']);
+    }
     if ($usernameWasRenamed) {
         $textin = "⚠️ نام کاربری «" . guardDisplayUsername($requestedUsername_ac, $marzban_list_get) . "» قبلاً استفاده شده بود؛ نام کاربری «" . guardDisplayUsername($username_ac, $marzban_list_get) . "» برای شما در نظر گرفته شد.\n\n" . $textin;
     }
-    if (intval($info_product['Volume_constraint']) == 0) {
+    if (($marzban_list_get['type'] ?? '') === 'jovadpanel' ? $info_product['Volume_constraint'] === $textbotlang['users']['stateus']['Unlimited'] : intval($info_product['Volume_constraint']) == 0) {
         $textin = str_replace('گیگ', "", $textin);
     }
     $previewSymbolicLimitText = faoxima_symbolic_limit_label($info_product);
@@ -1814,7 +1839,12 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         $info_product['name_product'] = $textbotlang['users']['customsellvolume']['title'];
         $info_product['code_product'] = "customvolume";
         $info_product['Service_time'] = $parts[1];
-        $info_product['price_product'] = ($parts[2] * $custompricevalue) + ($parts[1] * $customtimevalueprice);
+        try {
+            $info_product['price_product'] = fx_custom_price($marzban_list_get, $user['agent'], $parts[2], $parts[1]);
+        } catch (InvalidArgumentException $e) {
+            sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'backuser']]]]), 'HTML');
+            return;
+        }
         $info_product['data_limit_reset'] = "no_reset";
     } else {
         if (function_exists('rxResolveProductForPanel')) {
@@ -1867,7 +1897,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
             update("user", "Processing_value_four", $partsdic[0] . "_" . $fxNewDiscounted, "id", $from_id);
             fx_quote_store($from_id, $fxBuyDiscountKey, $fxNewDiscounted, $marzban_list_get, $fxBuyKinds);
             $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
-            sendmessage($from_id, fx_price_changed_text($fxNewDiscounted), json_encode(['inline_keyboard' => [
+            sendmessage($from_id, fx_price_changed_text($fxNewDiscounted) . (($parts[0] ?? '') === 'customvolume' ? fx_custom_price_text($marzban_list_get, $user['agent'], $parts[2], $parts[1], $fxNewDiscounted) : ''), json_encode(['inline_keyboard' => [
                 [['text' => "💰 پرداخت و دریافت سرویس", 'callback_data' => "confirmandgetserviceDiscount"]],
                 [rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser"], 'backuser', $_rx_nav_s)],
             ]]), 'HTML');
@@ -1879,7 +1909,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         $fxBuyQuoteKey = fx_quote_context_key('buy', (string) $user['Processing_value_one']);
         if (!fx_quote_check($from_id, $fxBuyQuoteKey, $fxBuyCheckAmount, $marzban_list_get, $fxBuyKinds)) {
             fx_quote_store($from_id, $fxBuyQuoteKey, $fxBuyCheckAmount, $marzban_list_get, $fxBuyKinds);
-            sendmessage($from_id, fx_price_changed_text($fxBuyCheckAmount), $paymentom, 'HTML');
+            sendmessage($from_id, fx_price_changed_text($fxBuyCheckAmount) . (($parts[0] ?? '') === 'customvolume' ? fx_custom_price_text($marzban_list_get, $user['agent'], $parts[2], $parts[1], $fxBuyCheckAmount) : ''), $paymentom, 'HTML');
             return;
         }
     }
@@ -1914,6 +1944,26 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         sendmessage($from_id, sprintf($textbotlang['users']['Discount']['discountapplied'], $user['pricediscount']), null, 'HTML');
     }
     $priceproduct = fx_finalize_amount($priceproduct, $marzban_list_get, $fxBuyKinds);
+    if (($marzban_list_get['type'] ?? '') === 'jovadpanel' && is_numeric($info_product['Volume_constraint']) && (float) $info_product['Volume_constraint'] === 0.0) {
+        $rxJovadFreeze = function_exists('jovadpanelFreezeUnlimitedOrder')
+            ? jovadpanelFreezeUnlimitedOrder($marzban_list_get, $randomString, $username_ac, $info_product['Service_time'])
+            : ['status' => false, 'msg' => 'خرید محصول نامحدود این پنل در حال حاضر امکان‌پذیر نیست.'];
+        if (empty($rxJovadFreeze['status'])) {
+            Editmessagetext($from_id, $message_id, (string) ($rxJovadFreeze['msg'] ?? 'خرید محصول نامحدود این پنل امکان‌پذیر نیست.'), null, 'HTML');
+            step('getprice', $from_id);
+            return;
+        }
+    }
+    if (($marzban_list_get['type'] ?? '') === 'jovadpanel' && is_numeric($info_product['Volume_constraint']) && (float) $info_product['Volume_constraint'] > 0) {
+        $rxJovadChannelFreeze = function_exists('jovadpanelFreezeChannelOrder')
+            ? jovadpanelFreezeChannelOrder($marzban_list_get, $randomString, $username_ac, is_array($info_product) ? $info_product : array())
+            : ['status' => false, 'msg' => 'انتخاب کانال‌های این محصول در دسترس نیست؛ خرید انجام نشد.'];
+        if (empty($rxJovadChannelFreeze['status'])) {
+            Editmessagetext($from_id, $message_id, (string) ($rxJovadChannelFreeze['msg'] ?? 'انتخاب کانال‌های این محصول معتبر نیست؛ خرید انجام نشد.'), null, 'HTML');
+            step('getprice', $from_id);
+            return;
+        }
+    }
     $notifctions = json_encode(array(
         'volume' => false,
         'time' => false,
@@ -1928,7 +1978,11 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     $stmt->execute();
     $stmt->close();
     $fxBuyBasePrice = $parts[0] == "customvolume" ? fx_custom_base_price($marzban_list_get, $user['agent'], $parts[2], $parts[1]) : ($info_product['fx_base_price'] ?? $fxBuyListPrice);
-    fx_store_invoice_snapshot($randomString, fx_pricing_snapshot($marzban_list_get, $fxBuyKinds, $fxBuyBasePrice, $priceproduct, (float) $fxBuyListPrice - (float) $priceproduct, ['product' => (string)($info_product['code_product'] ?? '')]));
+    $fxBuySnapshot = fx_pricing_snapshot($marzban_list_get, $fxBuyKinds, $fxBuyBasePrice, $priceproduct, (float) $fxBuyListPrice - (float) $priceproduct, ['product' => (string)($info_product['code_product'] ?? '')]);
+    if (($parts[0] ?? '') === 'customvolume') {
+        $fxBuySnapshot = fx_custom_snapshot($marzban_list_get, $user['agent'], $parts[2], $parts[1], $priceproduct, $fxBuySnapshot);
+    }
+    fx_store_invoice_snapshot($randomString, $fxBuySnapshot);
     if ($priceproduct > rx_ck_available_for_user($user) && $user['agent'] != "n2" && intval($priceproduct) != 0) {
         $marzbandirectpay = panel_feature_enabled($marzban_list_get, 'directbuy') ? "ondirectbuy" : "offdirectbuy";
         if ($marzbandirectpay == "offdirectbuy") {
@@ -1982,6 +2036,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     $datac = array(
         'expire' => $datetimestep,
         'data_limit' => $info_product['Volume_constraint'] * pow(1024, 3),
+        'id_invoice' => (string) $randomString,
         'from_id' => $from_id,
         'username' => $username,
         'type' => 'buy'
@@ -2004,6 +2059,15 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         return;
     }
     $dataoutput = $ManagePanel->createUser($marzban_list_get['name_panel'], $info_product['code_product'], $username_ac, $datac, true);
+    if (($marzban_list_get['type'] ?? '') === 'jovadpanel' && ($dataoutput['code'] ?? '') === 'uncertain') {
+        update('invoice', 'Status', 'manual_review', 'id_invoice', $randomString);
+        if (function_exists('rx_pf_alert_admin')) {
+            rx_pf_alert_admin('jovad:' . $randomString, 'نتیجه ساخت اشتراک کیف پول نامشخص است؛ پیش از ساخت مجدد، سرویس و تسویه بررسی شود.', ['username' => $username_ac, 'panel' => $marzban_list_get['name_panel'], 'invoice' => $randomString]);
+        }
+        sendmessage($from_id, '⏳ نتیجه ساخت اشتراک هنوز مشخص نیست و برای پشتیبانی ثبت شد. مبلغی از کیف پول کسر نشد؛ تا تعیین نتیجه دوباره خرید نکنید.', $keyboard, 'HTML');
+        step('home', $from_id);
+        return;
+    }
     if (!isset($dataoutput['username']) || $dataoutput['username'] === null || $dataoutput['username'] === '') {
         $dataoutput['msg'] = rx_panel_error_text($dataoutput['msg'] ?? null, $dataoutput['detail'] ?? null);
         sendmessage($from_id, $textbotlang['users']['sell']['ErrorConfig'], $keyboard, 'HTML');
@@ -2031,8 +2095,9 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     $config = "";
     $output_config_link = rxShouldShowConnectionLink($marzban_list_get, $dataoutput['file_ext'] ?? null) ? rxResolveConnectionLink($marzban_list_get, $dataoutput['subscription_url'], $dataoutput['file_ext'] ?? null) : "";
     if ($marzban_list_get['config'] == "onconfig" && is_array($dataoutput['configs'])) {
-        for ($i = 0; $i < count($dataoutput['configs']); ++$i) {
-            $config .= "\n" . $dataoutput['configs'][$i];
+        $rxTestTextConfigs = function_exists('rxDeliveryTextConfigs') ? rxDeliveryTextConfigs($dataoutput['configs']) : $dataoutput['configs'];
+        for ($i = 0; $i < count($rxTestTextConfigs); ++$i) {
+            $config .= "\n" . $rxTestTextConfigs[$i];
         }
     }
     $Shoppinginfo = json_encode($Shoppinginfo);
@@ -2040,15 +2105,18 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     $datatextbot['textafterpay'] = $marzban_list_get['type'] == "WGDashboard" ? $datatextbot['text_wgdashboard'] : $datatextbot['textafterpay'];
     if (intval($info_product['Service_time']) == 0)
         $info_product['Service_time'] = $textbotlang['users']['stateus']['Unlimited'];
-    if (intval($info_product['Volume_constraint']) == 0)
+    if (($marzban_list_get['type'] ?? '') === 'jovadpanel' ? (is_numeric($info_product['Volume_constraint']) && (float) $info_product['Volume_constraint'] === 0.0) : intval($info_product['Volume_constraint']) == 0)
         $info_product['Volume_constraint'] = $textbotlang['users']['stateus']['Unlimited'];
     $textcreatuser = str_replace('{username}', "<code>" . guardDisplayUsername($dataoutput['username'], $marzban_list_get) . "</code>", $datatextbot['textafterpay']);
     $textcreatuser = str_replace('{name_service}', $info_product['name_product'], $textcreatuser);
     $textcreatuser = str_replace('{location}', $marzban_list_get['name_panel'], $textcreatuser);
     $textcreatuser = str_replace('{day}', $info_product['Service_time'], $textcreatuser);
     $textcreatuser = str_replace('{volume}', $info_product['Volume_constraint'], $textcreatuser);
+    if (($parts[0] ?? '') === 'customvolume') {
+        $textcreatuser .= fx_custom_price_text($marzban_list_get, $user['agent'], $parts[2], $parts[1], $priceproduct);
+    }
     $textcreatuser = applyConnectionPlaceholders($textcreatuser, $output_config_link, $config);
-    if (intval($info_product['Volume_constraint']) == 0) {
+    if (($marzban_list_get['type'] ?? '') === 'jovadpanel' ? $info_product['Volume_constraint'] === $textbotlang['users']['stateus']['Unlimited'] : intval($info_product['Volume_constraint']) == 0) {
         $textcreatuser = str_replace('گیگابایت', "", $textcreatuser);
     }
     if ($marzban_list_get['type'] == "Manualsale") {
@@ -2284,7 +2352,12 @@ $textonebuy
         $info_product['name_product'] = $textbotlang['users']['customsellvolume']['title'];
         $info_product['code_product'] = $textbotlang['users']['customsellvolume']['title'];
         $info_product['Service_time'] = $parts[1];
-        $info_product['price_product'] = ($parts[2] * $custompricevalue) + ($parts[1] * $customtimevalueprice);
+        try {
+            $info_product['price_product'] = fx_custom_price($marzban_list_get, $user['agent'], $parts[2], $parts[1]);
+        } catch (InvalidArgumentException $e) {
+            sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'backuser']]]]), 'HTML');
+            return;
+        }
     } else {
         if (function_exists('rxResolveProductForPanel')) {
             $info_product = rxResolveProductForPanel($user['Processing_value_one'], $userdate['name_panel'], $user['agent'], $userdate['category'] ?? null, $userdate['monthproduct'] ?? null);
@@ -2321,7 +2394,7 @@ $textonebuy
     $info_product['price_product'] = round($info_product['price_product']);
     if ($info_product['Service_time'] == 0)
         $info_product['Service_time'] = $textbotlang['users']['stateus']['Unlimited'];
-    if (intval($info_product['Volume_constraint']) == 0)
+    if (($marzban_list_get['type'] ?? '') === 'jovadpanel' ? (is_numeric($info_product['Volume_constraint']) && (float) $info_product['Volume_constraint'] === 0.0) : intval($info_product['Volume_constraint']) == 0)
         $info_product['Volume_constraint'] = $textbotlang['users']['stateus']['Unlimited'];
     if ($info_product['price_product'] < 0)
         $info_product['price_product'] = 0;
@@ -2456,7 +2529,11 @@ $textonebuy
     $textcustom = "⌛️ زمان سرویس خود را انتخاب نمایید
 📌 تعرفه هر روز  : " . rxFormatToman($customtimevalueprice) . "  تومان
 ⚠️ حداقل زمان $maintime روز  و حداکثر $maxtime روز  می توانید تهیه کنید";
-    sendmessage($from_id, $textcustom, $backuser, 'html');
+    if (fx_duration_config($marzban_list_get, $user['agent'])['enabled']) {
+        sendmessage($from_id, 'مدت سرویس را انتخاب کنید:', fx_duration_keyboard($marzban_list_get, $user['agent']), 'HTML');
+    } else {
+        sendmessage($from_id, $textcustom, $backuser, 'html');
+    }
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
     if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") {
         step('getvolumecustomusernameom', $from_id);
@@ -2478,6 +2555,12 @@ $textonebuy
         if (intval($text) > intval($maxtime) || intval($text) < intval($maintime)) {
             $texttime = "❌ زمان ارسال شده نامعتبر است . زمان باید بین $maintime روز تا $maxtime روز باشد";
             sendmessage($from_id, $texttime, $backuser, 'HTML');
+            return;
+        }
+        try {
+            fx_custom_resolve($marzban_list_get, $user['agent'], $user['Processing_value_one'], $text);
+        } catch (InvalidArgumentException $e) {
+            sendmessage($from_id, $e->getMessage(), fx_duration_keyboard($marzban_list_get, $user['agent']), 'HTML');
             return;
         }
         $customvalue = "customvolume_" . $text . "_" . $user['Processing_value_one'];
@@ -2503,6 +2586,12 @@ $textonebuy
         if (intval($text) > $maxtime || intval($text) < $maintime) {
             $texttime = "❌ زمان ارسال شده نامعتبر است . زمان باید بین $maintime روز تا $maxtime روز باشد";
             sendmessage($from_id, $texttime, $backuser, 'HTML');
+            return;
+        }
+        try {
+            fx_custom_resolve($marzban_list_get, $user['agent'], $user['Processing_value_one'], $text);
+        } catch (InvalidArgumentException $e) {
+            sendmessage($from_id, $e->getMessage(), fx_duration_keyboard($marzban_list_get, $user['agent']), 'HTML');
             return;
         }
         $prodcut = "customvolume_" . $text . "_" . $user['Processing_value_one'];
@@ -2539,7 +2628,12 @@ $textonebuy
         $info_product['name_product'] = $textbotlang['users']['customsellvolume']['title'];
         $info_product['code_product'] = $textbotlang['users']['customsellvolume']['title'];
         $info_product['Service_time'] = $parts[1];
-        $info_product['price_product'] = ($parts[2] * $custompricevalue) + ($parts[1] * $customtimevalueprice);
+        try {
+            $info_product['price_product'] = fx_custom_price($marzban_list_get, $user['agent'], $parts[2], $parts[1]);
+        } catch (InvalidArgumentException $e) {
+            sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'backuser']]]]), 'HTML');
+            return;
+        }
     } else {
         if (function_exists('rxResolveProductForPanel')) {
             $info_product = rxResolveProductForPanel($loc, $user['Processing_value'], $user['agent']);
@@ -2588,6 +2682,9 @@ $textonebuy
 ⭕️تعداد کانفیگ : {$user['Processing_value_four']}
 
 💰 سفارش شما آماده پرداخت است.  ";
+    if (($parts[0] ?? '') === 'customvolume') {
+        $textin .= fx_custom_price_text($marzban_list_get, $user['agent'], $parts[2], $parts[1], $info_product['price_product']);
+    }
     sendmessage($from_id, $textin, $paymentom, 'HTML');
     step('payments', $from_id);
 } elseif ($user['step'] == "payments" && $datain == "confirmandgetservice") {
@@ -2602,7 +2699,12 @@ $textonebuy
         $info_product['name_product'] = $textbotlang['users']['customsellvolume']['title'];
         $info_product['code_product'] = "customvolume";
         $info_product['Service_time'] = $parts[1];
-        $info_product['price_product'] = ($parts[2] * $custompricevalue) + ($parts[1] * $customtimevalueprice);
+        try {
+            $info_product['price_product'] = fx_custom_price($marzban_list_get, $user['agent'], $parts[2], $parts[1]);
+        } catch (InvalidArgumentException $e) {
+            sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'backuser']]]]), 'HTML');
+            return;
+        }
         $info_product['data_limit_reset'] = "no_reset";
     } else {
         if (function_exists('rxResolveProductForPanel')) {
@@ -2632,13 +2734,13 @@ $textonebuy
     } else {
         $priceproduct = $info_product['price_product'] * $user['Processing_value_four'];
     }
-    if (fx_context($marzban_list_get, $fxBulkKinds) !== null) {
+    if (fx_custom_quote_context($marzban_list_get, $fxBulkKinds) !== null) {
         $fxBulkFresh = fx_finalize_amount(intval($info_product['price_product']) * intval($user['Processing_value_four']), $marzban_list_get, $fxBulkKinds);
         $fxBulkQuoteKey = fx_quote_context_key('bulk', (string) $user['Processing_value_one'] . '|' . (string) $user['Processing_value_four']);
         if (!fx_quote_check($from_id, $fxBulkQuoteKey, $fxBulkFresh, $marzban_list_get, $fxBulkKinds) || (int) round($priceproduct) !== (int) $fxBulkFresh) {
             update("user", "Processing_value_price", $fxBulkFresh, "id", $from_id);
             fx_quote_store($from_id, $fxBulkQuoteKey, $fxBulkFresh, $marzban_list_get, $fxBulkKinds);
-            Editmessagetext($from_id, $message_id, fx_price_changed_text($fxBulkFresh), $paymentom);
+            Editmessagetext($from_id, $message_id, fx_price_changed_text($fxBulkFresh) . (($parts[0] ?? '') === 'customvolume' ? fx_custom_price_text($marzban_list_get, $user['agent'], $parts[2], $parts[1], $fxBulkFresh) : ''), $paymentom);
             return;
         }
     }
@@ -2784,7 +2886,36 @@ $textonebuy
         if (isset($get_username_Check['username']) || rxTableValueExists('invoice', 'username', $username_acc)) {
             $username_acc = $random_number . "-" . $username_acc;
         }
+        if (($marzban_list_get['type'] ?? '') === 'jovadpanel' && is_numeric($info_product['Volume_constraint']) && (float) $info_product['Volume_constraint'] === 0.0) {
+            $rxJovadBulkFreeze = function_exists('jovadpanelFreezeUnlimitedOrder')
+                ? jovadpanelFreezeUnlimitedOrder($marzban_list_get, $randomString, $username_acc, $info_product['Service_time'])
+                : ['status' => false, 'msg' => 'خرید محصول نامحدود این پنل در حال حاضر امکان‌پذیر نیست.'];
+            if (empty($rxJovadBulkFreeze['status'])) {
+                sendmessage($from_id, (string) ($rxJovadBulkFreeze['msg'] ?? 'خرید محصول نامحدود این پنل امکان‌پذیر نیست.'), $keyboard, 'HTML');
+                step('home', $from_id);
+                return;
+            }
+        }
+        if (($marzban_list_get['type'] ?? '') === 'jovadpanel' && is_numeric($info_product['Volume_constraint']) && (float) $info_product['Volume_constraint'] > 0) {
+            $rxJovadBulkChannels = function_exists('jovadpanelFreezeChannelOrder')
+                ? jovadpanelFreezeChannelOrder($marzban_list_get, $randomString, $username_acc, is_array($info_product) ? $info_product : array())
+                : ['status' => false, 'msg' => 'انتخاب کانال‌های این محصول در دسترس نیست؛ خرید انجام نشد.'];
+            if (empty($rxJovadBulkChannels['status'])) {
+                sendmessage($from_id, (string) ($rxJovadBulkChannels['msg'] ?? 'انتخاب کانال‌های این محصول معتبر نیست؛ خرید انجام نشد.'), $keyboard, 'HTML');
+                step('home', $from_id);
+                return;
+            }
+        }
+        $datac['id_invoice'] = (string) $randomString;
         $dataoutput = $ManagePanel->createUser($marzban_list_get['name_panel'], $info_product['code_product'], $username_acc, $datac, true);
+        if (($marzban_list_get['type'] ?? '') === 'jovadpanel' && ($dataoutput['code'] ?? '') === 'uncertain') {
+            if (function_exists('rx_pf_alert_admin')) {
+                rx_pf_alert_admin('jovad:' . $randomString, 'نتیجه ساخت این اشتراک از خرید انبوه نامشخص است؛ شناسه نگاشت و تسویه بررسی شود.', ['username' => $username_acc, 'panel' => $marzban_list_get['name_panel'], 'invoice' => $randomString]);
+            }
+            sendmessage($from_id, '⏳ نتیجه ساخت این مورد از خرید انبوه نامشخص است و برای پشتیبانی ثبت شد. هزینه این مورد کسر نشد؛ تا تعیین نتیجه دوباره خرید نکنید.', $keyboard, 'HTML');
+            step('home', $from_id);
+            return;
+        }
         if ($dataoutput['username'] == null) {
             $dataoutput['msg'] = rx_panel_error_text($dataoutput['msg'] ?? null, $dataoutput['detail'] ?? null);
             sendmessage($from_id, $textbotlang['users']['sell']['ErrorConfig'], $keyboard, 'HTML');
@@ -2817,11 +2948,15 @@ $textonebuy
         $stmt->bind_param("sssssssssssssss", $from_id, $randomString, $username_acc, $date, $user['Processing_value'], $info_product['name_product'], $info_product['price_product'], $info_product['Volume_constraint'], $info_product['Service_time'], $Status, $notifctions, $invoiceIpLimit, $invoiceHwidLimit, $invoiceSymbolicLimitEnabled, $invoiceSymbolicLimitUsers);
         $stmt->execute();
         $stmt->close();
+        if (($parts[0] ?? '') === 'customvolume') {
+            fx_store_invoice_snapshot($randomString, fx_custom_snapshot($marzban_list_get, $user['agent'], $parts[2], $parts[1], $__bulkItemCharge, null));
+        }
         $config = "";
         $output_config_link = rxShouldShowConnectionLink($marzban_list_get, $dataoutput['file_ext'] ?? null) ? rxResolveConnectionLink($marzban_list_get, $dataoutput['subscription_url'], $dataoutput['file_ext'] ?? null) : "";
         if ($marzban_list_get['config'] == "onconfig") {
             if (is_array($dataoutput['configs'])) {
-                foreach ($dataoutput['configs'] as $configs) {
+                $rxBulkTextConfigs = function_exists('rxDeliveryTextConfigs') ? rxDeliveryTextConfigs($dataoutput['configs']) : $dataoutput['configs'];
+                foreach ($rxBulkTextConfigs as $configs) {
                     $config .= "\n" . $configs;
                 }
             }
@@ -2843,6 +2978,9 @@ $textonebuy
         $textcreatuser = str_replace('{location}', $marzban_list_get['name_panel'], $textcreatuser);
         $textcreatuser = str_replace('{day}', $info_product['Service_time'], $textcreatuser);
         $textcreatuser = str_replace('{volume}', $info_product['Volume_constraint'], $textcreatuser);
+        if (($parts[0] ?? '') === 'customvolume') {
+            $textcreatuser .= fx_custom_price_text($marzban_list_get, $user['agent'], $parts[2], $parts[1], $__bulkItemCharge);
+        }
         $textcreatuser = applyConnectionPlaceholders($textcreatuser, $output_config_link, $config);
         sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
         if (function_exists('balance_atomic_charge')) {

@@ -32,6 +32,9 @@ final class TimeRangesHandler extends BaseHandler
             FaoximaResponse::badRequest('country_id is required');
         }
         $panel = $this->loadPanelByCode($codePanel);
+        if (jovadMiniAppReject($panel)) {
+            return;
+        }
         if (!panel_feature_enabled($panel, 'categorytime')) {
             FaoximaResponse::ok([]);
         }

@@ -25,6 +25,9 @@ class ServiceMonitor
     private $text_Purchased_services;
     private $status_cron;
     const SECONDS_PER_DAY = 86400;
+    const DELETE_BUDGET = 5;
+    const FAILED_CHECK_DELAY = 300;
+    private $deletionAttempts = 0;
     private $textBotLang;
 
     public function __construct()
@@ -43,16 +46,23 @@ class ServiceMonitor
     {
         $invoices = $this->getActiveInvoices();
         if ($invoices == false) return;
+        $this->deletionAttempts = 0;
         foreach ($invoices as $invoice) {
             if (function_exists('rx_cron_time_up') && rx_cron_time_up()) break;
             if ($invoice['time_cron'] != null) {
                 $time_cron = time() - $invoice['time_cron'];
                 if ($time_cron < 1600) continue;
             }
+            if ($this->deletionAttempts >= self::DELETE_BUDGET) break;
+            try {
+            $data = $this->processInvoice($invoice);
+            if (!is_array($data)) {
+                $delay = ($data === false) ? 3600 : self::FAILED_CHECK_DELAY;
+                update("invoice", "time_cron", time() - 3600 + $delay, "id_invoice", $invoice['id_invoice']);
+                continue;
+            }
             update("invoice", "time_cron", time(), "id_invoice", $invoice['id_invoice']);
             $check_send = json_decode($invoice['notifctions'], true);
-            $data = $this->processInvoice($invoice);
-            if (!is_array($data)) continue;
             $currentUStatus = strtolower((string)($data['userData']['status'] ?? ''));
             $currentUExp = is_numeric($data['userData']['expire'] ?? null) ? (int)$data['userData']['expire'] : 0;
             $currentUDl = is_numeric($data['userData']['data_limit'] ?? null) ? (float)$data['userData']['data_limit'] : 0.0;
@@ -82,13 +92,23 @@ class ServiceMonitor
             if (!$check_send['volume']) {
                 if ($this->status_cron['volume']) $result = $this->checkVolumeThreshold($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
             }
-            if ($result) $data['invoice'] = select("invoice", "*", "id_invoice", $invoice['id_invoice']);
+            if ($result) $data['invoice'] = select("invoice", "id_invoice,id_user,username,Service_location,name_product,bottype,Status,notifctions,uuid", "id_invoice", $invoice['id_invoice']);
             if (!$check_send['time']) {
                 if ($this->status_cron['day']) $this->checkTimeExpiration($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
             }
-            if ($this->status_cron['remove']) $this->shouldRemoveService($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
-            if ($this->status_cron['remove_volume']) $this->shouldRemoveServiceـvolume($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
-            if ($data['panel']['inboundstatus'] == "oninbounddisable" && $data['panel']['type'] == "marzban") $this->active_inbound_expire($data['invoice'],  $data['userData'], $data['panel']);
+            $removalResult = false;
+            if ($this->status_cron['remove']) $removalResult = $this->shouldRemoveService($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
+            if ($removalResult === false && $this->status_cron['remove_volume']) {
+                $removalResult = $this->shouldRemoveServiceـvolume($data['invoice'], $data['user'], $data['userData'], $invoice['username'], $data['panel']);
+            }
+            if ($removalResult === null) {
+                update("invoice", "time_cron", time() - 3600 + self::FAILED_CHECK_DELAY, "id_invoice", $invoice['id_invoice']);
+            }
+            if ($removalResult === false && !rx_cron_time_up() && $data['panel']['inboundstatus'] == "oninbounddisable" && $data['panel']['type'] == "marzban") $this->active_inbound_expire($data['invoice'],  $data['userData'], $data['panel']);
+            } catch (Throwable $e) {
+                update("invoice", "time_cron", time() - 3600 + self::FAILED_CHECK_DELAY, "id_invoice", $invoice['id_invoice']);
+                error_log('[cron:notifications] invoice ' . $invoice['id_invoice'] . ': ' . $e->getMessage());
+            }
         }
     }
 
@@ -98,7 +118,8 @@ class ServiceMonitor
         $time_hours = time() - 3600;
         list($w, $n) = function_exists('rx_cron_shard') ? rx_cron_shard() : [0, 1];
         $shard = ($n > 1) ? " AND MOD(id_invoice, $n) = $w " : "";
-        $QUERY = "SELECT * FROM invoice WHERE (Status = 'active' OR Status = 'end_of_time' OR Status = 'end_of_volume' OR Status = 'sendedwarn' OR Status = 'send_on_hold') AND name_product != 'سرویس تست' AND (time_cron <= '$time_hours' OR time_cron IS NULL)$shard ORDER BY time_cron  LIMIT 30";
+        $limit = function_exists('rx_cron_batch_size') ? rx_cron_batch_size(50) : 30;
+        $QUERY = "SELECT id_invoice, id_user, username, Service_location, name_product, bottype, Status, time_cron, notifctions, uuid FROM invoice WHERE Status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold') AND name_product != 'سرویس تست' AND (time_cron <= '$time_hours' OR time_cron IS NULL)$shard ORDER BY time_cron LIMIT " . (int) $limit;
         $stmt = $this->pdo->prepare($QUERY);
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -113,12 +134,13 @@ class ServiceMonitor
         if (!$panelInfo) return false;
 
 
-        $user = select("user", "*", "id", $invoice['id_user'], "select");
+        $user = select("user", "id,status_cron", "id", $invoice['id_user'], "select");
         if ($user == false) return false;
 
 
         $userData = $this->Panel->DataUser($invoice['Service_location'], $username);
-        if (!$userData || $userData['status'] == "Unsuccessful") return;
+        if (($userData['paused_by'] ?? '') === 'credit') return false;
+        if (!is_array($userData) || ($userData['status'] ?? '') == "Unsuccessful") return;
         return [
             'invoice' => $invoice,
             'panel' => $panelInfo,
@@ -164,6 +186,7 @@ class ServiceMonitor
     }
     private function hasPendingQueuedRenewal($username)
     {
+        $username = (string) $username;
         $stmt = $this->pdo->prepare("SELECT id FROM queued_renewal WHERE username = :username AND status IN ('pending', 'processing', 'retry', 'reconciling') LIMIT 1");
         $stmt->execute([':username' => $username]);
         return $stmt->fetch(PDO::FETCH_ASSOC) !== false;
@@ -172,7 +195,6 @@ class ServiceMonitor
     private function shouldRemoveService($invoice, $user, $userData, $username)
     {
         if (!in_array($userData['status'], ['limited', 'expired'])) return false;
-        if ($this->hasPendingQueuedRenewal($username)) return false;
         $timeService = $userData['expire'] - time();
         $daysRemaining = intval($timeService / 86400);
         $removalThreshold = intval("-" . $this->setting['removedayc']);
@@ -187,6 +209,9 @@ class ServiceMonitor
         ][$userData['status']];
         $remainingVolume = formatBytes($userData['data_limit'] - $userData['used_traffic']);
         if ($result) {
+            if (rx_cron_time_up()) return null;
+            if ($this->hasPendingQueuedRenewal($username)) return false;
+            $this->deletionAttempts++;
             $removeRes = $this->Panel->RemoveUser($invoice['Service_location'], $username);
             if (!empty($removeRes['status']) && $removeRes['status'] === 'successful') {
                 update("invoice", "status", "removeTime", "id_invoice", $invoice['id_invoice']);
@@ -202,29 +227,31 @@ class ServiceMonitor
                 $shouldNotify = !empty($user['status_cron'] ?? null);
                 $this->send_notifactions($invoice, $shouldNotify, $message, false, $invoice['bottype']);
                 $this->sendReportNotification($reportMessage);
+                return true;
             } else {
                 $errMsg = is_array($removeRes['msg'] ?? null) ? json_encode($removeRes['msg']) : ($removeRes['msg'] ?? 'unknown');
                 $errReport = "⚠️ خطای حذف سرویس در کرون زمان\n<blockquote>نام کاربری: <code>{$username}</code></blockquote>\n<blockquote>لوکیشن: {$invoice['Service_location']}</blockquote>\n<blockquote>خطا: {$errMsg}</blockquote>";
                 $this->sendReportNotification($errReport);
+                return null;
             }
         }
+        return false;
     }
-    private function shouldRemoveServiceـvolume($invoice, $user, $userData, $username)
+    private function shouldRemoveServiceـvolume($invoice, $user, $userData, $username, $panelInfo = null)
     {
         if (!in_array($userData['status'], ['limited', 'expired'])) return false;
-        if ($this->hasPendingQueuedRenewal($username)) return false;
-        $panel = select("marzban_panel", "*", "name_panel", $invoice['Service_location'], "select");
-        if (!in_array($panel['type'], ["marzban", "rebecca", "pasarguard"], true)) return;
-        if ($userData['data_limit_reset'] != "no_reset") return;
-        if ($userData['status'] == "Unsuccessful") return;
-        if (in_array($userData['status'], ['Unknown', 'active', 'on_hold', 'disabled', 'expired'])) return;
+        $panel = is_array($panelInfo) ? $panelInfo : select("marzban_panel", "*", "name_panel", $invoice['Service_location'], "select");
+        if (!in_array($panel['type'], ["marzban", "rebecca", "pasarguard"], true)) return false;
+        if ($userData['data_limit_reset'] != "no_reset") return false;
+        if ($userData['status'] == "Unsuccessful") return false;
+        if (in_array($userData['status'], ['Unknown', 'active', 'on_hold', 'disabled', 'expired'])) return false;
         if (empty($userData['online_at']) or $userData['online_at'] == null) {
             $timelastconect = 0;
         } else {
             $time = strtotime($userData['online_at']);
             $timelastconect = (time() - $time) / 86400;
         }
-        if($timelastconect == 0)return;
+        if($timelastconect == 0)return false;
         $timeService = $userData['expire'] - time();
         $daysRemaining = intval($timeService / 86400);
         $removalThreshold = intval($this->setting['cronvolumere']);
@@ -239,6 +266,9 @@ class ServiceMonitor
         ][$userData['status']];
         $remainingVolume = formatBytes($userData['data_limit'] - $userData['used_traffic']);
         if ($result) {
+            if (rx_cron_time_up()) return null;
+            if ($this->hasPendingQueuedRenewal($username)) return false;
+            $this->deletionAttempts++;
             $removeRes = $this->Panel->RemoveUser($invoice['Service_location'], $username);
             if (!empty($removeRes['status']) && $removeRes['status'] === 'successful') {
                 update("invoice", "status", "removevolume", "id_invoice", $invoice['id_invoice']);
@@ -255,12 +285,15 @@ class ServiceMonitor
                 $shouldNotify = !empty($user['status_cron'] ?? null);
                 $this->send_notifactions($invoice, $shouldNotify, $message, false, $invoice['bottype']);
                 $this->sendReportNotification($reportMessage);
+                return true;
             } else {
                 $errMsg = is_array($removeRes['msg'] ?? null) ? json_encode($removeRes['msg']) : ($removeRes['msg'] ?? 'unknown');
                 $errReport = "⚠️ خطای حذف سرویس در کرون حجم\n<blockquote>نام کاربری: <code>{$username}</code></blockquote>\n<blockquote>لوکیشن: {$invoice['Service_location']}</blockquote>\n<blockquote>خطا: {$errMsg}</blockquote>";
                 $this->sendReportNotification($errReport);
+                return null;
             }
         }
+        return false;
     }
     private function active_inbound_expire($invoice, $userData, $panel_info)
     {

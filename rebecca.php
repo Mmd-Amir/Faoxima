@@ -184,14 +184,19 @@ function rebeccaTestConnection($baseUrl, $apiKey)
     ];
 }
 
-function rebeccaGetServices($namePanelOrConfig)
+function rebeccaGetServices($namePanelOrConfig, $offset = null, $limit = null)
 {
     $config = is_array($namePanelOrConfig) ? $namePanelOrConfig : getRebeccaPanelConfig($namePanelOrConfig);
     if ($config['status'] === false) {
         return $config;
     }
-    $response = rebeccaApiRequest($config, 'GET', '/api/v2/services');
-    $decoded = rebeccaDecodeResponse($response);
+    $endpoint = '/api/v2/services';
+    $paginated = $offset !== null && $limit !== null;
+    if ($paginated) {
+        $endpoint .= '?' . http_build_query(['offset' => max(0, intval($offset)), 'limit' => max(1, intval($limit))]);
+    }
+    $response = rebeccaApiRequest($config, 'GET', $endpoint);
+    $decoded = rebeccaDecodeResponse($response, $paginated);
     if ($decoded['status'] === false) {
         return $decoded;
     }
@@ -201,10 +206,31 @@ function rebeccaGetServices($namePanelOrConfig)
     } elseif (isset($services['items']) && is_array($services['items'])) {
         $services = $services['items'];
     }
-    if (!is_array($services)) {
+    if (!is_array($services) || ($paginated && !array_is_list($services))) {
         return ['status' => false, 'msg' => 'Invalid services response from Rebecca'];
     }
     return ['status' => true, 'services' => $services];
+}
+
+function rebeccaGetServicePage($namePanelOrConfig, $page = 1, $perPage = 5)
+{
+    $page = max(1, intval($page));
+    $perPage = max(1, intval($perPage));
+    $offset = ($page - 1) * $perPage;
+    $config = is_array($namePanelOrConfig) ? $namePanelOrConfig : getRebeccaPanelConfig($namePanelOrConfig);
+    $result = rebeccaGetServices($config, $offset, $perPage);
+    if ($result['status'] === false) {
+        return $result;
+    }
+    $hasNext = false;
+    if (count($result['services']) === $perPage) {
+        $next = rebeccaGetServices($config, $offset + $perPage, 1);
+        if ($next['status'] === false) {
+            return $next;
+        }
+        $hasNext = count($next['services']) > 0;
+    }
+    return array_merge($result, ['page' => $page, 'has_next' => $hasNext]);
 }
 
 function rebeccaServiceLabel(array $service)
@@ -234,23 +260,27 @@ function rebeccaUsableServices(array $services)
     return array_values($usable);
 }
 
-function rebeccaBuildServiceKeyboard(array $services, $currentServiceId, $page = 1, $perPage = 5)
+function rebeccaBuildServiceKeyboard(array $services, $currentServiceId, $page = 1, $perPage = 5, $hasNext = null)
 {
     $usable = rebeccaUsableServices($services);
     $total = count($usable);
-    if ($total === 0) {
+    if ($total === 0 && ($hasNext === null || intval($page) <= 1)) {
         return null;
     }
     $perPage = max(1, intval($perPage));
-    $pages = (int) ceil($total / $perPage);
-    $page = min(max(1, intval($page)), $pages);
+    $pages = $hasNext === null ? (int) ceil($total / $perPage) : null;
+    $page = max(1, intval($page));
+    if ($pages !== null) {
+        $page = min($page, $pages);
+    }
     $currentServiceId = trim((string) $currentServiceId);
     $rows = [];
-    foreach (array_slice($usable, ($page - 1) * $perPage, $perPage) as $serviceRow) {
+    $visible = $hasNext === null ? array_slice($usable, ($page - 1) * $perPage, $perPage) : $usable;
+    foreach ($visible as $serviceRow) {
         $serviceId = (string) intval($serviceRow['id']);
         $checkIcon = ($currentServiceId === $serviceId) ? '✅' : '❌';
         $callback = 'rebeccasetservice#' . $serviceId;
-        if ($pages > 1) {
+        if ($hasNext !== null || $pages > 1) {
             $callback .= '#' . $page;
         }
         $rows[] = [[
@@ -258,13 +288,13 @@ function rebeccaBuildServiceKeyboard(array $services, $currentServiceId, $page =
             'callback_data' => $callback,
         ]];
     }
-    if ($pages > 1) {
+    if ($hasNext !== null || $pages > 1) {
         $nav = [];
         if ($page > 1) {
             $nav[] = ['text' => '◀️ قبلی', 'callback_data' => 'rebeccaservicepage#' . ($page - 1)];
         }
-        $nav[] = ['text' => "{$page} / {$pages}", 'callback_data' => 'rebeccaservicenoop'];
-        if ($page < $pages) {
+        $nav[] = ['text' => $pages === null ? (string) $page : "{$page} / {$pages}", 'callback_data' => 'rebeccaservicenoop'];
+        if ($hasNext === null ? $page < $pages : $hasNext) {
             $nav[] = ['text' => 'بعدی ▶️', 'callback_data' => 'rebeccaservicepage#' . ($page + 1)];
         }
         $rows[] = $nav;

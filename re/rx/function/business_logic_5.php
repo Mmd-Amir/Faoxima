@@ -2,6 +2,45 @@
 
 
 
+function rxRenderCronWorkerSettings($from_id, string $group = '', ?array $profile = null): void
+{
+    $profile = $profile ?? rx_host_profile();
+    $settings = function_exists('select') ? select('setting', '*') : [];
+    $counts = rx_cron_worker_counts($profile, is_array($settings) ? $settings : []);
+    $broadcast = $counts['broadcast_workers'];
+    $payment = $counts['payment_workers'];
+    $manual = !empty($profile['manual_workers']);
+    $text = "⚙️ <b>تنظیم ورکرهای کرون</b>\n\n"
+        . "ابتدا «بهینه‌سازی هاست» را بزنید تا بر اساس بار قابل‌اندازه‌گیری CPU، حافظه و دیتابیس، تنظیم خودکار انجام شود.\n"
+        . "برای سرعت بیشتر ارسال همگانی می‌توانید ورکر پخش را بین <b>۱ تا ۸</b> انتخاب کنید.\n"
+        . "⚠️ اگر منابع هاست یا سرور کافی نباشد، ورکر بیشتر ممکن است ربات را کندتر کند.\n\n"
+        . "📨 پخش و اعلان‌ها: <b>{$broadcast}</b>\n"
+        . "💳 بررسی کارت و Plisio: <b>{$payment}</b>\n"
+        . "حالت: <b>" . ($manual ? 'دارای تنظیم دستی' : 'خودکار') . "</b>\n\n"
+        . "تغییر فوراً ذخیره می‌شود و پس از پایان نوبت در جریان، در اجرای بعدی آن کار اعمال می‌شود. سقف هم‌زمانی صف تغییر نمی‌کند.\n"
+        . "اجرای دوبارهٔ بهینه‌ساز، تنظیم دستی را به حالت خودکار برمی‌گرداند.";
+    $rows = [];
+    if (in_array($group, ['broadcast', 'payment'], true)) {
+        $current = $group === 'broadcast' ? $broadcast : $payment;
+        $text .= "\n\n" . ($group === 'broadcast' ? 'تعداد ورکر پخش و اعلان‌ها را انتخاب کنید:' : 'تعداد ورکر بررسی کارت و Plisio را انتخاب کنید:');
+        for ($start = 1; $start <= 8; $start += 4) {
+            $row = [];
+            for ($value = $start; $value < $start + 4; $value++) {
+                $row[] = ['text' => ($current === $value ? '✅ ' : '') . $value, 'callback_data' => "cronworkers_set_{$group}_{$value}"];
+            }
+            $rows[] = $row;
+        }
+        $rows[] = [['text' => '🔙 تنظیمات ورکر', 'callback_data' => 'cronworkers_settings']];
+    } else {
+        $rows[] = [['text' => "📨 ورکر پخش: {$broadcast}", 'callback_data' => 'cronworkers_pick_broadcast']];
+        $rows[] = [['text' => "💳 ورکر پرداخت: {$payment}", 'callback_data' => 'cronworkers_pick_payment']];
+    }
+    $rows[] = [['text' => '🖥 بهینه‌سازی هاست / خودکار', 'callback_data' => 'run_host_optimizer']];
+    $rows[] = [['text' => '🔙 کرون‌ها و زمان‌بندی', 'callback_data' => 'featcat_crons']];
+    step('home', $from_id);
+    nm_adminInstantReply($from_id, $text, json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE), 'HTML');
+}
+
 function nm_sendInfoCardsForServiceList($from_id, array $services)
 {
     if (!function_exists('nm_renderInfoCardForInvoice') || !function_exists('telegram')) {

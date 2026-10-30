@@ -124,7 +124,7 @@ function faoxima_chart_data(\PDO $pdo, string $range, int $customDays = 7): arra
 
     $stmt = $pdo->prepare(
         "SELECT time_sell, price_product
-           FROM invoice
+           FROM " . rx_stats_sales_source($pdo) . " sales
           WHERE time_sell >= :since
             AND " . rx_stats_historical_sale_predicate()
     );
@@ -381,7 +381,7 @@ try {
 
 try {
     $st = $pdo->query("SELECT COALESCE(NULLIF(TRIM(p.category),''),'بدون دسته') AS cat, COALESCE(SUM(i.price_product),0) AS total
-        FROM invoice i LEFT JOIN product p ON p.name_product = i.name_product
+        FROM " . rx_stats_sales_source($pdo) . " i LEFT JOIN product p ON p.name_product = i.name_product
         WHERE " . rx_stats_historical_sale_predicate('i') . "
         GROUP BY cat ORDER BY total DESC");
     $catRows = [];
@@ -410,7 +410,7 @@ try {
 } catch (\Throwable $e) { error_log('[dashboard] category: ' . $e->getMessage()); }
 
 try {
-    $st = $pdo->prepare("SELECT time_sell FROM invoice WHERE time_sell >= :a AND " . rx_stats_historical_sale_predicate());
+    $st = $pdo->prepare("SELECT time_sell FROM " . rx_stats_sales_source($pdo) . " sales WHERE time_sell >= :a AND " . rx_stats_historical_sale_predicate());
     $st->bindValue(':a', (int)$weekChartStart, PDO::PARAM_INT); $st->execute();
     foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $ts) {
         $t = (int)$ts; if ($t < $weekChartStart) continue;

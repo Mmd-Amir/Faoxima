@@ -65,7 +65,7 @@ function rxPanelNameCascade(PDO $pdo, string $oldName, ?string $newName): bool
     };
     $optionalRefs = [];
     if ($newName !== null) {
-        foreach ([['remnawave_users', 'name_panel'], ['queued_renewal', 'name_panel'], ['sale_ledger', 'Service_location']] as $ref) {
+        foreach ([['remnawave_users', 'name_panel'], ['queued_renewal', 'name_panel'], ['sale_ledger', 'Service_location'], ['jovadpanel_configs', 'name_panel']] as $ref) {
             try {
                 $exists = $pdo->prepare("SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1");
                 $exists->execute([$ref[0], $ref[1]]);

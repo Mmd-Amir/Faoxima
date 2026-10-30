@@ -251,6 +251,39 @@ if (!function_exists('rxSafeAddIndex')) {
     }
 }
 
+if (!function_exists('rxSafeAddCompositeIndex')) {
+    function rxSafeAddCompositeIndex($connection, $tableName, $indexName, array $columnNames, array $columnPrefixes = [])
+    {
+        $tableName = preg_replace('/[^A-Za-z0-9_]/', '', (string) $tableName);
+        $indexName = preg_replace('/[^A-Za-z0-9_]/', '', (string) $indexName);
+        $columnNames = array_map(function ($columnName) {
+            return preg_replace('/[^A-Za-z0-9_]/', '', (string) $columnName);
+        }, $columnNames);
+        if ($tableName === '' || $indexName === '' || empty($columnNames)) {
+            return;
+        }
+        foreach ($columnNames as $columnName) {
+            if ($columnName === '' || !rxTableColumnExists($connection, $tableName, $columnName)) {
+                return;
+            }
+        }
+        try {
+            $safeIndex = method_exists($connection, 'real_escape_string') ? $connection->real_escape_string($indexName) : $indexName;
+            $existing = $connection->query("SHOW INDEX FROM `{$tableName}` WHERE Key_name = '{$safeIndex}'");
+            if ($existing && isset($existing->num_rows) && $existing->num_rows > 0) {
+                return;
+            }
+            $colSpec = implode(', ', array_map(function ($columnName) use ($columnPrefixes) {
+                $prefix = isset($columnPrefixes[$columnName]) ? (int) $columnPrefixes[$columnName] : 0;
+                return $prefix > 0 ? "`{$columnName}`({$prefix})" : "`{$columnName}`";
+            }, $columnNames));
+            $connection->query("ALTER TABLE `{$tableName}` ADD INDEX `{$indexName}` ({$colSpec})");
+        } catch (Throwable $e) {
+            error_log("[table.php] rxSafeAddCompositeIndex {$tableName}.{$indexName}: " . $e->getMessage());
+        }
+    }
+}
+
 if (!function_exists('rxSafeAddUniqueIndex')) {
     function rxSafeAddUniqueIndex($connection, $tableName, $indexName, array $columnNames, array $columnPrefixes = [])
     {
@@ -860,6 +893,7 @@ try {
         priceextravolume TEXT NULL,
         pricecustomvolume TEXT NULL,
         pricecustomtime TEXT NULL,
+        custom_duration_pricing TEXT NULL,
         priceextratime TEXT NULL,
         mainvolume TEXT NULL,
         maxvolume TEXT NULL,
@@ -1047,6 +1081,47 @@ try {
 }
 
 try {
+    $connect->query("CREATE TABLE IF NOT EXISTS jovadpanel_configs (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        code_panel VARCHAR(100) NOT NULL,
+        name_panel VARCHAR(191) NOT NULL,
+        username VARCHAR(191) NOT NULL,
+        id_invoice VARCHAR(191) NULL,
+        remote_id VARCHAR(191) NULL,
+        label VARCHAR(64) NOT NULL,
+        sub_url TEXT NULL,
+        proto VARCHAR(32) NULL,
+        status VARCHAR(32) NULL,
+        renewal_state MEDIUMTEXT NULL,
+        created_at INT UNSIGNED NOT NULL DEFAULT 0,
+        updated_at INT UNSIGNED NOT NULL DEFAULT 0,
+        UNIQUE KEY uq_jovad_service (code_panel, username),
+        KEY idx_jovad_remote (code_panel, remote_id),
+        KEY idx_jovad_label (code_panel, label)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    addFieldToTable("jovadpanel_configs", "renewal_state", null, "MEDIUMTEXT");
+    $connect->query("CREATE TABLE IF NOT EXISTS jovadpanel_orders (
+        id_invoice VARCHAR(191) NOT NULL PRIMARY KEY,
+        code_panel VARCHAR(100) NOT NULL,
+        username VARCHAR(191) NOT NULL,
+        kind VARCHAR(16) NOT NULL DEFAULT 'unlimited',
+        devices INT NOT NULL DEFAULT 0,
+        days INT NOT NULL DEFAULT 0,
+        channels VARCHAR(64) NULL,
+        channel_source VARCHAR(20) NULL,
+        created_at INT UNSIGNED NOT NULL DEFAULT 0,
+        updated_at INT UNSIGNED NOT NULL DEFAULT 0,
+        KEY idx_jovad_order_panel (code_panel, username)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    addFieldToTable("jovadpanel_orders", "channels", null, "VARCHAR(64)");
+    addFieldToTable("jovadpanel_orders", "channel_source", null, "VARCHAR(20)");
+    rxSafeAddColumn($connect, "marzban_panel", "jovad_devices", "VARCHAR(20) NULL");
+    rxSafeAddColumn($connect, "marzban_panel", "jovad_channels", "VARCHAR(64) NULL");
+} catch (Exception $e) {
+    error_log('[jovadpanel-migrate] ' . $e->getMessage());
+}
+
+try {
     $connect->query("CREATE TABLE IF NOT EXISTS fx_rate_cache (
         pair VARCHAR(20) NOT NULL PRIMARY KEY,
         rate DECIMAL(18,4) NOT NULL,
@@ -1074,6 +1149,7 @@ try {
     rxSafeAddColumn($connect, "fx_rate_cache", "last_event", "VARCHAR(500) NULL");
     rxSafeAddColumn($connect, "fx_rate_cache", "stale_notified_at", "INT UNSIGNED NOT NULL DEFAULT 0");
     rxSafeAddColumn($connect, "marzban_panel", "fx_pricing_config", "TEXT NULL");
+    rxSafeAddColumn($connect, "marzban_panel", "custom_duration_pricing", "TEXT NULL");
     rxSafeAddColumn($connect, "invoice", "pricing_snapshot", "TEXT NULL");
 } catch (Exception $e) {
     error_log('[fx-pricing-migrate] ' . $e->getMessage());
@@ -2569,6 +2645,12 @@ try {
 }
 
 try {
+    $connect->query(rx_stats_sales_history_schema());
+} catch (Exception $e) {
+    error_log('[invoice-sales-history-migrate] ' . $e->getMessage());
+}
+
+try {
     $connect->query("CREATE TABLE IF NOT EXISTS sale_ledger (
         id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         id_user VARCHAR(200) NOT NULL,
@@ -3890,6 +3972,8 @@ try {
     rxSafeAddIndex($connect, "invoice",         "idx_invoice_username", "username",         191);
     rxSafeAddIndex($connect, "invoice",         "idx_invoice_location", "Service_location", 191);
     rxSafeAddIndex($connect, "invoice",         "idx_invoice_status",   "Status",            60);
+    rxSafeAddIndex($connect, "invoice",         "idx_invoice_time_cron", "time_cron");
+    rxSafeAddCompositeIndex($connect, "Payment_report", "idx_pr_status_method", ["payment_Status", "Payment_Method"]);
     rxSafeAddUniqueIndex($connect, "invoice", "uniq_invoice_username", ["username"], ["username" => 191]);
     rxSafeAddIndex($connect, "user",            "idx_user_checkstatus", "checkstatus");
     rxSafeAddIndex($connect, "support_message", "idx_sm_tracking",      "Tracking");

@@ -18,11 +18,14 @@ $ManagePanel = $ctx['managePanel'];
 
 function statusplisio($tx_id){
     global $connect;
-    $rowPlisio = mysqli_fetch_assoc(mysqli_query($connect, "SELECT (ValuePay) FROM PaySetting WHERE NamePay = 'api_plisio'"));
-    $api_key = is_array($rowPlisio) ? trim((string)($rowPlisio['ValuePay'] ?? '')) : '';
-    if ($api_key === '' || $api_key === '0') {
-        $rowLegacy = mysqli_fetch_assoc(mysqli_query($connect, "SELECT (ValuePay) FROM PaySetting WHERE NamePay = 'apinowpayment'"));
-        $api_key = is_array($rowLegacy) ? trim((string)($rowLegacy['ValuePay'] ?? '')) : '';
+    static $api_key = null;
+    if ($api_key === null) {
+        $rowPlisio = mysqli_fetch_assoc(mysqli_query($connect, "SELECT (ValuePay) FROM PaySetting WHERE NamePay = 'api_plisio'"));
+        $api_key = is_array($rowPlisio) ? trim((string)($rowPlisio['ValuePay'] ?? '')) : '';
+        if ($api_key === '' || $api_key === '0') {
+            $rowLegacy = mysqli_fetch_assoc(mysqli_query($connect, "SELECT (ValuePay) FROM PaySetting WHERE NamePay = 'apinowpayment'"));
+            $api_key = is_array($rowLegacy) ? trim((string)($rowLegacy['ValuePay'] ?? '')) : '';
+        }
     }
     $url = 'https://api.plisio.net/api/v1/operations?';
     $url .= '&api_key=' . urlencode($api_key);
@@ -38,10 +41,10 @@ function statusplisio($tx_id){
 
 list($rxW, $rxN) = function_exists('rx_cron_shard') ? rx_cron_shard() : [0, 1];
 $rxShard = ($rxN > 1) ? " AND MOD(id, $rxN) = $rxW " : "";
-$list_service = mysqli_query($connect, "SELECT * FROM Payment_report WHERE payment_Status = 'Unpaid' AND Payment_Method = 'plisio'$rxShard ORDER BY id ASC LIMIT 15");
+$list_service = mysqli_query($connect, "SELECT id_order FROM Payment_report WHERE payment_Status = 'Unpaid' AND Payment_Method = 'plisio'$rxShard ORDER BY id ASC LIMIT 15");
 while ($row = mysqli_fetch_assoc($list_service)) {
 
-    $reportStmt = $connect->prepare("SELECT * FROM Payment_report WHERE id_order = ? LIMIT 1");
+    $reportStmt = $connect->prepare("SELECT id_order, price, dec_not_confirmed, payment_Status FROM Payment_report WHERE id_order = ? LIMIT 1");
     $reportStmt->bind_param('s', $row['id_order']);
     $reportStmt->execute();
     $Payment_report = $reportStmt->get_result()->fetch_assoc();

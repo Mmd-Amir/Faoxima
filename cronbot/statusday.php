@@ -121,25 +121,25 @@ foreach ($listagentuser as $agent) {
     $textagent .= "\n<blockquote>ایدی عددی کاربر : {$agent['id']}</blockquote>\n<blockquote>نام کاربری کاربر : {$agent['username']}</blockquote>\n<blockquote>جمع کل خرید امروز : {$agent['total_spent']}</blockquote>\n---------------\n";
 }
 
-$panels    = select('marzban_panel', '*', null, null, 'fetchAll');
+$panels    = select('marzban_panel', 'name_panel', null, null, 'fetchAll');
+$sqlPanelTotals = "
+    SELECT Service_location AS location, COUNT(*) AS orders, SUM(price_product) AS total_price, SUM(Volume) AS total_volume
+    FROM invoice
+    WHERE (FROM_UNIXTIME(time_sell) BETWEEN :startDate AND :endDate)
+      AND (status IN ('active', 'end_of_time', 'sendedwarn', 'send_on_hold'))
+      AND name_product != 'سرویس تست'
+    GROUP BY Service_location
+";
+$stmtPanelTotals = $executeQuery($pdo, $sqlPanelTotals, $params);
+$panelTotals = [];
+foreach ($stmtPanelTotals->fetchAll(PDO::FETCH_ASSOC) as $panelRow) {
+    $panelKey = strtolower((string) ($panelRow['location'] ?? ''));
+    $panelTotals[$panelKey] = $panelRow;
+}
 $textpanel = "گزارش پنل ها :\n";
 if (is_array($panels)) {
     foreach ($panels as $panel) {
-        $sqlPanel = "
-            SELECT COUNT(*) AS orders, SUM(price_product) AS total_price, SUM(Volume) AS total_volume
-            FROM invoice
-            WHERE (FROM_UNIXTIME(time_sell) BETWEEN :startDate AND :endDate)
-              AND (status IN ('active', 'end_of_time', 'sendedwarn', 'send_on_hold'))
-              AND Service_location = :location
-              AND name_product != 'سرویس تست'
-        ";
-        $paramsPanel = [
-            ':startDate' => $datefirst,
-            ':endDate'   => $dateend,
-            ':location'  => $panel['name_panel'],
-        ];
-        $stmt        = $executeQuery($pdo, $sqlPanel, $paramsPanel);
-        $result      = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $result = $panelTotals[strtolower((string) $panel['name_panel'])] ?? [];
         $orders      = (int)($result['orders'] ?? 0);
         $total_price = (int)($result['total_price'] ?? 0);
         $total_volume = (float)($result['total_volume'] ?? 0);

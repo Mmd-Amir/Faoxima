@@ -14,6 +14,14 @@ if (function_exists('putenv') && !preg_match('/(^|,)\s*putenv\s*(,|$)/', strtolo
 }
 
 
+$rxTaskStateLib = dirname(__DIR__) . '/cronbot/cron_task_state.php';
+if (is_file($rxTaskStateLib)) {
+    try {
+        require_once $rxTaskStateLib;
+    } catch (Throwable $e) {
+    }
+}
+
 $rxCronHealthLib = dirname(__DIR__) . '/lib/CronHealth.php';
 if (is_file($rxCronHealthLib)) {
     try {
@@ -53,9 +61,6 @@ try {
 $rxInternalAuthPayload = hash('sha256', $rxInternalAuthToken) . '|' . time();
 @file_put_contents($rxInternalAuthFile, $rxInternalAuthPayload, LOCK_EX);
 @chmod($rxInternalAuthFile, 0600);
-register_shutdown_function(static function () use ($rxInternalAuthFile): void {
-    @unlink($rxInternalAuthFile);
-});
 register_shutdown_function(static function () use ($lockHandle) {
     @flock($lockHandle, LOCK_UN);
     @fclose($lockHandle);
@@ -188,14 +193,29 @@ $rxHealthTrace = function_exists('rx_cron_health_orch_attach_db')
 $rxCronbotDir = __DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'cronbot';
 if (is_dir($rxCronbotDir)) {
     foreach ((array) @glob($rxCronbotDir . '/*.lock') as $rxStale) {
-        if ((time() - (int) @filemtime($rxStale)) > 120) { @unlink($rxStale); }
+        if ((time() - (int) @filemtime($rxStale)) <= 120) { continue; }
+        $rxStaleHandle = @fopen($rxStale, 'c');
+        if ($rxStaleHandle === false) { continue; }
+        if (@flock($rxStaleHandle, LOCK_EX | LOCK_NB)) {
+            @unlink($rxStale);
+            @flock($rxStaleHandle, LOCK_UN);
+        }
+        @fclose($rxStaleHandle);
     }
     foreach (['_db_unavailable.flag', '_db_unavailable.log', '_missing_files.log'] as $rxLegacy) {
         $rxLegacyPath = $rxCronbotDir . DIRECTORY_SEPARATOR . $rxLegacy;
         if (is_file($rxLegacyPath) && (time() - (int) @filemtime($rxLegacyPath)) > 120) { @unlink($rxLegacyPath); }
     }
     if (is_dir($rxCronbotDir . DIRECTORY_SEPARATOR . '.dbslots')) {
-        foreach ((array) @glob($rxCronbotDir . '/.dbslots/*') as $rxSlot) { @unlink($rxSlot); }
+        foreach ((array) @glob($rxCronbotDir . '/.dbslots/*') as $rxSlot) {
+            $rxSlotHandle = @fopen($rxSlot, 'c');
+            if ($rxSlotHandle === false) { continue; }
+            if (@flock($rxSlotHandle, LOCK_EX | LOCK_NB)) {
+                @unlink($rxSlot);
+                @flock($rxSlotHandle, LOCK_UN);
+            }
+            @fclose($rxSlotHandle);
+        }
         @rmdir($rxCronbotDir . DIRECTORY_SEPARATOR . '.dbslots');
     }
 }
@@ -227,6 +247,11 @@ if ($rxSharedProfile) {
     $rxPaymentWorkers = 1;
     @set_time_limit(300);
 }
+if (!empty($rxHostProfile['manual_workers']) && function_exists('rx_cron_worker_counts')) {
+    $rxManualWorkers = rx_cron_worker_counts($rxHostProfile, is_array($rxSettingRow) ? $rxSettingRow : []);
+    $rxBroadcastWorkers = $rxManualWorkers['broadcast_workers'];
+    $rxPaymentWorkers = $rxManualWorkers['payment_workers'];
+}
 $jobWorkerCounts = [
     'sendmessage'   => $rxBroadcastWorkers,
     'notifications' => $rxBroadcastWorkers,
@@ -234,6 +259,33 @@ $jobWorkerCounts = [
     'croncard'      => $rxPaymentWorkers,
 ];
 
+$rxMaxConcurrency = $rxSharedProfile ? 2 : 3;
+if (isset($rxHostProfile['cron_max_concurrency'])) {
+    $rxMaxConcurrency = (int) $rxHostProfile['cron_max_concurrency'];
+}
+try {
+    $rxOptConfigFile = dirname(__DIR__) . '/optimization_config.php';
+    if (is_file($rxOptConfigFile)) {
+        $rxOptConfigData = @include $rxOptConfigFile;
+        if (is_array($rxOptConfigData) && isset($rxOptConfigData['cron_max_concurrency'])) {
+            $rxMaxConcurrency = (int) $rxOptConfigData['cron_max_concurrency'];
+        }
+    }
+} catch (Throwable $e) {}
+if (isset($rxSettingRow['cron_max_concurrency']) && (int) $rxSettingRow['cron_max_concurrency'] > 0) {
+    $rxMaxConcurrency = (int) $rxSettingRow['cron_max_concurrency'];
+}
+$rxMaxConcurrency = max(1, min(8, $rxMaxConcurrency));
+$rxTaskMaxAttempts = 3;
+$rxTaskDispatchLease = 120;
+$rxTaskStateEnabled = false;
+if (function_exists('rx_cron_task_ensure_table')) {
+    try {
+        $rxTaskStateEnabled = rx_cron_task_ensure_table($pdo);
+    } catch (Throwable $e) {
+        $rxTaskStateEnabled = false;
+    }
+}
 
 $now       = time();
 $minute    = (int) date('i', $now);
@@ -273,16 +325,31 @@ $shouldRun = static function (string $jobKey, array $schedule, int $minute, int 
 };
 
 
-$dispatchAsync = static function (array $urls, bool $useLoopback) use ($rxInternalAuthToken): array {
-    if (empty($urls)) return [];
+$dispatchAsync = static function (array $tasks, bool $useLoopback) use ($rxInternalAuthToken): array {
+    $result = ['success' => [], 'failed' => []];
+    if (empty($tasks)) {
+        return $result;
+    }
+    if (!function_exists('curl_multi_init')) {
+        $result['failed'] = $tasks;
+        return $result;
+    }
     $multi = curl_multi_init();
-    if ($multi === false) return $urls;
-    $handles    = [];
-    $handleUrls = [];
-    foreach ($urls as $url) {
+    if ($multi === false) {
+        $result['failed'] = $tasks;
+        return $result;
+    }
+    $handles = [];
+    foreach ($tasks as $task) {
+        $url = (string) ($task['url'] ?? '');
+        if ($url === '') {
+            continue;
+        }
         $bustedUrl = $url . (strpos($url, '?') === false ? '?' : '&') . '_t=' . microtime(true);
         $ch = curl_init($bustedUrl);
-        if ($ch === false) continue;
+        if ($ch === false) {
+            continue;
+        }
         $rxResolveHost = parse_url($url, PHP_URL_HOST);
         $curlOpts = [
             CURLOPT_RETURNTRANSFER  => true,
@@ -300,6 +367,8 @@ $dispatchAsync = static function (array $urls, bool $useLoopback) use ($rxIntern
                 'Expires: 0',
                 'X-Cron-Source: cron-orchestrator',
                 'X-Cron-Token: ' . $rxInternalAuthToken,
+                'X-Cron-Task: ' . (string) ($task['task_key'] ?? ''),
+                'X-Cron-Task-Token: ' . (string) ($task['token'] ?? ''),
                 'Connection: close',
             ],
             CURLOPT_USERAGENT       => 'CronOrchestrator/2.0 (+internal)',
@@ -313,14 +382,13 @@ $dispatchAsync = static function (array $urls, bool $useLoopback) use ($rxIntern
         }
         curl_setopt_array($ch, $curlOpts);
         curl_multi_add_handle($multi, $ch);
-        $handles[]             = $ch;
-        $handleUrls[(int) $ch] = $url;
+        $handles[(int) $ch] = ['handle' => $ch, 'task' => $task];
     }
     if (empty($handles)) {
         curl_multi_close($multi);
-        return [];
+        $result['failed'] = $tasks;
+        return $result;
     }
-
 
     $deadline = microtime(true) + 5.0;
     do {
@@ -330,23 +398,21 @@ $dispatchAsync = static function (array $urls, bool $useLoopback) use ($rxIntern
         }
     } while ($running > 0 && microtime(true) < $deadline);
 
-    $failed = [];
-    foreach ($handles as $ch) {
+    foreach ($handles as $item) {
+        $ch = $item['handle'];
         $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $err  = curl_error($ch);
-        $url = $handleUrls[(int) $ch] ?? null;
-        $body = (string) curl_multi_getcontent($ch);
         $isFail = ($err !== '' || $code < 200 || $code >= 400);
         if ($isFail) {
-            if ($url !== null) {
-                $failed[] = $url;
-            }
+            $result['failed'][] = $item['task'];
+        } else {
+            $result['success'][] = $item['task'];
         }
         curl_multi_remove_handle($multi, $ch);
         curl_close($ch);
     }
     curl_multi_close($multi);
-    return $failed;
+    return $result;
 };
 
 $rxCanExec = static function (): bool {
@@ -370,13 +436,12 @@ $rxResolveCliPhp = static function () use ($rxCanExec): ?string {
     }
     $resolved = true;
 
-    $candidates = [];
-
-    if (php_sapi_name() === 'cli' && defined('PHP_BINARY') && PHP_BINARY) {
-        $candidates[] = PHP_BINARY;
+    if (php_sapi_name() === 'cli' && defined('PHP_BINARY') && PHP_BINARY && is_file(PHP_BINARY)) {
+        $cliPhp = PHP_BINARY;
+        return $cliPhp;
     }
 
-    $candidates = array_merge($candidates, [
+    $candidates = [
         '/usr/local/bin/php',
         '/usr/bin/php',
         '/opt/cpanel/ea-php85/root/usr/bin/php',
@@ -385,7 +450,7 @@ $rxResolveCliPhp = static function () use ($rxCanExec): ?string {
         '/opt/cpanel/ea-php82/root/usr/bin/php',
         '/opt/cpanel/ea-php81/root/usr/bin/php',
         'php',
-    ]);
+    ];
 
     $seen = [];
     foreach ($candidates as $candidate) {
@@ -400,7 +465,7 @@ $rxResolveCliPhp = static function () use ($rxCanExec): ?string {
 
         $output = [];
         $code = 1;
-        @exec(escapeshellarg($candidate) . ' -r ' . escapeshellarg('echo PHP_SAPI;') . ' 2>/dev/null', $output, $code);
+        @exec(escapeshellarg($candidate) . ' -r ' . escapeshellarg('echo PHP_SAPI;') . (DIRECTORY_SEPARATOR === '\\' ? ' 2>NUL' : ' 2>/dev/null'), $output, $code);
 
         if ($code === 0 && trim(implode("
 ", $output)) === 'cli') {
@@ -412,7 +477,7 @@ $rxResolveCliPhp = static function () use ($rxCanExec): ?string {
     return null;
 };
 
-$rxDispatchCli = static function (string $script, int $worker, int $workers, bool $background) use ($rxResolveCliPhp, $rxCanExec): bool {
+$rxDispatchCli = static function (string $script, int $worker, int $workers, bool $background, string $taskKey = '', string $token = '') use ($rxResolveCliPhp, $rxCanExec): bool {
     if (!$rxCanExec()) {
         return false;
     }
@@ -426,9 +491,23 @@ $rxDispatchCli = static function (string $script, int $worker, int $workers, boo
         return false;
     }
 
+    if (!preg_match('/^[A-Za-z0-9_\-]{1,140}:[0-9]{1,3}:[0-9]{1,3}$/', $taskKey)) {
+        $taskKey = '';
+    }
+    if (!preg_match('/^[a-f0-9]{32,64}$/', $token)) {
+        $token = '';
+    }
+
     if (DIRECTORY_SEPARATOR === '\\') {
-        $cmd = 'set "BROADCAST_WORKER_ID=' . $worker . '" && set "BROADCAST_WORKERS=' . $workers . '" && '
-             . escapeshellarg($phpBin) . ' ' . escapeshellarg($file);
+        $envParts = [
+            'set "BROADCAST_WORKER_ID=' . $worker . '"',
+            'set "BROADCAST_WORKERS=' . $workers . '"',
+        ];
+        if ($taskKey !== '') {
+            $envParts[] = 'set "RX_CRON_TASK=' . $taskKey . '"';
+            $envParts[] = 'set "RX_CRON_TASK_TOKEN=' . $token . '"';
+        }
+        $cmd = implode(' && ', $envParts) . ' && ' . escapeshellarg($phpBin) . ' ' . escapeshellarg($file);
         if ($background) {
             $handle = @popen('start /B cmd /C "' . $cmd . '"', 'r');
             if (is_resource($handle)) {
@@ -443,8 +522,11 @@ $rxDispatchCli = static function (string $script, int $worker, int $workers, boo
         return $exitCode === 0;
     }
 
-    $cmd = 'BROADCAST_WORKER_ID=' . $worker . ' BROADCAST_WORKERS=' . $workers . ' '
-        . escapeshellarg($phpBin) . ' ' . escapeshellarg($file);
+    $env = 'BROADCAST_WORKER_ID=' . $worker . ' BROADCAST_WORKERS=' . $workers;
+    if ($taskKey !== '') {
+        $env .= ' RX_CRON_TASK=' . escapeshellarg($taskKey) . ' RX_CRON_TASK_TOKEN=' . escapeshellarg($token);
+    }
+    $cmd = $env . ' ' . escapeshellarg($phpBin) . ' ' . escapeshellarg($file);
 
     if ($background) {
         $exitCode = 1;
@@ -503,53 +585,73 @@ $rxDispatchHttpTasks = static function (array $tasks, bool $useLoopback) use ($d
         return ['success' => [], 'failed' => []];
     }
 
-    $urls = [];
-    $taskByUrl = [];
-
-    foreach ($tasks as $task) {
-        $url = $task['url'];
-        if ($useLoopback) {
-            $loopback = $rxDetectLoopback();
-            if (!is_array($loopback)) {
-                return ['success' => [], 'failed' => $tasks];
+    if ($useLoopback) {
+        $loopback = $rxDetectLoopback();
+        if (!is_array($loopback)) {
+            return ['success' => [], 'failed' => $tasks];
+        }
+        foreach ($tasks as $index => $task) {
+            $parts = parse_url((string) ($task['url'] ?? ''));
+            if (!is_array($parts)) {
+                continue;
             }
-
-            $parts = parse_url($url);
             $path = $parts['path'] ?? '/';
             $query = isset($parts['query']) ? '?' . $parts['query'] : '';
-            $url = $loopback['scheme'] . '://127.0.0.1:' . $loopback['port'] . $path . $query;
-        }
-
-        $urls[] = $url;
-        $taskByUrl[$url][] = $task;
-    }
-
-    $failedUrls = $dispatchAsync($urls, $useLoopback);
-    $failedLookup = [];
-    foreach ($failedUrls as $failedUrl) {
-        $failedLookup[$failedUrl] = true;
-    }
-
-    $success = [];
-    $failed = [];
-
-    foreach ($urls as $url) {
-        $bucket = $taskByUrl[$url] ?? [];
-        foreach ($bucket as $task) {
-            if (isset($failedLookup[$url])) {
-                $failed[] = $task;
-            } else {
-                $success[] = $task;
-            }
+            $tasks[$index]['url'] = $loopback['scheme'] . '://127.0.0.1:' . $loopback['port'] . $path . $query;
         }
     }
 
-    return ['success' => $success, 'failed' => $failed];
+    return $dispatchAsync($tasks, $useLoopback);
+};
+
+$rxValidTasks = [];
+$rxTaskKeyFor = static function (string $jobKey, int $workers, int $worker): string {
+    return function_exists('rx_cron_task_key') ? rx_cron_task_key($jobKey, $workers, $worker) : $jobKey . ':' . $workers . ':' . $worker;
 };
 
 if ($bootstrapLoaded && function_exists('getCronJobDefinitions')) {
     $definitions = getCronJobDefinitions();
     $schedules   = function_exists('loadCronSchedules') ? loadCronSchedules() : [];
+    $rxOccurrence = (int) (floor($now / 60) * 60);
+    $rxQueuedWorkerCounts = [];
+    $rxQueuedJobKeys = [];
+    $rxAvailability = [];
+    $rxProbeWork = static function (string $jobKey) use (&$rxAvailability): ?bool {
+        if (array_key_exists($jobKey, $rxAvailability)) {
+            return $rxAvailability[$jobKey];
+        }
+        $state = null;
+        if (function_exists('rx_cron_job_work_available')) {
+            try {
+                $state = rx_cron_job_work_available($jobKey);
+            } catch (Throwable $e) {
+                $state = null;
+            }
+        }
+        $rxAvailability[$jobKey] = $state;
+        return $state;
+    };
+    if ($rxTaskStateEnabled) {
+        try {
+            $rxWorkerRows = $pdo->query("SELECT job_key, workers FROM cron_task_state WHERE state IN ('pending','claimed','running') ORDER BY scheduled_for ASC, task_key ASC");
+            if ($rxWorkerRows === false) {
+                throw new RuntimeException('Cannot read queued worker counts');
+            }
+            foreach ($rxWorkerRows->fetchAll(PDO::FETCH_ASSOC) as $rxWorkerRow) {
+                $rxWorkerJob = (string) ($rxWorkerRow['job_key'] ?? '');
+                if ($rxWorkerJob !== '') {
+                    $rxQueuedJobKeys[$rxWorkerJob] = true;
+                }
+                if (isset($jobWorkerCounts[$rxWorkerJob]) && !isset($rxQueuedWorkerCounts[$rxWorkerJob])) {
+                    $rxQueuedWorkerCounts[$rxWorkerJob] = max(1, min(8, (int) $rxWorkerRow['workers']));
+                }
+            }
+        } catch (Throwable $e) {
+            error_log('[cron] queued worker counts unavailable');
+            echo "SKIP (task queue unavailable)\n";
+            exit;
+        }
+    }
 
     foreach ($definitions as $key => $definition) {
         if (empty($definition['script'])) {
@@ -564,102 +666,23 @@ if ($bootstrapLoaded && function_exists('getCronJobDefinitions')) {
 
         $defaultConfig = $definition['default'] ?? ['unit' => 'minute', 'value' => 1];
         $schedule      = $schedules[$key] ?? $defaultConfig;
+        if (strtolower((string) ($schedule['unit'] ?? 'minute')) === 'disabled') {
+            continue;
+        }
 
         $rxDue = $shouldRun($key, $schedule, $minute, $hour, $dayOfYear, $now, $runtimeState, $jobHours[$key] ?? 0);
-        if (!$rxDue) {
-            continue;
+        $rxSkipNoWork = false;
+        if ($rxDue || isset($rxQueuedJobKeys[$key])) {
+            $rxSkipNoWork = ($rxProbeWork((string) $key) === false);
         }
-
-        $rxN = max(1, (int) ($jobWorkerCounts[$key] ?? 1));
-        $jobDispatched = false;
-
-        if ($rxIsCli) {
-            for ($rxI = 0; $rxI < $rxN; $rxI++) {
-                $cliOk = $rxDispatchCli(
-                    $definition['script'],
-                    $rxI,
-                    $rxN,
-                    !$rxSharedProfile
-                );
-
-                if ($cliOk) {
-                    $rxCliDispatched++;
-                    $rxSuccessfulDispatches++;
-                    $jobDispatched = true;
-                    continue;
-                }
-
-                $rxBase = $buildCronUrl($definition['script']);
-                $rxSep  = (strpos($rxBase, '?') === false) ? '?' : '&';
-                $fallbackUrl = $rxN > 1
-                    ? $rxBase . $rxSep . 'worker=' . $rxI . '&workers=' . $rxN
-                    : $rxBase;
-
-                $fallbackResult = $rxDispatchHttpTasks([[
-                    'key' => $key,
-                    'script' => $definition['script'],
-                    'worker' => $rxI,
-                    'workers' => $rxN,
-                    'url' => $fallbackUrl,
-                ]], false);
-
-                if (!empty($fallbackResult['failed'])) {
-                    $fallbackResult = $rxDispatchHttpTasks($fallbackResult['failed'], true);
-                }
-
-                if (!empty($fallbackResult['success'])) {
-                    $rxSuccessfulDispatches += count($fallbackResult['success']);
-                    $jobDispatched = true;
-                }
-            }
-
-            if ($jobDispatched) {
-                $rxMarkJobRun($pdo, $key, $now, $runtimeState);
-            } else {
-            }
-            continue;
-        }
-
-        if ($key === 'backupbot') {
-            $cliOk = $rxDispatchCli($definition['script'], 0, 1, true);
-            if ($cliOk) {
-                $rxCliDispatched++;
-                $rxSuccessfulDispatches++;
-                $jobDispatched = true;
-            } else {
-                $rxBase = $buildCronUrl($definition['script']);
-                $backupTask = [[
-                    'key' => $key,
-                    'script' => $definition['script'],
-                    'worker' => 0,
-                    'workers' => 1,
-                    'url' => $rxBase,
-                ]];
-
-                $fallbackResult = $rxDispatchHttpTasks($backupTask, false);
-
-                if (!empty($fallbackResult['failed'])) {
-                    $fallbackResult = $rxDispatchHttpTasks($fallbackResult['failed'], true);
-                }
-
-                if (!empty($fallbackResult['success'])) {
-                    $rxSuccessfulDispatches += count($fallbackResult['success']);
-                    $jobDispatched = true;
-                }
-            }
-
-            if ($jobDispatched) {
-                $rxMarkJobRun($pdo, $key, $now, $runtimeState);
-            } else {
-            }
-            continue;
-        }
-
+        $rxRequestedN = max(1, (int) ($jobWorkerCounts[$key] ?? 1));
+        $rxN = max(1, (int) ($rxQueuedWorkerCounts[$key] ?? $rxRequestedN));
+        $rxWorkerTransition = $rxN !== $rxRequestedN;
         $rxBase = $buildCronUrl($definition['script']);
-        $rxSep  = (strpos($rxBase, '?') === false) ? '?' : '&';
+        $rxSep = (strpos($rxBase, '?') === false) ? '?' : '&';
 
         for ($rxI = 0; $rxI < $rxN; $rxI++) {
-            $dueTasks[] = [
+            $rxTask = [
                 'key' => $key,
                 'script' => $definition['script'],
                 'worker' => $rxI,
@@ -668,6 +691,36 @@ if ($bootstrapLoaded && function_exists('getCronJobDefinitions')) {
                     ? $rxBase . $rxSep . 'worker=' . $rxI . '&workers=' . $rxN
                     : $rxBase,
             ];
+            $rxValidTasks[$rxTaskKeyFor($key, $rxN, $rxI)] = $rxTask;
+            if (!$rxDue || $rxWorkerTransition || $rxSkipNoWork) {
+                continue;
+            }
+            $dueTasks[] = $rxTask;
+            if ($rxTaskStateEnabled) {
+                try {
+                    rx_cron_task_enqueue($pdo, $key, (string) $definition['script'], $rxN, $rxI, $rxOccurrence);
+                } catch (Throwable $e) {
+                }
+            }
+        }
+    }
+
+    if ($rxTaskStateEnabled) {
+        try {
+            rx_cron_task_cancel_obsolete($pdo, $rxValidTasks);
+        } catch (Throwable $e) {
+        }
+        try {
+            rx_cron_task_prune($pdo, $now);
+        } catch (Throwable $e) {
+        }
+        try {
+            rx_cron_task_scan_markers($pdo, $rxTaskDispatchLease, $now);
+        } catch (Throwable $e) {
+        }
+        try {
+            rx_cron_task_reconcile($pdo, $rxTaskMaxAttempts, $now);
+        } catch (Throwable $e) {
         }
     }
 
@@ -713,8 +766,150 @@ if ($bootstrapLoaded && function_exists('getCronJobDefinitions')) {
     }
 }
 
-if (!$rxIsCli && !empty($dueTasks)) {
-    $rxHttpBatchSize = $rxSharedProfile ? 2 : 8;
+$rxHttpBatchSize = $rxSharedProfile ? 2 : 8;
+
+$rxTaskStarted = static function (string $taskKey) use ($pdo, $rxTaskDispatchLease): bool {
+    if ($taskKey === '' || !($pdo instanceof PDO)) {
+        return false;
+    }
+    if (function_exists('rx_cron_task_scan_markers')) {
+        try {
+            rx_cron_task_scan_markers($pdo, $rxTaskDispatchLease, time());
+        } catch (Throwable $e) {
+        }
+    }
+    if (!function_exists('rx_cron_task_state_name')) {
+        return false;
+    }
+    try {
+        $state = rx_cron_task_state_name($pdo, $taskKey);
+    } catch (Throwable $e) {
+        return false;
+    }
+    return in_array($state, ['running', 'completed', 'failed'], true);
+};
+
+$rxDispatchTask = static function (array $task) use ($rxIsCli, $rxSharedProfile, $buildCronUrl, $rxDispatchHttpTasks, $rxDispatchCli, $rxTaskStarted): string {
+    $jobKey  = (string) ($task['job_key'] ?? $task['key'] ?? '');
+    $script  = (string) ($task['script'] ?? '');
+    $worker  = (int) ($task['worker'] ?? 0);
+    $workers = max(1, (int) ($task['workers'] ?? 1));
+    $taskKey = (string) ($task['task_key'] ?? '');
+    $token   = (string) ($task['token'] ?? '');
+    $httpAttempted = false;
+
+    if ($rxIsCli) {
+        $background = ($jobKey === 'backupbot') ? true : !$rxSharedProfile;
+        if ($rxDispatchCli($script, $worker, $workers, $background, $taskKey, $token)) {
+            return 'accepted';
+        }
+        if ($rxTaskStarted($taskKey)) {
+            return 'accepted';
+        }
+    }
+
+    if (function_exists('curl_multi_init')) {
+        $httpAttempted = true;
+        $rxBase = $buildCronUrl($script);
+        $rxSep = (strpos($rxBase, '?') === false) ? '?' : '&';
+        $single = [[
+            'key' => $jobKey,
+            'script' => $script,
+            'worker' => $worker,
+            'workers' => $workers,
+            'url' => $workers > 1 ? $rxBase . $rxSep . 'worker=' . $worker . '&workers=' . $workers : $rxBase,
+            'task_key' => $taskKey,
+            'token' => $token,
+        ]];
+        $result = $rxDispatchHttpTasks($single, false);
+        if (!empty($result['success'])) {
+            return 'accepted';
+        }
+        if ($rxTaskStarted($taskKey)) {
+            return 'accepted';
+        }
+        $result = $rxDispatchHttpTasks($single, true);
+        if (!empty($result['success'])) {
+            return 'accepted';
+        }
+        if ($rxTaskStarted($taskKey)) {
+            return 'accepted';
+        }
+    }
+
+    if (!$rxIsCli && $rxDispatchCli($script, $worker, $workers, true, $taskKey, $token)) {
+        return 'accepted';
+    }
+
+    return $httpAttempted ? 'accepted' : 'failed';
+};
+
+if ($rxTaskStateEnabled) {
+    $rxDispatchDeadline = microtime(true) + ($rxIsCli ? ($rxSharedProfile ? 240 : 45) : ($rxSharedProfile ? 8 : 15));
+    $rxJobMarked = [];
+    $rxOnDispatch = static function (array $claim) use ($pdo, $now, &$runtimeState, &$rxJobMarked, $rxMarkJobRun): void {
+        $jobKey = (string) ($claim['job_key'] ?? '');
+        if ($jobKey === '' || isset($rxJobMarked[$jobKey])) {
+            return;
+        }
+        $rxJobMarked[$jobKey] = true;
+        $rxMarkJobRun($pdo, $jobKey, $now, $runtimeState);
+    };
+    $rxValidateTask = static function (array $row) use ($rxValidTasks): bool {
+        $taskKey = (string) ($row['task_key'] ?? '');
+        if ($taskKey === '' || !isset($rxValidTasks[$taskKey])) {
+            return false;
+        }
+        $valid = $rxValidTasks[$taskKey];
+        return (int) ($valid['worker'] ?? -1) === (int) ($row['worker'] ?? -2)
+            && (int) ($valid['workers'] ?? -1) === (int) ($row['workers'] ?? -2);
+    };
+    $rxStats = ['dispatched' => 0];
+    $rxDeferredJobs = [];
+    foreach ((array) ($rxAvailability ?? []) as $rxJobKey => $rxJobState) {
+        if ($rxJobState === false) {
+            $rxDeferredJobs[] = (string) $rxJobKey;
+        }
+    }
+    if (function_exists('rx_cron_task_run_pending')) {
+        try {
+            $rxStats = rx_cron_task_run_pending($pdo, [
+                'concurrency' => $rxMaxConcurrency,
+                'max_attempts' => $rxTaskMaxAttempts,
+                'lease_seconds' => $rxTaskDispatchLease,
+                'deadline' => $rxDispatchDeadline,
+                'poll_micros' => $rxSharedProfile ? 600000 : 400000,
+                'deferred_jobs' => $rxDeferredJobs,
+            ], $rxDispatchTask, $rxValidateTask, $rxOnDispatch);
+        } catch (Throwable $e) {
+            $rxStats = ['dispatched' => 0];
+        }
+    }
+    $rxSuccessfulDispatches += (int) ($rxStats['dispatched'] ?? 0);
+} elseif ($rxIsCli) {
+    $successfulJobs = [];
+    foreach ($dueTasks as $task) {
+        $jobKey = (string) $task['key'];
+        $background = ($jobKey === 'backupbot') ? true : !$rxSharedProfile;
+        if ($rxDispatchCli($task['script'], (int) $task['worker'], (int) $task['workers'], $background)) {
+            $rxCliDispatched++;
+            $rxSuccessfulDispatches++;
+            $successfulJobs[$jobKey] = true;
+            continue;
+        }
+        $result = $rxDispatchHttpTasks([$task], false);
+        if (!empty($result['failed'])) {
+            $result = $rxDispatchHttpTasks($result['failed'], true);
+        }
+        if (!empty($result['success'])) {
+            $rxSuccessfulDispatches += count($result['success']);
+            $successfulJobs[$jobKey] = true;
+        }
+    }
+    foreach (array_keys($successfulJobs) as $jobKey) {
+        $rxMarkJobRun($pdo, $jobKey, $now, $runtimeState);
+    }
+} elseif (!empty($dueTasks)) {
     $primarySuccess = [];
     $primaryFailed = [];
 

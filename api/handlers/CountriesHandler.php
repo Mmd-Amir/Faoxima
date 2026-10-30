@@ -16,6 +16,7 @@ final class CountriesHandler extends BaseHandler
         $rows = FaoximaDb::fetchAll(
             "SELECT * FROM marzban_panel
               WHERE status = 'active'
+                AND type != 'jovadpanel'
                 AND (agent = :agent OR agent = 'all')
                 AND (
                     type != 'Manualsale'

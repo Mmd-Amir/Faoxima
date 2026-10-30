@@ -1,3 +1,4 @@
+import { durationCardsHtml, bindDurationCards, customPriceSummaryHtml, updateCustomPriceSummary } from '../custom-duration.js?v=1';
 import { call, ApiError, configFileUrl } from '../api.js?v=0.0.53';
 import { downloadFromUrl, downloadBlob, dataUriToBlob, decodeDataUriText, isTelegramApp, tgPlatform } from '../download.js?v=0.0.52';
 import {
@@ -1436,8 +1437,8 @@ async function renderRenewPanel($panel, info, username, reload) {
                 <div class="plan-info">
                     <div class="plan-title">${icon('settings')} ساخت پلن سفارشی</div>
                     <div class="plan-meta">
-                        <span>${fmtNum(custom.price_per_gb)} تومان/گیگ</span>
-                        <span>${fmtNum(custom.price_per_day)} تومان/روز</span>
+                        <span>${custom.duration_pricing ? 'تعرفه بر اساس مدت' : `${fmtNum(custom.price_per_gb)} تومان/گیگ`}</span>
+                        <span>${custom.duration_pricing ? '' : `${fmtNum(custom.price_per_day)} تومان/روز`}</span>
                     </div>
                 </div>
                 <div class="plan-price"><span class="amt">${icon('select', 'class="ico ico-lg"')}</span></div>
@@ -1473,6 +1474,8 @@ function renderRenewCustomForm($panel, opts, username, reload) {
     const c = opts.custom || {};
     const volFixed = Number(c.min_volume_gb) === Number(c.max_volume_gb) && Number(c.max_volume_gb) > 0;
     const timeFixed = Number(c.min_time_days) === Number(c.max_time_days) && Number(c.max_time_days) > 0;
+    const tariffs = Object.keys(c.duration_tariffs || {}).map(Number);
+    let selectedDays = c.duration_pricing ? (tariffs[0] ?? NaN) : Number(c.min_time_days);
     const $host = $panel.querySelector('#renew-confirm-host');
     $panel.querySelector('#renew-pay-host').innerHTML = '';
     $host.innerHTML = `
@@ -1491,16 +1494,13 @@ function renderRenewCustomForm($panel, opts, username, reload) {
             </div>
             <div class="form-row mt-sm">
                 <label class="muted" style="font-size:12px">زمان (روز)</label>
-                <input id="cv-time" type="number" inputmode="numeric"
+                ${c.duration_pricing ? durationCardsHtml(c.duration_tariffs, selectedDays) : `<input id="cv-time" type="number" inputmode="numeric"
                        min="${c.min_time_days}" max="${c.max_time_days}"
                        value="${timeFixed ? c.min_time_days : ''}" ${timeFixed ? 'readonly' : ''}
-                       placeholder="${c.min_time_days}-${c.max_time_days}" />
+                       placeholder="${c.min_time_days}-${c.max_time_days}" />`}
             </div>
-            <div class="kv mt-md">
-                <span class="kv-label">${icon('coin')} مبلغ تخمینی</span>
-                <span class="kv-value mono accent" id="cv-total">۰ تومان</span>
-            </div>
-            <button id="cv-submit" type="button" class="btn btn-primary btn-block mt-md">
+            ${customPriceSummaryHtml()}
+            <button id="cv-submit" type="button" disabled class="btn btn-primary btn-block mt-md">
                 ${icon('check', 'class="ico ico-leading"')}
                 <span class="cv-label">ادامه</span>
             </button>
@@ -1509,24 +1509,52 @@ function renderRenewCustomForm($panel, opts, username, reload) {
 
     const $vol = $host.querySelector('#cv-volume');
     const $time = $host.querySelector('#cv-time');
-    const $total = $host.querySelector('#cv-total');
-    const fxStep = Number(c.fx_round_step || 0);
-    const fxRound = (amount) => (fxStep > 0 && amount > 0 ? Math.ceil(amount / fxStep) * fxStep : amount);
-    const recompute = () => {
-        const v = Number($vol.value || 0);
-        const d = Number($time.value || 0);
-        const t = fxRound((v * Number(c.price_per_gb || 0)) + (d * Number(c.price_per_day || 0)));
-        $total.textContent = `${fmtNum(t)} تومان`;
+    const $summary = $host.querySelector('[data-price-summary]');
+    const $submit = $host.querySelector('#cv-submit');
+    let priceSeq = 0;
+    let monetary = null;
+    const currentDays = () => $time ? Number($time.value || 0) : selectedDays;
+    const recompute = async () => {
+        const seq = ++priceSeq;
+        monetary = null;
+        const v = $vol.value === '' ? NaN : Number($vol.value);
+        const d = currentDays();
+        $submit.disabled = true;
+        const knownTariff = c.duration_pricing ? Number(c.duration_tariffs?.[d]) : NaN;
+        const tariff = Number.isFinite(knownTariff) ? knownTariff : null;
+        if (!Number.isInteger(v) || !Number.isInteger(d) || v < c.min_volume_gb || v > c.max_volume_gb || d < c.min_time_days || d > c.max_time_days
+            || (c.duration_pricing && !tariffs.includes(d))) {
+            updateCustomPriceSummary($summary, { volume: v, days: d, tariff, state: 'error', message: 'حجم و زمان مجاز را انتخاب کنید' });
+            return;
+        }
+        updateCustomPriceSummary($summary, { volume: v, days: d, tariff });
+        try {
+            const r = await call('service_renew_preview', { method: 'POST', body: { username, custom: { volume_gb: v, time_days: d } } });
+            if (seq !== priceSeq || !$summary.isConnected) return;
+            const pricing = r?.obj?.pricing;
+            if (!pricing || pricing.volume_gb !== v || pricing.time_days !== d || pricing.price === null || pricing.price === undefined || !Number.isFinite(pricing.price) || Number(pricing.price) < 0
+                || pricing.price_per_gb === null || pricing.price_per_gb === undefined || !Number.isFinite(pricing.price_per_gb) || pricing.price_per_gb < 0) {
+                throw new Error('قیمت معتبر دریافت نشد؛ دوباره تلاش کنید.');
+            }
+            const blocked = !!r?.obj?.blocked;
+            monetary = blocked ? null : pricing;
+            updateCustomPriceSummary($summary, { volume: v, days: d, tariff: Number(pricing.price_per_gb), total: Number(pricing.price),
+                state: blocked ? 'error' : 'ready', message: blocked ? (r.obj.text || 'تمدید این سرویس فعلاً امکان‌پذیر نیست.') : '' });
+            $submit.disabled = blocked;
+        } catch (err) {
+            if (seq !== priceSeq || !$summary.isConnected) return;
+            monetary = null;
+            updateCustomPriceSummary($summary, { volume: v, days: d, state: 'error', message: err.message || 'خطا در محاسبه قیمت' });
+        }
     };
     $vol.addEventListener('input', recompute);
-    $time.addEventListener('input', recompute);
+    if ($time) $time.addEventListener('input', recompute);
+    bindDurationCards($host, (days) => { selectedDays = days; recompute(); });
     recompute();
 
-    const $submit = $host.querySelector('#cv-submit');
-    const $label = $submit.querySelector('.cv-label');
     $submit.addEventListener('click', () => {
         const v = parseInt($vol.value || '0', 10);
-        const d = parseInt($time.value || '0', 10);
+        const d = currentDays();
         if (!v || !d) { toast('حجم و زمان را وارد کنید', 'warn'); return; }
         if (v < c.min_volume_gb || v > c.max_volume_gb) {
             toast(`حجم باید بین ${c.min_volume_gb} و ${c.max_volume_gb} گیگ باشد`, 'warn', 4000);
@@ -1536,9 +1564,13 @@ function renderRenewCustomForm($panel, opts, username, reload) {
             toast(`زمان باید بین ${c.min_time_days} و ${c.max_time_days} روز باشد`, 'warn', 4000);
             return;
         }
-        const price = fxRound((v * Number(c.price_per_gb || 0)) + (d * Number(c.price_per_day || 0)));
+        if ($submit.disabled || !monetary || monetary.volume_gb !== v || monetary.time_days !== d) return;
+        const price = Number(monetary.price);
         const choice = {
             code: '__custom__',
+            fx_quote: monetary.fx_quote,
+            price_per_gb: monetary.price_per_gb,
+            duration_pricing: c.duration_pricing,
             name: '⚙️ سرویس دلخواه',
             price,
             volume_gb: v,
@@ -1595,7 +1627,7 @@ function renderRenewConfirm($panel, opts, choice, username, reload) {
     `;
 
     let appliedDiscount = '';
-    const basePrice = Number(choice.price || 0);
+    let basePrice = Number(choice.price || 0);
     if (choice.fx_quote === undefined) {
         choice.fx_quote = (choice.code === '__custom__' ? opts?.fx_quote?.custom : opts?.fx_quote?.product) || '';
     }
@@ -1610,11 +1642,14 @@ function renderRenewConfirm($panel, opts, choice, username, reload) {
             if (!code) { toast('کد تخفیف را وارد کنید', 'warn'); return; }
             $discApply.disabled = true;
             try {
-                const r = await call('discount_validate', {
-                    method: 'POST',
-                    body: { code, context: 'extend', username, base_price: basePrice },
-                });
-                const obj = r?.obj || {};
+                const r = choice.code === '__custom__'
+                    ? await call('service_renew_preview', { method: 'POST', body: { username, custom: choice.custom, discount_code: code } })
+                    : await call('discount_validate', { method: 'POST', body: { code, context: 'extend', username, base_price: basePrice } });
+                const obj = choice.code === '__custom__' ? { final_price: r?.obj?.pricing?.price, message: 'کد تخفیف اعمال شد' } : (r?.obj || {});
+                if (choice.code === '__custom__') {
+                    choice.fx_quote = r?.obj?.pricing?.fx_quote || '';
+                    choice.price = Number(r?.obj?.pricing?.price || 0);
+                }
                 appliedDiscount = code;
                 if (obj.final_price != null && $amount) $amount.textContent = `${fmtNum(obj.final_price)} تومان`;
                 $discMsg.style.display = 'block';
@@ -1622,6 +1657,7 @@ function renderRenewConfirm($panel, opts, choice, username, reload) {
                 hapticNotify('success');
             } catch (err) {
                 appliedDiscount = '';
+                if (choice.code === '__custom__') loadPreview();
                 $discMsg.style.display = 'block';
                 $discMsg.textContent = err.message || 'کد تخفیف نامعتبر است';
                 if ($amount) $amount.textContent = `${fmtNum(basePrice)} تومان`;
@@ -1641,6 +1677,7 @@ function renderRenewConfirm($panel, opts, choice, username, reload) {
         $btn.disabled = true;
         try {
             const previewBody = { username };
+            if (appliedDiscount) previewBody.discount_code = appliedDiscount;
             if (choice.code === '__custom__') {
                 previewBody.custom = choice.custom;
             } else {
@@ -1650,11 +1687,19 @@ function renderRenewConfirm($panel, opts, choice, username, reload) {
             if (seq !== previewSeq) return;
             const pobj = pr?.obj || {};
             if ($preview) $preview.textContent = String(pobj.text || '');
+            if (choice.code === '__custom__' && pobj.pricing) {
+                choice.price = basePrice = Number(pobj.pricing.price);
+                choice.fx_quote = pobj.pricing.fx_quote || '';
+                choice.price_per_gb = pobj.pricing.price_per_gb;
+                choice.duration_pricing = pobj.pricing.mode === 'duration';
+                if (!appliedDiscount && $amount) $amount.textContent = `${fmtNum(choice.price)} تومان`;
+                if (choice.duration_pricing && $preview) $preview.textContent += `\n${choice.time_days} روز · ${choice.volume_gb} GB · ${fmtNum(choice.price_per_gb)} تومان/GB`;
+            }
             $btn.disabled = !!pobj.blocked;
         } catch (err) {
             if (seq !== previewSeq) return;
             if ($preview) $preview.textContent = 'پیش‌نمایش تمدید موقتاً دریافت نشد؛ هنگام تأیید، وضعیت سرویس دوباره از پنل بررسی می‌شود.';
-            $btn.disabled = false;
+            $btn.disabled = choice.code === '__custom__';
         }
     };
     loadPreview();

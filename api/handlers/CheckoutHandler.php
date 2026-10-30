@@ -49,6 +49,20 @@ final class CheckoutHandler extends BaseHandler
             FaoximaResponse::badRequest('expected_wallet_amount and expected_external_amount are required');
         }
 
+        $checkoutTarget = (string) ($ck['target'] ?? '');
+        if ($checkoutTarget !== '' && (string) ($ck['operation'] ?? '') === 'getconfigafterpay') {
+            $targetInvoice = FaoximaDb::fetchOne(
+                "SELECT Service_location FROM invoice WHERE username = :t AND id_user = :u ORDER BY time_sell DESC LIMIT 1",
+                [':t' => $checkoutTarget, ':u' => $uid]
+            );
+            if (is_array($targetInvoice) && (string) ($targetInvoice['Service_location'] ?? '') !== '') {
+                $targetPanel = select('marzban_panel', '*', 'name_panel', (string) $targetInvoice['Service_location'], 'select');
+                if (jovadMiniAppPanelBlocked($targetPanel)) {
+                    FaoximaResponse::fail(403, faoxima_textbot_get('dyn_jovad_miniapp_blocked', '❌ خرید این پنل از طریق مینی‌اپ امکان‌پذیر نیست. لطفاً از ربات تلگرام استفاده کنید.'));
+                }
+            }
+        }
+
         $res = rx_ck_confirm($checkoutId, $uid, $choice, $expectedWallet, $expectedExternal);
         if (!empty($res['ok'])) {
             $fresh = rx_ck_fetch($checkoutId, $uid);

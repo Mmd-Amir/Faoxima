@@ -47,6 +47,31 @@ $optionRebecca = rx_finalizeInlineAdminKb(json_encode([
     ],
     'resize_keyboard' => true
 ]));
+$optionJovad = rx_finalizeInlineAdminKb(json_encode([
+    'keyboard' => [
+        [$rxAdminPanelBtn("⚙️ وضعیت قابلیت ها پنل", 'admin_panel_jovadpanel')],
+        [$rxAdminPanelBtn("🔄 تغییر نوع پنل", 'admin_panel_jovadpanel')],
+        [$rxAdminPanelBtn("✍️ نام پنل", 'admin_panel_jovadpanel'), $rxAdminPanelBtn("❌ حذف پنل", 'admin_panel_jovadpanel', 'danger')],
+        [$rxAdminPanelBtn("🔐 ویرایش کلید", 'admin_panel_jovadpanel'), $rxAdminPanelBtn("⁉️ اتصال به پنل", 'admin_panel_jovadpanel')],
+        [$rxAdminPanelBtn("🔗 ویرایش آدرس پنل", 'admin_panel_jovadpanel')],
+        [$rxAdminPanelBtn("🔋 روش تمدید سرویس", 'admin_panel_jovadpanel'), $rxAdminPanelBtn("💡 ساخت نام کاربری", 'admin_panel_jovadpanel')],
+        [$rxAdminPanelBtn("🚨 محدودیت اکانت", 'admin_panel_jovadpanel'), $rxAdminPanelBtn("📍 تغییر گروه", 'admin_panel_jovadpanel')],
+        [$rxAdminPanelBtn("🧪 تنظیمات تست", 'admin_panel_jovadpanel')],
+        [$rxAdminPanelBtn("👥 تعداد دستگاه اشتراک نامحدود", 'admin_panel_jovadpanel')],
+        [$rxAdminPanelBtn("📡 کانال‌های پیش‌فرض", 'admin_panel_jovadpanel')],
+        $rxFxPricingRow('admin_panel_jovadpanel'),
+        [$rxAdminPanelBtn("⚙️ قیمت حجم دلخواه", 'admin_panel_jovadpanel'), $rxAdminPanelBtn("➕ قیمت حجم اضافه", 'admin_panel_jovadpanel')],
+        [$rxAdminPanelBtn("⏳ قیمت زمان اضافه", 'admin_panel_jovadpanel'), $rxAdminPanelBtn("⏳ قیمت زمان دلخواه", 'admin_panel_jovadpanel')],
+        [$rxAdminPanelBtn("🌍 قیمت تغییر مکان", 'admin_panel_jovadpanel')],
+        [$rxAdminPanelBtn("📍 کف حجم دلخواه", 'admin_panel_jovadpanel'), $rxAdminPanelBtn("📍 سقف حجم دلخواه", 'admin_panel_jovadpanel')],
+        [$rxAdminPanelBtn("📍 کف زمان دلخواه", 'admin_panel_jovadpanel'), $rxAdminPanelBtn("📍 سقف زمان دلخواه", 'admin_panel_jovadpanel')],
+        [$rxAdminPanelBtn("🌐 وضعیت نت ملی", 'admin_panel_jovadpanel')],
+        [$rxAdminPanelBtn("🫣 مخفی پنل برای کاربر", 'admin_panel_jovadpanel')],
+        [$rxAdminPanelBtn("❌ حذف از لیست مخفی", 'admin_panel_jovadpanel', 'danger')],
+        [['text' => $textbotlang['Admin']['backadmin']], ['text' => $textbotlang['Admin']['backmenu']]]
+    ],
+    'resize_keyboard' => true
+]));
 $optionPasarGuard = rx_finalizeInlineAdminKb(json_encode([
     'keyboard' => [
         [$rxAdminPanelBtn("⚙️ وضعیت قابلیت ها پنل", 'admin_panel_pasarguard')],
@@ -255,10 +280,56 @@ $keyboardtypepanel = json_encode([
             ['text' => '3x-ui', 'callback_data' => 'typepanel#x-ui_single']
         ],
         [
+            ['text' => "JovadPanel", 'callback_data' => 'typepanel#jovadpanel']
+        ],
+        [
             ['text' => "فروش دستی" , 'callback_data' => 'typepanel#Manualsale']
         ],
         [
             ['text' => $textbotlang['Admin']['backadmin'] , 'callback_data' => 'admin']
+        ]
+    ],
+]);
+$keyboardpanelcategory = json_encode([
+    'inline_keyboard' => [
+        [
+            ['text' => "🌐 پنل‌های عمومی (رایگان)", 'callback_data' => 'panelcat#public']
+        ],
+        [
+            ['text' => "💳 پنل‌های اشتراکی (پولی)", 'callback_data' => 'panelcat#subscription']
+        ],
+        [
+            ['text' => "📦 فروش دستی", 'callback_data' => 'typepanel#Manualsale']
+        ],
+        [
+            ['text' => $textbotlang['Admin']['backadmin'], 'callback_data' => 'admin']
+        ]
+    ],
+]);
+$keyboardtypepanelpublic = json_encode([
+    'inline_keyboard' => [
+        [
+            ['text' => "Marzban", 'callback_data' => 'typepanel#marzban'],
+            ['text' => "Rebecca", 'callback_data' => 'typepanel#rebecca'],
+            ['text' => "PasarGuard", 'callback_data' => "typepanel#pasargard"]
+        ],
+        [
+            ['text' => "Remnawave", 'callback_data' => 'typepanel#remnawave'],
+            ['text' => '3x-ui', 'callback_data' => 'typepanel#x-ui_single']
+        ],
+        [
+            ['text' => "🔙 بازگشت به دسته‌بندی پنل‌ها", 'callback_data' => 'panelcat#root']
+        ]
+    ],
+]);
+$keyboardtypepanelsubscription = json_encode([
+    'inline_keyboard' => [
+        [
+            ['text' => "Guard", 'callback_data' => 'typepanel#guard'],
+            ['text' => "JovadPanel", 'callback_data' => 'typepanel#jovadpanel']
+        ],
+        [
+            ['text' => "🔙 بازگشت به دسته‌بندی پنل‌ها", 'callback_data' => 'panelcat#root']
         ]
     ],
 ]);
@@ -273,6 +344,9 @@ $keyboardswitchtype = json_encode([
             ['text' => "Remnawave", 'callback_data' => 'switchtype#remnawave'],
             ['text' => "Guard", 'callback_data' => 'switchtype#guard'],
             ['text' => '3x-ui', 'callback_data' => 'switchtype#x-ui_single']
+        ],
+        [
+            ['text' => "JovadPanel", 'callback_data' => 'switchtype#jovadpanel']
         ],
         [
             ['text' => $textbotlang['Admin']['backadmin'] , 'callback_data' => 'admin']

@@ -1053,10 +1053,29 @@ if (!function_exists('rx_test_provision')) {
             $result['msg'] = $e->getMessage();
             return $result;
         }
+        if (($panel['type'] ?? '') === 'jovadpanel' && function_exists('jovadpanelFreezeChannelOrder')) {
+            $rxTestChannelFreeze = jovadpanelFreezeChannelOrder($panel, $orderId, (string) $usernameAc, []);
+            if (empty($rxTestChannelFreeze['status'])) {
+                try {
+                    $pdo->prepare("UPDATE invoice SET Status = 'Unsuccessful' WHERE id_invoice = ? AND id_user = ?")->execute([$orderId, (string) $user['id']]);
+                    if (function_exists('clearSelectCache')) {
+                        clearSelectCache('invoice');
+                    }
+                } catch (Throwable $e) {
+                    error_log('[test_account_policy] channel freeze invoice mark: ' . $e->getMessage());
+                }
+                rx_test_reservation_update($reservation, 'failed');
+                rx_test_release($reservation);
+                $result['error'] = 'create_failed';
+                $result['msg'] = (string) ($rxTestChannelFreeze['msg'] ?? 'انتخاب کانال‌های سرویس تست معتبر نیست.');
+                return $result;
+            }
+        }
         rx_test_reservation_update($reservation, 'reserved', $orderId, (string) $usernameAc);
         $datac = [
             'expire'     => $expire,
             'data_limit' => $dataLimit,
+            'id_invoice' => (string) $orderId,
             'from_id'    => $user['id'],
             'username'   => (string) $usernameAc,
             'type'       => 'usertest',
@@ -1068,6 +1087,16 @@ if (!function_exists('rx_test_provision')) {
             $output = ['status' => 'Unsuccessful', 'msg' => $e->getMessage()];
         }
         $result['output'] = $output;
+        if (($panel['type'] ?? '') === 'jovadpanel' && ($output['code'] ?? '') === 'uncertain') {
+            $pdo->prepare("UPDATE invoice SET Status = 'manual_review' WHERE id_invoice = ? AND id_user = ?")->execute([$orderId, (string) $user['id']]);
+            rx_test_reservation_update($reservation, 'reserved', $orderId, (string) $usernameAc);
+            if (function_exists('rx_pf_alert_admin')) {
+                rx_pf_alert_admin('jovad-test:' . $orderId, 'نتیجه ساخت سرویس تست نامشخص است؛ پیش از آزاد کردن سهمیه یا ساخت مجدد بررسی شود.', ['username' => $usernameAc, 'invoice' => $orderId]);
+            }
+            $result['error'] = 'create_failed';
+            $result['msg'] = 'نتیجه ساخت سرویس تست نامشخص است و برای بررسی پشتیبانی ثبت شد؛ دوباره درخواست ندهید.';
+            return $result;
+        }
         if (!is_array($output) || empty($output['username'])) {
             $msg = is_array($output) ? ($output['msg'] ?? $output) : $output;
             $rawMsg = is_string($msg) ? $msg : (string) json_encode($msg, JSON_UNESCAPED_UNICODE);

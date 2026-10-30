@@ -136,6 +136,7 @@ if (!function_exists('rx_featCategoryRows')) {
                  ['text' => "⏱ نمایش لیست", 'callback_data' => "cronjobs_settings"],
                  ['text' => "زمان‌بندی", 'callback_data' => "none"]],
                 [['text' => "🧪 تست کرون", 'callback_data' => "cronhealth_start"]],
+                [['text' => "⚙️ تنظیم ورکرها", 'callback_data' => "cronworkers_settings"]],
             ];
         }
         return [];
@@ -195,6 +196,7 @@ if ((isset($datain) && is_string($datain) && ($datain === 'admin_readiness' || s
 }
 
 if (in_array($text, $textadmin) || $datain == "admin") {
+    if (rxAddPanelIsStep($rx_pem_entry_step ?? ($user['step'] ?? ''))) rxAddPanelResetDraft($from_id);
     if ($datain == "admin")
         deletemessage($from_id, $message_id);
     if (rxAdminPanelEntryRequiresChannelReport($setting, $adminrulecheck)) {
@@ -227,6 +229,7 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     }
     return;
 } elseif ($text == $textbotlang['Admin']['backadmin'] || $text == "🏠 منوی مدیریت" || $text == "منوی مدیریت 🏠" || $text == "منوی مدیریت" || $text == "بازگشت به منوی مدیریت 🏠" || $text == "بازگشت به منوی مدیریت" || $datain == "adm_hub_main") {
+    if (rxAddPanelIsStep($rx_pem_entry_step ?? ($user['step'] ?? ''))) rxAddPanelResetDraft($from_id);
     if (rxAdminPanelEntryRequiresChannelReport($setting, $adminrulecheck)) {
         rxAdminPanelEntryForceChannelReportSetup($from_id, $setting, $textbotlang, $backadmin);
         if (isset($user) && is_array($user)) { $user['step'] = 'addchannelid'; }
@@ -276,6 +279,20 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     return;
 } elseif (($text == $textbotlang['Admin']['backmenu']) || ((isset($datain) ? (string)$datain : '') === 'backmenu')) {
     $currentStep = isset($user['step']) ? (string) $user['step'] : '';
+    if (rxAddPanelIsStep($currentStep)) {
+        $draft = json_decode((string) ($user['Processing_value'] ?? ''), true);
+        $panelTypeBack = is_array($draft) ? (string) ($draft['type'] ?? '') : '';
+        if ($currentStep !== 'add_name_panel') {
+            $previousPanelStep = function_exists('stepBack') ? stepBack($from_id) : null;
+            if ($previousPanelStep !== null && rxAddPanelIsStep($previousPanelStep)) {
+                step($previousPanelStep, $from_id);
+                $user['step'] = $previousPanelStep;
+                if (function_exists('rxRenderWizardStep') && rxRenderWizardStep($previousPanelStep, $from_id)) return;
+            }
+        }
+        rxAddPanelShowCategory($from_id, $panelTypeBack);
+        return;
+    }
 
     if (function_exists('rxWizardStepFlow') && rxWizardStepFlow($currentStep) !== null) {
         $rx_prev_step = function_exists('stepBack') ? stepBack($from_id) : null;
@@ -1231,7 +1248,7 @@ $paycount
     step('home', $from_id);
 } elseif ($datain == "hoursago_stat") {
     $desired_date_time_start = time() - 3600;
-    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND " . rx_stats_historical_sale_predicate();
+    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM " . rx_stats_sales_source($pdo) . " sales WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND " . rx_stats_historical_sale_predicate();
     $stmt = $pdo->prepare($sql);
     $time_current = time();
     $stmt->bindParam(':requestedDate', $desired_date_time_start);
@@ -1302,7 +1319,7 @@ $paycount
     $end_time = date('Y/m/d', strtotime("-1 days")) . " 23:59:59";
     $start_time_timestamp = strtotime($start_time);
     $end_time_timestamp = strtotime($end_time);
-    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND " . rx_stats_historical_sale_predicate();
+    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM " . rx_stats_sales_source($pdo) . " sales WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND " . rx_stats_historical_sale_predicate();
     $stmt = $pdo->prepare($sql);
     $stmt->bindParam(':requestedDate', $start_time_timestamp);
     $stmt->bindParam(':requestedDateend', $end_time_timestamp);
@@ -1382,7 +1399,7 @@ $paycount
     $end_time = date('Y/m/d H:i:s');
     $start_time_timestamp = strtotime($start_time);
     $end_time_timestamp = strtotime($end_time);
-    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND " . rx_stats_historical_sale_predicate();
+    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM " . rx_stats_sales_source($pdo) . " sales WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND " . rx_stats_historical_sale_predicate();
     $stmt = $pdo->prepare($sql);
     $stmt->bindParam(':requestedDate', $start_time_timestamp);
     $stmt->bindParam(':requestedDateend', $end_time_timestamp);
@@ -1464,7 +1481,7 @@ $paycount
     $end_time = $lastDayLastMonth->format('Y/m/d');
     $start_time_timestamp = strtotime($start_time);
     $end_time_timestamp = strtotime($end_time);
-    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND " . rx_stats_historical_sale_predicate();
+    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM " . rx_stats_sales_source($pdo) . " sales WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND " . rx_stats_historical_sale_predicate();
     $stmt = $pdo->prepare($sql);
     $stmt->bindParam(':requestedDate', $start_time_timestamp);
     $stmt->bindParam(':requestedDateend', $end_time_timestamp);
@@ -1546,7 +1563,7 @@ $paycount
     $end_time = $lastDayLastMonth->format('Y/m/d');
     $start_time_timestamp = strtotime($start_time);
     $end_time_timestamp = strtotime($end_time);
-    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND " . rx_stats_historical_sale_predicate();
+    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM " . rx_stats_sales_source($pdo) . " sales WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND " . rx_stats_historical_sale_predicate();
     $stmt = $pdo->prepare($sql);
     $stmt->bindParam(':requestedDate', $start_time_timestamp);
     $stmt->bindParam(':requestedDateend', $end_time_timestamp);
@@ -1644,7 +1661,7 @@ $paycount
     $end_time = $text . "23:59:00";
     $start_time_timestamp = strtotime($start_time);
     $end_time_timestamp = strtotime($end_time);
-    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND " . rx_stats_historical_sale_predicate();
+    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM " . rx_stats_sales_source($pdo) . " sales WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND " . rx_stats_historical_sale_predicate();
     $stmt = $pdo->prepare($sql);
     $stmt->bindParam(':requestedDate', $start_time_timestamp);
     $stmt->bindParam(':requestedDateend', $end_time_timestamp);
@@ -1724,38 +1741,33 @@ $paycount
     step('featnav_affiliates', $from_id);
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $affiliates, 'HTML');
 } elseif ($text == $textbotlang['Admin']['btnkeyboardadmin']['addpanel'] && $adminrulecheck['rule'] == "administrator") {
-    nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['Inbound']['gettypepanel'], $keyboardtypepanel, 'HTML');
-} elseif (preg_match('/^typepanel#(marzban|rebecca|pasarguard|pasargard|remnawave|guard|x-ui_single|Manualsale)$/', (string) $datain, $dataget)) {
+    rxAddPanelShowCategory($from_id);
+} elseif (preg_match('/^panelcat#(root|public|subscription)$/', (string) $datain, $rxPanelCat)) {
+    rxAddPanelShowCategory($from_id, $rxPanelCat[1]);
+} elseif (preg_match('/^typepanel#(marzban|rebecca|pasarguard|pasargard|remnawave|guard|x-ui_single|jovadpanel|Manualsale)$/', (string) $datain, $dataget)) {
     $typepanel = $dataget[1] === 'pasargard' ? 'pasarguard' : $dataget[1];
-    $rx_inline_mode = (isset($setting['inlinebtnmain']) && $setting['inlinebtnmain'] === 'oninline');
-    if ($rx_inline_mode) {
-        $rx_addpanel_back_kb = json_encode([
-            'inline_keyboard' => [
-                [['text' => $textbotlang['Admin']['backadmin'], 'callback_data' => 'admin']]
-            ],
-        ]);
-    } else {
-        $rx_addpanel_back_kb = $backadmin;
-    }
+    rxAddPanelResetDraft($from_id);
+    $rx_addpanel_back_kb = rxAddPanelBackKeyboard($typepanel);
     nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['addpanelname'], $rx_addpanel_back_kb, 'HTML');
     step("add_name_panel", $from_id);
     savedata("clear", "type", $typepanel);
 } elseif ($user['step'] == "add_name_panel") {
     if (!isset($update['message']) && empty($text)) { return; }
+    $namePanelDraft = json_decode((string) ($user['Processing_value'] ?? ''), true);
+    $namePanelBackKeyboard = rxAddPanelBackKeyboard(is_array($namePanelDraft) ? ($namePanelDraft['type'] ?? '') : '');
     $panelNameInput = trim((string) $text);
     if ($panelNameInput === '') {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['addpanelname'], $backadmin, 'HTML');
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['addpanelname'], $namePanelBackKeyboard, 'HTML');
         return;
     }
     $existingPanel = select("marzban_panel", "*", "name_panel", $panelNameInput, "select", ['cache' => false]);
     if (is_array($existingPanel) && !empty($existingPanel)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['Repeatpanel'], $backadmin, 'HTML');
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['Repeatpanel'], $namePanelBackKeyboard, 'HTML');
         return;
     }
     $userdata = json_decode($user['Processing_value'], true);
-    if (!is_array($userdata) || !in_array((string) ($userdata['type'] ?? ''), ['marzban', 'rebecca', 'pasarguard', 'remnawave', 'guard', 'x-ui_single', 'Manualsale'], true)) {
-        nm_adminInstantReply($from_id, "❌ اطلاعات افزودن پنل منقضی شده است. لطفاً نوع پنل را دوباره انتخاب کنید.", $keyboardtypepanel, 'HTML');
-        step('home', $from_id);
+    if (!is_array($userdata) || !in_array((string) ($userdata['type'] ?? ''), ['marzban', 'rebecca', 'pasarguard', 'remnawave', 'guard', 'x-ui_single', 'jovadpanel', 'Manualsale'], true)) {
+        rxAddPanelShowCategory($from_id, is_array($userdata) ? ($userdata['type'] ?? '') : '', "❌ اطلاعات افزودن پنل منقضی شده است. لطفاً نوع پنل را دوباره انتخاب کنید.");
         return;
     }
     savedata("save", "namepanel", $panelNameInput);
@@ -1779,20 +1791,13 @@ $paycount
     savedata("save", "url_panel", $normalizedPanelUrl);
     $userdata = json_decode($user['Processing_value'], true);
     if (!is_array($userdata) || empty($userdata['type']) || empty($userdata['namepanel'])) {
-        nm_adminInstantReply($from_id, "❌ اطلاعات افزودن پنل ناقص یا منقضی شده است. لطفاً افزودن پنل را از ابتدا انجام دهید.", $keyboardtypepanel, 'HTML');
-        step('home', $from_id);
+        rxAddPanelShowCategory($from_id, is_array($userdata) ? ($userdata['type'] ?? '') : '', "❌ اطلاعات افزودن پنل ناقص یا منقضی شده است. لطفاً افزودن پنل را از ابتدا انجام دهید.");
         return;
     }
     if ($userdata['type'] == "guard") {
         savedata("save", "username", "null");
         savedata("save", "password", "null");
-        $guardVersionKb = json_encode([
-            'inline_keyboard' => [
-                [['text' => 'v1', 'callback_data' => 'guardversion#v1']],
-                [['text' => 'v2', 'callback_data' => 'guardversion#v2']],
-            ],
-        ]);
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['guard']['getversion'] ?? '🛡 نسخه پنل Guard را انتخاب کنید:', $guardVersionKb, 'HTML');
+        rxRenderWizardStep('add_guard_version', $from_id);
         step('add_guard_version', $from_id);
         return;
     } elseif ($userdata['type'] == "WGDashboard") {
@@ -1813,24 +1818,19 @@ $paycount
         savedata("save", "username", "null");
         savedata("save", "password", "null");
         return;
+    } elseif ($userdata['type'] == "jovadpanel") {
+        nm_adminInstantReply($from_id, "🔑 لطفاً API Key فروشندگی پنل JovadPanel را ارسال کنید.
+(از بخش Developers در پنل فروشنده ساخته می‌شود و فقط یک بار نمایش داده می‌شود)", $backadmin, 'HTML');
+        step('add_jovad_api_key', $from_id);
+        savedata("save", "username", "null");
+        savedata("save", "password", "null");
+        return;
     } elseif ($userdata['type'] == "pasarguard") {
-        $pasarguardAuthKb = json_encode([
-            'inline_keyboard' => [
-                [['text' => '👤 نام کاربری / رمز عبور', 'callback_data' => 'pasarguardauth#password']],
-                [['text' => '🔑 API Key', 'callback_data' => 'pasarguardauth#api_key']],
-            ],
-        ]);
-        nm_adminInstantReply($from_id, "🔐 روش احراز هویت پنل PasarGuard را انتخاب کنید:", $pasarguardAuthKb, 'HTML');
+        rxRenderWizardStep('add_pasarguard_auth_method', $from_id);
         step('add_pasarguard_auth_method', $from_id);
         return;
     } elseif ($userdata['type'] == "x-ui_single") {
-        $xuiModeKb = json_encode([
-            'inline_keyboard' => [
-                [['text' => $textbotlang['Admin']['managepanel']['xuimodelegacy'], 'callback_data' => 'xuimode#legacy']],
-                [['text' => $textbotlang['Admin']['managepanel']['xuimodetoken'], 'callback_data' => 'xuimode#token']],
-            ],
-        ]);
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getxuimode'], $xuiModeKb, 'HTML');
+        rxRenderWizardStep('add_xui_api_mode', $from_id);
         step('add_xui_api_mode', $from_id);
         return;
     }
@@ -1919,6 +1919,31 @@ $paycount
     savedata("save", "url_panel", $rebeccaBaseUrl);
     savedata("save", "rebecca_service_id", "auto");
     nm_adminInstantReply($from_id, "✅ اتصال به Rebecca برقرار شد.\n" . $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
+    step('getlimitedpanel', $from_id);
+} elseif ($user['step'] == "add_jovad_api_key") {
+    if (!isset($update['message']) && empty($text)) { return; }
+    $apiKey = trim((string) $text);
+    if ($apiKey === '') {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['invalidapikey'], $backadmin, 'HTML');
+        return;
+    }
+    $userdata = json_decode($user['Processing_value'], true);
+    $jovadBaseUrl = jovadpanelHostUrl(isset($userdata['url_panel']) ? $userdata['url_panel'] : '');
+    try {
+        $connectionResult = jovadpanelTestConnection($jovadBaseUrl, $apiKey);
+    } catch (Throwable $jovadConnectionError) {
+        $connectionResult = ['status' => false, 'msg' => $jovadConnectionError->getMessage()];
+    }
+    if (!is_array($connectionResult) || empty($connectionResult['status'])) {
+        $errorMessage = is_array($connectionResult) ? ($connectionResult['msg'] ?? $textbotlang['Admin']['managepanel']['invalidapikey']) : $textbotlang['Admin']['managepanel']['invalidapikey'];
+        $feedback = "❌ اتصال به JovadPanel ناموفق بود:\n{$errorMessage}\n\n📌 لطفاً API Key را بررسی کرده و مجدداً ارسال کنید.";
+        nm_adminInstantReply($from_id, $feedback, $backadmin, 'HTML');
+        step('add_jovad_api_key', $from_id);
+        return;
+    }
+    savedata("save", "api_key", $apiKey);
+    savedata("save", "url_panel", $jovadBaseUrl);
+    nm_adminInstantReply($from_id, "✅ اتصال به JovadPanel برقرار شد.\n\n" . $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
     step('getlimitedpanel', $from_id);
 } elseif ($user['step'] == "add_username_panel") {
     if (!isset($update['message']) && empty($text)) { return; }
@@ -2139,14 +2164,14 @@ $paycount
 } elseif ($user['step'] == "getlimitedpanel") {
     if (!isset($update['message']) && empty($text)) { return; }
     $userdata = json_decode($user['Processing_value'], true);
-    $supportedPanelTypes = ['marzban', 'rebecca', 'pasarguard', 'remnawave', 'guard', 'x-ui_single', 'Manualsale'];
+    $supportedPanelTypes = ['marzban', 'rebecca', 'pasarguard', 'remnawave', 'guard', 'x-ui_single', 'jovadpanel', 'Manualsale'];
     $panelDraftValid = is_array($userdata)
         && in_array((string) ($userdata['type'] ?? ''), $supportedPanelTypes, true)
         && trim((string) ($userdata['namepanel'] ?? '')) !== ''
         && trim((string) ($userdata['url_panel'] ?? '')) !== ''
         && array_key_exists('username', $userdata)
         && array_key_exists('password', $userdata);
-    if ($panelDraftValid && in_array($userdata['type'], ['rebecca', 'guard'], true)) {
+    if ($panelDraftValid && in_array($userdata['type'], ['rebecca', 'guard', 'jovadpanel'], true)) {
         $panelDraftValid = trim((string) ($userdata['api_key'] ?? '')) !== '';
     }
     if ($panelDraftValid && $userdata['type'] === 'pasarguard') {
@@ -2166,8 +2191,7 @@ $paycount
         $panelDraftValid = trim((string) ($userdata['xui_api_token'] ?? '')) !== '';
     }
     if (!$panelDraftValid) {
-        nm_adminInstantReply($from_id, "❌ اطلاعات افزودن پنل ناقص یا منقضی شده است. لطفاً افزودن پنل را از ابتدا انجام دهید.", $keyboardtypepanel, 'HTML');
-        step('home', $from_id);
+        rxAddPanelShowCategory($from_id, is_array($userdata) ? ($userdata['type'] ?? '') : '', "❌ اطلاعات افزودن پنل ناقص یا منقضی شده است. لطفاً افزودن پنل را از ابتدا انجام دهید.");
         return;
     }
     savedata("save", "limitpanel", $text);
@@ -2337,6 +2361,9 @@ $paycount
         nm_adminInstantReply($from_id, "✅ پنل رمن‌ویو با موفقیت ثبت شد. لطفاً شناسه Squad خود را حتماً تنظیم کرده و سپس دکمه تست اتصال را بزنید.", null, 'HTML');
     } elseif ($userdata['type'] == "rebecca") {
         nm_adminInstantReply($from_id, "✅ پنل Rebecca با موفقیت ثبت شد. در صورت نیاز سرویس پیش‌فرض را از منوی مدیریت پنل تغییر دهید.", null, 'HTML');
+    } elseif ($userdata['type'] == "jovadpanel") {
+        nm_adminInstantReply($from_id, "✅ پنل JovadPanel با موفقیت ثبت شد.
+دسترسی مشتریان به کانفیگ و لینک اشتراک از منوی «⚙️ وضعیت قابلیت ها پنل» تنظیم می‌شود و WireGuard/OpenVPN به‌صورت فایل ارسال می‌شود.", null, 'HTML');
     } elseif ($userdata['type'] == "pasarguard") {
         nm_adminInstantReply($from_id, "❌ نکته :
 برای فعالسازی پنل باید به منوی مدیریت پنل  رفته و گزینه های
@@ -2392,6 +2419,11 @@ elseif ($user['step'] == "switchtype_pick" && preg_match('/switchtype#(.*)/', $d
         savedata("save", "password", "null");
         nm_adminInstantReply($from_id, "🔑 لطفاً API Key پنل Rebecca را ارسال کنید.", $backadmin, 'HTML');
         step('switchtype_rebecca_api_key', $from_id);
+    } elseif ($userdata['new_type'] == "jovadpanel") {
+        savedata("save", "username", "null");
+        savedata("save", "password", "null");
+        nm_adminInstantReply($from_id, "🔑 لطفاً API Key فروشندگی پنل JovadPanel را ارسال کنید.", $backadmin, 'HTML');
+        step('switchtype_jovad_api_key', $from_id);
     } elseif ($userdata['new_type'] == "pasarguard" || $userdata['new_type'] == "pasargard") {
         savedata("save", "new_type", "pasarguard");
         $switchPasarguardAuthKb = json_encode([
@@ -2488,6 +2520,16 @@ elseif ($user['step'] == "switchtype_pick" && preg_match('/switchtype#(.*)/', $d
     }
     savedata("save", "api_key", $apiKey);
     savedata("save", "rebecca_service_id", "auto");
+    nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
+    step('switchtype_confirm', $from_id);
+} elseif ($user['step'] == "switchtype_jovad_api_key") {
+    if (!isset($update['message']) && empty($text)) { return; }
+    $apiKey = trim($text);
+    if ($apiKey === '') {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['invalidapikey'], $backadmin, 'HTML');
+        return;
+    }
+    savedata("save", "api_key", $apiKey);
     nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
     step('switchtype_confirm', $from_id);
 } elseif ($user['step'] == "switchtype_pasarguard_auth_method" && preg_match('/switchpasarguardauth#(api_key|password)/', $datain, $dataget)) {
@@ -3884,6 +3926,34 @@ $caption";
     elseif ($rxDatainStr === 'featcat_antispam') $rxFeatView = 'antispam';
     rxRenderFeatureStatus($rxFeatView, $from_id);
     return;
+} elseif (is_string($datain ?? null)
+    && ($datain === 'cronworkers_settings' || strpos($datain, 'cronworkers_pick_') === 0 || strpos($datain, 'cronworkers_set_') === 0)
+    && $adminrulecheck['rule'] === 'administrator') {
+    try {
+        $rxWorkerGroup = '';
+        $rxWorkerProfile = null;
+        if (preg_match('/^cronworkers_set_(broadcast|payment)_([1-8])$/D', $datain, $rxWorkerMatch)) {
+            $rxWorkerGroup = $rxWorkerMatch[1];
+            $rxWorkerKey = $rxWorkerGroup === 'broadcast' ? 'broadcast_workers' : 'payment_workers';
+            $rxWorkerProfile = rx_save_cron_worker_count($rxWorkerKey, (int) $rxWorkerMatch[2]);
+            if (!empty($callback_query_id)) {
+                telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => '✅ ذخیره شد؛ از نوبت بعدیِ کار اعمال می‌شود.', 'cache_time' => 0]);
+            }
+        } elseif (preg_match('/^cronworkers_pick_(broadcast|payment)$/D', $datain, $rxWorkerMatch)) {
+            $rxWorkerGroup = $rxWorkerMatch[1];
+        } elseif ($datain !== 'cronworkers_settings') {
+            throw new InvalidArgumentException('Invalid worker selection');
+        }
+        rxRenderCronWorkerSettings($from_id, $rxWorkerGroup, $rxWorkerProfile);
+    } catch (Throwable $rxWorkerError) {
+        error_log('[cron workers] ' . $rxWorkerError->getMessage());
+        $rxWorkerBack = json_encode(['inline_keyboard' => [
+            [['text' => '🔄 تلاش دوباره', 'callback_data' => 'cronworkers_settings']],
+            [['text' => '🔙 کرون‌ها و زمان‌بندی', 'callback_data' => 'featcat_crons']],
+        ]], JSON_UNESCAPED_UNICODE);
+        nm_adminInstantReply($from_id, '❌ خواندن یا ذخیرهٔ ورکرها انجام نشد. مقدار باید بین ۱ تا ۸ باشد؛ اگر تنظیمات در حال ذخیره است، کمی بعد دوباره تلاش کنید. دسترسی نوشتن پوشهٔ cronbot/.runtime را هم بررسی کنید.', $rxWorkerBack, 'HTML');
+    }
+    return;
 } elseif ($datain === 'run_host_optimizer' && $adminrulecheck['rule'] === 'administrator') {
 
     $rxOptRoot           = defined('APP_ROOT_PATH') ? APP_ROOT_PATH : dirname(__DIR__, 3);
@@ -3944,6 +4014,7 @@ $caption";
     }
 
     $rxOptKb = json_encode(['inline_keyboard' => [
+        [['text' => "⚙️ تنظیم ورکرها", 'callback_data' => 'cronworkers_settings']],
         [['text' => "🔙 بازگشت به وضعیت قابلیت‌ها", 'callback_data' => 'featcat_main']],
     ]]);
     nm_adminInstantReply($from_id, $rxOptResultText, $rxOptKb, 'HTML');
@@ -6434,6 +6505,92 @@ $text_expie_agent
     step('home', $from_id);
     $typepanel = select("marzban_panel", "*", "name_panel", $panelName, "select");
     outtypepanel($typepanel['type'], $textbotlang['Admin']['managepanel']['savedname']);
+} elseif ($text == "📡 کانال‌های پیش‌فرض" && $adminrulecheck['rule'] == "administrator") {
+    $rxJovadChPanelName = function_exists('nmResolvePanelNameForUser') ? nmResolvePanelNameForUser($user) : (string) ($user['Processing_value'] ?? '');
+    $rxJovadChPanel = $rxJovadChPanelName !== '' ? select("marzban_panel", "*", "name_panel", $rxJovadChPanelName, "select") : false;
+    if (!is_array($rxJovadChPanel) || ($rxJovadChPanel['type'] ?? '') !== 'jovadpanel') {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['nullpanel'] ?? "❌ پنل مورد نظر یافت نشد.", $backadmin, 'HTML');
+        return;
+    }
+    update("user", "Processing_value", $rxJovadChPanelName, "id", $from_id);
+    $rxJovadChCurrent = trim((string) ($rxJovadChPanel['jovad_channels'] ?? ''));
+    $rxJovadChText = "📡 کانال‌های پیش‌فرض پنل\n\n"
+        . "🔢 مقدار فعلی: " . ($rxJovadChCurrent !== '' ? $rxJovadChCurrent : 'تنظیم نشده (از پیش‌فرض API استفاده می‌شود)') . "\n\n"
+        . "این مقدار فقط وقتی اعمال می‌شود که محصول کانال اختصاصی نداشته باشد.\n"
+        . "کانال‌های مجاز: xray، wireguard، openvpn، dns\n"
+        . "نمونه: xray,wireguard,dns\n\n"
+        . "برای حذف مقدار و بازگشت به پیش‌فرض API عبارت «پیش‌فرض» را ارسال کنید.";
+    nm_adminInstantReply($from_id, $rxJovadChText, $optionJovad, 'HTML');
+    step('jovad_channels', $from_id);
+} elseif ($user['step'] == "jovad_channels" && !isset($update['callback_query'])) {
+    $rxJovadChPanelName = function_exists('nmResolvePanelNameForUser') ? nmResolvePanelNameForUser($user) : (string) ($user['Processing_value'] ?? '');
+    $rxJovadChPanel = $rxJovadChPanelName !== '' ? select("marzban_panel", "*", "name_panel", $rxJovadChPanelName, "select", ['cache' => false]) : false;
+    if (!is_array($rxJovadChPanel) || ($rxJovadChPanel['type'] ?? '') !== 'jovadpanel') {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['nullpanel'] ?? "❌ پنل مورد نظر یافت نشد.", $backadmin, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+    $rxJovadChInput = trim((string) $text);
+    if (in_array($rxJovadChInput, ['پیش‌فرض', 'پیش فرض', 'default', 'clear', '-'], true)) {
+        update("marzban_panel", "jovad_channels", '', "name_panel", $rxJovadChPanelName);
+        outtypepanel('jovadpanel', "✅ کانال‌های پیش‌فرض پنل حذف شد؛ سفارش‌های جدید از پیش‌فرض API استفاده می‌کنند.");
+        return;
+    }
+    $rxJovadChParsed = jovadpanelParseChannels($rxJovadChInput);
+    if (empty($rxJovadChParsed['channels']) || !empty($rxJovadChParsed['invalid'])) {
+        nm_adminInstantReply($from_id, "❌ کانال معتبر انتخاب کنید: xray، wireguard، openvpn یا dns؛ چند کانال را با کامای انگلیسی جدا کنید.", $optionJovad, 'HTML');
+        return;
+    }
+    update("marzban_panel", "jovad_channels", implode(',', $rxJovadChParsed['channels']), "name_panel", $rxJovadChPanelName);
+    outtypepanel('jovadpanel', "✅ کانال‌های پیش‌فرض پنل ذخیره شد: " . implode(',', $rxJovadChParsed['channels']) . "\nاین مقدار فقط برای سفارش‌های جدید اعمال می‌شود.");
+} elseif ($text == "👥 تعداد دستگاه اشتراک نامحدود" && $adminrulecheck['rule'] == "administrator") {
+    $rxJovadDevPanelName = function_exists('nmResolvePanelNameForUser') ? nmResolvePanelNameForUser($user) : (string) ($user['Processing_value'] ?? '');
+    $rxJovadDevPanel = $rxJovadDevPanelName !== '' ? select("marzban_panel", "*", "name_panel", $rxJovadDevPanelName, "select") : false;
+    if (!is_array($rxJovadDevPanel) || ($rxJovadDevPanel['type'] ?? '') !== 'jovadpanel') {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['nullpanel'] ?? "❌ پنل مورد نظر یافت نشد.", $backadmin, 'HTML');
+        return;
+    }
+    update("user", "Processing_value", $rxJovadDevPanelName, "id", $from_id);
+    $rxJovadDevStatus = jovadpanelUnlimitedStatus($rxJovadDevPanel);
+    $rxJovadDevCurrent = jovadpanelUnlimitedDevices($rxJovadDevPanel);
+    $rxJovadDevText = "👥 تعداد دستگاه اشتراک نامحدود\n\n"
+        . "🔢 مقدار فعلی: " . ($rxJovadDevCurrent > 0 ? (string) $rxJovadDevCurrent : 'تنظیم نشده (از پیش‌فرض پنل استفاده می‌شود)') . "\n\n";
+    if ($rxJovadDevStatus['status'] !== true) {
+        $rxJovadDevText .= "⚠️ دریافت پلن‌های مجاز از پنل ناموفق بود: " . (string) $rxJovadDevStatus['msg'] . "\n\n";
+    } else {
+        $rxJovadDevTiers = [];
+        foreach ($rxJovadDevStatus['options'] as $rxJovadDevOption) {
+            $rxJovadDevTiers[] = (int) $rxJovadDevOption['devices'];
+        }
+        $rxJovadDevText .= (empty($rxJovadDevTiers) ? "⚠️ پنل هیچ پلن دستگاهی اعلام نکرده است." : "🎚 پلن‌های مجاز پنل: " . implode('، ', $rxJovadDevTiers)) . "\n";
+        if ($rxJovadDevStatus['default_devices'] > 0) {
+            $rxJovadDevText .= "👥 پیش‌فرض پنل: {$rxJovadDevStatus['default_devices']}\n";
+        }
+        $rxJovadDevText .= "\n";
+    }
+    $rxJovadDevText .= "📌 تعداد دستگاه را به صورت عدد ارسال کنید. این مقدار فقط روی سفارش‌های جدید اثر دارد.";
+    nm_adminInstantReply($from_id, $rxJovadDevText, $optionJovad, 'HTML');
+    step('jovad_devices', $from_id);
+} elseif ($user['step'] == "jovad_devices" && !isset($update['callback_query'])) {
+    $rxJovadDevPanelName = function_exists('nmResolvePanelNameForUser') ? nmResolvePanelNameForUser($user) : (string) ($user['Processing_value'] ?? '');
+    $rxJovadDevPanel = $rxJovadDevPanelName !== '' ? select("marzban_panel", "*", "name_panel", $rxJovadDevPanelName, "select", ['cache' => false]) : false;
+    if (!is_array($rxJovadDevPanel) || ($rxJovadDevPanel['type'] ?? '') !== 'jovadpanel') {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['nullpanel'] ?? "❌ پنل مورد نظر یافت نشد.", $backadmin, 'HTML');
+        step('home', $from_id);
+        return;
+    }
+    $rxJovadDevValue = trim((string) $text);
+    if (!preg_match('/^\d{1,3}$/', $rxJovadDevValue)) {
+        nm_adminInstantReply($from_id, "❌ تعداد دستگاه باید یک عدد صحیح باشد. مقدار را دوباره ارسال کنید.", $optionJovad, 'HTML');
+        return;
+    }
+    $rxJovadDevTier = jovadpanelUnlimitedTier($rxJovadDevPanel, (int) $rxJovadDevValue, 0);
+    if ($rxJovadDevTier['status'] !== true) {
+        nm_adminInstantReply($from_id, "❌ " . (string) $rxJovadDevTier['msg'], $optionJovad, 'HTML');
+        return;
+    }
+    update("marzban_panel", "jovad_devices", (string) (int) $rxJovadDevValue, "name_panel", $rxJovadDevPanelName);
+    outtypepanel('jovadpanel', "✅ تعداد دستگاه اشتراک نامحدود روی " . (int) $rxJovadDevValue . " ذخیره شد و فقط برای سفارش‌های جدید اعمال می‌شود.");
 } elseif (($datain == "cartsetting" || $text == "▶️ بازگشت به منوی تظنیمات کارت") && $adminrulecheck['rule'] == "administrator") {
     step('admin_nav_cart_settings', $from_id);
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $CartManage, 'HTML');
@@ -7151,6 +7308,21 @@ $rx_sales_metrics
 " . ($testRes['message'] ?? '') . "
 
 لطفاً آدرس پنل یا توکن API را بررسی کنید.", $option_remnawave, 'HTML');
+        }
+    } elseif ($marzban_list_get['type'] == "jovadpanel") {
+        $jovadStatusCheck = jovadpanelTestConnection($marzban_list_get['url_panel'] ?? '', $marzban_list_get['api_key'] ?? '');
+        $rx_sales_metrics = rx_panel_sales_metrics_block($marzban_list_get['name_panel']);
+        if (($jovadStatusCheck['status'] ?? false) !== true) {
+            $text_jovad = "🖥 وضعیت اتصال پنل JovadPanel: ❌ اتصال ناموفق\n" . (string) ($jovadStatusCheck['msg'] ?? '')
+                . "\n\nلطفاً آدرس پنل یا کلید API را بررسی کنید.";
+            nm_adminInstantReply($from_id, $text_jovad, $optionJovad, 'HTML');
+        } else {
+            $jovadSummary = jovadpanelAccountSummary($marzban_list_get);
+            $text_jovad = $jovadSummary['status'] === true
+                ? (string) $jovadSummary['text']
+                : "🖥 وضعیت اتصال پنل JovadPanel: ⚠️ اتصال برقرار شد اما دریافت اطلاعات حساب ناموفق بود.\n" . (string) ($jovadSummary['msg'] ?? '');
+            $text_jovad .= "\n\n{$rx_sales_metrics}\n\n⭕️ برای مدیریت پنل یکی از گزینه های زیر را انتخاب کنید";
+            nm_adminInstantReply($from_id, $text_jovad, $optionJovad, 'HTML');
         }
     } elseif ($marzban_list_get['type'] == "rebecca") {
         $rebeccaApiKey = trim((string) ($marzban_list_get['api_key'] ?? ''));

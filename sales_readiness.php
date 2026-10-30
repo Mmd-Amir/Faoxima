@@ -73,7 +73,7 @@ function rx_sr_positive($value)
 
 function rx_sr_known_types()
 {
-    return ['marzban', 'pasarguard', 'x-ui_single', 'guard', 'Manualsale', 'WGDashboard', 'remnawave', 'rebecca'];
+    return ['marzban', 'pasarguard', 'x-ui_single', 'guard', 'Manualsale', 'WGDashboard', 'remnawave', 'rebecca', 'jovadpanel'];
 }
 
 function rx_sr_manual_stock(PDO $pdo, array $panel)
@@ -160,8 +160,10 @@ function rx_sr_custom_offer(array $panel, $agent = 'f')
     if ((string) rx_sr_agent_value($panel['customvolume'] ?? '', $agent) !== '1') {
         return false;
     }
-    if (!rx_sr_positive(rx_sr_agent_value($panel['pricecustomvolume'] ?? '', $agent))
-        || !rx_sr_positive(rx_sr_agent_value($panel['pricecustomtime'] ?? '', $agent))) {
+    $durationPricing = function_exists('fx_duration_config') && fx_duration_config($panel, (string)$agent)['enabled'];
+    if ($durationPricing ? count(fx_duration_tariffs($panel, (string)$agent)) === 0
+        : (!rx_sr_positive(rx_sr_agent_value($panel['pricecustomvolume'] ?? '', $agent))
+            || !rx_sr_positive(rx_sr_agent_value($panel['pricecustomtime'] ?? '', $agent)))) {
         return false;
     }
     $minVol = rx_sr_agent_value($panel['mainvolume'] ?? '', $agent);

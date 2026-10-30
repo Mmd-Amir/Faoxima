@@ -83,17 +83,19 @@ if (!function_exists('rx_resize_for_profile')) {
         $maxConnections = (int) $maxConnections;
         if ($profile === 'vps') {
             return [
-                'cron_db_budget'    => ($maxConnections > 0) ? max(20, (int) floor($maxConnections * 0.20)) : 20,
-                'cron_time_budget'  => 120,
-                'broadcast_workers' => 4,
-                'payment_workers'   => 4,
+                'cron_db_budget'       => ($maxConnections > 0) ? max(20, (int) floor($maxConnections * 0.20)) : 20,
+                'cron_time_budget'     => 120,
+                'broadcast_workers'    => 4,
+                'payment_workers'      => 4,
+                'cron_max_concurrency' => 3,
             ];
         }
         return [
-            'cron_db_budget'    => ($maxConnections > 0) ? max(4, min(8, (int) floor($maxConnections * 0.06))) : 6,
-            'cron_time_budget'  => 22,
-            'broadcast_workers' => 1,
-            'payment_workers'   => 1,
+            'cron_db_budget'       => ($maxConnections > 0) ? max(4, min(8, (int) floor($maxConnections * 0.06))) : 6,
+            'cron_time_budget'     => 22,
+            'broadcast_workers'    => 1,
+            'payment_workers'      => 1,
+            'cron_max_concurrency' => 2,
         ];
     }
 }
@@ -144,13 +146,17 @@ if (!function_exists('rx_host_profile')) {
 
         $path     = rx_host_profile_cache_path();
         $resolved = null;
+        $manualWorkers = null;
 
         if ($path !== '' && @is_file($path)) {
             $age = time() - (int) @filemtime($path);
-            if ($age >= 0 && $age < 604800) {
-                $raw     = @file_get_contents($path);
-                $decoded = ($raw !== false) ? json_decode($raw, true) : null;
-                if (is_array($decoded) && isset($decoded['profile'])) {
+            $raw     = @file_get_contents($path);
+            $decoded = ($raw !== false) ? json_decode($raw, true) : null;
+            if (is_array($decoded)) {
+                if (isset($decoded['manual_workers']) && is_array($decoded['manual_workers'])) {
+                    $manualWorkers = $decoded['manual_workers'];
+                }
+                if ($age >= 0 && $age < 604800 && isset($decoded['profile'])) {
                     $resolved = $decoded;
                 }
             }
@@ -162,6 +168,9 @@ if (!function_exists('rx_host_profile')) {
             } catch (\Throwable $e) {
                 $resolved = array_merge(['profile' => 'shared', 'max_connections' => 0], rx_resize_for_profile(0, 'shared'));
             }
+        }
+        if ($manualWorkers !== null) {
+            $resolved['manual_workers'] = $manualWorkers;
         }
 
         try {
@@ -177,20 +186,122 @@ if (!function_exists('rx_host_profile')) {
                 if (isset($s['cron_time_budget']) && (int) $s['cron_time_budget'] > 0) {
                     $resolved['cron_time_budget'] = (int) $s['cron_time_budget'];
                 }
+                if (isset($s['cron_max_concurrency']) && (int) $s['cron_max_concurrency'] > 0) {
+                    $resolved['cron_max_concurrency'] = max(1, min(8, (int) $s['cron_max_concurrency']));
+                }
             }
         } catch (\Throwable $e) {
         }
 
         if ($path !== '') {
-            $new     = json_encode($resolved, JSON_UNESCAPED_UNICODE);
-            $current = (@is_file($path)) ? (string) @file_get_contents($path) : '';
-            if ($new !== false && $new !== $current) {
-                @file_put_contents($path, $new, LOCK_EX);
+            $profileLock = @fopen($path . '.workers.lock', 'c');
+            if (is_resource($profileLock)) {
+                if (@flock($profileLock, LOCK_EX | LOCK_NB)) {
+                    $profileTmp = null;
+                    try {
+                        $current = (@is_file($path)) ? (string) @file_get_contents($path) : '';
+                        $latest = json_decode($current, true);
+                        if (is_array($latest)) {
+                            if (isset($latest['manual_workers']) && is_array($latest['manual_workers'])) {
+                                $resolved['manual_workers'] = $latest['manual_workers'];
+                            } else {
+                                unset($resolved['manual_workers']);
+                            }
+                        }
+                        $new = json_encode($resolved, JSON_UNESCAPED_UNICODE);
+                        if ($new !== false && $new !== $current) {
+                            $profileTmp = $path . '.tmp.' . bin2hex(random_bytes(8));
+                            if (@file_put_contents($profileTmp, $new, LOCK_EX) === strlen($new)) {
+                                $mode = @fileperms($path);
+                                @chmod($profileTmp, $mode === false ? 0660 : ($mode & 0666));
+                                @rename($profileTmp, $path);
+                            }
+                        }
+                    } finally {
+                        if ($profileTmp !== null && is_file($profileTmp)) {
+                            @unlink($profileTmp);
+                        }
+                        @flock($profileLock, LOCK_UN);
+                    }
+                }
+                @fclose($profileLock);
             }
         }
 
         $cache = $resolved;
         return $cache;
+    }
+}
+
+if (!function_exists('rx_cron_worker_counts')) {
+    function rx_cron_worker_counts(array $profile, array $settings = []): array
+    {
+        $counts = [];
+        foreach (['broadcast_workers' => 3, 'payment_workers' => 2] as $key => $fallback) {
+            $value = max(1, min(8, (int) ($profile[$key] ?? $fallback)));
+            if (isset($settings[$key])) {
+                $value = max(1, min(8, (int) $settings[$key]));
+            }
+            if (($profile['profile'] ?? 'shared') === 'shared') {
+                $value = 1;
+            }
+            if (isset($profile['manual_workers'][$key])) {
+                $value = max(1, min(8, (int) $profile['manual_workers'][$key]));
+            }
+            $counts[$key] = $value;
+        }
+        return $counts;
+    }
+}
+
+if (!function_exists('rx_save_cron_worker_count')) {
+    function rx_save_cron_worker_count(string $key, int $value): array
+    {
+        if (!in_array($key, ['broadcast_workers', 'payment_workers'], true) || $value < 1 || $value > 8) {
+            throw new InvalidArgumentException('Invalid cron worker count');
+        }
+        $profile = rx_host_profile();
+        $path = rx_host_profile_cache_path();
+        $lock = @fopen($path . '.workers.lock', 'c');
+        if ($lock === false) {
+            throw new RuntimeException('Cannot open worker settings lock');
+        }
+        $tmp = null;
+        try {
+            if (!@flock($lock, LOCK_EX | LOCK_NB)) {
+                throw new RuntimeException('Worker settings are busy');
+            }
+            if (is_file($path)) {
+                $raw = @file_get_contents($path);
+                $stored = is_string($raw) ? json_decode($raw, true) : null;
+                if (!is_array($stored)) {
+                    throw new RuntimeException('Cannot read host profile');
+                }
+                $profile = array_merge($profile, $stored);
+            }
+            if (!isset($profile['manual_workers']) || !is_array($profile['manual_workers'])) {
+                $profile['manual_workers'] = [];
+            }
+            $profile['manual_workers'][$key] = $value;
+            $body = json_encode($profile, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
+            $tmp = $path . '.tmp.' . bin2hex(random_bytes(8));
+            if (@file_put_contents($tmp, $body, LOCK_EX) !== strlen($body)) {
+                throw new RuntimeException('Cannot write worker settings');
+            }
+            $mode = @fileperms($path);
+            @chmod($tmp, $mode === false ? 0660 : ($mode & 0666));
+            if (!@rename($tmp, $path)) {
+                throw new RuntimeException('Cannot replace worker settings');
+            }
+            $tmp = null;
+            return $profile;
+        } finally {
+            if ($tmp !== null) {
+                @unlink($tmp);
+            }
+            @flock($lock, LOCK_UN);
+            @fclose($lock);
+        }
     }
 }
 
@@ -3336,6 +3447,7 @@ function DirectPayment($order_id, $image = 'images.jpg', $rxToken = null)
         $datac = array(
             'expire' => $timestamp,
             'data_limit' => $get_invoice['Volume'] * pow(1024, 3),
+            'id_invoice' => (string) $get_invoice['id_invoice'],
             'from_id' => $Balance_id['id'],
             'username' => $Balance_id['username'],
             'type' => 'buy'
@@ -3441,6 +3553,9 @@ function DirectPayment($order_id, $image = 'images.jpg', $rxToken = null)
                 rx_notify_username_renamed($Balance_id['id'], $dataoutput, $marzban_list_get);
             }
         }
+        if (($marzban_list_get['type'] ?? '') === 'jovadpanel' && ($dataoutput['code'] ?? '') === 'uncertain') {
+            return rx_pf_reconcile_later($order_id, $rxToken, 'jovad_creation_result_unknown');
+        }
         if (empty($dataoutput['username']) && $rxReconcilable && is_array($rxBeforeState) && ($rxBeforeState['exists'] ?? null) === false) {
             $rxSnap = rx_pf_panel_snapshot($ManagePanel, (string) $marzban_list_get['name_panel'], (string) $username_ac);
             if (empty($rxSnap['ok'])) {
@@ -3515,7 +3630,8 @@ function DirectPayment($order_id, $image = 'images.jpg', $rxToken = null)
         $output_config_link = "";
         $config = "";
         if ($marzban_list_get['config'] == "onconfig" && is_array($dataoutput['configs'])) {
-            foreach ($dataoutput['configs'] as $link) {
+            $rxPaidTextConfigs = function_exists('rxDeliveryTextConfigs') ? rxDeliveryTextConfigs($dataoutput['configs']) : $dataoutput['configs'];
+            foreach ($rxPaidTextConfigs as $link) {
                 $config .= "\n" . $link;
             }
         }

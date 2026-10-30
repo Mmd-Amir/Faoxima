@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/cron_task_state.php';
 if (PHP_SAPI !== 'cli') {
     $rxCronAuthFile = dirname(__DIR__) . '/cron/.cron_internal_auth';
     $rxCronToken = isset($_SERVER['HTTP_X_CRON_TOKEN']) ? trim((string) $_SERVER['HTTP_X_CRON_TOKEN']) : '';
@@ -50,6 +51,10 @@ if ($rxBackupFh === false) {
     });
 }
 
+
+if (function_exists('rx_cron_task_attach')) {
+    rx_cron_task_attach('backupbot', 600);
+}
 
 ignore_user_abort(true);
 @set_time_limit(0);

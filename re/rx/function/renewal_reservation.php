@@ -837,7 +837,7 @@ if (!function_exists('rxReservationPreview')) {
         }
         $policy = (string) $check['policy'];
         $plan = $snapshot !== null ? rxRenewalPlanForSnapshot($snapshot, $panel, $username, $policy, false, $volumeGb, $days, 'رزرو اشتراک', $now, ['quiet' => true]) : null;
-        if (is_array($plan) && in_array((string) ($plan['reason'] ?? ''), ['pending_unsupported', 'invalid_purchase'], true)) {
+        if (is_array($plan) && in_array((string) ($plan['reason'] ?? ''), ['pending_unsupported', 'invalid_purchase', 'panel_policy_unsupported'], true)) {
             rx_renewal_log($stage, (string) $plan['reason'], ['policy' => $policy, 'plan' => $plan, 'admin_blocked' => !empty($ctx['admin_blocked'])] + $logCtx);
             return array_merge($base, ['ok' => false, 'blocked' => true, 'plan' => null, 'reason' => (string) $plan['reason'], 'text' => rxRenewalReasonText((string) $plan['reason'], $plan)]);
         }
