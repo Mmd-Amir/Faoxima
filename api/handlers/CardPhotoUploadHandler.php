@@ -144,42 +144,20 @@ final class CardPhotoUploadHandler extends BaseHandler
 
     private function uploadPhotoGetFileId(string $apiKey, $userId, string $localPath, string $mime): ?string
     {
-        $ch = curl_init('https://api.telegram.org/bot' . $apiKey . '/sendPhoto');
-        if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($ch, 'telegram');
-        $caption = '🪪 عکس کارت ارسال‌شده از مینی‌اپ (ذخیره file_id)';
-        if (function_exists('applyPremiumEmojiTransform')) {
-            $caption = applyPremiumEmojiTransform($caption, 'HTML');
-        }
-        $post = [
-            'chat_id'    => (string)$userId,
-            'caption'    => $caption,
+        $tg = telegram('sendPhoto', [
+            'chat_id' => (string) $userId,
+            'caption' => '🪪 عکس کارت ارسال‌شده از مینی‌اپ (ذخیره file_id)',
             'parse_mode' => 'HTML',
-            'photo'      => new CURLFile($localPath, $mime, 'card.jpg'),
-        ];
-        curl_setopt_array($ch, [
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => $post,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => 30,
-            CURLOPT_SSL_VERIFYPEER => true,
-        ]);
-        $response = curl_exec($ch);
-        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlErr  = curl_error($ch);
-        curl_close($ch);
-
-        if ($httpCode !== 200 || !$response) {
-            FaoximaLogger::warn('CardPhotoUpload sendPhoto failed', ['http' => $httpCode, 'curl_err' => $curlErr]);
-            return null;
-        }
-        $tg = json_decode((string)$response, true);
-        if (!is_array($tg) || empty($tg['ok'])) {
+            'photo' => new CURLFile($localPath, $mime, 'card.jpg'),
+            '_rx_curl_timeout' => 30,
+        ], $apiKey);
+        if (empty($tg['ok'])) {
             FaoximaLogger::warn('CardPhotoUpload sendPhoto rejected', ['desc' => $tg['description'] ?? '']);
             return null;
         }
         $sizes = $tg['result']['photo'] ?? [];
-        if (!is_array($sizes) || empty($sizes)) return null;
+        if (!is_array($sizes) || !$sizes) { return null; }
         $best = end($sizes);
-        return is_array($best) ? (string)($best['file_id'] ?? '') : null;
+        return is_array($best) ? (string) ($best['file_id'] ?? '') : null;
     }
 }

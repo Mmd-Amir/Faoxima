@@ -148,6 +148,35 @@ if (!function_exists('rx_stats_total_sales_count')) {
     }
 }
 
+if (!function_exists('rx_stats_sales_summary')) {
+    function rx_stats_sales_summary(\PDO $pdo): array
+    {
+        $source = rx_stats_sales_source($pdo);
+        $predicate = rx_stats_historical_sale_predicate();
+        $stmt = $pdo->query("SELECT COUNT(*) AS sales_count,
+            COALESCE(SUM(price_product),0) AS sales_amount,
+            COUNT(DISTINCT id_user) AS paying_users
+            FROM {$source} sales WHERE {$predicate}");
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return [
+            'count' => (int) $row['sales_count'],
+            'amount' => (float) $row['sales_amount'],
+            'paying_users' => (int) $row['paying_users'],
+        ];
+    }
+}
+
+if (!function_exists('rx_stats_operational_summary')) {
+    function rx_stats_operational_summary(\PDO $pdo): array
+    {
+        $stmt = $pdo->query("SELECT COUNT(*) AS invoice_count,
+            COALESCE(SUM(price_product),0) AS invoice_amount
+            FROM invoice WHERE " . rx_stats_operational_service_predicate());
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return ['count' => (int) $row['invoice_count'], 'amount' => (float) $row['invoice_amount']];
+    }
+}
+
 if (!function_exists('rx_stats_total_sales_amount')) {
     function rx_stats_total_sales_amount(\PDO $pdo)
     {

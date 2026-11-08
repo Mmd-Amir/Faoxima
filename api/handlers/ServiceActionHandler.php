@@ -543,38 +543,16 @@ final class ServiceActionHandler extends BaseHandler
 
     private function sendAdminMessage(string $apiKey, string $chatId, string $text, string $keyboardJson): bool
     {
-        if (function_exists('applyPremiumEmojiTransform')) { $text = applyPremiumEmojiTransform($text, 'HTML'); }
-        $url = 'https://api.telegram.org/bot' . $apiKey . '/sendMessage';
-        $payload = [
-            'chat_id'      => $chatId,
-            'text'         => $text,
-            'parse_mode'   => 'HTML',
+        $tg = telegram('sendMessage', [
+            'chat_id' => $chatId,
+            'text' => $text,
+            'parse_mode' => 'HTML',
             'reply_markup' => $keyboardJson,
             'disable_web_page_preview' => true,
-        ];
-        $ch = curl_init($url);
-        if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($ch, 'telegram');
-        curl_setopt_array($ch, [
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => http_build_query($payload),
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => 15,
-            CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_HTTPHEADER     => ['Content-Type: application/x-www-form-urlencoded'],
-        ]);
-        $response = curl_exec($ch);
-        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $err      = curl_error($ch);
-        curl_close($ch);
-
-        if ($httpCode !== 200 || !$response) {
-            FaoximaLogger::warn('sendMessage to admin failed', ['admin' => $chatId, 'http' => $httpCode, 'err' => $err]);
-            return false;
-        }
-        $tg = json_decode((string)$response, true);
-        if (!is_array($tg) || empty($tg['ok'])) {
-            $desc = is_array($tg) ? (string)($tg['description'] ?? '') : '';
-            FaoximaLogger::warn('Telegram rejected admin message', ['admin' => $chatId, 'desc' => $desc]);
+            '_rx_curl_timeout' => 15,
+        ], $apiKey);
+        if (empty($tg['ok'])) {
+            FaoximaLogger::warn('Telegram rejected admin message', ['admin' => $chatId, 'desc' => $tg['description'] ?? '']);
             return false;
         }
         return true;

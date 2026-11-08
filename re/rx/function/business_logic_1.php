@@ -1129,16 +1129,24 @@ function nm_adminInstantReply($chatId, $text, $keyboard = null, $parseMode = 'HT
         rxNavTrackKeyboard($chatId, $keyboard);
     }
     $rx_edit_failed = false;
+    $rxCallbackAnswered = false;
 
     if ($isCallback && $isInlineKbd && !$alreadyHandled && function_exists('Editmessagetext')) {
         try {
-            $rx_edit_result = Editmessagetext($chatId, $message_id, $text, $keyboard, $parseMode);
+            if (class_exists('FxTelegramCallbackScope', false)) {
+                $rx_edit_result = FxTelegramCallbackScope::run((string) $callback_query_id,
+                    static function () use ($chatId, $message_id, $text, $keyboard, $parseMode) {
+                        return Editmessagetext($chatId, $message_id, $text, $keyboard, $parseMode);
+                    }, $rxCallbackAnswered);
+            } else {
+                $rx_edit_result = Editmessagetext($chatId, $message_id, $text, $keyboard, $parseMode);
+            }
 
             if (is_array($rx_edit_result) && !empty($rx_edit_result['ok'])) {
 
                 $GLOBALS['rx_admin_instant_deleted'] = $message_id;
 
-                if (!empty($callback_query_id) && function_exists('telegram')) {
+                if (!$rxCallbackAnswered && !empty($callback_query_id) && function_exists('telegram')) {
                     try {
                         telegram('answerCallbackQuery', [
                             'callback_query_id' => $callback_query_id,
@@ -1167,7 +1175,7 @@ function nm_adminInstantReply($chatId, $text, $keyboard = null, $parseMode = 'HT
     }
 
     if ($rx_edit_failed) {
-        if (!empty($callback_query_id) && function_exists('telegram')) {
+        if (!$rxCallbackAnswered && !empty($callback_query_id) && function_exists('telegram')) {
             try {
                 telegram('answerCallbackQuery', [
                     'callback_query_id' => $callback_query_id,

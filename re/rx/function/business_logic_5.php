@@ -659,23 +659,9 @@ function rxPremiumEmojiResetState($from_id) {
 }
 
 function rxPremiumEmojiIsValidBase($value) {
-    if (!is_string($value)) {
-        return false;
-    }
-    $value = trim($value);
-    if ($value === '' || mb_strlen($value, 'UTF-8') > 16) {
-        return false;
-    }
-    if (preg_match('/[\s\x{00A0}\x{2000}-\x{200B}\x{2028}\x{2029}\x{3000}]/u', $value)) {
-        return false;
-    }
-    if (preg_match('/\p{L}/u', $value)) {
-        return false;
-    }
-    if (function_exists('isValidPremiumEmojiSource') && !isValidPremiumEmojiSource($value)) {
-        return false;
-    }
-    return (bool) preg_match('/[\x{1F000}-\x{1FAFF}\x{2190}-\x{21FF}\x{2300}-\x{23FF}\x{25A0}-\x{27BF}\x{2900}-\x{297F}\x{2B00}-\x{2BFF}\x{3030}\x{303D}\x{3297}\x{3299}\x{203C}\x{2049}\x{2122}\x{2139}\x{20E3}]/u', $value);
+    if (!is_string($value)) { return false; }
+    // Use the same validator as the outgoing emoji map; no Unicode letter filter.
+    return function_exists('isValidPremiumEmojiSource') && isValidPremiumEmojiSource(trim($value));
 }
 
 function rxPremiumEmojiExtractCustomId(array $message) {

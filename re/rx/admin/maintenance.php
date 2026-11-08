@@ -686,11 +686,6 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
 
         try { $pdo->exec("DELETE FROM premium_emojis WHERE emoji = '' OR emoji IS NULL"); } catch (\Throwable $rxPemCleanErr) {}
 
-        $rxPemBaseChar = '\x{00A9}\x{00AE}\x{203C}\x{2049}\x{2122}\x{2139}\x{2194}-\x{2199}\x{21A9}-\x{21AA}\x{231A}-\x{231B}\x{2328}\x{23CF}\x{23E9}-\x{23F3}\x{23F8}-\x{23FA}\x{24C2}\x{25AA}-\x{25AB}\x{25B6}\x{25C0}\x{25FB}-\x{25FE}\x{2600}-\x{27BF}\x{2300}-\x{23FF}\x{2B00}-\x{2BFF}\x{1F000}-\x{1FFFF}';
-        $rxPemModChar  = '\x{FE0F}\x{1F3FB}-\x{1F3FF}';
-        $rxPemUnit     = '[' . $rxPemBaseChar . '][' . $rxPemModChar . ']*';
-        $rxPemEmojiRegex = '/(?:[\x{1F1E6}-\x{1F1FF}]{2})|(?:[0-9#*]\x{FE0F}?\x{20E3})|(?:' . $rxPemUnit . '(?:\x{200D}' . $rxPemUnit . ')*)/u';
-
         $rxPemScanText = '';
 
         $rxPemScanStmt = $pdo->query("SELECT text FROM textbot");
@@ -721,6 +716,12 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
                 $rxPemScannedFiles[$rxPemPath] = true;
                 $rxPemContent = @file_get_contents($rxPemPath);
                 if ($rxPemContent !== false) {
+                    if ($rxPemExt === 'json') {
+                        $rxPemDecoded = json_decode($rxPemContent, true);
+                        if (json_last_error() === JSON_ERROR_NONE) {
+                            $rxPemContent = json_encode($rxPemDecoded, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                        }
+                    }
                     $rxPemScanText .= ' ' . $rxPemContent;
                 }
             }
@@ -737,25 +738,16 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
                 $rxPemScannedFiles[$rxPemJp] = true;
                 $rxPemC = @file_get_contents($rxPemJp);
                 if ($rxPemC !== false) {
+                    $rxPemDecoded = json_decode($rxPemC, true);
+                    if (json_last_error() === JSON_ERROR_NONE) {
+                        $rxPemC = json_encode($rxPemDecoded, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    }
                     $rxPemScanText .= ' ' . $rxPemC;
                 }
             }
         }
 
-        preg_match_all($rxPemEmojiRegex, $rxPemScanText, $rxPemEmojiMatches);
-
-        $rxPemFound = array_values(array_unique(array_filter($rxPemEmojiMatches[0] ?? [], function($e) {
-            $e = trim($e);
-            if ($e === '') { return false; }
-            $len = mb_strlen($e, 'UTF-8');
-            if ($len < 1 || $len > 16) { return false; }
-            $cp = mb_ord($e, 'UTF-8');
-            if ($cp >= 0xFE00 && $cp <= 0xFE0F) { return false; }
-            if ($cp === 0x200D) { return false; }
-            if ($cp === 0x20E3) { return false; }
-            if ($cp >= 0xE0000 && $cp <= 0xE007F) { return false; }
-            return true;
-        })));
+        $rxPemFound = rxPremiumEmojiExtractSources($rxPemScanText);
 
         $rxPemDbCountBefore = 0;
         $rxPemDbCountStmt = $pdo->query("SELECT COUNT(*) FROM premium_emojis");

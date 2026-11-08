@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/lib/WebhookAuth.php';
+require_once __DIR__ . '/lib/TelegramTransport.php';
+require_once __DIR__ . '/lib/TelegramEmojiFallback.php';
 if (is_file(__DIR__ . '/lib/CronHealth.php')) {
     require_once __DIR__ . '/lib/CronHealth.php';
 }
@@ -147,6 +149,10 @@ function telegram($method, $datas = [], $token = null)
     if (!is_array($datas)) {
         $datas = [];
     }
+    $rxRequestTimeout = isset($datas['_rx_curl_timeout']) ? max(1, min(60, (int) $datas['_rx_curl_timeout'])) : null;
+    unset($datas['_rx_curl_timeout']);
+    $rxNoNetworkRetry = !empty($datas['_rx_no_network_retry']);
+    unset($datas['_rx_no_network_retry']);
 
     if (strtolower((string) $method) === 'setwebhook') {
         $datas['secret_token'] = FaoximaWebhookAuth::secret((string) $token, $token === $APIKEY);
@@ -164,7 +170,9 @@ function telegram($method, $datas = [], $token = null)
 
 
 
-    $rxAlreadyTransformed = !empty($datas['_rx_already_transformed']);
+    $rxEmojiFallbackAttempt = !empty($datas['_rx_emoji_fallback_attempt']);
+    unset($datas['_rx_emoji_fallback_attempt']);
+    $rxAlreadyTransformed = $rxEmojiFallbackAttempt || !empty($datas['_rx_already_transformed']);
     unset($datas['_rx_already_transformed']);
 
     $rxAutoTransformMethods = ['sendmessage', 'sendMessage', 'editmessagetext', 'editMessageText', 'sendphoto', 'sendPhoto', 'sendvideo', 'sendVideo', 'sendDocument', 'senddocument', 'editmessagecaption', 'editMessageCaption', 'editMessageReplyMarkup', 'editmessagereplymarkup'];
@@ -219,7 +227,7 @@ function telegram($method, $datas = [], $token = null)
         return ['ok' => false, 'error_code' => 400, 'description' => 'message text is empty (skipped locally)'];
     }
 
-    if (function_exists('rx_richUi_dispatch')) {
+    if (!$rxEmojiFallbackAttempt && function_exists('rx_richUi_dispatch')) {
         $rxRichResult = rx_richUi_dispatch($method, $datas, $token);
         if ($rxRichResult !== null) {
             return $rxRichResult;
@@ -240,7 +248,7 @@ function telegram($method, $datas = [], $token = null)
     // Application errors (HTTP 4xx/5xx, "message to edit not found", etc.)
     // are NOT retried — they're real responses, not network failures.
     $retryableCurlErrnos = [6, 7, 28, 35, 56];
-    $maxAttempts = 2; // 1 retry. Total worst case: ~10s (acceptable for a 30s webhook).
+    $maxAttempts = $rxNoNetworkRetry ? 1 : 2;
     $rawResponse = false;
     $curlErrorNumber = 0;
     $curlError = '';
@@ -262,7 +270,7 @@ function telegram($method, $datas = [], $token = null)
 
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_ENCODING, '');
-        $timeout = isset($telegramCurlTimeout) && is_numeric($telegramCurlTimeout) ? (int)$telegramCurlTimeout : 10;
+        $timeout = $rxRequestTimeout ?? (isset($telegramCurlTimeout) && is_numeric($telegramCurlTimeout) ? (int)$telegramCurlTimeout : 10);
         curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
         curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
@@ -277,18 +285,35 @@ function telegram($method, $datas = [], $token = null)
         }
         curl_setopt($ch, CURLOPT_POSTFIELDS, $preparedPayload['body']);
 
+        $rxCallbackContext = FxTelegramCallbackScope::take((string) $method, (string) $token);
+        $rxCallbackHandle = $rxCallbackContext !== null
+            ? FxTelegramCallbackScope::handle($rxCallbackContext, (string) $token, $timeout)
+            : false;
         $requestStartedAt = microtime(true);
-        $rawResponse = curl_exec($ch);
+        $rxTransportHandles = [0 => $ch];
+        if ($rxCallbackHandle !== false) {
+            $rxTransportHandles[1] = $rxCallbackHandle;
+        }
+        $rxTransportResults = FxTelegramTransport::execute($rxTransportHandles, (string) $token);
+        $rawResponse = $rxTransportResults[0]['raw'];
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $duration = microtime(true) - $requestStartedAt;
+        if ($rxCallbackHandle !== false) {
+            $rxCallbackResult = json_decode((string) ($rxTransportResults[1]['raw'] ?? ''), true);
+            $rxCallbackContext->answered = is_array($rxCallbackResult) && !empty($rxCallbackResult['ok']);
+            if ($rxCallbackContext->answered && function_exists('rx_ui_after_send')) {
+                rx_ui_after_send('answerCallbackQuery', ['callback_query_id' => $rxCallbackContext->id, 'cache_time' => 1], $rxCallbackResult);
+            }
+            curl_close($rxCallbackHandle);
+        }
 
         if ($rawResponse !== false) {
             curl_close($ch);
             break; // network success — proceed to response parsing below
         }
 
-        $curlErrorNumber = curl_errno($ch);
-        $curlError = curl_error($ch);
+        $curlErrorNumber = $rxTransportResults[0]['errno'];
+        $curlError = $rxTransportResults[0]['error'];
         curl_close($ch);
 
         // Stop if the error isn't network-transient, or if we just used the
@@ -316,6 +341,12 @@ function telegram($method, $datas = [], $token = null)
     }
 
     $rxParsedResponse = rx_parse_telegram_response($rawResponse, $httpCode);
+    if (!$rxEmojiFallbackAttempt) {
+        $rxRetryResult = FxTelegramEmojiFallback::recover((string) $method, $datas, $rxParsedResponse, (string) $token, $rxRequestTimeout);
+        if ($rxRetryResult !== null) {
+            return $rxRetryResult;
+        }
+    }
     if (function_exists('rx_ui_after_send')) {
         rx_ui_after_send($method, $datas, $rxParsedResponse);
     }
@@ -377,14 +408,18 @@ function rx_parse_telegram_response($rawResponse, $httpCode)
 function rx_telegram_dispatch_concurrent(array $requests)
 {
     global $APIKEY;
+    if (!$requests) {
+        return [];
+    }
 
-    $multiHandle = curl_multi_init();
     $curlHandles = [];
+    $rxTransportScopes = [];
 
     foreach ($requests as $index => $request) {
         $method = $request['method'];
         $datas = is_array($request['datas']) ? $request['datas'] : [];
         $token = $request['token'] ?? $APIKEY;
+        $rxTransportScopes[] = (string) $token;
         $url = "https://api.telegram.org/bot" . $token . "/" . $method;
 
         $preparedPayload = prepareTelegramRequestPayload($datas);
@@ -406,35 +441,39 @@ function rx_telegram_dispatch_concurrent(array $requests)
         }
         curl_setopt($ch, CURLOPT_POSTFIELDS, $preparedPayload['body']);
 
-        curl_multi_add_handle($multiHandle, $ch);
         $curlHandles[$index] = $ch;
     }
 
-    $running = null;
-    do {
-        $status = curl_multi_exec($multiHandle, $running);
-        if ($running > 0) {
-            curl_multi_select($multiHandle, 1.0);
-        }
-    } while ($running > 0 && $status === CURLM_OK);
+    $rxTransportScopes = array_values(array_unique($rxTransportScopes));
+    sort($rxTransportScopes);
+    $rxTransportScope = count($rxTransportScopes) === 1
+        ? $rxTransportScopes[0]
+        : 'batch:' . json_encode($rxTransportScopes);
+    $rxTransportResults = FxTelegramTransport::execute($curlHandles, $rxTransportScope);
 
     $results = [];
     foreach ($curlHandles as $index => $ch) {
-        $rawResponse = curl_multi_getcontent($ch);
+        $rawResponse = $rxTransportResults[$index]['raw'];
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlErrno = curl_errno($ch);
+        $curlErrno = $rxTransportResults[$index]['errno'];
         if ($curlErrno !== 0 || $rawResponse === null || $rawResponse === '') {
             $results[$index] = [
                 'ok' => false,
-                'description' => curl_error($ch) !== '' ? curl_error($ch) : 'Telegram request failed.'
+                'description' => $rxTransportResults[$index]['error'] !== '' ? $rxTransportResults[$index]['error'] : 'Telegram request failed.'
             ];
         } else {
             $results[$index] = rx_parse_telegram_response($rawResponse, $httpCode);
         }
-        curl_multi_remove_handle($multiHandle, $ch);
         curl_close($ch);
+        $request = $requests[$index];
+        $method = (string) $request['method'];
+        $datas = is_array($request['datas'] ?? null) ? $request['datas'] : [];
+        $token = (string) ($request['token'] ?? $APIKEY);
+        $retryResult = FxTelegramEmojiFallback::recover($method, $datas, $results[$index], $token);
+        if ($retryResult !== null) {
+            $results[$index] = $retryResult;
+        }
     }
-    curl_multi_close($multiHandle);
 
     return $results;
 }
@@ -546,15 +585,24 @@ function normaliseTelegramValue($value)
 }
 
 
+function rxPremiumEmojiSourcePattern() {
+    // Emoji bases and modifier bases derived from Unicode Emoji 18.0 test data.
+    // https://www.unicode.org/Public/emoji/latest/emoji-test.txt
+    // One sequence: keycap, country/tag flag, base + skin tone, or a ZWJ sequence.
+    static $pattern = '~\A(?:[0-9#*]\x{FE0F}?\x{20E3}|(?:\x{1F1E6}[\x{1F1E8}-\x{1F1EC}\x{1F1EE}\x{1F1F1}-\x{1F1F2}\x{1F1F4}\x{1F1F6}-\x{1F1FA}\x{1F1FC}-\x{1F1FD}\x{1F1FF}]|\x{1F1E7}[\x{1F1E6}-\x{1F1E7}\x{1F1E9}-\x{1F1EF}\x{1F1F1}-\x{1F1F4}\x{1F1F6}-\x{1F1F9}\x{1F1FB}-\x{1F1FC}\x{1F1FE}-\x{1F1FF}]|\x{1F1E8}[\x{1F1E6}\x{1F1E8}-\x{1F1E9}\x{1F1EB}-\x{1F1EE}\x{1F1F0}-\x{1F1F7}\x{1F1FA}-\x{1F1FF}]|\x{1F1E9}[\x{1F1EA}\x{1F1EC}\x{1F1EF}-\x{1F1F0}\x{1F1F2}\x{1F1F4}\x{1F1FF}]|\x{1F1EA}[\x{1F1E6}\x{1F1E8}\x{1F1EA}\x{1F1EC}-\x{1F1ED}\x{1F1F7}-\x{1F1FA}]|\x{1F1EB}[\x{1F1EE}-\x{1F1F0}\x{1F1F2}\x{1F1F4}\x{1F1F7}]|\x{1F1EC}[\x{1F1E6}-\x{1F1E7}\x{1F1E9}-\x{1F1EE}\x{1F1F1}-\x{1F1F3}\x{1F1F5}-\x{1F1FA}\x{1F1FC}\x{1F1FE}]|\x{1F1ED}[\x{1F1F0}\x{1F1F2}-\x{1F1F3}\x{1F1F7}\x{1F1F9}-\x{1F1FA}]|\x{1F1EE}[\x{1F1E8}-\x{1F1EA}\x{1F1F1}-\x{1F1F4}\x{1F1F6}-\x{1F1F9}]|\x{1F1EF}[\x{1F1EA}\x{1F1F2}\x{1F1F4}-\x{1F1F5}]|\x{1F1F0}[\x{1F1EA}\x{1F1EC}-\x{1F1EE}\x{1F1F2}-\x{1F1F3}\x{1F1F5}\x{1F1F7}\x{1F1FC}\x{1F1FE}-\x{1F1FF}]|\x{1F1F1}[\x{1F1E6}-\x{1F1E8}\x{1F1EE}\x{1F1F0}\x{1F1F7}-\x{1F1FB}\x{1F1FE}]|\x{1F1F2}[\x{1F1E6}\x{1F1E8}-\x{1F1ED}\x{1F1F0}-\x{1F1FF}]|\x{1F1F3}[\x{1F1E6}\x{1F1E8}\x{1F1EA}-\x{1F1EC}\x{1F1EE}\x{1F1F1}\x{1F1F4}-\x{1F1F5}\x{1F1F7}\x{1F1FA}\x{1F1FF}]|\x{1F1F4}[\x{1F1F2}]|\x{1F1F5}[\x{1F1E6}\x{1F1EA}-\x{1F1ED}\x{1F1F0}-\x{1F1F3}\x{1F1F7}-\x{1F1F9}\x{1F1FC}\x{1F1FE}]|\x{1F1F6}[\x{1F1E6}]|\x{1F1F7}[\x{1F1EA}\x{1F1F4}\x{1F1F8}\x{1F1FA}\x{1F1FC}]|\x{1F1F8}[\x{1F1E6}-\x{1F1EA}\x{1F1EC}-\x{1F1F4}\x{1F1F7}-\x{1F1F9}\x{1F1FB}\x{1F1FD}-\x{1F1FF}]|\x{1F1F9}[\x{1F1E6}\x{1F1E8}-\x{1F1E9}\x{1F1EB}-\x{1F1ED}\x{1F1EF}-\x{1F1F4}\x{1F1F7}\x{1F1F9}\x{1F1FB}-\x{1F1FC}\x{1F1FF}]|\x{1F1FA}[\x{1F1E6}\x{1F1EC}\x{1F1F2}-\x{1F1F3}\x{1F1F8}\x{1F1FE}-\x{1F1FF}]|\x{1F1FB}[\x{1F1E6}\x{1F1E8}\x{1F1EA}\x{1F1EC}\x{1F1EE}\x{1F1F3}\x{1F1FA}]|\x{1F1FC}[\x{1F1EB}\x{1F1F8}]|\x{1F1FD}[\x{1F1F0}]|\x{1F1FE}[\x{1F1EA}\x{1F1F9}]|\x{1F1FF}[\x{1F1E6}\x{1F1F2}\x{1F1FC}])|\x{1F3F4}\x{E0067}\x{E0062}\x{E0065}\x{E006E}\x{E0067}\x{E007F}|\x{1F3F4}\x{E0067}\x{E0062}\x{E0073}\x{E0063}\x{E0074}\x{E007F}|\x{1F3F4}\x{E0067}\x{E0062}\x{E0077}\x{E006C}\x{E0073}\x{E007F}|(?:[\x{261D}\x{26F9}\x{270A}-\x{270D}\x{1F385}\x{1F3C2}-\x{1F3C4}\x{1F3C7}\x{1F3CA}-\x{1F3CC}\x{1F442}-\x{1F443}\x{1F446}-\x{1F450}\x{1F466}-\x{1F469}\x{1F46B}-\x{1F478}\x{1F47C}\x{1F481}-\x{1F483}\x{1F485}-\x{1F487}\x{1F48F}\x{1F491}\x{1F4AA}\x{1F574}-\x{1F575}\x{1F57A}\x{1F590}\x{1F595}-\x{1F596}\x{1F645}-\x{1F647}\x{1F64B}-\x{1F64F}\x{1F6A3}\x{1F6B4}-\x{1F6B6}\x{1F6C0}\x{1F6CC}\x{1F90C}\x{1F90F}\x{1F918}-\x{1F91F}\x{1F926}\x{1F930}-\x{1F939}\x{1F93C}-\x{1F93E}\x{1F977}\x{1F9B5}-\x{1F9B6}\x{1F9B8}-\x{1F9B9}\x{1F9BB}\x{1F9CD}-\x{1F9CF}\x{1F9D1}-\x{1F9DD}\x{1FAC3}-\x{1FAC5}\x{1FAF0}-\x{1FAFA}]\x{FE0F}?[\x{1F3FB}-\x{1F3FF}]?|[\x{A9}\x{AE}\x{203C}\x{2049}\x{2122}\x{2139}\x{2194}-\x{2199}\x{21A9}-\x{21AA}\x{231A}-\x{231B}\x{2328}\x{23CF}\x{23E9}-\x{23F3}\x{23F8}-\x{23FA}\x{24C2}\x{25AA}-\x{25AB}\x{25B6}\x{25C0}\x{25FB}-\x{25FE}\x{2600}-\x{2604}\x{260E}\x{2611}\x{2614}-\x{2615}\x{2618}\x{2620}\x{2622}-\x{2623}\x{2626}\x{262A}\x{262E}-\x{262F}\x{2638}-\x{263A}\x{2640}\x{2642}\x{2648}-\x{2653}\x{265F}-\x{2660}\x{2663}\x{2665}-\x{2666}\x{2668}\x{267B}\x{267E}-\x{267F}\x{2692}-\x{2697}\x{2699}\x{269B}-\x{269C}\x{26A0}-\x{26A1}\x{26A7}\x{26AA}-\x{26AB}\x{26B0}-\x{26B1}\x{26BD}-\x{26BE}\x{26C4}-\x{26C5}\x{26C8}\x{26CE}-\x{26CF}\x{26D1}\x{26D3}-\x{26D4}\x{26E9}-\x{26EA}\x{26F0}-\x{26F5}\x{26F7}-\x{26F8}\x{26FA}\x{26FD}\x{2702}\x{2705}\x{2708}-\x{2709}\x{270F}\x{2712}\x{2714}\x{2716}\x{271D}\x{2721}\x{2728}\x{2733}-\x{2734}\x{2744}\x{2747}\x{274C}\x{274E}\x{2753}-\x{2755}\x{2757}\x{2763}-\x{2764}\x{2795}-\x{2797}\x{27A1}\x{27B0}\x{27BF}\x{2934}-\x{2935}\x{2B05}-\x{2B07}\x{2B1B}-\x{2B1C}\x{2B50}\x{2B55}\x{3030}\x{303D}\x{3297}\x{3299}\x{1F004}\x{1F0CF}\x{1F170}-\x{1F171}\x{1F17E}-\x{1F17F}\x{1F18E}\x{1F191}-\x{1F19A}\x{1F201}-\x{1F202}\x{1F21A}\x{1F22F}\x{1F232}-\x{1F23A}\x{1F250}-\x{1F251}\x{1F300}-\x{1F321}\x{1F324}-\x{1F384}\x{1F386}-\x{1F393}\x{1F396}-\x{1F397}\x{1F399}-\x{1F39B}\x{1F39E}-\x{1F3C1}\x{1F3C5}-\x{1F3C6}\x{1F3C8}-\x{1F3C9}\x{1F3CD}-\x{1F3F0}\x{1F3F3}-\x{1F3F5}\x{1F3F7}-\x{1F3FA}\x{1F400}-\x{1F441}\x{1F444}-\x{1F445}\x{1F451}-\x{1F465}\x{1F46A}\x{1F479}-\x{1F47B}\x{1F47D}-\x{1F480}\x{1F484}\x{1F488}-\x{1F48E}\x{1F490}\x{1F492}-\x{1F4A9}\x{1F4AB}-\x{1F4FD}\x{1F4FF}-\x{1F53D}\x{1F549}-\x{1F54E}\x{1F550}-\x{1F567}\x{1F56F}-\x{1F570}\x{1F573}\x{1F576}-\x{1F579}\x{1F587}\x{1F58A}-\x{1F58D}\x{1F5A4}-\x{1F5A5}\x{1F5A8}\x{1F5B1}-\x{1F5B2}\x{1F5BC}\x{1F5C2}-\x{1F5C4}\x{1F5D1}-\x{1F5D3}\x{1F5DC}-\x{1F5DE}\x{1F5E1}\x{1F5E3}\x{1F5E8}\x{1F5EF}\x{1F5F3}\x{1F5FA}-\x{1F644}\x{1F648}-\x{1F64A}\x{1F680}-\x{1F6A2}\x{1F6A4}-\x{1F6B3}\x{1F6B7}-\x{1F6BF}\x{1F6C1}-\x{1F6C5}\x{1F6CB}\x{1F6CD}-\x{1F6D2}\x{1F6D5}-\x{1F6D9}\x{1F6DC}-\x{1F6E5}\x{1F6E9}\x{1F6EB}-\x{1F6EC}\x{1F6F0}\x{1F6F3}-\x{1F6FC}\x{1F7E0}-\x{1F7EB}\x{1F7F0}\x{1F90D}-\x{1F90E}\x{1F910}-\x{1F917}\x{1F920}-\x{1F925}\x{1F927}-\x{1F92F}\x{1F93A}\x{1F93F}-\x{1F945}\x{1F947}-\x{1F976}\x{1F978}-\x{1F9AF}\x{1F9B4}\x{1F9B7}\x{1F9BA}\x{1F9BC}-\x{1F9CC}\x{1F9D0}\x{1F9DE}-\x{1F9FF}\x{1FA70}-\x{1FA7C}\x{1FA80}-\x{1FAC2}\x{1FAC6}\x{1FAC8}\x{1FACC}-\x{1FADD}\x{1FADF}-\x{1FAEB}\x{1FAEF}]\x{FE0F}?)(?:\x{200D}(?:[\x{261D}\x{26F9}\x{270A}-\x{270D}\x{1F385}\x{1F3C2}-\x{1F3C4}\x{1F3C7}\x{1F3CA}-\x{1F3CC}\x{1F442}-\x{1F443}\x{1F446}-\x{1F450}\x{1F466}-\x{1F469}\x{1F46B}-\x{1F478}\x{1F47C}\x{1F481}-\x{1F483}\x{1F485}-\x{1F487}\x{1F48F}\x{1F491}\x{1F4AA}\x{1F574}-\x{1F575}\x{1F57A}\x{1F590}\x{1F595}-\x{1F596}\x{1F645}-\x{1F647}\x{1F64B}-\x{1F64F}\x{1F6A3}\x{1F6B4}-\x{1F6B6}\x{1F6C0}\x{1F6CC}\x{1F90C}\x{1F90F}\x{1F918}-\x{1F91F}\x{1F926}\x{1F930}-\x{1F939}\x{1F93C}-\x{1F93E}\x{1F977}\x{1F9B5}-\x{1F9B6}\x{1F9B8}-\x{1F9B9}\x{1F9BB}\x{1F9CD}-\x{1F9CF}\x{1F9D1}-\x{1F9DD}\x{1FAC3}-\x{1FAC5}\x{1FAF0}-\x{1FAFA}]\x{FE0F}?[\x{1F3FB}-\x{1F3FF}]?|[\x{A9}\x{AE}\x{203C}\x{2049}\x{2122}\x{2139}\x{2194}-\x{2199}\x{21A9}-\x{21AA}\x{231A}-\x{231B}\x{2328}\x{23CF}\x{23E9}-\x{23F3}\x{23F8}-\x{23FA}\x{24C2}\x{25AA}-\x{25AB}\x{25B6}\x{25C0}\x{25FB}-\x{25FE}\x{2600}-\x{2604}\x{260E}\x{2611}\x{2614}-\x{2615}\x{2618}\x{2620}\x{2622}-\x{2623}\x{2626}\x{262A}\x{262E}-\x{262F}\x{2638}-\x{263A}\x{2640}\x{2642}\x{2648}-\x{2653}\x{265F}-\x{2660}\x{2663}\x{2665}-\x{2666}\x{2668}\x{267B}\x{267E}-\x{267F}\x{2692}-\x{2697}\x{2699}\x{269B}-\x{269C}\x{26A0}-\x{26A1}\x{26A7}\x{26AA}-\x{26AB}\x{26B0}-\x{26B1}\x{26BD}-\x{26BE}\x{26C4}-\x{26C5}\x{26C8}\x{26CE}-\x{26CF}\x{26D1}\x{26D3}-\x{26D4}\x{26E9}-\x{26EA}\x{26F0}-\x{26F5}\x{26F7}-\x{26F8}\x{26FA}\x{26FD}\x{2702}\x{2705}\x{2708}-\x{2709}\x{270F}\x{2712}\x{2714}\x{2716}\x{271D}\x{2721}\x{2728}\x{2733}-\x{2734}\x{2744}\x{2747}\x{274C}\x{274E}\x{2753}-\x{2755}\x{2757}\x{2763}-\x{2764}\x{2795}-\x{2797}\x{27A1}\x{27B0}\x{27BF}\x{2934}-\x{2935}\x{2B05}-\x{2B07}\x{2B1B}-\x{2B1C}\x{2B50}\x{2B55}\x{3030}\x{303D}\x{3297}\x{3299}\x{1F004}\x{1F0CF}\x{1F170}-\x{1F171}\x{1F17E}-\x{1F17F}\x{1F18E}\x{1F191}-\x{1F19A}\x{1F201}-\x{1F202}\x{1F21A}\x{1F22F}\x{1F232}-\x{1F23A}\x{1F250}-\x{1F251}\x{1F300}-\x{1F321}\x{1F324}-\x{1F384}\x{1F386}-\x{1F393}\x{1F396}-\x{1F397}\x{1F399}-\x{1F39B}\x{1F39E}-\x{1F3C1}\x{1F3C5}-\x{1F3C6}\x{1F3C8}-\x{1F3C9}\x{1F3CD}-\x{1F3F0}\x{1F3F3}-\x{1F3F5}\x{1F3F7}-\x{1F3FA}\x{1F400}-\x{1F441}\x{1F444}-\x{1F445}\x{1F451}-\x{1F465}\x{1F46A}\x{1F479}-\x{1F47B}\x{1F47D}-\x{1F480}\x{1F484}\x{1F488}-\x{1F48E}\x{1F490}\x{1F492}-\x{1F4A9}\x{1F4AB}-\x{1F4FD}\x{1F4FF}-\x{1F53D}\x{1F549}-\x{1F54E}\x{1F550}-\x{1F567}\x{1F56F}-\x{1F570}\x{1F573}\x{1F576}-\x{1F579}\x{1F587}\x{1F58A}-\x{1F58D}\x{1F5A4}-\x{1F5A5}\x{1F5A8}\x{1F5B1}-\x{1F5B2}\x{1F5BC}\x{1F5C2}-\x{1F5C4}\x{1F5D1}-\x{1F5D3}\x{1F5DC}-\x{1F5DE}\x{1F5E1}\x{1F5E3}\x{1F5E8}\x{1F5EF}\x{1F5F3}\x{1F5FA}-\x{1F644}\x{1F648}-\x{1F64A}\x{1F680}-\x{1F6A2}\x{1F6A4}-\x{1F6B3}\x{1F6B7}-\x{1F6BF}\x{1F6C1}-\x{1F6C5}\x{1F6CB}\x{1F6CD}-\x{1F6D2}\x{1F6D5}-\x{1F6D9}\x{1F6DC}-\x{1F6E5}\x{1F6E9}\x{1F6EB}-\x{1F6EC}\x{1F6F0}\x{1F6F3}-\x{1F6FC}\x{1F7E0}-\x{1F7EB}\x{1F7F0}\x{1F90D}-\x{1F90E}\x{1F910}-\x{1F917}\x{1F920}-\x{1F925}\x{1F927}-\x{1F92F}\x{1F93A}\x{1F93F}-\x{1F945}\x{1F947}-\x{1F976}\x{1F978}-\x{1F9B4}\x{1F9B7}\x{1F9BA}\x{1F9BC}-\x{1F9CC}\x{1F9D0}\x{1F9DE}-\x{1F9FF}\x{1FA70}-\x{1FA7C}\x{1FA80}-\x{1FAC2}\x{1FAC6}\x{1FAC8}\x{1FACC}-\x{1FADD}\x{1FADF}-\x{1FAEB}\x{1FAEF}]\x{FE0F}?))*)\z~uD';
+    return $pattern;
+}
+
 function isValidPremiumEmojiSource($emoji) {
-    if (!is_string($emoji) || $emoji === '') { return false; }
-    if (strlen($emoji) > 32) { return false; }
-    // Reject plain multi-letter text mistakenly stored instead of an emoji
-    // (e.g. "iploginset"), while still allowing legit keycap emoji like
-    // "0⃣", "#⃣", "*⃣" (ASCII digit/#/* immediately followed by U+20E3).
-    if (preg_match('/[A-Za-z]/', $emoji)) { return false; }
-    if (preg_match('/[0-9#*](?!\x{FE0F}?\x{20E3})/u', $emoji)) { return false; }
-    return (bool) preg_match('/^[0-9#*\x{1F000}-\x{1FFFF}\x{2000}-\x{3300}\x{FE00}-\x{FE0F}\x{200D}]+$/u', $emoji);
+    if (!is_string($emoji) || $emoji === '' || strlen($emoji) > 128) { return false; }
+    return preg_match(rxPremiumEmojiSourcePattern(), $emoji) === 1;
+}
+
+function rxPremiumEmojiExtractSources($text) {
+    if (!is_string($text) || $text === '') { return []; }
+    $pattern = str_replace(['\A', '\z'], '', rxPremiumEmojiSourcePattern());
+    if (preg_match_all($pattern, $text, $matches) === false) { return []; }
+    return array_values(array_unique($matches[0]));
 }
 
 function getPremiumEmojiMap($forceReload = false) {
@@ -571,7 +619,7 @@ function getPremiumEmojiMap($forceReload = false) {
         if (!$isOn) { return $cache; }
     } catch (\Throwable $e) { return $cache; }
     try {
-        $stmt = $pdo->query("SELECT emoji, custom_emoji_id FROM premium_emojis WHERE custom_emoji_id IS NOT NULL AND custom_emoji_id <> ''");
+        $stmt = $pdo->query("SELECT emoji, custom_emoji_id FROM premium_emojis WHERE custom_emoji_id IS NOT NULL AND custom_emoji_id <> '' ORDER BY updated_at ASC, id ASC");
         if ($stmt) {
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $emoji = (string)($row['emoji'] ?? '');
@@ -595,15 +643,37 @@ function applyPremiumEmojiTransform($text, $parseMode) {
     $map = getPremiumEmojiMap();
     if (empty($map)) { return $text; }
 
-    if (stripos($text, '<tg-emoji') !== false) { return $text; }
+    $replacements = [];
     foreach ($map as $emoji => $cid) {
         if ($emoji === '' || $cid === '') { continue; }
         if (strpos($text, $emoji) === false) { continue; }
         $cidEscaped = htmlspecialchars($cid, ENT_QUOTES);
         $tagged = '<tg-emoji emoji-id="' . $cidEscaped . '">' . $emoji . '</tg-emoji>';
-        $text = str_replace($emoji, $tagged, $text);
+        $replacements[$emoji] = $tagged;
     }
-    return $text;
+    // Preserve HTML attributes, literal code and existing custom emoji. Only visible
+    // text is transformed, once, so overlapping sources cannot create nested tags.
+    $tagPattern = '~(<(?:[^>"\']|"[^"]*"|\'[^\']*\')*>)~s';
+    $segments = preg_split($tagPattern, $text, -1, PREG_SPLIT_DELIM_CAPTURE);
+    if ($segments === false) { return $text; }
+    $protected = [];
+    $out = '';
+    foreach ($segments as $index => $segment) {
+        if ($index % 2 === 1) {
+            if (preg_match('~^<\s*(/?)\s*(code|pre|tg-emoji)\b~i', $segment, $tag)) {
+                $name = strtolower($tag[2]);
+                if ($tag[1] === '/') {
+                    $protected[$name] = max(0, ($protected[$name] ?? 0) - 1);
+                } elseif (!preg_match('~/\s*>$~', $segment)) {
+                    $protected[$name] = ($protected[$name] ?? 0) + 1;
+                }
+            }
+            $out .= $segment;
+        } else {
+            $out .= array_sum($protected) > 0 ? $segment : strtr($segment, $replacements);
+        }
+    }
+    return $out;
 }
 
 

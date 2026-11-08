@@ -153,72 +153,31 @@ final class CryptoReceiptUploadHandler extends BaseHandler
 
     private function sendReceiptPhoto(string $apiKey, string $chatId, string $localPath, string $mime, string $caption, string $keyboardJson): ?string
     {
-        if (function_exists('applyPremiumEmojiTransform')) { $caption = applyPremiumEmojiTransform($caption, 'HTML'); }
-        $ch = curl_init('https://api.telegram.org/bot' . $apiKey . '/sendPhoto');
-        if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($ch, 'telegram');
-        $post = [
-            'chat_id'    => $chatId,
-            'caption'    => $caption,
+        $payload = [
+            'chat_id' => $chatId,
+            'caption' => $caption,
             'parse_mode' => 'HTML',
-            'photo'      => new CURLFile($localPath, $mime, 'receipt.jpg'),
+            'photo' => new CURLFile($localPath, $mime, 'receipt.jpg'),
+            '_rx_curl_timeout' => 30,
         ];
-        if ($keyboardJson !== '') { $post['reply_markup'] = $keyboardJson; }
-        curl_setopt_array($ch, [
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => $post,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => 30,
-            CURLOPT_SSL_VERIFYPEER => true,
-        ]);
-        $response = curl_exec($ch);
-        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlErr  = curl_error($ch);
-        curl_close($ch);
-
-        if ($httpCode !== 200 || !$response) {
-            FaoximaLogger::warn('crypto receipt sendPhoto HTTP failed', ['http' => $httpCode, 'curl_err' => $curlErr, 'admin' => $chatId]);
+        if ($keyboardJson !== '') { $payload['reply_markup'] = $keyboardJson; }
+        $tg = telegram('sendPhoto', $payload, $apiKey);
+        if (empty($tg['ok'])) {
+            FaoximaLogger::warn('crypto receipt sendPhoto rejected', ['desc' => $tg['description'] ?? '', 'admin' => $chatId]);
             return null;
         }
-        $tg = json_decode((string)$response, true);
-        if (!is_array($tg) || empty($tg['ok'])) {
-            $desc = is_array($tg) ? (string)($tg['description'] ?? '') : '';
-            FaoximaLogger::warn('crypto receipt sendPhoto rejected', ['desc' => $desc, 'admin' => $chatId]);
-            return null;
-        }
-
         $sizes = $tg['result']['photo'] ?? [];
-        if (!is_array($sizes) || empty($sizes)) return null;
+        if (!is_array($sizes) || !$sizes) { return null; }
         $best = end($sizes);
-        return is_array($best) ? (string)($best['file_id'] ?? '') : null;
+        return is_array($best) ? (string) ($best['file_id'] ?? '') : null;
     }
 
     private function forwardReceiptByFileId(string $apiKey, string $chatId, string $fileId, string $caption, string $keyboardJson): bool
     {
-        if ($fileId === '') return false;
-        if (function_exists('applyPremiumEmojiTransform')) { $caption = applyPremiumEmojiTransform($caption, 'HTML'); }
-        $url = 'https://api.telegram.org/bot' . $apiKey . '/sendPhoto';
-        $payload = [
-            'chat_id'    => $chatId,
-            'photo'      => $fileId,
-            'caption'    => $caption,
-            'parse_mode' => 'HTML',
-        ];
+        if ($fileId === '') { return false; }
+        $payload = ['chat_id' => $chatId, 'photo' => $fileId, 'caption' => $caption, 'parse_mode' => 'HTML', '_rx_curl_timeout' => 15];
         if ($keyboardJson !== '') { $payload['reply_markup'] = $keyboardJson; }
-        $ch = curl_init($url);
-        if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($ch, 'telegram');
-        curl_setopt_array($ch, [
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => http_build_query($payload),
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => 15,
-            CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_HTTPHEADER     => ['Content-Type: application/x-www-form-urlencoded'],
-        ]);
-        $response = curl_exec($ch);
-        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        if ($httpCode !== 200 || !$response) return false;
-        $tg = json_decode((string)$response, true);
-        return is_array($tg) && !empty($tg['ok']);
+        $tg = telegram('sendPhoto', $payload, $apiKey);
+        return !empty($tg['ok']);
     }
 }
