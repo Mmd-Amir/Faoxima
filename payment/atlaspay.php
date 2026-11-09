@@ -65,7 +65,7 @@ function atlaspay_process_webhook()
         fastcgi_finish_request();
     }
 
-    if ((string) ($report['payment_Status'] ?? '') === 'paid') {
+    if ((string) ($report['payment_Status'] ?? '') === 'paid' && (int) ($report['direct_payment_done'] ?? 0) === 1) {
         return;
     }
 

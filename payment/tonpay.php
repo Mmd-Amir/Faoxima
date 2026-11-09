@@ -120,7 +120,7 @@ function tonpay_process_webhook()
         exit('Invoice mismatch');
     }
 
-    if ($Payment_report['payment_Status'] == "paid") {
+    if ($Payment_report['payment_Status'] == "paid" && (int)($Payment_report['direct_payment_done'] ?? 0) === 1) {
         exit('Already processed');
     }
 
@@ -192,10 +192,14 @@ function tonpay_process_webhook()
     $affected = $atomic->affected_rows;
     $atomic->close();
     if ($affected < 1) {
-        tonpay_log_event('TONPAY_DUPLICATE', 'Duplicate or already-paid callback ignored', [
-            'order_id' => $orderId,
-        ]);
-        exit('Already processed');
+        $alreadyDone = (int)($Payment_report['direct_payment_done'] ?? 0) === 1;
+        $wasCancelled = strtolower((string)($Payment_report['payment_Status'] ?? '')) === 'cancelled';
+        if ($alreadyDone || $wasCancelled) {
+            tonpay_log_event('TONPAY_DUPLICATE', 'Duplicate or already-paid callback ignored', [
+                'order_id' => $orderId,
+            ]);
+            exit('Already processed');
+        }
     }
 
     if ($isCustomInvoice) {

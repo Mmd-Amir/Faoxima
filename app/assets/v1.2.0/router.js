@@ -267,7 +267,7 @@ async function historyPage(view) {
 let _transferModulePromise = null;
 function loadTransferPage() {
     if (_transferModulePromise) return _transferModulePromise;
-    _transferModulePromise = import('./pages/transfer.js');
+    _transferModulePromise = import('./pages/transfer.js?v=0.0.1');
     return _transferModulePromise;
 }
 async function transferPage(view) {

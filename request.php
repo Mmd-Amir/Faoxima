@@ -95,6 +95,56 @@ if (!function_exists('faoxima_panel_timeout')) {
     }
 }
 
+if (!function_exists('faoxima_curl_tls_options')) {
+    function faoxima_curl_tls_options(): array
+    {
+        $verify = true;
+        $raw = null;
+        if (defined('BOT_CURL_VERIFY_TLS')) {
+            $raw = BOT_CURL_VERIFY_TLS;
+        } else {
+            $env = getenv('BOT_CURL_VERIFY_TLS');
+            if ($env !== false) {
+                $raw = $env;
+            }
+        }
+        if ($raw !== null) {
+            if ($raw === false || $raw === 0) {
+                $verify = false;
+            } elseif (is_string($raw) && in_array(strtolower(trim($raw)), ['0', 'false', 'off', 'no'], true)) {
+                $verify = false;
+            }
+        }
+        $options = [
+            CURLOPT_SSL_VERIFYPEER => $verify,
+            CURLOPT_SSL_VERIFYHOST => $verify ? 2 : 0,
+        ];
+        if ($verify) {
+            $caInfo = defined('BOT_CURL_CAINFO') ? trim((string)BOT_CURL_CAINFO) : '';
+            if ($caInfo === '') {
+                $env = getenv('BOT_CURL_CAINFO');
+                if ($env !== false) {
+                    $caInfo = trim((string)$env);
+                }
+            }
+            if ($caInfo !== '' && is_file($caInfo)) {
+                $options[CURLOPT_CAINFO] = $caInfo;
+            }
+            $caPath = defined('BOT_CURL_CAPATH') ? trim((string)BOT_CURL_CAPATH) : '';
+            if ($caPath === '') {
+                $env = getenv('BOT_CURL_CAPATH');
+                if ($env !== false) {
+                    $caPath = trim((string)$env);
+                }
+            }
+            if ($caPath !== '' && is_dir($caPath)) {
+                $options[CURLOPT_CAPATH] = $caPath;
+            }
+        }
+        return $options;
+    }
+}
+
 class CurlRequest {
     private $url;
     private $headers = [];
@@ -144,7 +194,9 @@ class CurlRequest {
             $this->timeout = faoxima_panel_timeout();
         }
         $connectTimeout = faoxima_panel_connect_timeout($this->timeout);
-        $maxAttempts = 2;
+        $requestMethod = strtoupper((string)$method);
+        $idempotent = in_array($requestMethod, ['GET', 'HEAD'], true);
+        $maxAttempts = $idempotent ? 2 : 1;
         $lastError = '';
         $response = false;
         $httpCode  = 0;
@@ -152,7 +204,7 @@ class CurlRequest {
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $this->url);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, strtoupper($method));
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $requestMethod);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $connectTimeout);
         curl_setopt($ch, CURLOPT_TIMEOUT, $this->timeout);
@@ -162,13 +214,8 @@ class CurlRequest {
         curl_setopt($ch, CURLOPT_TCP_KEEPIDLE, 60);
         curl_setopt($ch, CURLOPT_TCP_KEEPINTVL, 30);
 
-        $verifyTls = defined('BOT_CURL_VERIFY_TLS') && BOT_CURL_VERIFY_TLS === true;
-        if ($verifyTls) {
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-        } else {
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+        foreach (faoxima_curl_tls_options() as $tlsOption => $tlsValue) {
+            curl_setopt($ch, $tlsOption, $tlsValue);
         }
 
         if (function_exists('faoxima_apply_curl_proxy')) {
@@ -197,9 +244,13 @@ class CurlRequest {
             $lastError = curl_error($ch);
             curl_close($ch);
             $isTimeout = stripos($lastError, 'timed out') !== false || stripos($lastError, 'Operation timed out') !== false || $curlErrno === CURLE_OPERATION_TIMEDOUT;
-            if ($attempt < $maxAttempts && $isTimeout) {
+            if ($idempotent && $attempt < $maxAttempts && $isTimeout) {
                 continue;
             }
+            $uncertain = !$idempotent && (
+                $isTimeout
+                || in_array($curlErrno, [CURLE_RECV_ERROR, CURLE_SEND_ERROR, CURLE_GOT_NOTHING, CURLE_PARTIAL_FILE], true)
+            );
             $host = parse_url($this->url, PHP_URL_HOST);
             $port = parse_url($this->url, PHP_URL_PORT);
             $dedupKey = 'curlerr|' . ($host ?: $this->url) . ':' . ($port ?: '') . '|' . $lastError;
@@ -211,6 +262,8 @@ class CurlRequest {
                 'status' => $httpCode,
                 'body' => $response,
                 'error' => $lastError,
+                'errno' => $curlErrno,
+                'uncertain' => $uncertain,
             ];
         }
         curl_close($ch);
@@ -235,12 +288,14 @@ class CurlRequest {
                 'status' => $httpCode,
                 'body'   => $response,
                 'error'  => sprintf('Panel temporarily unavailable (HTTP %d).', (int)$httpCode),
+                'uncertain' => false,
             ];
         }
 
         return [
             'status' => $httpCode,
-            'body' => $response
+            'body' => $response,
+            'uncertain' => false,
         ];
     }
 

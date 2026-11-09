@@ -282,10 +282,11 @@ final class ServiceRenewConfirmHandler extends BaseHandler
         }
 
 
+        $discountOperationId = 'renew_' . bin2hex(random_bytes(16));
         $balanceCharged = false;
-        if ($finalPrice > 0) {
+        if ($finalPrice > 0 || $discountCode !== '') {
             $allowNeg = ($agent === 'n2') ? (int)($this->user['maxbuyagent'] ?? 0) : 0;
-            $charge = balance_atomic_charge($this->user['id'], $finalPrice, $allowNeg);
+            $charge = MiniDiscount::chargeWallet($discountCode, $this->user, $finalPrice, $allowNeg, $discountOperationId);
             if (empty($charge['ok'])) {
                 FaoximaLogger::warn('Atomic balance charge failed at renew', [
                     'user_id' => $this->user['id'],
@@ -293,12 +294,18 @@ final class ServiceRenewConfirmHandler extends BaseHandler
                     'price'   => $finalPrice,
                     'reason'  => $charge['reason'] ?? 'unknown',
                 ]);
+                if (str_starts_with((string)($charge['reason'] ?? ''), 'discount_')) {
+                    FaoximaResponse::fail(409, 'کد تخفیف دیگر قابل استفاده نیست. لطفاً تمدید را دوباره انجام دهید.');
+                }
+                if (($charge['reason'] ?? '') !== 'insufficient_balance') {
+                    FaoximaResponse::fail(503, 'برداشت برای تمدید تکمیل نشد؛ با شناسه پیگیری با پشتیبانی در ارتباط باشید.', ['operation_id' => $discountOperationId]);
+                }
                 FaoximaResponse::fail(402, faoxima_textbot_get('dyn_purchase_concurrent_balance_conflict', '❌ موجودی کافی نیست (تلاش هم‌زمان شناسایی شد). یک بار دیگر تلاش کنید.'));
             }
             $newBalance = $charge['new_balance'];
-            $balanceCharged = true;
-            if (function_exists('wallet_ledger_record')) {
-                wallet_ledger_record($this->user['id'], 'debit', $finalPrice, 'service_action', faoxima_textbot_get('dyn_renewconfirm_ledger_debit_note', 'تمدید سرویس'), null, 'invoice', (string)($invoice['id_invoice'] ?? ''));
+            $balanceCharged = $finalPrice > 0;
+            if ($balanceCharged && function_exists('wallet_ledger_record')) {
+                wallet_ledger_record($this->user['id'], 'debit', $finalPrice, 'service_action', faoxima_textbot_get('dyn_renewconfirm_ledger_debit_note', 'تمدید سرویس'), $discountOperationId, 'invoice', (string)($invoice['id_invoice'] ?? ''));
             }
         } else {
             $newBalance = $balance;
@@ -310,6 +317,7 @@ final class ServiceRenewConfirmHandler extends BaseHandler
                 ? nmStockReserveForProduct($panel, $product, $this->user['id'], $invoice['id_invoice'], 'miniapp_extend_national_stock')
                 : false;
             if (!is_array($stockNew) || (string)($stockNew['content'] ?? '') === '') {
+                MiniDiscount::releaseWalletDiscount($discountCode, $this->user, $discountOperationId);
                 if (is_array($stockNew) && function_exists('nmStockReleaseReservation')) nmStockReleaseReservation($stockNew);
                 if ($balanceCharged) {
                     if (balance_atomic_credit($this->user['id'], $finalPrice)) {
@@ -351,10 +359,6 @@ final class ServiceRenewConfirmHandler extends BaseHandler
                 'amount' => $finalPrice,
                 'source' => 'miniapp',
             ]);
-
-            if ($discountCode !== '') {
-                MiniDiscount::markSellUsed($discountCode, $this->user);
-            }
 
             if ((int)($this->setting['scorestatus'] ?? 0) === 1) {
                 update('user', 'score', (int)($this->user['score'] ?? 0) + 2, 'id', $this->user['id']);
@@ -421,6 +425,7 @@ final class ServiceRenewConfirmHandler extends BaseHandler
                 'user_id'  => $this->user['id'],
                 'username' => $invoice['username'] ?? null,
             ]);
+            MiniDiscount::releaseWalletDiscount($discountCode, $this->user, $discountOperationId);
             if ($balanceCharged) {
                 if (balance_atomic_credit($this->user['id'], $finalPrice)) {
                     if (function_exists('wallet_ledger_record')) {
@@ -436,6 +441,7 @@ final class ServiceRenewConfirmHandler extends BaseHandler
 
         $renewPending = rxRenewalIsPending($extend);
         if (!is_array($extend) || (($extend['status'] ?? null) === false && !$renewPending)) {
+            MiniDiscount::releaseWalletDiscount($discountCode, $this->user, $discountOperationId);
             $reason = is_array($extend) ? rx_panel_error_text($extend['msg'] ?? $extend, $extend['detail'] ?? null) : htmlspecialchars((string)$extend, ENT_QUOTES, 'UTF-8');
             FaoximaLogger::error('ManagePanel->extend failed', [
                 'user_id'  => $this->user['id'],
@@ -474,10 +480,6 @@ final class ServiceRenewConfirmHandler extends BaseHandler
             }
 
             FaoximaResponse::fail(502, faoxima_textbot_get('dyn_renewconfirm_extend_error', '❌ خطایی در تمدید سرویس رخ داده با پشتیبانی در ارتباط باشید'));
-        }
-
-        if ($discountCode !== '') {
-            MiniDiscount::markSellUsed($discountCode, $this->user);
         }
 
 

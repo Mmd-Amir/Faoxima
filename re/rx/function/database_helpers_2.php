@@ -345,6 +345,7 @@ if (!function_exists('rx_release_unpaid_discount')) {
                 "SELECT id, code FROM Giftcodeconsumed
                   WHERE id_user = :u
                     AND kind = 'sell'
+                    AND (related_order IS NULL OR related_order = '')
                     AND (released IS NULL OR released = 0)
                     AND consumed_at <> ''
                     AND CAST(consumed_at AS UNSIGNED) BETWEEN :lo AND :hi" . $codeClause . "
@@ -361,15 +362,8 @@ if (!function_exists('rx_release_unpaid_discount')) {
             $marked->execute([':id' => $rowId]);
             if ($marked->rowCount() < 1) return false;
 
-            $ds = $pdo->prepare('SELECT usedDiscount FROM DiscountSell WHERE codeDiscount = :c LIMIT 1');
-            $ds->execute([':c' => $code]);
-            $dsRow = $ds->fetch(PDO::FETCH_ASSOC);
-            if (is_array($dsRow)) {
-                $used = (int)($dsRow['usedDiscount'] ?? 0) - 1;
-                if ($used < 0) $used = 0;
-                $pdo->prepare('UPDATE DiscountSell SET usedDiscount = :v WHERE codeDiscount = :c')
-                    ->execute([':v' => (string)$used, ':c' => $code]);
-            }
+            $pdo->prepare("UPDATE DiscountSell SET usedDiscount = GREATEST(CAST(COALESCE(NULLIF(usedDiscount, ''), '0') AS SIGNED) - 1, 0) WHERE codeDiscount = :c")
+                ->execute([':c' => $code]);
             return true;
         } catch (Throwable $e) {
             return false;
@@ -476,7 +470,7 @@ if (!function_exists('nm_validateSellDiscount')) {
         }
 
         try {
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM Giftcodeconsumed WHERE id_user = :u AND code = :c");
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM Giftcodeconsumed WHERE id_user = :u AND code = :c AND COALESCE(released, 0) = 0");
             $stmt->execute([':u' => (string)$from_id, ':c' => $code]);
             $usedByUser = (int)$stmt->fetchColumn();
         } catch (Throwable $e) {
@@ -547,30 +541,37 @@ if (!function_exists('nm_markSellDiscountUsed')) {
         $code = trim((string)$code);
         if ($code === '') return;
 
-        try {
-            $row = select("DiscountSell", "*", "codeDiscount", $code, "select");
-            if ($row != false) {
-                $value = intval($row['usedDiscount']) + 1;
-                update("DiscountSell", "usedDiscount", $value, "codeDiscount", $code);
-            }
-        } catch (Throwable $e) {
-            error_log('nm_markSellDiscountUsed update failed: ' . $e->getMessage());
+        $useLegacy = true;
+        if (function_exists('rx_discount_mark_used_atomic')) {
+            $markResult = rx_discount_mark_used_atomic($code, $from_id, 'sell');
+            $useLegacy = empty($markResult['ok']) && (string)($markResult['reason'] ?? '') === 'db_unavailable';
         }
-
-        try {
-            $now  = (string)time();
-            $kind = 'sell';
-            $stmt = $connect->prepare("INSERT INTO Giftcodeconsumed (id_user, code, kind, consumed_at) VALUES (?, ?, ?, ?)");
-            $stmt->bind_param("ssss", $from_id, $code, $kind, $now);
-            $stmt->execute();
-            $stmt->close();
-        } catch (Throwable $e) {
+        if ($useLegacy) {
             try {
-                $stmt = $connect->prepare("INSERT INTO Giftcodeconsumed (id_user, code) VALUES (?, ?)");
-                $stmt->bind_param("ss", $from_id, $code);
+                $row = select("DiscountSell", "*", "codeDiscount", $code, "select");
+                if ($row != false) {
+                    $value = intval($row['usedDiscount']) + 1;
+                    update("DiscountSell", "usedDiscount", $value, "codeDiscount", $code);
+                }
+            } catch (Throwable $e) {
+                error_log('nm_markSellDiscountUsed update failed: ' . $e->getMessage());
+            }
+
+            try {
+                $now  = (string)time();
+                $kind = 'sell';
+                $stmt = $connect->prepare("INSERT INTO Giftcodeconsumed (id_user, code, kind, consumed_at) VALUES (?, ?, ?, ?)");
+                $stmt->bind_param("ssss", $from_id, $code, $kind, $now);
                 $stmt->execute();
                 $stmt->close();
-            } catch (Throwable $e2) {
+            } catch (Throwable $e) {
+                try {
+                    $stmt = $connect->prepare("INSERT INTO Giftcodeconsumed (id_user, code) VALUES (?, ?)");
+                    $stmt->bind_param("ss", $from_id, $code);
+                    $stmt->execute();
+                    $stmt->close();
+                } catch (Throwable $e2) {
+                }
             }
         }
 
@@ -622,6 +623,337 @@ if (!function_exists('balance_atomic_credit')) {
         } catch (Throwable $e) {
             error_log('balance_atomic_credit failed: ' . $e->getMessage());
             return false;
+        }
+    }
+}
+
+if (!function_exists('rx_wallet_transfer_atomic')) {
+    function rx_wallet_transfer_atomic(string $senderId, string $recipientId, int $amount, string $operationId): array
+    {
+        global $pdo;
+        if (!($pdo instanceof PDO) || $pdo->inTransaction() || $senderId === $recipientId || $amount <= 0 || !ctype_digit($senderId) || !ctype_digit($recipientId) || !preg_match('/^[A-Za-z0-9_\-]{8,64}$/', $operationId)) {
+            return ['ok' => false, 'reason' => 'invalid_transfer'];
+        }
+        try {
+            $column = $pdo->query("SHOW COLUMNS FROM wallet_ledger LIKE 'fulfillment_key'");
+            $hasKey = $column !== false && $column->fetch(PDO::FETCH_ASSOC) !== false;
+            $pdo->beginTransaction();
+            $ids = [$senderId, $recipientId];
+            usort($ids, static fn($a, $b) => (int)$a <=> (int)$b);
+            $users = [];
+            $lock = $pdo->prepare('SELECT id, Balance, username FROM user WHERE id = ? FOR UPDATE');
+            foreach ($ids as $id) {
+                $lock->execute([$id]);
+                $row = $lock->fetch(PDO::FETCH_ASSOC);
+                if (!is_array($row)) throw new RuntimeException('user_missing');
+                $users[(string)$row['id']] = $row;
+            }
+            $seen = $pdo->prepare("SELECT amount, ref_id FROM wallet_ledger WHERE id_user = ? AND id_order = ? AND category = 'transfer_out' ORDER BY id ASC LIMIT 1 FOR UPDATE");
+            $seen->execute([$senderId, $operationId]);
+            $previous = $seen->fetch(PDO::FETCH_ASSOC);
+            if (is_array($previous)) {
+                if ((string)$previous['ref_id'] !== $recipientId || (int)$previous['amount'] !== $amount) {
+                    throw new RuntimeException('operation_conflict');
+                }
+                $pdo->commit();
+                return ['ok' => true, 'replayed' => true, 'new_balance' => (float)$users[$senderId]['Balance'], 'operation_id' => $operationId];
+            }
+            $debit = $pdo->prepare('UPDATE user SET Balance = Balance - :amount WHERE id = :u AND Balance >= :minimum');
+            $debit->execute([':amount' => $amount, ':u' => $senderId, ':minimum' => $amount]);
+            if ($debit->rowCount() !== 1) throw new RuntimeException('insufficient_balance');
+            $credit = $pdo->prepare('UPDATE user SET Balance = Balance + ? WHERE id = ?');
+            $credit->execute([$amount, $recipientId]);
+            if ($credit->rowCount() !== 1) throw new RuntimeException('recipient_missing');
+            $senderAfter = (float)$users[$senderId]['Balance'] - $amount;
+            $recipientAfter = (float)$users[$recipientId]['Balance'] + $amount;
+            $key = hash('sha256', $senderId . ':' . $operationId);
+            $sql = 'INSERT INTO wallet_ledger (id_user, direction, amount, balance_after, category, description, id_order, ref_table, ref_id'
+                . ($hasKey ? ', fulfillment_key' : '') . ") VALUES (?, ?, ?, ?, ?, ?, ?, 'user', ?" . ($hasKey ? ', ?' : '') . ')';
+            $ledger = $pdo->prepare($sql);
+            $out = [$senderId, 'debit', $amount, (int)$senderAfter, 'transfer_out', 'انتقال موجودی به کاربر ' . $recipientId, $operationId, $recipientId];
+            $in = [$recipientId, 'credit', $amount, (int)$recipientAfter, 'transfer_in', 'انتقال موجودی از کاربر ' . $senderId, $operationId, $senderId];
+            if ($hasKey) {
+                $out[] = 'transfer_out:' . $key;
+                $in[] = 'transfer_in:' . $key;
+            }
+            $ledger->execute($out);
+            $ledger->execute($in);
+            $pdo->commit();
+            try {
+                if (function_exists('clearSelectCacheRow')) {
+                    clearSelectCacheRow('user', 'id', $senderId);
+                    clearSelectCacheRow('user', 'id', $recipientId);
+                }
+            } catch (Throwable $cacheError) {
+                error_log('Wallet transfer cache refresh failed: ' . $operationId);
+            }
+            return [
+                'ok' => true, 'replayed' => false, 'operation_id' => $operationId,
+                'new_balance' => $senderAfter, 'recipient_balance' => $recipientAfter,
+                'sender' => $users[$senderId], 'recipient' => $users[$recipientId],
+            ];
+        } catch (Throwable $e) {
+            $rollbackFailed = false;
+            if ($pdo->inTransaction()) {
+                try { $pdo->rollBack(); } catch (Throwable $rollbackError) { $rollbackFailed = true; }
+            }
+            error_log('Wallet transfer failed: ' . $operationId . ' ' . $e->getMessage());
+            return ['ok' => false, 'reason' => $rollbackFailed ? 'outcome_unknown' : $e->getMessage()];
+        }
+    }
+}
+
+if (!function_exists('rx_wallet_transfer_report')) {
+    function rx_wallet_transfer_report(array $sender, array $recipient, int $amount, string $operationId, float $senderAfter, float $recipientAfter): void
+    {
+        try {
+            $settings = select('setting', '*', null, null, 'select');
+            $chatId = is_array($settings) ? trim((string)($settings['Channel_Report'] ?? '')) : '';
+            if ($chatId === '' || !function_exists('telegram')) {
+                error_log('Wallet transfer admin report unavailable: ' . $operationId);
+                return;
+            }
+            $topic = select('topicid', 'idreport', 'report', 'paymentreport', 'select');
+            $escape = static fn($value): string => htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $senderName = ltrim(trim((string)($sender['username'] ?? '')), '@');
+            $recipientName = ltrim(trim((string)($recipient['username'] ?? '')), '@');
+            $now = new DateTimeImmutable('now', new DateTimeZone('Asia/Tehran'));
+            $date = function_exists('jdate') ? jdate('Y/m/d H:i:s', $now->getTimestamp(), '', 'Asia/Tehran', 'en') : $now->format('Y/m/d H:i:s');
+            $text = "💰 <b>گزارش مالی — انتقال کیف پول</b>\n\n✅ وضعیت: انتقال موفق\n"
+                . "👤 فرستنده: <code>" . $escape($sender['id']) . "</code>\n"
+                . "نام کاربری فرستنده: " . ($senderName !== '' ? '@' . $escape($senderName) : 'ثبت نشده') . "\n\n"
+                . "👤 گیرنده: <code>" . $escape($recipient['id']) . "</code>\n"
+                . "نام کاربری گیرنده: " . ($recipientName !== '' ? '@' . $escape($recipientName) : 'ثبت نشده') . "\n\n"
+                . "💵 مبلغ انتقال: <b>" . number_format($amount) . " تومان</b>\n"
+                . "موجودی فرستنده پیش از انتقال: " . number_format((float)$sender['Balance']) . " تومان\n"
+                . "موجودی فرستنده پس از انتقال: " . number_format($senderAfter) . " تومان\n"
+                . "موجودی گیرنده پیش از انتقال: " . number_format((float)$recipient['Balance']) . " تومان\n"
+                . "موجودی گیرنده پس از انتقال: " . number_format($recipientAfter) . " تومان\n\n"
+                . "📅 تاریخ و ساعت تهران: " . $escape($date) . "\n"
+                . "🧾 شناسه انتقال: <code>" . $escape($operationId) . "</code>";
+            $payload = ['chat_id' => $chatId, 'text' => $text, 'parse_mode' => 'HTML'];
+            if (is_array($topic) && (int)($topic['idreport'] ?? 0) > 0) $payload['message_thread_id'] = (int)$topic['idreport'];
+            $sent = telegram('sendmessage', $payload);
+            if (!is_array($sent) || empty($sent['ok'])) error_log('Wallet transfer admin report failed: ' . $operationId);
+        } catch (Throwable $e) {
+            error_log('Wallet transfer admin report failed: ' . $operationId . ' ' . $e->getMessage());
+        }
+    }
+}
+
+if (!function_exists('rx_gift_redeem_atomic')) {
+
+    function rx_gift_redeem_atomic($code, $userId)
+    {
+        global $pdo;
+        $code = trim((string)$code);
+        $userId = trim((string)$userId);
+        if (!($pdo instanceof PDO)) {
+            return ['ok' => false, 'reason' => 'db_unavailable'];
+        }
+        if ($code === '' || $userId === '') {
+            return ['ok' => false, 'reason' => 'invalid_code'];
+        }
+        $own = !$pdo->inTransaction();
+        $savepoint = 'rx_gift_' . bin2hex(random_bytes(4));
+        try {
+            if ($own) {
+                $pdo->beginTransaction();
+            } else {
+                $pdo->exec('SAVEPOINT ' . $savepoint);
+            }
+            $stmt = $pdo->prepare("SELECT * FROM Discount WHERE code = :c ORDER BY id ASC LIMIT 1 FOR UPDATE");
+            $stmt->execute([':c' => $code]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($row)) {
+                throw new RuntimeException('not_found');
+            }
+            $status = strtolower(trim((string)($row['status'] ?? '')));
+            if ($status !== '' && $status !== 'active') {
+                throw new RuntimeException('invalid_status');
+            }
+            $target = trim((string)($row['target_user'] ?? ''));
+            if ($target !== '' && $target !== $userId) {
+                throw new RuntimeException('invalid_target');
+            }
+            $expire = (int)($row['expire_at'] ?? 0);
+            if ($expire !== 0 && time() >= $expire) {
+                throw new RuntimeException('expired');
+            }
+            $amount = (int) round((float)($row['price'] ?? 0));
+            if ($amount <= 0) {
+                throw new RuntimeException('invalid_amount');
+            }
+            $limitUse = (int)($row['limituse'] ?? 0);
+            $limitUsed = (int)($row['limitused'] ?? 0);
+            if ($limitUse > 0 && $limitUsed >= $limitUse) {
+                throw new RuntimeException('capacity');
+            }
+            $upd = $pdo->prepare(
+                "UPDATE Discount SET limitused = CAST(COALESCE(NULLIF(limitused, ''), '0') AS SIGNED) + 1
+                  WHERE code = :c
+                    AND (CAST(COALESCE(NULLIF(limituse, ''), '0') AS SIGNED) = 0
+                         OR CAST(COALESCE(NULLIF(limitused, ''), '0') AS SIGNED) < CAST(COALESCE(NULLIF(limituse, ''), '0') AS SIGNED))"
+            );
+            $upd->execute([':c' => $code]);
+            if ($upd->rowCount() < 1) {
+                throw new RuntimeException('capacity');
+            }
+            $credit = $pdo->prepare("UPDATE user SET Balance = Balance + :a WHERE id = :u");
+            $credit->execute([':a' => $amount, ':u' => $userId]);
+            if ($credit->rowCount() < 1) {
+                throw new RuntimeException('user_missing');
+            }
+            try {
+                $pdo->prepare("INSERT INTO Giftcodeconsumed (id_user, code, kind, consumed_at) VALUES (?, ?, ?, ?)")
+                    ->execute([$userId, $code, 'gift', (string)time()]);
+            } catch (Throwable $e) {
+                try {
+                    $pdo->prepare("INSERT INTO Giftcodeconsumed (id_user, code) VALUES (?, ?)")
+                        ->execute([$userId, $code]);
+                } catch (Throwable $e2) {
+                }
+            }
+            if (function_exists('wallet_ledger_record')) {
+                wallet_ledger_record($userId, 'credit', $amount, 'gift_code', 'استفاده از کد هدیه', null, 'Discount', $code);
+            }
+            $bal = $pdo->prepare("SELECT Balance FROM user WHERE id = :u");
+            $bal->execute([':u' => $userId]);
+            $newBalance = (float)$bal->fetchColumn();
+            if ($own) {
+                $pdo->commit();
+            } else {
+                $pdo->exec('RELEASE SAVEPOINT ' . $savepoint);
+            }
+            if (function_exists('clearSelectCacheRow')) {
+                clearSelectCacheRow('user', 'id', $userId);
+            }
+            if (function_exists('clearSelectCacheRow')) {
+                clearSelectCacheRow('Discount', 'code', $code);
+            }
+            return ['ok' => true, 'amount' => $amount, 'new_balance' => $newBalance];
+        } catch (Throwable $e) {
+            if ($own) {
+                if ($pdo->inTransaction()) {
+                    try { $pdo->rollBack(); } catch (Throwable $rollbackError) {
+                    }
+                }
+            } else {
+                try {
+                    $pdo->exec('ROLLBACK TO SAVEPOINT ' . $savepoint);
+                    $pdo->exec('RELEASE SAVEPOINT ' . $savepoint);
+                } catch (Throwable $rollbackError) {
+                }
+            }
+            $reason = $e->getMessage();
+            if (!in_array($reason, ['not_found', 'invalid_status', 'invalid_target', 'expired', 'invalid_amount', 'capacity', 'user_missing'], true)) {
+                error_log('rx_gift_redeem_atomic failed: ' . $reason);
+                $reason = 'db_error';
+            }
+            return ['ok' => false, 'reason' => $reason];
+        }
+    }
+}
+
+if (!function_exists('rx_discount_mark_used_atomic')) {
+
+    function rx_discount_mark_used_atomic($code, $userId, $kind = 'sell', $operationId = '')
+    {
+        global $pdo;
+        $code = trim((string)$code);
+        $userId = trim((string)$userId);
+        $kind = $kind === 'gift' ? 'gift' : 'sell';
+        $operationId = trim((string)$operationId);
+        if (!($pdo instanceof PDO)) {
+            return ['ok' => false, 'reason' => 'db_unavailable'];
+        }
+        if ($code === '' || $userId === '') {
+            return ['ok' => false, 'reason' => 'invalid_code'];
+        }
+        $own = !$pdo->inTransaction();
+        $savepoint = 'rx_disc_' . bin2hex(random_bytes(4));
+        try {
+            if ($own) {
+                $pdo->beginTransaction();
+            } else {
+                $pdo->exec('SAVEPOINT ' . $savepoint);
+            }
+            $stmt = $pdo->prepare("SELECT * FROM DiscountSell WHERE codeDiscount = :c ORDER BY id ASC LIMIT 1 FOR UPDATE");
+            $stmt->execute([':c' => $code]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($row)) {
+                throw new RuntimeException('not_found');
+            }
+            if ($operationId !== '') {
+                $existing = $pdo->prepare("SELECT id FROM Giftcodeconsumed WHERE id_user = ? AND code = ? AND kind = ? AND related_order = ? AND released = 0 LIMIT 1 FOR UPDATE");
+                $existing->execute([$userId, $code, $kind, $operationId]);
+                if ($existing->fetchColumn() !== false) {
+                    if ($own) {
+                        $pdo->commit();
+                    } else {
+                        $pdo->exec('RELEASE SAVEPOINT ' . $savepoint);
+                    }
+                    return ['ok' => true, 'replayed' => true];
+                }
+            }
+            $limit = (int)($row['limitDiscount'] ?? 0);
+            $used = (int)($row['usedDiscount'] ?? 0);
+            if ($limit > 0 && $used >= $limit) {
+                throw new RuntimeException('capacity');
+            }
+            $useUser = (int)($row['useuser'] ?? 0);
+            if ($useUser > 0) {
+                $cnt = $pdo->prepare("SELECT COUNT(*) FROM Giftcodeconsumed WHERE id_user = :u AND code = :c AND COALESCE(released, 0) = 0");
+                $cnt->execute([':u' => $userId, ':c' => $code]);
+                if ((int)$cnt->fetchColumn() >= $useUser) {
+                    throw new RuntimeException('per_user_limit');
+                }
+            }
+            $upd = $pdo->prepare("UPDATE DiscountSell SET usedDiscount = :v WHERE codeDiscount = :c");
+            $upd->execute([':v' => (string)($used + 1), ':c' => $code]);
+            if ($upd->rowCount() < 1) {
+                throw new RuntimeException('not_found');
+            }
+            if ($operationId !== '') {
+                $pdo->prepare("INSERT INTO Giftcodeconsumed (id_user, code, kind, consumed_at, related_order) VALUES (?, ?, ?, ?, ?)")
+                    ->execute([$userId, $code, $kind, (string)time(), $operationId]);
+            } else {
+                try {
+                    $pdo->prepare("INSERT INTO Giftcodeconsumed (id_user, code, kind, consumed_at) VALUES (?, ?, ?, ?)")
+                        ->execute([$userId, $code, $kind, (string)time()]);
+                } catch (Throwable $e) {
+                    $pdo->prepare("INSERT INTO Giftcodeconsumed (id_user, code) VALUES (?, ?)")
+                        ->execute([$userId, $code]);
+                }
+            }
+            if ($own) {
+                $pdo->commit();
+            } else {
+                $pdo->exec('RELEASE SAVEPOINT ' . $savepoint);
+            }
+            if (function_exists('clearSelectCacheRow')) {
+                clearSelectCacheRow('DiscountSell', 'codeDiscount', $code);
+            }
+            return ['ok' => true];
+        } catch (Throwable $e) {
+            if ($own) {
+                if ($pdo->inTransaction()) {
+                    try { $pdo->rollBack(); } catch (Throwable $rollbackError) {
+                    }
+                }
+            } else {
+                try {
+                    $pdo->exec('ROLLBACK TO SAVEPOINT ' . $savepoint);
+                    $pdo->exec('RELEASE SAVEPOINT ' . $savepoint);
+                } catch (Throwable $rollbackError) {
+                }
+            }
+            $reason = $e->getMessage();
+            if (!in_array($reason, ['not_found', 'capacity', 'per_user_limit'], true)) {
+                error_log('rx_discount_mark_used_atomic failed: ' . $reason);
+                $reason = 'db_error';
+            }
+            return ['ok' => false, 'reason' => $reason];
         }
     }
 }
@@ -3658,13 +3990,20 @@ function DirectPayment($order_id, $image = 'images.jpg', $rxToken = null)
         sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $get_invoice['id_invoice'], $get_invoice['id_user'], $image);
         $partsdic = explode("_", $Balance_id['Processing_value_four']);
         if ($partsdic[0] == "dis") {
-            $SellDiscountlimit = select("DiscountSell", "*", "codeDiscount", $partsdic[1], "select");
-            $value = intval($SellDiscountlimit['usedDiscount']) + 1;
-            update("DiscountSell", "usedDiscount", $value, "codeDiscount", $partsdic[1]);
-            $stmt = $pdo->prepare("INSERT INTO Giftcodeconsumed (id_user,code) VALUES (:id_user,:code)");
-            $stmt->bindParam(':id_user', $Balance_id['id']);
-            $stmt->bindParam(':code', $partsdic[1]);
-            $stmt->execute();
+            $__discountUseLegacy = true;
+            if (function_exists('rx_discount_mark_used_atomic')) {
+                $__discountMark = rx_discount_mark_used_atomic($partsdic[1], $Balance_id['id'], 'sell');
+                $__discountUseLegacy = empty($__discountMark['ok']) && (string)($__discountMark['reason'] ?? '') === 'db_unavailable';
+            }
+            if ($__discountUseLegacy) {
+                $SellDiscountlimit = select("DiscountSell", "*", "codeDiscount", $partsdic[1], "select");
+                $value = intval($SellDiscountlimit['usedDiscount']) + 1;
+                update("DiscountSell", "usedDiscount", $value, "codeDiscount", $partsdic[1]);
+                $stmt = $pdo->prepare("INSERT INTO Giftcodeconsumed (id_user,code) VALUES (:id_user,:code)");
+                $stmt->bindParam(':id_user', $Balance_id['id']);
+                $stmt->bindParam(':code', $partsdic[1]);
+                $stmt->execute();
+            }
             $text_report = "⭕️ یک کاربر با نام کاربری @{$Balance_id['username']}  و آیدی عددی {$Balance_id['id']} از کد تخفیف {$partsdic[1]} استفاده کرد.";
             if (strlen($setting['Channel_Report']) > 0) {
                 telegram('sendmessage', [
@@ -4054,13 +4393,20 @@ $textonebuy
         update("service_other", "status", "paid", "id", $data_order['id']);
         $partsdic = explode("_", $Balance_id['Processing_value_four']);
         if ($partsdic[0] == "dis") {
-            $SellDiscountlimit = select("DiscountSell", "*", "codeDiscount", $partsdic[1], "select");
-            $value = intval($SellDiscountlimit['usedDiscount']) + 1;
-            update("DiscountSell", "usedDiscount", $value, "codeDiscount", $partsdic[1]);
-            $stmt = $pdo->prepare("INSERT INTO Giftcodeconsumed (id_user,code) VALUES (:id_user,:code)");
-            $stmt->bindParam(':id_user', $Balance_id['id']);
-            $stmt->bindParam(':code', $partsdic[1]);
-            $stmt->execute();
+            $__discountUseLegacy = true;
+            if (function_exists('rx_discount_mark_used_atomic')) {
+                $__discountMark = rx_discount_mark_used_atomic($partsdic[1], $Balance_id['id'], 'sell');
+                $__discountUseLegacy = empty($__discountMark['ok']) && (string)($__discountMark['reason'] ?? '') === 'db_unavailable';
+            }
+            if ($__discountUseLegacy) {
+                $SellDiscountlimit = select("DiscountSell", "*", "codeDiscount", $partsdic[1], "select");
+                $value = intval($SellDiscountlimit['usedDiscount']) + 1;
+                update("DiscountSell", "usedDiscount", $value, "codeDiscount", $partsdic[1]);
+                $stmt = $pdo->prepare("INSERT INTO Giftcodeconsumed (id_user,code) VALUES (:id_user,:code)");
+                $stmt->bindParam(':id_user', $Balance_id['id']);
+                $stmt->bindParam(':code', $partsdic[1]);
+                $stmt->execute();
+            }
             $text_report = "⭕️ یک کاربر با نام کاربری @{$Balance_id['username']}  و آیدی عددی {$Balance_id['id']} از کد تخفیف {$partsdic[1]} استفاده کرد.";
             if (strlen($setting['Channel_Report']) > 0) {
                 telegram('sendmessage', [

@@ -82,7 +82,7 @@ function blupal_process_webhook()
         http_response_code(200);
         exit(json_encode(['received' => true]));
     }
-    if ($Payment_report['payment_Status'] == "paid") {
+    if ($Payment_report['payment_Status'] == "paid" && (int)($Payment_report['direct_payment_done'] ?? 0) === 1) {
         http_response_code(200);
         exit(json_encode(['received' => true]));
     }

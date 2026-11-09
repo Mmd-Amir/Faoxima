@@ -267,7 +267,8 @@ function tronadoV2Fulfill(array $report, array $data, $source)
 {
     $orderId = (string) $report['id_order'];
     $localStatus = (string) ($report['payment_Status'] ?? '');
-    if ($localStatus === 'paid') {
+    $localDone = (int) ($report['direct_payment_done'] ?? 0) === 1;
+    if ($localStatus === 'paid' && $localDone) {
         return ['state' => 'already_paid'];
     }
     if (in_array((string) ($report['tronado_local_state'] ?? ''), ['manual_review', 'dispute_review'], true)) {
@@ -323,7 +324,7 @@ function tronadoV2HandleCallback(array $data, array $report)
         return [200, 'OK'];
     }
 
-    if ((string) ($report['payment_Status'] ?? '') === 'paid') {
+    if ((string) ($report['payment_Status'] ?? '') === 'paid' && (int) ($report['direct_payment_done'] ?? 0) === 1) {
         return [200, 'Already processed'];
     }
 
@@ -355,7 +356,8 @@ function tronadoV2RunCron()
             "SELECT * FROM Payment_report
               WHERE Payment_Method IN ('Currency Rial 2','iranpay2')
                 AND payment_processing_version >= " . RX_PAYMENT_PROCESSING_VERSION . "
-                AND payment_Status IN ('Unpaid','pending','waiting','expire','reject')
+                AND (payment_Status IN ('Unpaid','pending','waiting','expire','reject')
+                     OR (payment_Status = 'paid' AND COALESCE(direct_payment_done, 0) = 0))
                 AND (tronado_local_state IS NULL OR tronado_local_state NOT IN ('manual_review','dispute_review','completed'))
                 AND tronado_created_at >= ?
                 AND (

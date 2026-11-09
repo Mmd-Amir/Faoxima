@@ -253,7 +253,7 @@ if (strtolower((string)($Payment_report['Payment_Method'] ?? '')) !== 'nowpaymen
     exit;
 }
 
-if ((string)$Payment_report['payment_Status'] === 'paid') {
+if ((string)$Payment_report['payment_Status'] === 'paid' && (int)($Payment_report['direct_payment_done'] ?? 0) === 1) {
     $__rxRawLog('SKIP: already paid', ['order_id' => $orderId]);
     http_response_code(200);
     echo 'already-paid';

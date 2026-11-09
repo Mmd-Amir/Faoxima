@@ -149,12 +149,12 @@ foreach ($datatxtbot as $item) {
     $isPaid = ($orderStatusId === 30) || ($data['IsPaid'] ?? false);
 
     $dedupeKey = $paymentId . '|' . ($orderStatusId ?? 'null');
-    $dedupeLookup = $connect->prepare("SELECT dec_not_confirmed FROM Payment_report WHERE id_order = ? LIMIT 1");
+    $dedupeLookup = $connect->prepare("SELECT dec_not_confirmed, direct_payment_done FROM Payment_report WHERE id_order = ? LIMIT 1");
     $dedupeLookup->bind_param('s', $paymentId);
     $dedupeLookup->execute();
     $dedupeRow = $dedupeLookup->get_result()->fetch_assoc();
     $dedupeLookup->close();
-    if (is_array($dedupeRow) && ($dedupeRow['dec_not_confirmed'] ?? null) === $dedupeKey) {
+    if (is_array($dedupeRow) && ($dedupeRow['dec_not_confirmed'] ?? null) === $dedupeKey && (int)($dedupeRow['direct_payment_done'] ?? 0) === 1) {
         tronado_log_event('TRONADO_DUPLICATE', 'Duplicate (PaymentId, OrderStatusID) callback ignored', [
             'payment_id' => $paymentId,
             'order_status_id' => $orderStatusId,
@@ -162,7 +162,7 @@ foreach ($datatxtbot as $item) {
         exit('Already processed');
     }
 
-    if($Payment_report['payment_Status'] != "paid"){
+    if($Payment_report['payment_Status'] != "paid" || ($isPaid && (int)($Payment_report['direct_payment_done'] ?? 0) === 0)){
         if($isPaid){
 
             $userPaidTomanAmount = isset($data['UserPaidTomanAmount']) ? (float) $data['UserPaidTomanAmount'] : null;
@@ -200,12 +200,17 @@ foreach ($datatxtbot as $item) {
             $affected = $atomic->affected_rows;
             $atomic->close();
             if ($affected < 1) {
-
-
-                tronado_log_event('TRONADO_DUPLICATE', 'Duplicate or already-paid callback ignored', [
-                    'payment_id' => $paymentId,
-                ]);
-                exit('Already processed');
+                $doneLookup = $connect->prepare("SELECT direct_payment_done FROM Payment_report WHERE id_order = ? LIMIT 1");
+                $doneLookup->bind_param('s', $paymentId);
+                $doneLookup->execute();
+                $doneRow = $doneLookup->get_result()->fetch_assoc();
+                $doneLookup->close();
+                if (!is_array($doneRow) || (int)($doneRow['direct_payment_done'] ?? 0) === 1) {
+                    tronado_log_event('TRONADO_DUPLICATE', 'Duplicate or already-paid callback ignored', [
+                        'payment_id' => $paymentId,
+                    ]);
+                    exit('Already processed');
+                }
             }
 
             echo "پرداخت با موفقیت انجام  شد";

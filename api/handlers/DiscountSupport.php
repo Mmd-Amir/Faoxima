@@ -68,52 +68,35 @@ final class MiniDiscount
             return ['ok' => false, 'reason' => '❌ کد هدیه را وارد کنید.'];
         }
 
-        $row = FaoximaDb::fetchOne('SELECT * FROM Discount WHERE code = :c LIMIT 1', [':c' => $code]);
-        if ($row === null) {
-            return ['ok' => false, 'reason' => '❌ کد هدیه نامعتبر است.'];
+        if (!function_exists('rx_gift_redeem_atomic')) {
+            return ['ok' => false, 'reason' => '❌ خطا در واریز هدیه. لطفاً دوباره تلاش کنید.'];
         }
-
-        $status = strtolower(trim((string)($row['status'] ?? '')));
-        if ($status !== '' && $status !== 'active') {
-            return ['ok' => false, 'reason' => '❌ این کد هدیه غیرفعال است.'];
-        }
-
-        $target = trim((string)($row['target_user'] ?? ''));
-        if ($target !== '' && $target !== (string)$user['id']) {
-            return ['ok' => false, 'reason' => '❌ کد هدیه نامعتبر است.'];
-        }
-
-        $expire = (int)($row['expire_at'] ?? 0);
-        if ($expire !== 0 && time() >= $expire) {
-            return ['ok' => false, 'reason' => '❌ زمان این کد هدیه به پایان رسیده است.'];
-        }
-
-        $limitUse  = (int)($row['limituse'] ?? 0);
-        $limitUsed = (int)($row['limitused'] ?? 0);
-        if ($limitUse > 0 && $limitUsed >= $limitUse) {
-            return ['ok' => false, 'reason' => '❌ ظرفیت استفاده از این کد هدیه به پایان رسیده است.'];
-        }
-
-        $amount = (int) round((float)($row['price'] ?? 0));
-        if ($amount <= 0) {
-            return ['ok' => false, 'reason' => '❌ این کد هدیه مبلغی ندارد.'];
-        }
-
-        $credited = balance_atomic_credit($user['id'], $amount);
-        if ($credited === false) {
+        $result = rx_gift_redeem_atomic($code, (string)$user['id']);
+        if (empty($result['ok'])) {
+            $reason = (string)($result['reason'] ?? '');
+            if ($reason === 'expired') {
+                return ['ok' => false, 'reason' => '❌ زمان این کد هدیه به پایان رسیده است.'];
+            }
+            if ($reason === 'capacity') {
+                return ['ok' => false, 'reason' => '❌ ظرفیت استفاده از این کد هدیه به پایان رسیده است.'];
+            }
+            if ($reason === 'invalid_amount') {
+                return ['ok' => false, 'reason' => '❌ این کد هدیه مبلغی ندارد.'];
+            }
+            if ($reason === 'invalid_status') {
+                return ['ok' => false, 'reason' => '❌ این کد هدیه غیرفعال است.'];
+            }
+            if (in_array($reason, ['not_found', 'invalid_target', 'invalid_code'], true)) {
+                return ['ok' => false, 'reason' => '❌ کد هدیه نامعتبر است.'];
+            }
             return ['ok' => false, 'reason' => '❌ خطا در واریز هدیه. لطفاً دوباره تلاش کنید.'];
         }
 
-        update('Discount', 'limitused', (string)($limitUsed + 1), 'code', $code);
-        self::recordConsumed($code, (string)$user['id'], 'gift');
-        if (function_exists('wallet_ledger_record')) {
-            wallet_ledger_record($user['id'], 'credit', $amount, 'gift_code', 'استفاده از کد هدیه', null, 'Discount', $code);
-        }
-
-        $newBalance = FaoximaDb::fetchScalar('SELECT Balance FROM user WHERE id = :u', [':u' => $user['id']]);
-        $newBalance = $newBalance === null ? ((float)($user['Balance'] ?? 0) + $amount) : (float)$newBalance;
-
-        return ['ok' => true, 'amount' => $amount, 'new_balance' => $newBalance];
+        return [
+            'ok' => true,
+            'amount' => (int)($result['amount'] ?? 0),
+            'new_balance' => (float)($result['new_balance'] ?? 0),
+        ];
     }
 
     private static function normalizeTargeting(string $codeProduct, string $codePanel, string $codeCategory): array
@@ -189,7 +172,7 @@ final class MiniDiscount
         }
 
         $usedByUser = (int) FaoximaDb::fetchScalar(
-            'SELECT COUNT(*) FROM Giftcodeconsumed WHERE id_user = :u AND code = :c',
+            'SELECT COUNT(*) FROM Giftcodeconsumed WHERE id_user = :u AND code = :c AND COALESCE(released, 0) = 0',
             [':u' => (string)$user['id'], ':c' => $code]
         );
         $useUser = (int)($row['useuser'] ?? 0);
@@ -467,10 +450,117 @@ final class MiniDiscount
         }
     }
 
-    public static function markSellUsed(string $code, array $user): void
+    public static function chargeWallet(string $code, array $user, $amount, int $allowNegative, string $operationId): array
+    {
+        $pdo = FaoximaDb::pdo();
+        $own = !$pdo->inTransaction();
+        $savepoint = 'rx_discount_charge_' . bin2hex(random_bytes(4));
+        $commitAttempted = false;
+        try {
+            if ($own) {
+                $pdo->beginTransaction();
+            } else {
+                $pdo->exec('SAVEPOINT ' . $savepoint);
+            }
+            if ($code !== '') {
+                if (!function_exists('rx_discount_mark_used_atomic')) {
+                    throw new RuntimeException('discount_unavailable');
+                }
+                $reserved = rx_discount_mark_used_atomic($code, (string)$user['id'], 'sell', $operationId);
+                if (empty($reserved['ok']) || !empty($reserved['replayed'])) {
+                    throw new RuntimeException('discount_' . ($reserved['reason'] ?? 'already_reserved'));
+                }
+            }
+            $charged = (float)$amount > 0
+                ? balance_atomic_charge($user['id'], $amount, $allowNegative)
+                : ['ok' => true, 'new_balance' => (float)($user['Balance'] ?? 0)];
+            if (empty($charged['ok'])) {
+                throw new RuntimeException(($charged['reason'] ?? '') === 'insufficient-or-stale' ? 'insufficient_balance' : 'charge_failed');
+            }
+            if ($own) {
+                $commitAttempted = true;
+                $pdo->commit();
+            } else {
+                $pdo->exec('RELEASE SAVEPOINT ' . $savepoint);
+            }
+            return $charged;
+        } catch (Throwable $e) {
+            $outcomeUnknown = $commitAttempted && !$pdo->inTransaction();
+            try {
+                if ($own) {
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
+                } else {
+                    $pdo->exec('ROLLBACK TO SAVEPOINT ' . $savepoint);
+                    $pdo->exec('RELEASE SAVEPOINT ' . $savepoint);
+                }
+            } catch (Throwable $rollbackError) {
+                $outcomeUnknown = true;
+            }
+            return ['ok' => false, 'reason' => $outcomeUnknown ? 'outcome_unknown' : $e->getMessage()];
+        }
+    }
+
+    public static function releaseWalletDiscount(string $code, array $user, string $operationId): bool
+    {
+        if ($code === '') return true;
+        $pdo = FaoximaDb::pdo();
+        $own = !$pdo->inTransaction();
+        $savepoint = 'rx_discount_release_' . bin2hex(random_bytes(4));
+        try {
+            if ($own) {
+                $pdo->beginTransaction();
+            } else {
+                $pdo->exec('SAVEPOINT ' . $savepoint);
+            }
+            $lock = $pdo->prepare('SELECT id FROM DiscountSell WHERE codeDiscount = ? ORDER BY id ASC LIMIT 1 FOR UPDATE');
+            $lock->execute([$code]);
+            $marked = $pdo->prepare("UPDATE Giftcodeconsumed SET released = 1 WHERE id_user = ? AND code = ? AND kind = 'sell' AND related_order = ? AND released = 0");
+            $marked->execute([(string)$user['id'], $code, $operationId]);
+            $count = $marked->rowCount();
+            if ($count > 0) {
+                $pdo->prepare("UPDATE DiscountSell SET usedDiscount = GREATEST(CAST(COALESCE(NULLIF(usedDiscount, ''), '0') AS SIGNED) - ?, 0) WHERE codeDiscount = ?")
+                    ->execute([$count, $code]);
+            }
+            if ($own) {
+                $pdo->commit();
+            } else {
+                $pdo->exec('RELEASE SAVEPOINT ' . $savepoint);
+            }
+            if (function_exists('clearSelectCacheRow')) {
+                clearSelectCacheRow('DiscountSell', 'codeDiscount', $code);
+            }
+            return true;
+        } catch (Throwable $e) {
+            try {
+                if ($own) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                } else {
+                    $pdo->exec('ROLLBACK TO SAVEPOINT ' . $savepoint);
+                    $pdo->exec('RELEASE SAVEPOINT ' . $savepoint);
+                }
+            } catch (Throwable $rollbackError) {
+                FaoximaLogger::critical('Wallet discount release rollback failed', ['operation_id' => $operationId]);
+            }
+            FaoximaLogger::error('Wallet discount release failed', ['operation_id' => $operationId, 'error' => $e->getMessage()]);
+            return false;
+        }
+    }
+
+    public static function markSellUsed(string $code, array $user): bool
     {
         $code = trim($code);
-        if ($code === '') return;
+        if ($code === '') return false;
+        if (function_exists('rx_discount_mark_used_atomic')) {
+            $result = rx_discount_mark_used_atomic($code, (string)$user['id'], 'sell');
+            if (!empty($result['ok'])) {
+                return true;
+            }
+            if ((string)($result['reason'] ?? '') !== 'db_unavailable') {
+                return false;
+            }
+        }
         try {
             $pdo = FaoximaDb::pdo();
             $row = FaoximaDb::fetchOne('SELECT usedDiscount FROM DiscountSell WHERE codeDiscount = :c LIMIT 1', [':c' => $code]);
@@ -480,6 +570,7 @@ final class MiniDiscount
         } catch (Throwable $e) {
         }
         self::recordConsumed($code, (string)$user['id'], 'sell');
+        return true;
     }
 
     private static function recordConsumed(string $code, string $userId, string $kind): void
@@ -521,6 +612,7 @@ final class MiniDiscount
                 "SELECT id, code FROM Giftcodeconsumed
                   WHERE id_user = :u
                     AND kind = 'sell'
+                    AND (related_order IS NULL OR related_order = '')
                     AND (released IS NULL OR released = 0)
                     AND consumed_at <> ''
                     AND CAST(consumed_at AS UNSIGNED) BETWEEN :lo AND :hi" . $codeClause . "
@@ -536,13 +628,8 @@ final class MiniDiscount
             $marked->execute([':id' => $rowId]);
             if ($marked->rowCount() < 1) return false;
 
-            $dsRow = FaoximaDb::fetchOne('SELECT usedDiscount FROM DiscountSell WHERE codeDiscount = :c LIMIT 1', [':c' => $code]);
-            if (is_array($dsRow)) {
-                $used = (int)($dsRow['usedDiscount'] ?? 0) - 1;
-                if ($used < 0) $used = 0;
-                $pdo->prepare('UPDATE DiscountSell SET usedDiscount = :v WHERE codeDiscount = :c')
-                    ->execute([':v' => (string)$used, ':c' => $code]);
-            }
+            $pdo->prepare("UPDATE DiscountSell SET usedDiscount = GREATEST(CAST(COALESCE(NULLIF(usedDiscount, ''), '0') AS SIGNED) - 1, 0) WHERE codeDiscount = :c")
+                ->execute([':c' => $code]);
             return true;
         } catch (Throwable $e) {
             return false;

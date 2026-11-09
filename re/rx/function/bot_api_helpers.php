@@ -654,7 +654,7 @@ function panel_feature_enabled($panel, $key)
 }
 function panel_limit_count_statuses()
 {
-    return ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold'];
+    return ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'processing'];
 }
 function panel_limit_is_unlimited_raw($rawLimit)
 {

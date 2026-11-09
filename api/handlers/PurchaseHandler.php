@@ -321,7 +321,7 @@ final class PurchaseHandler extends BaseHandler
                     ':price'        => $product['price_product'],
                     ':volume'       => $product['Volume_constraint'],
                     ':service_time' => $serviceTime,
-                    ':status'       => 'active',
+                    ':status'       => 'processing',
                     ':note'         => $customNote,
                     ':refral'       => $this->user['affiliates'],
                     ':notifs'       => $notifications,
@@ -352,10 +352,10 @@ final class PurchaseHandler extends BaseHandler
         $priceToCharge = (float) $product['price_product'];
         $balanceBeforePurchase = (float) $this->user['Balance'];
         $balanceChargedAtomically = false;
-        if ($priceToCharge > 0.0) {
+        if ($priceToCharge > 0.0 || $discountCode !== '') {
             $agent = $this->user['agent'] ?? 'f';
             $allowNeg = ($agent === 'n2') ? (int)($this->user['maxbuyagent'] ?? 0) : 0;
-            $charge = balance_atomic_charge($this->user['id'], $priceToCharge, $allowNeg);
+            $charge = MiniDiscount::chargeWallet($discountCode, $this->user, $priceToCharge, $allowNeg, (string)$orderId);
             if (empty($charge['ok'])) {
                 FaoximaLogger::warn('Atomic balance charge failed at purchase', [
                     'user_id'  => $this->user['id'],
@@ -363,13 +363,22 @@ final class PurchaseHandler extends BaseHandler
                     'price'    => $priceToCharge,
                     'reason'   => $charge['reason'] ?? 'unknown',
                 ]);
+                if (($charge['reason'] ?? '') === 'outcome_unknown') {
+                    FaoximaResponse::fail(503, 'وضعیت برداشت مشخص نیست؛ با شناسه سفارش با پشتیبانی در ارتباط باشید.', ['operation_id' => (string)$orderId]);
+                }
                 try { FaoximaDb::execute('DELETE FROM invoice WHERE id_invoice = :o AND id_user = :u', [':o' => $orderId, ':u' => $this->user['id']]); } catch (Throwable $_) {}
+                if (str_starts_with((string)($charge['reason'] ?? ''), 'discount_')) {
+                    FaoximaResponse::fail(409, 'کد تخفیف دیگر قابل استفاده نیست. لطفاً خرید را دوباره انجام دهید.');
+                }
+                if (($charge['reason'] ?? '') !== 'insufficient_balance') {
+                    FaoximaResponse::fail(500, 'ثبت خرید انجام نشد. لطفاً دوباره تلاش کنید.');
+                }
                 FaoximaResponse::fail(402, faoxima_textbot_get('dyn_purchase_concurrent_balance_conflict', 'موجودی کافی نیست (تلاش هم‌زمان شناسایی شد). یک بار دیگر تلاش کنید.'));
             }
-            $balanceChargedAtomically = true;
+            $balanceChargedAtomically = $priceToCharge > 0;
 
             $this->user['Balance'] = $charge['new_balance'];
-            if (function_exists('wallet_ledger_record')) {
+            if ($balanceChargedAtomically && function_exists('wallet_ledger_record')) {
                 wallet_ledger_record($this->user['id'], 'debit', $priceToCharge, 'purchase', 'خرید سرویس', $orderId, 'invoice', $orderId);
             }
         }
@@ -380,6 +389,7 @@ final class PurchaseHandler extends BaseHandler
                 ? nmStockReserveForProduct($panel, (array)$product, $this->user['id'], $orderId, 'miniapp_national_buy')
                 : false;
             if (!is_array($stock) || (string)($stock['content'] ?? '') === '') {
+                MiniDiscount::releaseWalletDiscount($discountCode, $this->user, (string)$orderId);
                 if (is_array($stock) && function_exists('nmStockReleaseReservation')) nmStockReleaseReservation($stock);
                 if ($balanceChargedAtomically) {
                     if (!balance_atomic_credit($this->user['id'], $priceToCharge)) {
@@ -406,9 +416,10 @@ final class PurchaseHandler extends BaseHandler
             if (!empty($stock['id']) && function_exists('nmStockMarkDelivered')) {
                 nmStockMarkDelivered($stock['id'], $this->user['id'], $orderId, ['mode' => 'miniapp_national_buy']);
             }
-
-            if ($discountCode !== '') {
-                MiniDiscount::markSellUsed($discountCode, $this->user);
+            try {
+                update('invoice', 'Status', 'active', 'id_invoice', $orderId);
+            } catch (Throwable $e) {
+                FaoximaLogger::warn('invoice activation failed after stock delivery', ['order_id' => $orderId, 'err' => $e->getMessage()]);
             }
 
             $invoiceCount = (int) FaoximaDb::fetchScalar(
@@ -495,7 +506,36 @@ final class PurchaseHandler extends BaseHandler
             true
         );
 
+        if (empty($remote['username']) && ($panel['type'] ?? '') !== 'Manualsale'
+            && (!function_exists('rx_pf_panel_reconcilable') || rx_pf_panel_reconcilable($panel))) {
+            $snapshot = null;
+            if (function_exists('rx_pf_panel_snapshot')) {
+                $snapshot = rx_pf_panel_snapshot($managePanel, (string)$panel['name_panel'], (string)$usernameAc, (string)($panel['type'] ?? ''));
+            }
+            if (is_array($snapshot) && !empty($snapshot['ok']) && !empty($snapshot['exists']) && is_array($snapshot['raw'] ?? null)) {
+                $remote = $snapshot['raw'];
+                $remote['status'] = 'successful';
+                if (empty($remote['configs']) && !empty($remote['links'])) {
+                    $remote['configs'] = is_array($remote['links']) ? $remote['links'] : explode("\n", (string)$remote['links']);
+                }
+            } elseif (!is_array($snapshot) || empty($snapshot['ok'])) {
+                $this->reportToChannel(faoxima_render_text(faoxima_textbot_get('dyn_purchase_create_user_uncertain_report_tpl', "⚠️ وضعیت ساخت سرویس در پنل نامشخص است\n<blockquote>آیدی کاربر : {user_id}</blockquote>\n<blockquote>نام کاربری : {username}</blockquote>\n<blockquote>پنل : {panel_name}</blockquote>"), [
+                    'user_id' => $this->user['id'],
+                    'username' => $usernameAc,
+                    'panel_name' => $panel['name_panel'],
+                ]), $errorReport);
+                FaoximaLogger::critical('createUser outcome uncertain after wallet charge; no refund issued', [
+                    'user_id' => $this->user['id'],
+                    'order_id' => $orderId,
+                    'panel' => $panel['name_panel'],
+                    'username' => $usernameAc,
+                ]);
+                FaoximaResponse::fail(503, 'وضعیت ساخت سرویس مشخص نیست. مبلغ از کیف پول کسر شده و مورد در حال بررسی است؛ لطفاً با پشتیبانی در ارتباط باشید.');
+            }
+        }
+
         if (empty($remote['username'])) {
+            MiniDiscount::releaseWalletDiscount($discountCode, $this->user, (string)$orderId);
             $reason = is_array($remote) ? rx_panel_error_text($remote['msg'] ?? null, $remote['detail'] ?? null) : htmlspecialchars((string)$remote, ENT_QUOTES, 'UTF-8');
             FaoximaLogger::error('createUser failed', [
                 'user_id' => $this->user['id'],
@@ -534,9 +574,10 @@ final class PurchaseHandler extends BaseHandler
             $usernameWasRenamed = true;
             rx_notify_username_renamed($this->user['id'], $remote, $panel);
         }
-
-        if ($discountCode !== '') {
-            MiniDiscount::markSellUsed($discountCode, $this->user);
+        try {
+            update('invoice', 'Status', 'active', 'id_invoice', $orderId);
+        } catch (Throwable $e) {
+            FaoximaLogger::warn('invoice activation failed after service creation', ['order_id' => $orderId, 'err' => $e->getMessage()]);
         }
 
         $configList = is_array($remote['configs'] ?? null) ? $remote['configs'] : [];

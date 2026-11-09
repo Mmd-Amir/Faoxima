@@ -46,19 +46,103 @@ if (!function_exists('payment_confirm_paid')) {
             return ['ok' => false, 'reason' => 'pdo unavailable'];
         }
 
-        $atomic = $pdo->prepare(
-            "UPDATE Payment_report SET payment_Status = 'paid' "
-            . "WHERE id_order = :id AND payment_Status NOT IN ('paid', 'cancelled')"
-        );
-        $atomic->bindValue(':id', $orderId, PDO::PARAM_STR);
-        $atomic->execute();
-        if ($atomic->rowCount() < 1) {
-            return ['ok' => false, 'reason' => 'already paid, cancelled, or missing'];
+        $schemaReady = false;
+        if (!$pdo->inTransaction()) {
+            $schemaReady = function_exists('rx_pf_ensure_schema') && rx_pf_ensure_schema();
+        }
+        $report = null;
+        $transitioned = false;
+        $wasDelivered = false;
+
+        $own = !$pdo->inTransaction();
+        $savepoint = 'rx_pc_' . bin2hex(random_bytes(4));
+        try {
+            if ($own) {
+                $pdo->beginTransaction();
+            } else {
+                $pdo->exec('SAVEPOINT ' . $savepoint);
+            }
+
+            if (function_exists('rx_pf_lock_payment')) {
+                $report = rx_pf_lock_payment($pdo, $orderId);
+            } else {
+                $stmt = $pdo->prepare("SELECT * FROM Payment_report WHERE id_order = ? ORDER BY id ASC LIMIT 1 FOR UPDATE");
+                $stmt->execute([$orderId]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                $report = $row === false ? null : $row;
+            }
+            if (!is_array($report)) {
+                throw new RuntimeException('report_missing');
+            }
+            $currentStatus = strtolower(trim((string)($report['payment_Status'] ?? '')));
+            if ($currentStatus === 'cancelled') {
+                throw new RuntimeException('cancelled');
+            }
+
+            $wasDelivered = (int)($report['direct_payment_done'] ?? 0) === 1;
+            if ($wasDelivered && $currentStatus !== 'paid') {
+                $pdo->prepare("UPDATE Payment_report SET payment_Status = 'paid' WHERE id_order = ? AND COALESCE(direct_payment_done, 0) = 1")
+                    ->execute([$orderId]);
+            }
+            if (!$wasDelivered) {
+                $now = time();
+                $atomic = $pdo->prepare(
+                    "UPDATE Payment_report SET payment_Status = 'paid' "
+                    . "WHERE id_order = ? AND LOWER(COALESCE(payment_Status, '')) <> 'cancelled' AND COALESCE(direct_payment_done, 0) = 0"
+                );
+                $atomic->execute([$orderId]);
+                $transitioned = $atomic->rowCount() > 0;
+
+                if ($schemaReady) {
+                    $record = $pdo->prepare("SELECT id FROM payment_fulfillment WHERE id_order = ? LIMIT 1 FOR UPDATE");
+                    $record->execute([$orderId]);
+                    if ($record->fetchColumn() === false) {
+                        $operationType = function_exists('rx_pf_operation_type')
+                            ? rx_pf_operation_type($report['id_invoice'] ?? '')
+                            : 'wallet';
+                        $paymentId = isset($report['id']) && is_numeric($report['id']) ? (int)$report['id'] : null;
+                        $ins = $pdo->prepare(
+                            "INSERT IGNORE INTO payment_fulfillment
+                                (id_order, payment_report_id, operation_type, state, processing_token, lease_expires_at, attempt_count, created_at, updated_at)
+                             VALUES (?, ?, ?, 'claimed', NULL, NULL, 0, ?, ?)"
+                        );
+                        $ins->execute([$orderId, $paymentId, $operationType, $now, $now]);
+                    }
+                }
+            }
+
+            if ($own) {
+                $pdo->commit();
+            } else {
+                $pdo->exec('RELEASE SAVEPOINT ' . $savepoint);
+            }
+        } catch (Throwable $e) {
+            if ($own) {
+                if ($pdo->inTransaction()) {
+                    try { $pdo->rollBack(); } catch (Throwable $rollbackError) {
+                    }
+                }
+            } else {
+                try {
+                    $pdo->exec('ROLLBACK TO SAVEPOINT ' . $savepoint);
+                    $pdo->exec('RELEASE SAVEPOINT ' . $savepoint);
+                } catch (Throwable $rollbackError) {
+                }
+            }
+            $reason = $e->getMessage();
+            if ($reason === 'cancelled' || $reason === 'report_missing') {
+                return ['ok' => false, 'reason' => $reason];
+            }
+            return ['ok' => false, 'reason' => 'db_error'];
         }
 
-        $report = select('Payment_report', '*', 'id_order', $orderId, 'select');
         if (!is_array($report)) {
-            return ['ok' => false, 'reason' => 'report missing after update'];
+            return ['ok' => false, 'reason' => 'report missing'];
+        }
+        if (function_exists('rx_pf_clear_cache')) {
+            rx_pf_clear_cache(['Payment_report']);
+        } elseif (function_exists('clearSelectCache')) {
+            clearSelectCache('Payment_report');
         }
         if (function_exists('rx_redis_del') && isset($report['id_user'])) {
             rx_redis_del('faoxima:paystatus:' . $orderId . ':' . (string)$report['id_user']);
@@ -77,14 +161,26 @@ if (!function_exists('payment_confirm_paid')) {
             }
         }
 
-        if (function_exists('DirectPayment')) {
+        $deliveryStatus = $wasDelivered ? 'already_completed' : 'unknown';
+        $delivered = $wasDelivered;
+        if (!$wasDelivered && function_exists('DirectPayment')) {
             $imagePath = __DIR__ . '/../images.jpeg';
             if (!is_file($imagePath)) {
                 $imagePath = __DIR__ . '/../images.jpg';
             }
-            DirectPayment($report['id_order'], $imagePath);
+            try {
+                $delivery = DirectPayment($report['id_order'], $imagePath);
+                if (is_array($delivery)) {
+                    $deliveryStatus = (string)($delivery['status'] ?? 'unknown');
+                    $delivered = $deliveryStatus === 'completed' || $deliveryStatus === 'already_completed';
+                }
+            } catch (Throwable $e) {
+                $deliveryStatus = 'requires_reconciliation';
+                if (function_exists('rx_log_event')) {
+                    rx_log_event('PAYMENT_DELIVERY_FAILED', $e->getMessage(), ['id_order' => $orderId]);
+                }
+            }
         }
-
 
         $userId = (string)($report['id_user'] ?? '');
         $balanceUser = select('user', '*', 'id', $userId, 'select');
@@ -146,7 +242,7 @@ if (!function_exists('payment_confirm_paid')) {
         $textReport .= "<blockquote>- 💳 روش پرداخت : {$method}</blockquote>";
 
         $channelReport = is_array($setting ?? null) ? (string)($setting['Channel_Report'] ?? '') : '';
-        if ($channelReport !== '' && function_exists('telegram')) {
+        if ($transitioned && $channelReport !== '' && function_exists('telegram')) {
             $payload = [
                 'chat_id'    => $channelReport,
                 'text'       => $textReport,
@@ -159,7 +255,11 @@ if (!function_exists('payment_confirm_paid')) {
         }
 
         return [
-            'ok'              => true,
+            'ok'              => $delivered,
+            'verified'        => true,
+            'delivered'       => $delivered,
+            'delivery_status' => $deliveryStatus,
+            'reason'          => $delivered ? '' : ('delivery_' . $deliveryStatus),
             'order_id'        => $report['id_order'],
             'user_id'         => $balanceUser['id'],
             'amount'          => (int)($report['price'] ?? 0),
@@ -174,12 +274,25 @@ if (!function_exists('payment_notify_user_failed')) {
 
     function payment_notify_user_failed(string $orderId, string $reason = ''): bool
     {
+        global $pdo;
         $report = select('Payment_report', '*', 'id_order', $orderId, 'select');
         if (!is_array($report)) return false;
         $status = strtolower((string)($report['payment_Status'] ?? ''));
         if ($status === 'paid' || $status === 'cancelled') return false;
+        if (!($pdo instanceof PDO)) return false;
 
-        update('Payment_report', 'payment_Status', 'reject', 'id_order', $orderId);
+        $stmt = $pdo->prepare(
+            "UPDATE Payment_report SET payment_Status = 'reject' "
+            . "WHERE id_order = ? AND COALESCE(direct_payment_done, 0) = 0 "
+            . "AND LOWER(COALESCE(payment_Status, '')) NOT IN ('paid', 'cancelled')"
+        );
+        $stmt->execute([$orderId]);
+        if ($stmt->rowCount() < 1) {
+            return false;
+        }
+        if (function_exists('clearSelectCache')) {
+            clearSelectCache('Payment_report');
+        }
 
         if (!function_exists('telegram')) return true;
 
@@ -208,12 +321,25 @@ if (!function_exists('payment_mark_expired')) {
 
     function payment_mark_expired(string $orderId, ?string $textExpire = null): bool
     {
+        global $pdo;
         $report = select('Payment_report', '*', 'id_order', $orderId, 'select');
         if (!is_array($report)) return false;
         $status = strtolower((string)($report['payment_Status'] ?? ''));
         if ($status === 'paid' || $status === 'cancelled') return false;
+        if (!($pdo instanceof PDO)) return false;
 
-        update('Payment_report', 'payment_Status', 'expire', 'id_order', $orderId);
+        $stmt = $pdo->prepare(
+            "UPDATE Payment_report SET payment_Status = 'expire' "
+            . "WHERE id_order = ? AND COALESCE(direct_payment_done, 0) = 0 "
+            . "AND LOWER(COALESCE(payment_Status, '')) NOT IN ('paid', 'cancelled')"
+        );
+        $stmt->execute([$orderId]);
+        if ($stmt->rowCount() < 1) {
+            return false;
+        }
+        if (function_exists('clearSelectCache')) {
+            clearSelectCache('Payment_report');
+        }
         if (function_exists('rx_redis_del') && isset($report['id_user'])) {
             rx_redis_del('faoxima:paystatus:' . $orderId . ':' . (string)$report['id_user']);
         }

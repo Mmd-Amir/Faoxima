@@ -96,6 +96,9 @@ final class ServiceConfigsHandler extends BaseHandler
         }
 
         $timeoutInfo = function_exists('faoxima_panel_timeout_info') ? faoxima_panel_timeout_info() : ['timeout' => 20, 'connect_timeout' => 8];
+        $tlsOptions = function_exists('faoxima_curl_tls_options')
+            ? faoxima_curl_tls_options()
+            : [CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2];
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
@@ -103,10 +106,8 @@ final class ServiceConfigsHandler extends BaseHandler
             CURLOPT_TIMEOUT        => (int) $timeoutInfo['timeout'],
             CURLOPT_CONNECTTIMEOUT => (int) $timeoutInfo['connect_timeout'],
             CURLOPT_USERAGENT      => 'Faoxima-Mini/1.0',
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => 0,
             CURLOPT_HTTPHEADER     => ['Accept: */*'],
-        ]);
+        ] + $tlsOptions);
         $body = curl_exec($ch);
         $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);

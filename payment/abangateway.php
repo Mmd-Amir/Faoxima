@@ -55,22 +55,26 @@ $wantsPage = stripos((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'text/html') !== 
 
 $state = 'missing';
 $payment = null;
+$resumeDelivery = false;
 if ($order !== '' && function_exists('select')) {
     $row = select('Payment_report', '*', 'id_order', $order, 'select');
     if (is_array($row) && ($row['Payment_Method'] ?? '') === 'abangateway') {
         $payment = $row;
-        $state = (($row['payment_Status'] ?? '') === 'paid') ? 'paid' : 'waiting';
+        $resumeDelivery = ($row['payment_Status'] ?? '') === 'paid' && (int)($row['direct_payment_done'] ?? 0) === 0;
+        $state = (($row['payment_Status'] ?? '') === 'paid' && !$resumeDelivery) ? 'paid' : 'waiting';
     }
 }
 
-if ($state === 'waiting' && function_exists('abangatewayVerifyPayment')) {
+if ($state === 'waiting' && ($resumeDelivery || function_exists('abangatewayVerifyPayment'))) {
     // The authority this bot stored when it made the link — never the one in
     // the request.
     $authority = trim((string) ($payment['dec_not_confirmed'] ?? ''));
     if (strpos($authority, 'abn_') !== 0) {
         $authority = '';
     }
-    $verify = abangatewayVerifyPayment($authority, $order, (int) ($payment['price'] ?? 0));
+    $verify = $resumeDelivery
+        ? ['paid' => true]
+        : abangatewayVerifyPayment($authority, $order, (int) ($payment['price'] ?? 0));
 
     if (!empty($verify['paid'])) {
         try {

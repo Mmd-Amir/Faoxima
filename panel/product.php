@@ -17,15 +17,7 @@ if (!function_exists('xui_fail2ban_status') && is_file(__DIR__ . '/../x-ui_singl
     require_once __DIR__ . '/../x-ui_single.php';
 }
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindParam("username", $_SESSION["user"], PDO::PARAM_STR);
-$query->execute();
-$result = $query->fetch(PDO::FETCH_ASSOC);
-
-if (!isset($_SESSION["user"]) || !$result) {
-    header('Location: login.php');
-    return;
-}
+fx_admin_require_access($pdo);
 
 if (!(isset($_GET['ajax']) && $_GET['ajax'] === 'fail2ban_check')) {
     fx_csrf_guard();
@@ -57,9 +49,22 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'fail2ban_check') {
 }
 
 if (!empty($_POST['action']) && $_POST['action'] === 'bulk_delete') {
+    fx_admin_require_access($pdo, ['administrator']);
     $requestedIds = $_POST['ids'] ?? [];
     $deletedCount = fx_bulk_delete_ids($pdo, 'product', 'id', $requestedIds);
     fx_bulk_delete_redirect('product.php', count($requestedIds), $deletedCount);
+}
+
+if (($_POST['_action'] ?? '') === 'product_delete') {
+    fx_admin_require_access($pdo, ['administrator']);
+    $deleteId = (int)($_POST['id'] ?? 0);
+    if ($deleteId > 0) {
+        $stmt = $pdo->prepare("DELETE FROM product WHERE id = :id");
+        $stmt->bindValue(':id', $deleteId, PDO::PARAM_INT);
+        $stmt->execute();
+    }
+    header('Location: product.php');
+    exit;
 }
 
 $prodQ = fx_search_current();
@@ -190,13 +195,6 @@ alert('محصول از قبل وجود دارد'); window.location.href='product
 }
 
 
-if (isset($_GET['removeid']) && $_GET['removeid'] !== '') {
-    $stmt = $pdo->prepare("DELETE FROM product WHERE id = :id");
-    $stmt->bindParam(':id', $_GET['removeid']);
-    $stmt->execute();
-    header("Location: product.php");
-    exit;
-}
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
@@ -322,10 +320,10 @@ if (isset($_GET['removeid']) && $_GET['removeid'] !== '') {
                                             ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS), ENT_QUOTES, 'UTF-8'); ?>)">
                                             <?php echo icon('copy', 'svg-icon'); ?>
                                         </button>
-                                        <a href="product.php?removeid=<?php echo $list['id']; ?>" class="btn btn-sm btn-soft-danger" title="حذف"
-                                           onclick="return confirm('آیا از حذف این محصول مطمئن هستید؟')">
+                                        <button type="button" class="btn btn-sm btn-soft-danger" title="حذف"
+                                           onclick="faoximaDeleteProduct(<?php echo (int)$list['id']; ?>)">
                                             <?php echo icon('trash', 'svg-icon'); ?>
-                                        </a>
+                                        </button>
                                     </div>
                                 </td>
                             </tr>
@@ -539,6 +537,21 @@ if (isset($_GET['removeid']) && $_GET['removeid'] !== '') {
         </form>
     </div>
 </div>
+<form id="product-delete-form" method="POST" action="product.php" style="display:none;">
+    <?php echo fx_csrf_field(); ?>
+    <input type="hidden" name="_action" value="product_delete">
+    <input type="hidden" name="id" value="">
+</form>
+<script>
+function faoximaDeleteProduct(id) {
+    if (!confirm('آیا از حذف این محصول مطمئن هستید؟')) return false;
+    var form = document.getElementById('product-delete-form');
+    if (!form) return false;
+    form.querySelector('input[name="id"]').value = String(id);
+    form.submit();
+    return false;
+}
+</script>
 <script src="js/bulk-select.js?v=fx2"></script>
 <script src="js/compact-badges.js?v=fx1"></script>
 <script src="js/order_modal.js?v=ord1"></script>

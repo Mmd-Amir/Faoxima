@@ -1211,22 +1211,21 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
         sendmessage($from_id, $textbotlang['users']['Discount']['erorrlimitdiscount'], $backuser, 'HTML');
         return;
     }
-    $stmt = $pdo->prepare("SELECT * FROM Discount WHERE code = :code LIMIT 1");
-    $stmt->bindParam(':code', $text);
-    $stmt->execute();
-    $get_codesql = $stmt->fetch(PDO::FETCH_ASSOC);
-    $balance_user = $user['Balance'] + $get_codesql['price'];
-    update("user", "Balance", $balance_user, "id", $from_id);
-    $discountlimitadd = intval($checklimit['limitused']) + 1;
-    update("Discount", "limitused", $discountlimitadd, "code", $text);
+    $__giftResult = function_exists('rx_gift_redeem_atomic')
+        ? rx_gift_redeem_atomic($text, $from_id)
+        : ['ok' => false, 'reason' => 'db_error'];
+    if (empty($__giftResult['ok'])) {
+        if (($__giftResult['reason'] ?? '') === 'expired' || ($__giftResult['reason'] ?? '') === 'capacity') {
+            sendmessage($from_id, $textbotlang['users']['Discount']['erorrlimitdiscount'], $backuser, 'HTML');
+        } else {
+            sendmessage($from_id, $textbotlang['users']['Discount']['notcode'], $backuser, 'HTML');
+        }
+        return;
+    }
+    $__giftAmount = (int)($__giftResult['amount'] ?? 0);
     step('home', $from_id);
-    $text_balance_code = sprintf($textbotlang['users']['Discount']['giftcodesuccess'], rxFormatToman($get_codesql['price']));
+    $text_balance_code = sprintf($textbotlang['users']['Discount']['giftcodesuccess'], rxFormatToman($__giftAmount));
     sendmessage($from_id, $text_balance_code, $keyboard, 'HTML');
-    $stmt = $pdo->prepare("INSERT INTO Giftcodeconsumed (id_user, code) VALUES (:id_user, :code)");
-    $stmt->execute([
-        ':id_user' => $from_id,
-        ':code' => $text,
-    ]);
     $text_report = sprintf($textbotlang['users']['Discount']['giftcodeused'], $username, $from_id, $text);
     if (strlen($setting['Channel_Report'] ?? '') > 0) {
         telegram('sendmessage', [

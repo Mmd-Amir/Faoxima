@@ -63,7 +63,7 @@ $rxSbvExclude = (function_exists('rx_sbv_has_schema') && rx_sbv_has_schema()) ? 
 list($rxW, $rxN) = function_exists('rx_cron_shard') ? rx_cron_shard() : [0, 1];
 $rxShard = ($rxN > 1) ? " AND MOD(id, $rxN) = $rxW " : "";
 $rxCroncardQueue = [];
-$recoverStmt = $pdo->prepare("SELECT id_order FROM Payment_report WHERE payment_Status IN ('processing', 'reconciling') AND (Payment_Method = 'cart to cart' OR Payment_Method = 'arze digital offline') AND bottype IS NULL$rxSbvExclude$rxShard ORDER BY id ASC LIMIT 20");
+$recoverStmt = $pdo->prepare("SELECT id_order FROM Payment_report WHERE (payment_Status IN ('processing', 'reconciling') OR (payment_Status = 'paid' AND COALESCE(direct_payment_done, 0) = 0)) AND (Payment_Method = 'cart to cart' OR Payment_Method = 'arze digital offline') AND bottype IS NULL AND NOT EXISTS (SELECT 1 FROM payment_fulfillment pf WHERE pf.id_order = Payment_report.id_order AND pf.state IN ('completed', 'manual_review'))$rxSbvExclude$rxShard ORDER BY id ASC LIMIT 20");
 $recoverStmt->execute();
 foreach ($recoverStmt->fetchAll(PDO::FETCH_COLUMN) as $recoverOrderId) {
     $rxCroncardQueue[] = ['id_order' => (string) $recoverOrderId, 'mode' => 'recover'];

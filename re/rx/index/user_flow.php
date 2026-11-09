@@ -1115,13 +1115,15 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         return;
     }
     update("user", "Processing_value", $trAmount, "id", $from_id);
+    $trOperationId = 'tr_' . bin2hex(random_bytes(16));
+    update("user", "Processing_value_tow", $trOperationId, "id", $from_id);
     $trRecipientLabel = trim((string)($trRecipientUser['username'] ?? '')) !== ''
         ? '@' . $trRecipientUser['username']
         : $trRecipientId;
     $_rx_acc_s = (isset($_rx_acc_styles) && is_array($_rx_acc_styles)) ? $_rx_acc_styles : [];
     $trConfirmKb = json_encode(['inline_keyboard' => [
         [
-            rx_kb_style(['text' => '✅ تایید و انتقال', 'callback_data' => 'transferbal_confirm'], 'transferbal_confirm', $_rx_acc_s),
+            rx_kb_style(['text' => '✅ تایید و انتقال', 'callback_data' => 'transferbal_confirm_' . $trOperationId], 'transferbal_confirm', $_rx_acc_s),
             rx_kb_style(['text' => '❌ انصراف', 'callback_data' => 'transferbal_cancel'], 'transferbal_cancel', $_rx_acc_s),
         ],
     ]], JSON_UNESCAPED_UNICODE);
@@ -1132,10 +1134,20 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     update("user", "Processing_value_one", "", "id", $from_id);
     Editmessagetext($from_id, $message_id, "❌ انتقال موجودی لغو شد.", null, 'HTML');
     step('home', $from_id);
-} elseif ($datain == "transferbal_confirm" && $user['step'] == "getTransferConfirm") {
+} elseif (($datain == "transferbal_confirm" || str_starts_with((string)$datain, 'transferbal_confirm_')) && $user['step'] == "getTransferConfirm") {
+    $trOperationId = trim((string)($user['Processing_value_tow'] ?? ''));
+    if (str_starts_with((string)$datain, 'transferbal_confirm_')) {
+        if (!hash_equals($trOperationId, substr((string)$datain, strlen('transferbal_confirm_')))) {
+            return;
+        }
+    } elseif ($trOperationId !== '' && $trOperationId !== '0') {
+        return;
+    } else {
+        $trOperationId = 'tr_' . substr(hash('sha256', $from_id . ':' . $message_id), 0, 32);
+    }
     $trAmount = (int)$user['Processing_value'];
     $trRecipientId = $user['Processing_value_one'];
-    if ($trAmount <= 0 || $trRecipientId === '' || $trRecipientId === null) {
+    if ($trAmount < RX_MIN_TRANSFER_AMOUNT || $trRecipientId === '' || $trRecipientId === null) {
         Editmessagetext($from_id, $message_id, "❌ اطلاعات تراکنش نامعتبر است. مجددا تلاش کنید.", null, 'HTML');
         step('home', $from_id);
         return;
@@ -1148,36 +1160,29 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         step('home', $from_id);
         return;
     }
-    $trCharge = balance_atomic_charge($from_id, $trAmount, 0);
+    $trCharge = rx_wallet_transfer_atomic((string)$from_id, (string)$trRecipientId, $trAmount, $trOperationId);
     if (empty($trCharge['ok'])) {
-        Editmessagetext($from_id, $message_id, "❌ موجودی کیف پول شما کافی نیست.", null, 'HTML');
+        $trError = ($trCharge['reason'] ?? '') === 'insufficient_balance'
+            ? '❌ موجودی کیف پول شما کافی نیست.'
+            : '❌ انتقال تکمیل نشد؛ با شناسه ' . $trOperationId . ' با پشتیبانی در ارتباط باشید.';
+        Editmessagetext($from_id, $message_id, $trError, null, 'HTML');
         update("user", "Processing_value", "0", "id", $from_id);
         update("user", "Processing_value_one", "", "id", $from_id);
         step('home', $from_id);
         return;
     }
-    wallet_ledger_record($from_id, 'debit', $trAmount, 'transfer_out', 'انتقال موجودی به کاربر ' . $trRecipientId, null, 'user', (string)$trRecipientId);
-    $trCredited = balance_atomic_credit($trRecipientId, $trAmount);
-    if (!$trCredited) {
-        $trRefunded = balance_atomic_credit($from_id, $trAmount);
-        if ($trRefunded) {
-            wallet_ledger_record($from_id, 'credit', $trAmount, 'refund', 'بازگشت وجه انتقال ناموفق', null, 'user', (string)$trRecipientId);
-        }
-        Editmessagetext($from_id, $message_id, "❌ خطا در واریز به کاربر مقصد. مبلغ به کیف پول شما بازگشت داده شد.", null, 'HTML');
-        update("user", "Processing_value", "0", "id", $from_id);
-        update("user", "Processing_value_one", "", "id", $from_id);
-        step('home', $from_id);
-        return;
+    if (empty($trCharge['replayed'])) {
+        rx_wallet_transfer_report($trCharge['sender'], $trCharge['recipient'], $trAmount, $trOperationId, (float)$trCharge['new_balance'], (float)$trCharge['recipient_balance']);
     }
-    wallet_ledger_record($trRecipientId, 'credit', $trAmount, 'transfer_in', 'انتقال موجودی از کاربر ' . $from_id, null, 'user', (string)$from_id);
     update("user", "Processing_value", "0", "id", $from_id);
     update("user", "Processing_value_one", "", "id", $from_id);
-    Editmessagetext($from_id, $message_id, sprintf("✅ انتقال موجودی با موفقیت انجام شد.\n\n💰 مبلغ: %s تومان\n👤 گیرنده: %s", number_format($trAmount), $trRecipientId), null, 'HTML');
+    update("user", "Processing_value_tow", "0", "id", $from_id);
+    Editmessagetext($from_id, $message_id, sprintf("✅ انتقال موجودی با موفقیت انجام شد.\n\n💰 مبلغ: %s تومان\n👤 گیرنده: %s\n🧾 شناسه انتقال: <code>%s</code>", number_format($trAmount), $trRecipientId, $trOperationId), null, 'HTML');
     $trSenderUsername = trim((string)($user['username'] ?? ''));
     $trSenderLines = $trSenderUsername !== '' ? "نام کاربری: @{$trSenderUsername}\n" : '';
     $trSenderLines .= "آیدی عددی: <code>{$from_id}</code>";
     $trNotifyText = sprintf("مبلغ %s تومان به کیف پول شما واریز شد.\n\n<blockquote>%s</blockquote>", number_format($trAmount), $trSenderLines);
-    sendmessage($trRecipientId, $trNotifyText, null, 'HTML');
+    if (empty($trCharge['replayed'])) sendmessage($trRecipientId, $trNotifyText, null, 'HTML');
     step('home', $from_id);
 } elseif ((($text !== '' && $text == $datatextbot['text_sell']) || $datain == "buy" || $datain == "buyback" || $text == "/buy" || $text == "buy") && $statusnote) {
     if ((($setting['get_number'] == "onAuthenticationphone") || ($setting['iran_number'] == "onAuthenticationiran")) && $user['step'] != "get_number" && $user['number'] == "none" && !rx_auth_skip_user($user)) {

@@ -1043,7 +1043,8 @@ if (!function_exists('rx_pf_recover')) {
                     return ['status' => 'skip'];
                 }
                 $status = (string) ($payment['payment_Status'] ?? '');
-                if (!in_array($status, ['processing', 'reconciling'], true)) {
+                $paidUndelivered = $status === 'paid' && (int) ($payment['direct_payment_done'] ?? 0) === 0;
+                if (!in_array($status, ['processing', 'reconciling'], true) && !$paidUndelivered) {
                     return ['status' => 'skip'];
                 }
                 if ((int) ($payment['direct_payment_done'] ?? 0) === 1) {
@@ -1051,6 +1052,22 @@ if (!function_exists('rx_pf_recover')) {
                     return ['status' => 'finalized', 'report' => $payment];
                 }
                 $record = rx_pf_lock_record($pdo, $orderId);
+                if ($record === null && $paidUndelivered) {
+                    $token = rx_pf_new_token();
+                    $stmt = $pdo->prepare(
+                        "INSERT INTO payment_fulfillment (id_order, payment_report_id, operation_type, state, processing_token, lease_expires_at, attempt_count, created_at, updated_at) VALUES (?, ?, ?, 'claimed', ?, ?, 1, ?, ?)"
+                    );
+                    $stmt->execute([
+                        $orderId,
+                        isset($payment['id']) && is_numeric($payment['id']) ? (int) $payment['id'] : null,
+                        rx_pf_operation_type($payment['id_invoice'] ?? ''),
+                        $token,
+                        $now + RX_PF_LEASE_SECONDS,
+                        $now,
+                        $now,
+                    ]);
+                    return ['status' => 'claimed', 'token' => $token, 'report' => $payment];
+                }
                 if ($record === null) {
                     $stmt = $pdo->prepare(
                         "INSERT INTO payment_fulfillment (id_order, payment_report_id, operation_type, state, attempt_count, last_error, created_at, updated_at) VALUES (?, ?, ?, 'manual_review', 0, ?, ?, ?)"
@@ -1080,11 +1097,22 @@ if (!function_exists('rx_pf_recover')) {
                     return ['status' => 'busy'];
                 }
                 if ($state === 'released') {
+                    if ($paidUndelivered) {
+                        $token = rx_pf_new_token();
+                        rx_pf_write_claim($pdo, $record, $orderId, $payment, 'claimed', $token, $now, true);
+                        return ['status' => 'claimed', 'token' => $token, 'report' => $payment];
+                    }
                     rx_pf_set_payment_status($pdo, $orderId, 'waiting', ['processing', 'reconciling']);
                     return ['status' => 'released'];
                 }
                 if ($state === 'failed') {
                     $reason = (string) ($record['last_error'] ?? '');
+                    if ($paidUndelivered) {
+                        $stmt = $pdo->prepare("UPDATE payment_fulfillment SET state = 'manual_review', lease_expires_at = NULL, updated_at = ? WHERE id_order = ?");
+                        $stmt->execute([$now, $orderId]);
+                        $alert = 'paid_fulfillment_failed';
+                        return ['status' => 'manual_review'];
+                    }
                     rx_pf_set_payment_status($pdo, $orderId, 'reject', ['processing', 'reconciling'], $reason !== '' ? $reason : 'fulfillment_failed');
                     return ['status' => 'rejected'];
                 }

@@ -70,6 +70,16 @@ export async function transfer(view) {
 
     let pendingRecipientId = '';
     let pendingAmount = 0;
+    let pendingOperationId = '';
+
+    function newOperationId() {
+        try {
+            if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+                return window.crypto.randomUUID();
+            }
+        } catch (e) {  }
+        return 'op' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+    }
 
     $submit.addEventListener('click', async () => {
         const recipientId = $recipient.value.trim();
@@ -97,6 +107,7 @@ export async function transfer(view) {
             }
             pendingRecipientId = recipientId;
             pendingAmount = amount;
+            pendingOperationId = newOperationId();
             $confirmRecipient.textContent = obj.recipient_username || recipientId;
             $confirmAmount.textContent = `${fmtPrice(amount)} تومان`;
             $formHost.classList.add('hidden');
@@ -119,7 +130,7 @@ export async function transfer(view) {
         try {
             const res = await call('wallet_transfer_confirm', {
                 method: 'POST',
-                body: { recipient_id: pendingRecipientId, amount: pendingAmount },
+                body: { recipient_id: pendingRecipientId, amount: pendingAmount, operation_id: pendingOperationId },
             });
             const obj = res?.obj || {};
             if (user && obj.new_balance !== undefined) {

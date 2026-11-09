@@ -67,6 +67,20 @@ final class WalletTransferHandler extends BaseHandler
         ]);
     }
 
+    private function operationId(): string
+    {
+        foreach (['operation_id', 'op_id', 'idempotency_key', '_op'] as $key) {
+            $value = FaoximaInput::string($this->data, $key);
+            if ($value !== '') {
+                if (!preg_match('/^[A-Za-z0-9_\-]{8,64}$/', $value)) {
+                    FaoximaResponse::badRequest('شناسه عملیات نامعتبر است');
+                }
+                return $value;
+            }
+        }
+        return bin2hex(random_bytes(16));
+    }
+
     private function handleConfirm(): void
     {
         $recipient = $this->resolveRecipient();
@@ -80,35 +94,28 @@ final class WalletTransferHandler extends BaseHandler
             FaoximaResponse::badRequest('مبلغ باید حداقل ' . number_format($minAmount) . ' تومان باشد');
         }
 
-        if ((float)($this->user['Balance'] ?? 0) < $amount) {
-            FaoximaResponse::fail(422, 'موجودی کیف پول شما کافی نیست');
-        }
-
         $senderId = (string)$this->user['id'];
         $recipientId = (string)$recipient['id'];
-
-        $charge = balance_atomic_charge($senderId, $amount, 0);
-        if (empty($charge['ok'])) {
-            FaoximaResponse::fail(422, 'موجودی کیف پول شما کافی نیست');
+        if ($senderId === $recipientId) {
+            FaoximaResponse::badRequest('کاربر مقصد نامعتبر است');
         }
-
-        wallet_ledger_record($senderId, 'debit', $amount, 'transfer_out', 'انتقال موجودی به کاربر ' . $recipientId, null, 'user', $recipientId);
-
-        $credited = balance_atomic_credit($recipientId, $amount);
-        if (!$credited) {
-            $refunded = balance_atomic_credit($senderId, $amount);
-            if ($refunded) {
-                wallet_ledger_record($senderId, 'credit', $amount, 'refund', 'بازگشت وجه انتقال ناموفق', null, 'user', $recipientId);
+        $operationId = $this->operationId();
+        $transfer = rx_wallet_transfer_atomic($senderId, $recipientId, $amount, $operationId);
+        if (empty($transfer['ok'])) {
+            $reason = (string)($transfer['reason'] ?? '');
+            if ($reason === 'insufficient_balance') {
+                FaoximaResponse::fail(422, 'موجودی کیف پول شما کافی نیست');
             }
-            FaoximaLogger::critical('WalletTransfer credit failed, refunded sender', [
-                'sender' => $senderId,
-                'recipient' => $recipientId,
-                'amount' => $amount,
-            ]);
-            FaoximaResponse::fail(500, 'خطا در انتقال موجودی. مبلغ به کیف پول شما بازگشت داده شد');
+            if ($reason === 'operation_conflict') {
+                FaoximaResponse::fail(409, 'شناسه این انتقال قبلاً با مبلغ یا گیرنده دیگری استفاده شده است.');
+            }
+            FaoximaResponse::fail(500, 'انتقال تکمیل نشد؛ لطفاً با شناسه پیگیری با پشتیبانی در ارتباط باشید.', ['operation_id' => $operationId]);
         }
-
-        wallet_ledger_record($recipientId, 'credit', $amount, 'transfer_in', 'انتقال موجودی از کاربر ' . $senderId, null, 'user', $senderId);
+        $newBalance = (float)$transfer['new_balance'];
+        if (!empty($transfer['replayed'])) {
+            FaoximaResponse::ok(['new_balance' => $newBalance, 'replayed' => true, 'operation_id' => $operationId]);
+        }
+        rx_wallet_transfer_report($transfer['sender'], $transfer['recipient'], $amount, $operationId, $newBalance, (float)$transfer['recipient_balance']);
 
         if (function_exists('sendmessage')) {
             try {
@@ -122,7 +129,9 @@ final class WalletTransferHandler extends BaseHandler
         }
 
         FaoximaResponse::ok([
-            'new_balance' => (float)($charge['new_balance'] ?? 0),
+            'new_balance' => $newBalance,
+            'operation_id' => $operationId,
         ]);
     }
+
 }

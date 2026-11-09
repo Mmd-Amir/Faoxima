@@ -18,17 +18,12 @@ header('Expires: 0');
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
 require_once __DIR__ . '/lib/icons.php';
+require_once __DIR__ . '/lib/csrf.php';
 require_once __DIR__ . '/lib/textbot_edge.php';
 require_once __DIR__ . '/../re/rx/function/database_helpers_1.php';
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindValue(":username", $_SESSION["user"] ?? '', PDO::PARAM_STR);
-$query->execute();
-$adminRow = $query->fetch(PDO::FETCH_ASSOC);
-if (!isset($_SESSION["user"]) || !$adminRow) {
-    header('Location: login.php');
-    exit;
-}
+fx_admin_require_access($pdo);
+fx_csrf_guard();
 
 
 $FIN_GROUPS = [
@@ -150,6 +145,7 @@ try {
 $savedCount = 0;
 $edgeRejectedCount = 0;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_save'])) {
+    fx_admin_require_access($pdo, ['administrator']);
     foreach ($FIN_GROUPS as $group) {
         foreach ($group['fields'] as $f) {
             $key = $f['name'];
@@ -285,6 +281,7 @@ function faoxima_fin_mask_secret($v) {
             <?php endif; ?>
 
             <form method="POST" action="finance.php" autocomplete="off">
+                <?php echo fx_csrf_field(); ?>
                 <input type="hidden" name="_save" value="1">
 
                 <div class="setting-grid">

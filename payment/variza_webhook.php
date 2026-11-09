@@ -108,7 +108,7 @@ if (!$payment) {
 }
 
 // Already settled — idempotent. Variza retries up to 5 times.
-if (($payment['payment_Status'] ?? '') === 'paid') {
+if (($payment['payment_Status'] ?? '') === 'paid' && (int)($payment['direct_payment_done'] ?? 0) === 1) {
     variza_webhook_respond(200, 'already paid');
 }
 

@@ -54,3 +54,86 @@ if (!function_exists('fx_csrf_guard')) {
         }
     }
 }
+
+if (!function_exists('fx_admin_ip_allowed')) {
+
+    function fx_admin_ip_allowed($rawAdminIp): bool
+    {
+        if ($rawAdminIp === null || $rawAdminIp === '') {
+            return true;
+        }
+        $currentIp = (string)($_SERVER['REMOTE_ADDR'] ?? '');
+        if (is_array($rawAdminIp)) {
+            $entries = $rawAdminIp;
+        } else {
+            $raw = (string)$rawAdminIp;
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $entries = $decoded;
+            } else {
+                $entries = [$raw];
+            }
+        }
+        foreach ($entries as $entry) {
+            $value = strtolower(trim((string)$entry));
+            if (in_array($value, ['*', 'all', 'unlimited'], true)) {
+                return true;
+            }
+        }
+        foreach ($entries as $entry) {
+            $value = trim((string)$entry);
+            if ($value !== '' && $value === $currentIp) {
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
+if (!function_exists('fx_admin_require_access')) {
+
+    function fx_admin_require_access(PDO $pdo, ?array $roles = null): array
+    {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            fx_session_start();
+        }
+        if (empty($_SESSION['user']) || !is_string($_SESSION['user'])) {
+            header('Location: login.php', true, 302);
+            exit;
+        }
+        $stmt = $pdo->prepare("SELECT * FROM admin WHERE username = :username LIMIT 1");
+        $stmt->bindValue(':username', $_SESSION['user'], PDO::PARAM_STR);
+        $stmt->execute();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($row) || !$row) {
+            session_unset();
+            session_destroy();
+            header('Location: login.php', true, 302);
+            exit;
+        }
+        if (!fx_admin_ip_allowed($row['iplogin'] ?? null)) {
+            session_unset();
+            session_destroy();
+            header('Location: login.php', true, 302);
+            exit;
+        }
+        if ($roles !== null) {
+            $rule = strtolower(trim((string)($row['rule'] ?? '')));
+            $allowed = $rule === '';
+            if (!$allowed) {
+                foreach ($roles as $role) {
+                    if ($rule === strtolower(trim((string)$role))) {
+                        $allowed = true;
+                        break;
+                    }
+                }
+            }
+            if (!$allowed) {
+                http_response_code(403);
+                header('Content-Type: text/plain; charset=utf-8');
+                exit('دسترسی غیرمجاز');
+            }
+        }
+        return $row;
+    }
+}

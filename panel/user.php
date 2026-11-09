@@ -5,20 +5,12 @@ session_start();
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
 require_once __DIR__ . '/lib/icons.php';
+require_once __DIR__ . '/lib/csrf.php';
 require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../function.php';
 
-
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindParam("username", $_SESSION["user"], PDO::PARAM_STR);
-$query->execute();
-$result = $query->fetch(PDO::FETCH_ASSOC);
-
-if (!isset($_SESSION["user"]) || !$result) {
-    header('Location: login.php');
-    return;
-}
-
+fx_admin_require_access($pdo);
+fx_csrf_guard();
 
 $query = $pdo->prepare("SELECT * FROM user WHERE id=:id");
 $query->bindParam("id", $_GET["id"], PDO::PARAM_STR);
@@ -32,11 +24,101 @@ $paymentreports = select("topicid", "idreport", "report", "paymentreport", "sele
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['_action'])) {
     $targetUid = (string)($_GET['id'] ?? '');
-    if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], (string)($_POST['_csrf'] ?? ''))) {
+    $act = (string)$_POST['_action'];
+    if (in_array($act, ['user_status', 'user_balance_add', 'user_balance_lower', 'user_agent'], true)) {
+        fx_admin_require_access($pdo, ['administrator']);
+    }
+    if ($act === 'user_status' && $targetUid !== '') {
+        $status = (string)($_POST['status'] ?? '');
+        if (in_array($status, ['block', 'active'], true)) {
+            if ($status === 'block') {
+                $textblok = "کاربر با آیدی عددی {$_GET['id']} در ربات مسدود گردید \n\n<blockquote>ادمین مسدود کننده : پنل تحت وب</blockquote>\n<blockquote>نام کاربری : {$_SESSION['user']}</blockquote>";
+                if (strlen($setting['Channel_Report']) > 0) {
+                    telegram('sendmessage', [
+                        'chat_id'           => $setting['Channel_Report'],
+                        'message_thread_id' => $otherservice,
+                        'text'              => $textblok,
+                        'parse_mode'        => "HTML"
+                    ]);
+                }
+            } else {
+                sendmessage($_GET['id'], faoxima_textbot_get('dyn_panel_user_unblocked_notice', "✳️ حساب کاربری شما از مسدودی خارج شد ✳️\nاکنون میتوانید از ربات استفاده کنید "), null, 'HTML');
+            }
+            update("user", "User_Status", $status, "id", $targetUid);
+        }
         header("Location: user.php?id=" . urlencode($targetUid));
         exit;
     }
-    $act = (string)$_POST['_action'];
+    if ($act === 'user_balance_add' && $targetUid !== '') {
+        $amount = (int)($_POST['priceadd'] ?? 0);
+        $priceadd = number_format($amount, 0);
+        if ($amount > 0 && balance_atomic_credit($targetUid, $amount)) {
+            if (function_exists('wallet_ledger_record')) {
+                wallet_ledger_record($targetUid, 'credit', $amount, 'admin_credit', 'افزایش موجودی از پنل تحت وب');
+            }
+            $textadd  = faoxima_render_text(faoxima_textbot_get('dyn_panel_user_balance_added_tpl', '💎 کاربر عزیز مبلغ {amount} T به موجودی کیف پول تان اضافه گردید.'), ['amount' => $priceadd]);
+            sendmessage($targetUid, $textadd, null, 'HTML');
+            if (strlen($setting['Channel_Report']) > 0) {
+                $textaddbalance = "📌 یک ادمین موجودی کاربر را از پنل تحت وب افزایش داده است :\n\n<blockquote>🪪 ادمین : {$_SESSION['user']}</blockquote>\n<blockquote>👤 کاربر : {$targetUid}</blockquote>\n<blockquote>مبلغ : $priceadd</blockquote>";
+                telegram('sendmessage', [
+                    'chat_id'           => $setting['Channel_Report'],
+                    'message_thread_id' => $paymentreports,
+                    'text'              => $textaddbalance,
+                    'parse_mode'        => "HTML"
+                ]);
+            }
+        } else {
+            error_log('[panel_add_balance] credit failed for user ' . $targetUid . ' amount ' . $amount);
+        }
+        header("Location: user.php?id=" . urlencode($targetUid));
+        exit;
+    }
+    if ($act === 'user_balance_lower' && $targetUid !== '') {
+        $amount = (int)($_POST['pricelow'] ?? 0);
+        $pricelow = number_format($amount, 0);
+        $__adminDebitOk = $amount > 0 ? balance_atomic_charge($targetUid, $amount, 0) : ['ok' => false];
+        $__adminDebitOk = !empty($__adminDebitOk['ok']);
+        if ($__adminDebitOk && function_exists('wallet_ledger_record')) {
+            wallet_ledger_record($targetUid, 'debit', $amount, 'admin_debit', 'کاهش موجودی از پنل تحت وب');
+        }
+        if ($__adminDebitOk && strlen($setting['Channel_Report']) > 0) {
+            $textlowbalance = "📌 یک ادمین موجودی کاربر را از پنل تحت وب کسر کرده است :\n\n<blockquote>🪪 ادمین : {$_SESSION['user']}</blockquote>\n<blockquote>👤 کاربر : {$targetUid}</blockquote>\n<blockquote>مبلغ کسر شده : $pricelow</blockquote>";
+            telegram('sendmessage', [
+                'chat_id'           => $setting['Channel_Report'],
+                'message_thread_id' => $paymentreports,
+                'text'              => $textlowbalance,
+                'parse_mode'        => "HTML"
+            ]);
+        }
+        header("Location: user.php?id=" . urlencode($targetUid));
+        exit;
+    }
+    if ($act === 'user_agent' && $targetUid !== '') {
+        $agent = (string)($_POST['agent'] ?? '');
+        if (in_array($agent, ['f', 'n', 'n2'], true)) {
+            update("user", "agent", $agent, "id", $targetUid);
+        }
+        header("Location: user.php?id=" . urlencode($targetUid));
+        exit;
+    }
+    if ($act === 'user_message' && $targetUid !== '') {
+        $message = trim((string)($_POST['textmessage'] ?? ''));
+        if ($message !== '') {
+            $messagetext = faoxima_render_text(faoxima_textbot_get('dyn_panel_user_admin_message_tpl', "📥 یک پیام از مدیریت برای شما ارسال شد.\n\nمتن پیام : {message}"), ['message' => $message]);
+            sendmessage($targetUid, $messagetext, null, 'HTML');
+            if (strlen($setting['Channel_Report']) > 0) {
+                $textmsg = "📌 پیام مدیریت ارسال شد\n\n<blockquote>🪪 ادمین : {$_SESSION['user']}</blockquote>\n<blockquote>👤 گیرنده : {$targetUid}</blockquote>\n<blockquote>متن : {$message}</blockquote>";
+                telegram('sendmessage', [
+                    'chat_id'           => $setting['Channel_Report'],
+                    'message_thread_id' => $otherservice,
+                    'text'              => $textmsg,
+                    'parse_mode'        => "HTML"
+                ]);
+            }
+        }
+        header("Location: user.php?id=" . urlencode($targetUid));
+        exit;
+    }
     if ($act === 'user_discount_add' && $targetUid !== '') {
         $code    = trim((string)($_POST['codeDiscount'] ?? ''));
         $vtype   = (string)($_POST['value_type'] ?? 'percent');
@@ -171,114 +253,11 @@ try {
 } catch (\Throwable $e) {  }
 
 
-if (isset($_GET['status']) and $_GET['status']) {
-    if ($_GET['status'] == "block") {
-        $textblok = "کاربر با آیدی عددی {$_GET['id']} در ربات مسدود گردید \n\n<blockquote>ادمین مسدود کننده : پنل تحت وب</blockquote>\n<blockquote>نام کاربری : {$_SESSION['user']}</blockquote>";
-        if (strlen($setting['Channel_Report']) > 0) {
-            telegram('sendmessage', [
-                'chat_id'           => $setting['Channel_Report'],
-                'message_thread_id' => $otherservice,
-                'text'              => $textblok,
-                'parse_mode'        => "HTML"
-            ]);
-        }
-    } else {
-        sendmessage($_GET['id'], faoxima_textbot_get('dyn_panel_user_unblocked_notice', "✳️ حساب کاربری شما از مسدودی خارج شد ✳️\nاکنون میتوانید از ربات استفاده کنید "), null, 'HTML');
-    }
-    update("user", "User_Status", $_GET['status'], "id", $_GET['id']);
-    header("Location: user.php?id={$_GET['id']}");
-    exit;
-}
-
-if (isset($_GET['priceadd']) and $_GET['priceadd']) {
-    $priceadd = number_format($_GET['priceadd'], 0);
-    if (intval($_GET['priceadd']) > 0 && balance_atomic_credit($_GET['id'], intval($_GET['priceadd']))) {
-        if (function_exists('wallet_ledger_record')) {
-            wallet_ledger_record($_GET['id'], 'credit', $_GET['priceadd'], 'admin_credit', 'افزایش موجودی از پنل تحت وب');
-        }
-        $textadd  = faoxima_render_text(faoxima_textbot_get('dyn_panel_user_balance_added_tpl', '💎 کاربر عزیز مبلغ {amount} T به موجودی کیف پول تان اضافه گردید.'), ['amount' => $priceadd]);
-        sendmessage($_GET['id'], $textadd, null, 'HTML');
-        if (strlen($setting['Channel_Report']) > 0) {
-            $textaddbalance = "📌 یک ادمین موجودی کاربر را از پنل تحت وب افزایش داده است :\n\n<blockquote>🪪 ادمین : {$_SESSION['user']}</blockquote>\n<blockquote>👤 کاربر : {$_GET['id']}</blockquote>\n<blockquote>مبلغ : $priceadd</blockquote>";
-            telegram('sendmessage', [
-                'chat_id'           => $setting['Channel_Report'],
-                'message_thread_id' => $paymentreports,
-                'text'              => $textaddbalance,
-                'parse_mode'        => "HTML"
-            ]);
-        }
-    } else {
-        error_log('[panel_add_balance] credit failed for user ' . $_GET['id'] . ' amount ' . $_GET['priceadd']);
-    }
-    header("Location: user.php?id={$_GET['id']}");
-    exit;
-}
-
-if (isset($_GET['pricelow']) and $_GET['pricelow']) {
-    $pricelow = number_format($_GET['pricelow'], 0);
-    $__adminDebitOk = balance_atomic_charge($_GET['id'], intval($_GET['pricelow']), 0);
-    $__adminDebitOk = !empty($__adminDebitOk['ok']);
-    if ($__adminDebitOk && function_exists('wallet_ledger_record')) {
-        wallet_ledger_record($_GET['id'], 'debit', $_GET['pricelow'], 'admin_debit', 'کاهش موجودی از پنل تحت وب');
-    }
-    if ($__adminDebitOk && strlen($setting['Channel_Report']) > 0) {
-        $textlowbalance = "📌 یک ادمین موجودی کاربر را از پنل تحت وب کسر کرده است :\n\n<blockquote>🪪 ادمین : {$_SESSION['user']}</blockquote>\n<blockquote>👤 کاربر : {$_GET['id']}</blockquote>\n<blockquote>مبلغ کسر شده : $pricelow</blockquote>";
-        telegram('sendmessage', [
-            'chat_id'           => $setting['Channel_Report'],
-            'message_thread_id' => $paymentreports,
-            'text'              => $textlowbalance,
-            'parse_mode'        => "HTML"
-        ]);
-    }
-    header("Location: user.php?id={$_GET['id']}");
-    exit;
-}
-
-if (isset($_GET['agent']) and $_GET['agent']) {
-    update("user", "agent", $_GET['agent'], "id", $_GET['id']);
-    header("Location: user.php?id={$_GET['id']}");
-    exit;
-}
-
-if (isset($_GET['textmessage']) and $_GET['textmessage']) {
-    $messagetext = faoxima_render_text(faoxima_textbot_get('dyn_panel_user_admin_message_tpl', "📥 یک پیام از مدیریت برای شما ارسال شد.\n\nمتن پیام : {message}"), ['message' => $_GET['textmessage']]);
-    sendmessage($_GET['id'], $messagetext, null, 'HTML');
-    if (strlen($setting['Channel_Report']) > 0) {
-        $textmsg = "📌 پیام مدیریت ارسال شد\n\n<blockquote>🪪 ادمین : {$_SESSION['user']}</blockquote>\n<blockquote>👤 گیرنده : {$_GET['id']}</blockquote>\n<blockquote>متن : {$_GET['textmessage']}</blockquote>";
-        telegram('sendmessage', [
-            'chat_id'           => $setting['Channel_Report'],
-            'message_thread_id' => $otherservice,
-            'text'              => $textmsg,
-            'parse_mode'        => "HTML"
-        ]);
-    }
-    header("Location: user.php?id={$_GET['id']}");
-    exit;
-}
-
-
 $status_label   = ($user['User_Status'] == 'block') ? 'مسدود' : 'فعال';
 $status_class   = ($user['User_Status'] == 'block') ? 'badge-danger' : 'badge-success';
 $number_display = ($user['number'] == "none") ? 'ثبت نشده' : htmlspecialchars($user['number'], ENT_QUOTES, 'UTF-8');
 
-
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-$_csrf = $_SESSION['csrf_token'];
-
-
-$_has_action = isset($_GET['status']) || isset($_GET['priceadd']) ||
-               isset($_GET['pricelow']) || isset($_GET['agent']) ||
-               isset($_GET['textmessage']);
-if ($_has_action) {
-    $incoming_csrf = $_GET['_csrf'] ?? '';
-    if (!hash_equals($_SESSION['csrf_token'], $incoming_csrf)) {
-        http_response_code(403);
-        exit('درخواست نامعتبر — توکن CSRF اشتباه است');
-    }
-}
-
+$_csrf = fx_csrf_token();
 
 $agent_types = [
     'f'  => 'کاربر عادی',
@@ -387,14 +366,23 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                 </div>
                 <div class="actions-grid">
                     <?php if ($user['User_Status'] == 'block'): ?>
-                        <a href="user.php?id=<?php echo $user['id']; ?>&status=active&_csrf=<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-soft-success btn-block">
-                            <?php echo icon('check', 'svg-icon'); ?> رفع مسدودی
-                        </a>
+                        <form method="POST" action="user.php?id=<?php echo urlencode((string)$user['id']); ?>" style="margin:0;">
+                            <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
+                            <input type="hidden" name="_action" value="user_status">
+                            <input type="hidden" name="status" value="active">
+                            <button type="submit" class="btn btn-soft-success btn-block">
+                                <?php echo icon('check', 'svg-icon'); ?> رفع مسدودی
+                            </button>
+                        </form>
                     <?php else: ?>
-                        <a href="user.php?id=<?php echo $user['id']; ?>&status=block&_csrf=<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-soft-danger btn-block"
-                           onclick="return confirm('کاربر مسدود شود؟')">
-                            <?php echo icon('ban', 'svg-icon'); ?> مسدود کردن
-                        </a>
+                        <form method="POST" action="user.php?id=<?php echo urlencode((string)$user['id']); ?>" style="margin:0;" onsubmit="return confirm('کاربر مسدود شود؟')">
+                            <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
+                            <input type="hidden" name="_action" value="user_status">
+                            <input type="hidden" name="status" value="block">
+                            <button type="submit" class="btn btn-soft-danger btn-block">
+                                <?php echo icon('ban', 'svg-icon'); ?> مسدود کردن
+                            </button>
+                        </form>
                     <?php endif; ?>
 
                     <button onclick="openModal('modal-add-balance')" class="btn btn-soft-info btn-block">
@@ -413,10 +401,14 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                         <?php echo icon('gift', 'svg-icon'); ?> درصد تخفیف اختصاصی
                     </button>
 
-                    <a href="user.php?id=<?php echo $user['id']; ?>&agent=f&_csrf=<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-soft-danger btn-block"
-                       onclick="return confirm('آیا مطمئن هستید؟')">
-                        <?php echo icon('user-xmark', 'svg-icon'); ?> حذف نمایندگی
-                    </a>
+                    <form method="POST" action="user.php?id=<?php echo urlencode((string)$user['id']); ?>" style="margin:0;" onsubmit="return confirm('آیا مطمئن هستید؟')">
+                        <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
+                        <input type="hidden" name="_action" value="user_agent">
+                        <input type="hidden" name="agent" value="f">
+                        <button type="submit" class="btn btn-soft-danger btn-block">
+                            <?php echo icon('user-xmark', 'svg-icon'); ?> حذف نمایندگی
+                        </button>
+                    </form>
 
                     <button onclick="openModal('modal-send-msg')" class="btn btn-outline btn-block">
                         <?php echo icon('paper-plane', 'svg-icon'); ?> ارسال پیام
@@ -602,10 +594,9 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
             <span class="modal-head__title">افزایش موجودی کاربر</span>
             <button class="modal-close" onclick="closeModal('modal-add-balance')">&times;</button>
         </div>
-        <form action="user.php" method="GET">
+        <form action="user.php?id=<?php echo urlencode((string)$user['id']); ?>" method="POST">
             <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
-            <input type="hidden" name="id" value="<?php echo htmlspecialchars($user['id'], ENT_QUOTES, 'UTF-8'); ?>">
-            <input type="hidden" name="id" value="<?php echo $user['id']; ?>">
+            <input type="hidden" name="_action" value="user_balance_add">
             <div class="form-group">
                 <label class="form-label">مبلغ (T)</label>
                 <input type="text" name="priceadd" class="form-control" data-money placeholder="مثلا 50000" required>
@@ -621,10 +612,9 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
             <span class="modal-head__title">کسر موجودی کاربر</span>
             <button class="modal-close" onclick="closeModal('modal-low-balance')">&times;</button>
         </div>
-        <form action="user.php" method="GET">
+        <form action="user.php?id=<?php echo urlencode((string)$user['id']); ?>" method="POST">
             <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
-            <input type="hidden" name="id" value="<?php echo htmlspecialchars($user['id'], ENT_QUOTES, 'UTF-8'); ?>">
-            <input type="hidden" name="id" value="<?php echo $user['id']; ?>">
+            <input type="hidden" name="_action" value="user_balance_lower">
             <div class="form-group">
                 <label class="form-label">مبلغ کسر (T)</label>
                 <input type="text" name="pricelow" class="form-control" data-money placeholder="مثلا 10000" required>
@@ -640,10 +630,9 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
             <span class="modal-head__title">تغییر سطح کاربری</span>
             <button class="modal-close" onclick="closeModal('modal-change-agent')">&times;</button>
         </div>
-        <form action="user.php" method="GET">
+        <form action="user.php?id=<?php echo urlencode((string)$user['id']); ?>" method="POST">
             <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
-            <input type="hidden" name="id" value="<?php echo htmlspecialchars($user['id'], ENT_QUOTES, 'UTF-8'); ?>">
-            <input type="hidden" name="id" value="<?php echo $user['id']; ?>">
+            <input type="hidden" name="_action" value="user_agent">
             <div class="form-group">
                 <label class="form-label">انتخاب سطح</label>
                 <select name="agent" class="form-control">
@@ -682,10 +671,9 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
             <span class="modal-head__title">ارسال پیام خصوصی</span>
             <button class="modal-close" onclick="closeModal('modal-send-msg')">&times;</button>
         </div>
-        <form action="user.php" method="GET">
+        <form action="user.php?id=<?php echo urlencode((string)$user['id']); ?>" method="POST">
             <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
-            <input type="hidden" name="id" value="<?php echo htmlspecialchars($user['id'], ENT_QUOTES, 'UTF-8'); ?>">
-            <input type="hidden" name="id" value="<?php echo $user['id']; ?>">
+            <input type="hidden" name="_action" value="user_message">
             <div class="form-group">
                 <label class="form-label">متن پیام</label>
                 <textarea name="textmessage" class="form-control" rows="4" placeholder="پیام خود را بنویسید..." required></textarea>

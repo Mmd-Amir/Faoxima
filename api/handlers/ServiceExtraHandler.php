@@ -172,42 +172,115 @@ final class ServiceExtraHandler extends BaseHandler
         }
 
 
-        $balanceCharged = false;
-        if ($finalPrice > 0) {
+        $operationId = 'extra_' . bin2hex(random_bytes(16));
+        $operationType = $kind === 'time' ? 'extra_time_user' : 'extra_user';
+        $pendingRowId = 0;
+        $managePanel = new ManagePanel();
+        $beforeSnapshot = function_exists('rx_pf_panel_snapshot')
+            ? rx_pf_panel_snapshot($managePanel, (string)$panel['name_panel'], (string)$invoice['username'], (string)($panel['type'] ?? ''))
+            : null;
+        $targetState = null;
+        if (is_array($beforeSnapshot) && !empty($beforeSnapshot['ok']) && !empty($beforeSnapshot['exists'])) {
+            $targetState = $kind === 'time'
+                ? ['expire' => max(time(), (int)($beforeSnapshot['expire'] ?? 0)) + ((int)$amount * 86400)]
+                : ['data_limit' => (int)($beforeSnapshot['data_limit'] ?? 0) + ((int)$amount * 1073741824)];
+        }
+        $operationValue = [
+            'operation_id' => $operationId,
+            'invoice_id' => (string)($invoice['id_invoice'] ?? ''),
+            'panel' => (string)$panel['name_panel'],
+            'kind' => $kind,
+            'amount' => (int)$amount,
+            'discount_code' => $discountCode,
+            'before' => $beforeSnapshot,
+            'target' => $targetState,
+            'wallet_state' => 'charged',
+        ];
+        $pdo = FaoximaDb::pdo();
+        $ownOperation = !$pdo->inTransaction();
+        $operationSavepoint = 'rx_extra_' . bin2hex(random_bytes(4));
+        $commitAttempted = false;
+        try {
+            if ($ownOperation) {
+                $pdo->beginTransaction();
+            } else {
+                $pdo->exec('SAVEPOINT ' . $operationSavepoint);
+            }
+            $pendingStmt = $pdo->prepare(
+                'INSERT INTO service_other (id_user, username, value, type, time, price, output, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            );
+            $pendingStmt->execute([
+                (string)$this->user['id'],
+                (string)$invoice['username'],
+                json_encode($operationValue, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+                $operationType,
+                date('Y/m/d H:i:s'),
+                (string)$finalPrice,
+                '',
+                'pending',
+            ]);
+            $pendingRowId = (int)$pdo->lastInsertId();
+            if ($pendingRowId <= 0) {
+                throw new RuntimeException('operation_not_saved');
+            }
             $allowNeg = ($agent === 'n2') ? (int)($this->user['maxbuyagent'] ?? 0) : 0;
-            $charge = balance_atomic_charge($this->user['id'], $finalPrice, $allowNeg);
+            $charge = MiniDiscount::chargeWallet($discountCode, $this->user, $finalPrice, $allowNeg, $operationId);
             if (empty($charge['ok'])) {
-                FaoximaLogger::warn('Atomic balance charge failed at extra', [
-                    'user_id' => $this->user['id'],
-                    'invoice' => $invoice['id_invoice'] ?? null,
-                    'price'   => $finalPrice,
-                    'reason'  => $charge['reason'] ?? 'unknown',
-                ]);
-                FaoximaResponse::fail(402, faoxima_textbot_get('dyn_purchase_concurrent_balance_conflict', '❌ موجودی کافی نیست (تلاش هم‌زمان شناسایی شد). یک بار دیگر تلاش کنید.'));
+                throw new RuntimeException((string)($charge['reason'] ?? 'charge_failed'));
             }
             $newBalance = $charge['new_balance'];
-            $balanceCharged = true;
-            if (function_exists('wallet_ledger_record')) {
-                wallet_ledger_record($this->user['id'], 'debit', $finalPrice, 'service_action', $kind === 'time' ? faoxima_textbot_get('dyn_serviceextra_ledger_debit_time', 'خرید زمان اضافه') : faoxima_textbot_get('dyn_serviceextra_ledger_debit_volume', 'خرید حجم اضافه'), $orderId, 'invoice', (string)($invoice['id_invoice'] ?? ''));
+            $balanceCharged = $finalPrice > 0;
+            if ($balanceCharged && (!function_exists('wallet_ledger_record') || !wallet_ledger_record($this->user['id'], 'debit', $finalPrice, 'service_action', $kind === 'time' ? faoxima_textbot_get('dyn_serviceextra_ledger_debit_time', 'خرید زمان اضافه') : faoxima_textbot_get('dyn_serviceextra_ledger_debit_volume', 'خرید حجم اضافه'), $operationId, 'service_other', (string)$pendingRowId))) {
+                throw new RuntimeException('ledger_not_saved');
             }
-        } else {
-            $newBalance = $balance;
+            if ($ownOperation) {
+                $commitAttempted = true;
+                $pdo->commit();
+            } else {
+                $pdo->exec('RELEASE SAVEPOINT ' . $operationSavepoint);
+            }
+        } catch (Throwable $e) {
+            $outcomeUnknown = $commitAttempted && !$pdo->inTransaction();
+            try {
+                if ($ownOperation) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                } else {
+                    $pdo->exec('ROLLBACK TO SAVEPOINT ' . $operationSavepoint);
+                    $pdo->exec('RELEASE SAVEPOINT ' . $operationSavepoint);
+                }
+            } catch (Throwable $rollbackError) {
+                $outcomeUnknown = true;
+            }
+            FaoximaLogger::error('Service extra operation could not be recorded', ['operation_id' => $operationId, 'error' => $e->getMessage()]);
+            if ($outcomeUnknown) {
+                FaoximaResponse::fail(503, 'وضعیت ثبت خرید مشخص نیست؛ با شناسه پیگیری با پشتیبانی در ارتباط باشید.', ['operation_id' => $operationId]);
+            }
+            if (str_starts_with($e->getMessage(), 'discount_')) {
+                FaoximaResponse::fail(409, 'کد تخفیف دیگر قابل استفاده نیست. لطفاً خرید را دوباره انجام دهید.');
+            }
+            if ($e->getMessage() === 'insufficient_balance') {
+                FaoximaResponse::fail(402, 'موجودی کیف پول شما کافی نیست.');
+            }
+            FaoximaResponse::fail(500, 'ثبت درخواست خرید انجام نشد؛ مبلغی کسر نشد. لطفاً دوباره تلاش کنید.');
         }
-
-
-        $managePanel = new ManagePanel();
-        if ($kind === 'time') {
-            $result = $managePanel->extra_time(
-                (string)$invoice['username'],
-                (string)$panel['code_panel'],
-                (int)$amount
-            );
-        } else {
-            $result = $managePanel->extra_volume(
-                (string)$invoice['username'],
-                (string)$panel['code_panel'],
-                (int)$amount
-            );
+        try {
+            if ($kind === 'time') {
+                $result = $managePanel->extra_time(
+                    (string)$invoice['username'],
+                    (string)$panel['code_panel'],
+                    (int)$amount
+                );
+            } else {
+                $result = $managePanel->extra_volume(
+                    (string)$invoice['username'],
+                    (string)$panel['code_panel'],
+                    (int)$amount
+                );
+            }
+        } catch (Throwable $e) {
+            $result = ['status' => false, 'msg' => 'panel_request_interrupted'];
+            FaoximaLogger::error('Service extra panel request interrupted', ['operation_id' => $operationId, 'error' => $e->getMessage()]);
         }
 
         if (!is_array($result) || ($result['status'] ?? null) === false) {
@@ -220,30 +293,122 @@ final class ServiceExtraHandler extends BaseHandler
                 'reason'   => $reason,
             ]);
 
-            if ($balanceCharged) {
-                if (balance_atomic_credit($this->user['id'], $finalPrice)) {
-                    if (function_exists('wallet_ledger_record')) {
-                        wallet_ledger_record($this->user['id'], 'credit', $finalPrice, 'refund', faoxima_textbot_get('dyn_serviceextra_refund_note', 'بازگشت وجه به دلیل خطا در سرویس اضافه'), $orderId, 'invoice', (string)($invoice['id_invoice'] ?? ''));
-                    }
+            $reconciled = false;
+            $uncertain = true;
+            $reconcilable = function_exists('rx_pf_panel_reconcilable') ? rx_pf_panel_reconcilable($panel) : false;
+            if ($reconcilable && is_array($beforeSnapshot) && !empty($beforeSnapshot['ok']) && !empty($beforeSnapshot['exists'])
+                && function_exists('rx_pf_classify') && function_exists('rx_pf_panel_snapshot')) {
+                if ($kind === 'time') {
+                    $beforeState = ['expire' => (int)($beforeSnapshot['expire'] ?? 0)];
                 } else {
-                    FaoximaLogger::error('refund credit failed', ['user' => $this->user['id'], 'amount' => $finalPrice]);
+                    $beforeState = ['data_limit' => (int)($beforeSnapshot['data_limit'] ?? 0)];
                 }
+                $afterSnapshot = rx_pf_panel_snapshot($managePanel, (string)$panel['name_panel'], (string)$invoice['username'], (string)($panel['type'] ?? ''));
+                if (is_array($afterSnapshot) && !empty($afterSnapshot['ok'])) {
+                    $classification = rx_pf_classify($afterSnapshot, $beforeState, $targetState);
+                    $reconciled = $classification === 'target';
+                    $uncertain = $classification !== 'target' && $classification !== 'before';
+                } else {
+                    $uncertain = true;
+                }
+            } elseif ($reconcilable && is_array($beforeSnapshot) && empty($beforeSnapshot['ok'])) {
+                $uncertain = true;
             }
-            $errorTitle = $kind === 'time'
-                ? faoxima_textbot_get('dyn_serviceextra_error_title_time', 'خطای خرید زمان اضافه')
-                : faoxima_textbot_get('dyn_serviceextra_error_title_volume', 'خطای خرید حجم اضافه');
-            $this->reportError(
-                faoxima_render_text(faoxima_textbot_get('dyn_serviceextra_error_report_tpl', "{error_title}\n<blockquote>نام پنل : {panel_name}</blockquote>\n<blockquote>نام کاربری سرویس : {username}</blockquote>\n<blockquote>دلیل خطا : {reason}</blockquote>"), [
-                    'error_title' => $errorTitle,
-                    'panel_name' => $panel['name_panel'],
-                    'username' => guardDisplayUsername($invoice['username'], $panel),
-                    'reason' => $reason,
-                ])
-            );
-            $human = $kind === 'time'
-                ? faoxima_textbot_get('dyn_serviceextra_generic_error_time', '❌ خطایی در خرید زمان اضافه رخ داده با پشتیبانی در ارتباط باشید')
-                : faoxima_textbot_get('dyn_serviceextra_generic_error_volume', '❌ خطایی در خرید حجم اضافه رخ داده با پشتیبانی در ارتباط باشید');
-            FaoximaResponse::fail(502, $human);
+
+            if ($reconciled) {
+                $result = ['status' => true, 'reconciled' => true];
+            } else {
+                if ($pendingRowId > 0) {
+                    try {
+                        if ($uncertain) {
+                            FaoximaDb::execute(
+                                "UPDATE service_other SET status = 'pending', output = :o WHERE id = :id",
+                                [':o' => json_encode($result, JSON_UNESCAPED_UNICODE), ':id' => $pendingRowId]
+                            );
+                        }
+                    } catch (Throwable $e) {
+                    }
+                }
+                if ($uncertain) {
+                    $errorTitle = $kind === 'time'
+                        ? faoxima_textbot_get('dyn_serviceextra_error_title_time', 'خطای خرید زمان اضافه')
+                        : faoxima_textbot_get('dyn_serviceextra_error_title_volume', 'خطای خرید حجم اضافه');
+                    $this->reportError(
+                        faoxima_render_text(faoxima_textbot_get('dyn_serviceextra_uncertain_report_tpl', "{error_title}\n<blockquote>نام پنل : {panel_name}</blockquote>\n<blockquote>نام کاربری سرویس : {username}</blockquote>\n<blockquote>نتیجه عملیات در پنل قابل تشخیص نیست : {reason}</blockquote>"), [
+                            'error_title' => $errorTitle,
+                            'panel_name' => $panel['name_panel'],
+                            'username' => guardDisplayUsername($invoice['username'], $panel),
+                            'reason' => $reason,
+                        ]) . "\n<blockquote>شناسه کاربر: <code>" . htmlspecialchars((string)$this->user['id'], ENT_QUOTES, 'UTF-8') . "</code></blockquote>"
+                        . "\n<blockquote>شناسه عملیات: <code>" . $operationId . "</code></blockquote>"
+                        . "\n<blockquote>مبلغ: " . number_format($finalPrice) . " تومان</blockquote>"
+                        . "\n<blockquote>مقدار درخواست: " . (int)$amount . ($kind === 'time' ? ' روز' : ' گیگابایت') . "</blockquote>"
+                    );
+                    FaoximaLogger::critical('extra outcome uncertain; no refund issued', [
+                        'user_id' => $this->user['id'],
+                        'invoice' => $operationId,
+                        'kind' => $kind,
+                    ]);
+                    FaoximaResponse::fail(503, 'نتیجه عملیات در پنل مشخص نیست؛ لطفاً با شناسه پیگیری با پشتیبانی در ارتباط باشید.', ['operation_id' => $operationId]);
+                }
+
+                $refundOwn = !$pdo->inTransaction();
+                $refundSavepoint = 'rx_extra_refund_' . bin2hex(random_bytes(4));
+                try {
+                    if ($refundOwn) {
+                        $pdo->beginTransaction();
+                    } else {
+                        $pdo->exec('SAVEPOINT ' . $refundSavepoint);
+                    }
+                    if (!MiniDiscount::releaseWalletDiscount($discountCode, $this->user, $operationId)) {
+                        throw new RuntimeException('discount_release_failed');
+                    }
+                    if ($balanceCharged) {
+                        if (!balance_atomic_credit($this->user['id'], $finalPrice)) {
+                            throw new RuntimeException('refund_credit_failed');
+                        }
+                        if (!wallet_ledger_record($this->user['id'], 'credit', $finalPrice, 'refund', faoxima_textbot_get('dyn_serviceextra_refund_note', 'بازگشت وجه به دلیل خطا در سرویس اضافه'), $operationId, 'service_other', (string)$pendingRowId)) {
+                            throw new RuntimeException('refund_ledger_failed');
+                        }
+                    }
+                    $operationValue['wallet_state'] = 'refunded';
+                    FaoximaDb::execute('UPDATE service_other SET value = :v, status = :s, output = :o WHERE id = :id', [
+                        ':v' => json_encode($operationValue, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+                        ':s' => 'refunded',
+                        ':o' => json_encode($result, JSON_UNESCAPED_UNICODE),
+                        ':id' => $pendingRowId,
+                    ]);
+                    if ($refundOwn) {
+                        $pdo->commit();
+                    } else {
+                        $pdo->exec('RELEASE SAVEPOINT ' . $refundSavepoint);
+                    }
+                } catch (Throwable $e) {
+                    if ($refundOwn) {
+                        if ($pdo->inTransaction()) $pdo->rollBack();
+                    } else {
+                        $pdo->exec('ROLLBACK TO SAVEPOINT ' . $refundSavepoint);
+                        $pdo->exec('RELEASE SAVEPOINT ' . $refundSavepoint);
+                    }
+                    FaoximaLogger::critical('Service extra refund requires review', ['operation_id' => $operationId, 'error' => $e->getMessage()]);
+                    FaoximaResponse::fail(503, 'بازگشت وجه تکمیل نشد؛ لطفاً با شناسه پیگیری با پشتیبانی در ارتباط باشید.', ['operation_id' => $operationId]);
+                }
+                $errorTitle = $kind === 'time'
+                    ? faoxima_textbot_get('dyn_serviceextra_error_title_time', 'خطای خرید زمان اضافه')
+                    : faoxima_textbot_get('dyn_serviceextra_error_title_volume', 'خطای خرید حجم اضافه');
+                $this->reportError(
+                    faoxima_render_text(faoxima_textbot_get('dyn_serviceextra_error_report_tpl', "{error_title}\n<blockquote>نام پنل : {panel_name}</blockquote>\n<blockquote>نام کاربری سرویس : {username}</blockquote>\n<blockquote>دلیل خطا : {reason}</blockquote>"), [
+                        'error_title' => $errorTitle,
+                        'panel_name' => $panel['name_panel'],
+                        'username' => guardDisplayUsername($invoice['username'], $panel),
+                        'reason' => $reason,
+                    ])
+                );
+                $human = $kind === 'time'
+                    ? faoxima_textbot_get('dyn_serviceextra_generic_error_time', '❌ خطایی در خرید زمان اضافه رخ داده با پشتیبانی در ارتباط باشید')
+                    : faoxima_textbot_get('dyn_serviceextra_generic_error_volume', '❌ خطایی در خرید حجم اضافه رخ داده با پشتیبانی در ارتباط باشید');
+                FaoximaResponse::fail(502, $human);
+            }
         }
 
         MiniDiscount::logSale([
@@ -256,21 +421,22 @@ final class ServiceExtraHandler extends BaseHandler
             'source' => 'miniapp',
         ]);
 
-        if ($discountCode !== '') {
-            MiniDiscount::markSellUsed($discountCode, $this->user);
-        }
-
 
         try {
             $oldDataLimit = '';
             $oldExpire = '';
-            try {
-                $remote = $managePanel->DataUser($invoice['Service_location'], $invoice['username']);
-                if (is_array($remote)) {
-                    $oldDataLimit = (string)($remote['data_limit'] ?? '');
-                    $oldExpire    = (string)($remote['expire'] ?? '');
-                }
-            } catch (Throwable $e) {  }
+            if (is_array($beforeSnapshot) && !empty($beforeSnapshot['ok']) && !empty($beforeSnapshot['exists'])) {
+                $oldDataLimit = (string)($beforeSnapshot['data_limit'] ?? '');
+                $oldExpire    = (string)($beforeSnapshot['expire'] ?? '');
+            } else {
+                try {
+                    $remote = $managePanel->DataUser($invoice['Service_location'], $invoice['username']);
+                    if (is_array($remote)) {
+                        $oldDataLimit = (string)($remote['data_limit'] ?? '');
+                        $oldExpire    = (string)($remote['expire'] ?? '');
+                    }
+                } catch (Throwable $e) {  }
+            }
 
             if ($kind === 'time') {
                 $value = json_encode([
@@ -292,21 +458,56 @@ final class ServiceExtraHandler extends BaseHandler
                 $type = 'extra_user';
             }
 
+            $completedValue = json_decode($value, true);
+            $value = json_encode(array_merge(is_array($completedValue) ? $completedValue : [], $operationValue), JSON_UNESCAPED_UNICODE);
             $pdo = FaoximaDb::pdo();
-            $stmt = $pdo->prepare(
-                'INSERT IGNORE INTO service_other
-                    (id_user, username, value, type, time, price, output)
-                 VALUES (:u, :n, :v, :ty, :t, :p, :o)'
-            );
-            $stmt->execute([
-                ':u'  => $this->user['id'],
-                ':n'  => $invoice['username'],
-                ':v'  => $value,
-                ':ty' => $type,
-                ':t'  => date('Y/m/d H:i:s'),
-                ':p'  => $finalPrice,
-                ':o'  => json_encode($result, JSON_UNESCAPED_UNICODE),
-            ]);
+            if ($pendingRowId > 0) {
+                $stmt = $pdo->prepare(
+                    'UPDATE service_other
+                        SET value = :v, type = :ty, output = :o, status = :s
+                      WHERE id = :id'
+                );
+                $stmt->execute([
+                    ':v'  => $value,
+                    ':ty' => $type,
+                    ':o'  => json_encode($result, JSON_UNESCAPED_UNICODE),
+                    ':s'  => 'done',
+                    ':id' => $pendingRowId,
+                ]);
+            } else {
+                try {
+                    $stmt = $pdo->prepare(
+                        'INSERT IGNORE INTO service_other
+                            (id_user, username, value, type, time, price, output, status)
+                         VALUES (:u, :n, :v, :ty, :t, :p, :o, :s)'
+                    );
+                    $stmt->execute([
+                        ':u'  => $this->user['id'],
+                        ':n'  => $invoice['username'],
+                        ':v'  => $value,
+                        ':ty' => $type,
+                        ':t'  => date('Y/m/d H:i:s'),
+                        ':p'  => $finalPrice,
+                        ':o'  => json_encode($result, JSON_UNESCAPED_UNICODE),
+                        ':s'  => 'done',
+                    ]);
+                } catch (Throwable $e) {
+                    $stmt = $pdo->prepare(
+                        'INSERT IGNORE INTO service_other
+                            (id_user, username, value, type, time, price, output)
+                         VALUES (:u, :n, :v, :ty, :t, :p, :o)'
+                    );
+                    $stmt->execute([
+                        ':u'  => $this->user['id'],
+                        ':n'  => $invoice['username'],
+                        ':v'  => $value,
+                        ':ty' => $type,
+                        ':t'  => date('Y/m/d H:i:s'),
+                        ':p'  => $finalPrice,
+                        ':o'  => json_encode($result, JSON_UNESCAPED_UNICODE),
+                    ]);
+                }
+            }
         } catch (Throwable $e) {
             FaoximaLogger::warn('service_other insert failed (extra)', ['err' => $e->getMessage()]);
         }
@@ -342,6 +543,7 @@ final class ServiceExtraHandler extends BaseHandler
             'extra_amount'  => $amount,
             'price'         => $finalPrice,
             'balance_after' => $newBalance,
+            'operation_id'  => $operationId,
         ]);
     }
 

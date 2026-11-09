@@ -35,10 +35,14 @@ function cubepay_finalize_paid_order($orderId, $Payment_report, $methodLabel)
     $affected = $atomic->affected_rows;
     $atomic->close();
     if ($affected < 1) {
-        cubepay_log_event('CUBEPAY_DUPLICATE', 'Duplicate or already-paid callback ignored', [
-            'order_id' => $orderId,
-        ]);
-        exit('Already processed');
+        $alreadyDone = (int)($Payment_report['direct_payment_done'] ?? 0) === 1;
+        $wasCancelled = strtolower((string)($Payment_report['payment_Status'] ?? '')) === 'cancelled';
+        if ($alreadyDone || $wasCancelled) {
+            cubepay_log_event('CUBEPAY_DUPLICATE', 'Duplicate or already-paid callback ignored', [
+                'order_id' => $orderId,
+            ]);
+            exit('Already processed');
+        }
     }
 
     echo "پرداخت با موفقیت انجام شد";
@@ -188,7 +192,7 @@ function cubepay_process_card_callback($authority, $orderIdHint)
     }
     $orderId = (string) $Payment_report['id_order'];
 
-    if ($Payment_report['payment_Status'] == "paid") {
+    if ($Payment_report['payment_Status'] == "paid" && (int)($Payment_report['direct_payment_done'] ?? 0) === 1) {
         exit('Already processed');
     }
 
@@ -247,7 +251,7 @@ function cubepay_process_crypto_callback($orderId, $status, $amount, $sig, $paym
     if ($Payment_report['payment_Status'] == "expire" || $Payment_report['payment_Status'] == "cancelled") {
         return;
     }
-    if ($Payment_report['payment_Status'] == "paid") {
+    if ($Payment_report['payment_Status'] == "paid" && (int)($Payment_report['direct_payment_done'] ?? 0) === 1) {
         exit('Already processed');
     }
 
