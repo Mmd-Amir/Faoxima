@@ -1785,6 +1785,12 @@ $paycount
         nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['Invalid-domain'], $backadmin, 'HTML');
         return;
     }
+    $userdata = json_decode($user['Processing_value'], true);
+    $rxPanelUrlWarning = rxPanelUrlPathWarning($text, is_array($userdata) ? ($userdata['type'] ?? '') : '');
+    if ($rxPanelUrlWarning !== '') {
+        nm_adminInstantReply($from_id, $rxPanelUrlWarning, $backadmin, 'HTML');
+        return;
+    }
     $normalizedPanelUrl = rtrim($text, '/');
     savedata("save", "url_panel", $normalizedPanelUrl);
     $userdata = json_decode($user['Processing_value'], true);
@@ -2386,6 +2392,12 @@ elseif ($user['step'] == "switchtype_pick" && preg_match('/switchtype#(.*)/', $d
     if (!isset($update['message']) && empty($text)) { return; }
     if (!filter_var($text, FILTER_VALIDATE_URL)) {
         nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['Invalid-domain'], $backadmin, 'HTML');
+        return;
+    }
+    $userdata = json_decode($user['Processing_value'], true);
+    $rxPanelUrlWarning = rxPanelUrlPathWarning($text, is_array($userdata) ? ($userdata['new_type'] ?? '') : '');
+    if ($rxPanelUrlWarning !== '') {
+        nm_adminInstantReply($from_id, $rxPanelUrlWarning, $backadmin, 'HTML');
         return;
     }
     $normalizedPanelUrl = rtrim($text, '/');

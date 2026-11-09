@@ -330,6 +330,11 @@ if (false) {
         return;
     }
     $typepanel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
+    $rxPanelUrlWarning = rxPanelUrlPathWarning($text, is_array($typepanel) ? ($typepanel['type'] ?? '') : '');
+    if ($rxPanelUrlWarning !== '') {
+        nm_adminInstantReply($from_id, $rxPanelUrlWarning, $backadmin, 'HTML');
+        return;
+    }
     outtypepanel($typepanel['type'], $textbotlang['Admin']['managepanel']['ChangedurlPanel']);
     update("marzban_panel", "url_panel", $text, "name_panel", $user['Processing_value']);
     update("marzban_panel", "datelogin", null, "name_panel", $user['Processing_value']);

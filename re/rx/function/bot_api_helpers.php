@@ -936,6 +936,44 @@ function rxAddPanelCategory($type = '')
     if (in_array((string) $type, ['marzban', 'rebecca', 'pasarguard', 'pasargard', 'remnawave', 'x-ui_single', 'public'], true)) return 'public';
     return 'root';
 }
+function rxPanelUrlPathViolation($url, $type = '')
+{
+    $path = parse_url(trim((string) $url), PHP_URL_PATH);
+    if (!is_string($path) || trim($path, '/') === '') {
+        return '';
+    }
+    foreach (explode('/', trim($path, '/')) as $segment) {
+        if (strcasecmp($segment, 'dashboard') === 0) {
+            return 'dashboard';
+        }
+    }
+    if (strtolower(trim((string) $type)) === 'remnawave') {
+        return 'path';
+    }
+    return '';
+}
+function rxPanelUrlPathWarning($url, $type = '')
+{
+    global $textbotlang;
+    $violation = rxPanelUrlPathViolation($url, $type);
+    if ($violation === 'dashboard') {
+        $warning = (string) ($textbotlang['Admin']['managepanel']['Invalid-dashboard'] ?? '');
+        if ($warning !== '') {
+            return $warning;
+        }
+        return '⚠️ آدرس پنل را همراه با dashboard وارد کرده‌اید. بخش /dashboard و ادامه آن را از آدرس حذف کنید و آدرس صحیح را دوباره ارسال کنید.
+نمونه صحیح: https://example.com:8000';
+    }
+    if ($violation === 'path') {
+        $warning = (string) ($textbotlang['Admin']['managepanel']['Invalid-remnawave-url'] ?? '');
+        if ($warning !== '') {
+            return $warning;
+        }
+        return '⚠️ آدرس پنل Remnawave باید فقط شامل دامنه و پورت باشد و نباید مسیر داشته باشد. آدرس صحیح را دوباره ارسال کنید.
+نمونه صحیح: https://example.com:8000';
+    }
+    return '';
+}
 function rxAddPanelIsStep($step)
 {
     return in_array((string) $step, [
