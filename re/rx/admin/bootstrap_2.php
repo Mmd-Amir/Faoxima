@@ -149,11 +149,20 @@ if (function_exists('rxPremiumEmojiCancelKind')
     $rxPemCancelKind = rxPremiumEmojiCancelKind($text ?? '', $datain ?? '');
     $rxPemStepLeft = !in_array((string) ($user['step'] ?? ''), rxPremiumEmojiInputSteps(), true);
     if ($rxPemCancelKind !== null || $rxPemStepLeft) {
+        $rxPemCancelPage = 1;
+        $rxPemCancelState = (string) ($user['Processing_value'] ?? '');
+        if (preg_match('/^\d+:(\d+)$/', $rxPemCancelState, $rxPemCancelPg)) {
+            $rxPemCancelPage = max(1, (int) $rxPemCancelPg[1]);
+        } elseif (preg_match('/^packlink:(\d+)$/', $rxPemCancelState, $rxPemCancelPg)) {
+            $rxPemCancelPage = max(1, (int) $rxPemCancelPg[1]);
+        }
+        if (preg_match('/^premium_emoji_pack_link_(\d+)$/', (string)($rx_pem_entry_step ?? $user['step'] ?? ''), $rxPemCancelPg)) {
+            $rxPemCancelPage = max(1, (int)$rxPemCancelPg[1]);
+        }
         rxPremiumEmojiResetState($from_id);
         $user['step'] = 'home';
         $user['Processing_value'] = '0';
         if ($rxPemCancelKind === 'panel') {
-            $rxPemCancelPage = 1;
             if (is_string($datain) && preg_match('/^premium_emoji_settings_(\d+)$/', $datain, $rxPemCancelPg)) {
                 $rxPemCancelPage = max(1, (int) $rxPemCancelPg[1]);
             }
@@ -3574,10 +3583,16 @@ elseif ($text == "📝 تنظیم متن ربات" && $adminrulecheck['rule'] ==
     if (!isset($update['message']) || !is_array($update['message'])) { return; }
     try {
         $rxPemMsg = $update['message'];
+        $rxPemStored = (string)($user['Processing_value'] ?? '');
+        $rxPemRowId = (int)$rxPemStored;
+        $rxPemEditPage = 1;
+        if (preg_match('/^\d+:(\d+)$/', $rxPemStored, $rxPemPageMatch)) {
+            $rxPemEditPage = max(1, (int)$rxPemPageMatch[1]);
+        }
+        $rxPemSettingsCb = ($rxPemEditPage > 1) ? "premium_emoji_settings_{$rxPemEditPage}" : "premium_emoji_settings";
         $rxPemBackKb = json_encode([
-            'inline_keyboard' => [[['text' => "🔙 بازگشت به لیست", 'callback_data' => "premium_emoji_settings"]]]
+            'inline_keyboard' => [[['text' => "🔙 بازگشت به لیست", 'callback_data' => $rxPemSettingsCb]]]
         ]);
-        $rxPemRowId = (int)($user['Processing_value'] ?? 0);
         $rxPemRow = null;
         if ($rxPemRowId > 0) {
             $rxPemRowStmt = $pdo->prepare("SELECT id, emoji, custom_emoji_id FROM premium_emojis WHERE id = :id LIMIT 1");
@@ -3593,7 +3608,7 @@ elseif ($text == "📝 تنظیم متن ربات" && $adminrulecheck['rule'] ==
         $rxPemCid = rxPremiumEmojiExtractCustomId($rxPemMsg);
         if ($rxPemCid === '') {
             nm_adminInstantReply($from_id, "❌ آیدی ایموجی پرمیوم یافت نشد.\n\n📌 لطفاً <b>ایموجی پرمیوم</b> را ارسال کنید یا آیدی عددی را وارد نمایید.", json_encode([
-                'inline_keyboard' => [[['text' => "🔙 لغو", 'callback_data' => "premium_emoji_settings"]]]
+                'inline_keyboard' => [[['text' => "🔙 لغو", 'callback_data' => $rxPemSettingsCb]]]
             ]), 'HTML');
             return;
         }
@@ -3629,9 +3644,34 @@ elseif ($text == "📝 تنظیم متن ربات" && $adminrulecheck['rule'] ==
         rxPremiumEmojiResetState($from_id);
         $rxPemErrMsg = htmlspecialchars($rxPemEditErr->getMessage(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         nm_adminInstantReply($from_id, "⚠️ <b>خطای داخلی هنگام ویرایش ایموجی پرمیوم</b>\n\n<code>{$rxPemErrMsg}</code>", json_encode([
-            'inline_keyboard' => [[['text' => "🔙 بازگشت", 'callback_data' => "premium_emoji_settings"]]]
+            'inline_keyboard' => [[['text' => "🔙 بازگشت", 'callback_data' => $rxPemSettingsCb]]]
         ]), 'HTML');
         return;
+    }
+} elseif (preg_match('/^premium_emoji_pack_link(?:_(\d+))?$/', (string)$user['step'], $rxPemPackInputStep) && $adminrulecheck['rule'] == "administrator") {
+    if (!isset($update['message']) || !is_array($update['message'])) { return; }
+    $rxPemPackPanel = isset($rxPemPackInputStep[1]) ? max(1, (int)$rxPemPackInputStep[1]) : 1;
+    $rxPemPackBackCb = ($rxPemPackPanel > 1) ? "premium_emoji_settings_{$rxPemPackPanel}" : "premium_emoji_settings";
+    $rxPemPackErrKb = json_encode([
+        'inline_keyboard' => [
+            [['text' => "🔙 بازگشت به لیست", 'callback_data' => $rxPemPackBackCb]],
+        ],
+    ], JSON_UNESCAPED_UNICODE);
+    $rxPemPackInput = trim((string)($update['message']['text'] ?? $update['message']['caption'] ?? ''));
+    $rxPemPackName = function_exists('rxPremiumEmojiPackParseLink') ? rxPremiumEmojiPackParseLink($rxPemPackInput) : null;
+    if ($rxPemPackName === null) {
+        nm_adminInstantReply($from_id, "❌ لینک ارسال‌شده معتبر نیست.\n\n📌 لینک پک ایموجی را به این شکل ارسال کنید:\n<code>https://t.me/addemoji/kockrlandrandomemojipack3</code>", $rxPemPackErrKb, 'HTML');
+        return;
+    }
+    $rxPemPackFetched = function_exists('rxPremiumEmojiPackFetch') ? rxPremiumEmojiPackFetch($rxPemPackName) : ['ok' => false, 'error' => "❌ خطا در دریافت اطلاعات پک."];
+    if (empty($rxPemPackFetched['ok'])) {
+        nm_adminInstantReply($from_id, (string)($rxPemPackFetched['error'] ?? "❌ خطا در دریافت اطلاعات پک."), $rxPemPackErrKb, 'HTML');
+        return;
+    }
+    if (function_exists('rxRenderPremiumEmojiPackPage')) {
+        if (rxRenderPremiumEmojiPackPage($from_id, $rxPemPackName, 1, $rxPemPackPanel, $rxPemPackFetched)) {
+            step('home', $from_id);
+        }
     }
 } elseif (preg_match('/sendmessageuser_(\w+)/', $datain, $dataget)) {
     $iduser = $dataget[1];

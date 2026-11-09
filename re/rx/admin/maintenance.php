@@ -587,6 +587,37 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     if (function_exists('rxRenderPremiumEmojiPanel')) {
         rxRenderPremiumEmojiPanel($from_id, $rxPemPage);
     }
+} elseif (preg_match('/^premium_emoji_pack(?:_(\d+))?$/', (string)$datain, $rxPemPackMatch) && $adminrulecheck['rule'] == "administrator") {
+    $rxPemPackPanel = isset($rxPemPackMatch[1]) ? max(1, (int)$rxPemPackMatch[1]) : 1;
+    nm_adminInstantReply($from_id, "🔗 <b>آیدی از لینک پک</b>\n\nلینک پک ایموجی تلگرام را ارسال کنید؛ برای مثال:\n<code>https://t.me/addemoji/kockrlandrandomemojipack3</code>\n\n📌 پس از دریافت لینک، آیدی عددی همه ایموجی‌های پک به‌صورت صفحه‌بندی‌شده نمایش داده می‌شود.", $backadmin, 'HTML');
+    step('premium_emoji_pack_link_' . $rxPemPackPanel, $from_id);
+} elseif (preg_match('/^premium_emoji_pack_page_(\d+)_(\d+)$/', (string)$datain, $rxPemPackView) && $adminrulecheck['rule'] == "administrator") {
+    $rxPemPackViewPage = max(1, (int)$rxPemPackView[1]);
+    $rxPemPackPanel = max(1, (int)$rxPemPackView[2]);
+    $rxPemPackMessage = (string)($update['callback_query']['message']['text'] ?? '');
+    $rxPemPackLines = explode("\n", $rxPemPackMessage);
+    $rxPemPackName = rxPremiumEmojiPackParseLink($rxPemPackLines[1] ?? '');
+    if ($rxPemPackName === null) {
+        nm_adminInstantReply($from_id, "❌ وضعیت این پک منقضی شده است. لطفاً لینک پک را دوباره ارسال کنید.", json_encode([
+            'inline_keyboard' => [
+                [
+                    ['text' => "🔗 دریافت آیدی از لینک پک", 'callback_data' => "premium_emoji_pack_{$rxPemPackPanel}"],
+                    ['text' => "🔙 بازگشت", 'callback_data' => "premium_emoji_settings_{$rxPemPackPanel}"],
+                ],
+            ],
+        ], JSON_UNESCAPED_UNICODE), 'HTML');
+    } else {
+        if (function_exists('rxRenderPremiumEmojiPackPage')) {
+            rxRenderPremiumEmojiPackPage($from_id, $rxPemPackName, $rxPemPackViewPage, $rxPemPackPanel);
+        }
+    }
+} elseif (preg_match('/^premium_emoji_pack_view_\d+_[a-f0-9]{12}$/', (string)$datain) && $adminrulecheck['rule'] == "administrator") {
+    telegram('answerCallbackQuery', [
+        'callback_query_id' => $callback_query_id,
+        'text' => 'برای استفاده از نسخهٔ جدید، لینک پک را دوباره ارسال کنید.',
+        'show_alert' => true,
+        'cache_time' => 0,
+    ]);
 } elseif ($datain == "premium_emoji_status" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, "🌟 برای مدیریت ایموجی‌های پرمیوم، روی «⚙️ تنظیمات» کنار همین دکمه بزنید یا از دکمه زیر استفاده کنید.", json_encode([
         'inline_keyboard' => [
@@ -796,8 +827,9 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
         try { $pdo->exec("SELECT RELEASE_LOCK('rx_pem_scan')"); } catch (\Throwable $_) {}
         nm_adminInstantReply($from_id, "❌ خطا در شناسایی خودکار: " . htmlspecialchars($rxPemScanErr->getMessage(), ENT_QUOTES, 'UTF-8'), null, 'HTML');
     }
-} elseif (preg_match('/^premium_emoji_edit_(\d+)$/', $datain, $rxPemMatch) && $adminrulecheck['rule'] == "administrator") {
+} elseif (preg_match('/^premium_emoji_edit_(\d+)(?:_(\d+))?$/', $datain, $rxPemMatch) && $adminrulecheck['rule'] == "administrator") {
     $rxPemRowId = (int)$rxPemMatch[1];
+    $rxPemEditPage = isset($rxPemMatch[2]) ? max(1, (int)$rxPemMatch[2]) : 1;
     try {
         $rxPemStmt = $pdo->prepare("SELECT emoji, custom_emoji_id FROM premium_emojis WHERE id = :id");
         $rxPemStmt->execute([':id' => $rxPemRowId]);
@@ -806,9 +838,9 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     if (!$rxPemRow) {
         nm_adminInstantReply($from_id, "❌ ایموجی یافت نشد.", null, 'HTML');
     } else {
-        update("user", "Processing_value", (string)$rxPemRowId, "id", $from_id);
+        update("user", "Processing_value", $rxPemRowId . ':' . $rxPemEditPage, "id", $from_id);
         $rxPemCurCid = (string)$rxPemRow['custom_emoji_id'];
-        nm_adminInstantReply($from_id, "✏️ <b>ویرایش ایموجی [{$rxPemRow['emoji']}]</b>\n\n🆔 آیدی فعلی: <code>{$rxPemCurCid}</code>\n\n📤 <b>ایموجی پرمیوم جدید</b> را همین‌جا ارسال کنید — ربات آیدی جدید را خودکار تشخیص می‌دهد.", $backadmin, 'HTML');
+        nm_adminInstantReply($from_id, "✏️ <b>ویرایش ایموجی [{$rxPemRow['emoji']}]</b>\n\n🆔 آیدی فعلی: <code>{$rxPemCurCid}</code>\n\n📤 <b>ایموجی پرمیوم جدید</b> را همین‌جا ارسال کنید — ربات آیدی جدید را خودکار تشخیص می‌دهد.\n\n💡 می‌توانید ایموجی پرمیوم را به هر شکلی بفرستید: متن، استیکر، Forward یا Reply.", $backadmin, 'HTML');
         step('premium_emoji_edit_id', $from_id);
     }
 } elseif (preg_match('/^premium_emoji_del_(\d+)$/', $datain, $rxPemMatch) && $adminrulecheck['rule'] == "administrator") {

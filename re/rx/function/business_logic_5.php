@@ -499,7 +499,7 @@ function rxRenderPremiumEmojiPanel($from_id, $page = 1) {
 
         $kb['inline_keyboard'][] = [
             ['text' => $btnLabel, 'callback_data' => "premium_emoji_noop"],
-            ['text' => "✏️ ویرایش", 'callback_data' => "premium_emoji_edit_{$id}"],
+            ['text' => "✏️ ویرایش", 'callback_data' => "premium_emoji_edit_{$id}_{$page}"],
             ['text' => "🗑 حذف", 'callback_data' => "premium_emoji_del_{$id}"],
         ];
     }
@@ -516,6 +516,9 @@ function rxRenderPremiumEmojiPanel($from_id, $page = 1) {
     }
     $kb['inline_keyboard'][] = [
         ['text' => "➕ افزودن ایموجی جدید", 'callback_data' => "premium_emoji_add"],
+    ];
+    $kb['inline_keyboard'][] = [
+        ['text' => "🔗 آیدی از لینک پک", 'callback_data' => "premium_emoji_pack_{$page}"],
     ];
     $kb['inline_keyboard'][] = [
         ['text' => "🔍 شناسایی خودکار ایموجی‌های ساده", 'callback_data' => "premium_emoji_scan"],
@@ -602,7 +605,11 @@ function rxRenderPremiumEmojiPanel($from_id, $page = 1) {
 }
 
 function rxPremiumEmojiInputSteps() {
-    return ['premium_emoji_get_char', 'premium_emoji_get_id', 'premium_emoji_edit_id'];
+    $steps = ['premium_emoji_get_char', 'premium_emoji_get_id', 'premium_emoji_edit_id', 'premium_emoji_pack_link'];
+    foreach ([$GLOBALS['user']['step'] ?? '', $GLOBALS['rx_pem_entry_step'] ?? ''] as $step) {
+        if (preg_match('/^premium_emoji_pack_link_\d+$/', (string)$step)) { $steps[] = $step; }
+    }
+    return $steps;
 }
 
 function rxPremiumEmojiCancelKind($text, $datain) {
@@ -726,6 +733,156 @@ function rxPremiumEmojiIsDuplicateError($e) {
     }
     $msg = (string)$e->getMessage();
     return stripos($msg, 'Duplicate') !== false || strpos($msg, '1062') !== false;
+}
+
+function rxPremiumEmojiPackParseLink($text) {
+    $raw = trim((string)$text);
+    if ($raw === '') { return null; }
+    if (preg_match('~^(?:https?://)?(?:www\.)?(?:t|telegram)\.me/(?:addemoji|addstickers)/([A-Za-z][A-Za-z0-9_]{0,63})/?(?:\?[^\s]*)?$~i', $raw, $match) !== 1) {
+        return null;
+    }
+    return $match[1];
+}
+
+function rxPremiumEmojiPackFetch($name) {
+    $name = trim((string)$name);
+    $result = ['ok' => false, 'error' => '', 'set' => [], 'items' => []];
+    if (preg_match('/^[A-Za-z][A-Za-z0-9_]{0,63}$/', $name) !== 1) {
+        $result['error'] = "❌ لینک پک معتبر نیست.";
+        return $result;
+    }
+    $response = telegram('getStickerSet', ['name' => $name]);
+    if (!is_array($response) || empty($response['ok']) || !isset($response['result']) || !is_array($response['result'])) {
+        $description = is_array($response) ? trim((string)($response['description'] ?? '')) : '';
+        $result['error'] = "❌ دریافت اطلاعات پک از تلگرام ناموفق بود.\n\n📌 لینک را بررسی کنید یا کمی بعد دوباره تلاش کنید.";
+        if ($description !== '') {
+            $result['error'] .= "\n\n<code>" . htmlspecialchars($description, ENT_QUOTES, 'UTF-8') . "</code>";
+        }
+        return $result;
+    }
+    $set = $response['result'];
+    if ((string)($set['sticker_type'] ?? '') !== 'custom_emoji') {
+        $result['error'] = "❌ این پک از نوع <b>ایموجی سفارشی</b> نیست و آیدی ایموجی ندارد.\n\nفقط لینک پک‌های ایموجی پشتیبانی می‌شود.";
+        return $result;
+    }
+    $items = [];
+    $seen = [];
+    foreach ((is_array($set['stickers'] ?? null) ? $set['stickers'] : []) as $sticker) {
+        if (!is_array($sticker)) { continue; }
+        $customId = trim((string)($sticker['custom_emoji_id'] ?? ''));
+        if ($customId === '' || !ctype_digit($customId) || strlen($customId) > 30) { continue; }
+        if (isset($seen[$customId])) { continue; }
+        $seen[$customId] = true;
+        $alternative = trim((string)($sticker['emoji'] ?? ''));
+        $items[] = [
+            'custom_emoji_id' => $customId,
+            'emoji' => $alternative !== '' ? $alternative : '•',
+        ];
+    }
+    if (empty($items)) {
+        $result['error'] = "📭 این پک هیچ ایموجی سفارشی قابل نمایشی ندارد.";
+        return $result;
+    }
+    $result['ok'] = true;
+    $result['set'] = $set;
+    $result['items'] = $items;
+    return $result;
+}
+
+function rxRenderPremiumEmojiPackPage($from_id, $name, $page = 1, $panelPage = 1, $fetched = null) {
+    global $callback_query_id, $message_id;
+    $panelPage = max(1, (int)$panelPage);
+    $backCallback = ($panelPage > 1) ? "premium_emoji_settings_{$panelPage}" : "premium_emoji_settings";
+    $errorKeyboard = json_encode([
+        'inline_keyboard' => [
+            [['text' => "🔙 بازگشت به لیست", 'callback_data' => $backCallback]],
+        ],
+    ], JSON_UNESCAPED_UNICODE);
+    if (!is_array($fetched)) {
+        $fetched = rxPremiumEmojiPackFetch($name);
+    }
+    if (empty($fetched['ok'])) {
+        $errorMessage = (string)($fetched['error'] ?? "❌ خطا در دریافت اطلاعات پک.");
+        if (!empty($callback_query_id)) {
+            telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => '❌ دریافت اطلاعات تازهٔ پک ناموفق بود؛ دوباره تلاش کنید.',
+                'show_alert' => true,
+                'cache_time' => 0,
+            ]);
+            return false;
+        }
+        nm_adminInstantReply($from_id, $errorMessage, $errorKeyboard, 'HTML');
+        return false;
+    }
+    $items = is_array($fetched['items'] ?? null) ? $fetched['items'] : [];
+    $total = count($items);
+    if ($total === 0) {
+        nm_adminInstantReply($from_id, "📭 این پک هیچ ایموجی سفارشی قابل نمایشی ندارد.", $errorKeyboard, 'HTML');
+        return false;
+    }
+    $pageSize = 10;
+    $totalPages = max(1, (int)ceil($total / $pageSize));
+    $page = max(1, (int)$page);
+    if ($page > $totalPages) { $page = $totalPages; }
+    $set = is_array($fetched['set'] ?? null) ? $fetched['set'] : [];
+    $title = trim((string)($set['title'] ?? ''));
+    $title = preg_replace('/[\r\n]+/', ' ', $title);
+    if ($title === '') { $title = (string)$name; }
+    $message = "🔗 <b>" . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . "</b>\n"
+        . "https://t.me/addemoji/" . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . "\n"
+        . "📄 صفحه <b>{$page}</b> از <b>{$totalPages}</b>\n\n";
+    $index = ($page - 1) * $pageSize;
+    foreach (array_slice($items, ($page - 1) * $pageSize, $pageSize) as $item) {
+        $index++;
+        $customId = htmlspecialchars((string)$item['custom_emoji_id'], ENT_QUOTES, 'UTF-8');
+        $alternative = htmlspecialchars((string)$item['emoji'], ENT_QUOTES, 'UTF-8');
+        $message .= "{$index}. <tg-emoji emoji-id=\"{$customId}\">{$alternative}</tg-emoji> → <code>{$customId}</code>\n";
+    }
+    $prevCallback = ($page > 1) ? 'premium_emoji_pack_page_' . ($page - 1) . '_' . $panelPage : 'premium_emoji_noop';
+    $nextCallback = ($page < $totalPages) ? 'premium_emoji_pack_page_' . ($page + 1) . '_' . $panelPage : 'premium_emoji_noop';
+    $keyboard = json_encode([
+        'inline_keyboard' => [
+            [
+                ['text' => ($page > 1 ? "« قبل" : "▫️"), 'callback_data' => $prevCallback],
+                ['text' => "📄 {$page} / {$totalPages}", 'callback_data' => 'premium_emoji_noop'],
+                ['text' => ($page < $totalPages ? "بعد »" : "▫️"), 'callback_data' => $nextCallback],
+            ],
+            [
+                ['text' => "🔙 بازگشت", 'callback_data' => $backCallback],
+            ],
+        ],
+    ], JSON_UNESCAPED_UNICODE);
+    $isCallback = !empty($callback_query_id) && !empty($message_id);
+    $payload = [
+        'chat_id' => $from_id,
+        'text' => $message,
+        'parse_mode' => 'HTML',
+        'reply_markup' => $keyboard,
+        'link_preview_options' => json_encode(['is_disabled' => true]),
+        '_rx_already_transformed' => true,
+        '_rx_emoji_fallback_attempt' => true,
+        '_rx_no_network_retry' => true,
+    ];
+    if ($isCallback) { $payload['message_id'] = $message_id; }
+    $method = $isCallback ? 'editMessageText' : 'sendMessage';
+    $response = telegram($method, $payload);
+    $unchanged = stripos((string)($response['description'] ?? ''), 'message is not modified') !== false;
+    if (empty($response['ok']) && !$unchanged && (int)($response['error_code'] ?? 0) === 400) {
+        $payload['text'] = preg_replace('~</?tg-emoji\b[^>]*>~i', '', $message);
+        $response = telegram($method, $payload);
+        $unchanged = stripos((string)($response['description'] ?? ''), 'message is not modified') !== false;
+    }
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => (!empty($response['ok']) || $unchanged) ? '' : '❌ نمایش صفحه ناموفق بود؛ دوباره تلاش کنید.',
+            'cache_time' => 0,
+        ]);
+    } elseif (empty($response['ok']) && !$unchanged) {
+        nm_adminInstantReply($from_id, '❌ نمایش پک ناموفق بود؛ لینک را دوباره ارسال کنید.', $errorKeyboard, 'HTML');
+    }
+    return !empty($response['ok']) || $unchanged;
 }
 
 function rxStartMediaWaitingStep($section = 'start') {
