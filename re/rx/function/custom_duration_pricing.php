@@ -157,14 +157,43 @@ function fx_custom_snapshot(array $panel, string $agent, $volume, $days, $total,
     return array_merge($snapshot ?? ['mode' => 'duration', 'created_at' => time(), 'final_price' => (float)$total], ['custom_pricing' => $pricing]);
 }
 
+function fx_custom_price_text_default(): string
+{
+    return "📦 {volume} GB · {days} روز\n💰 {price_per_gb} تومان/GB · مبلغ کل: {total} تومان";
+}
+
 function fx_custom_price_text(array $panel, string $agent, $volume, $days, $total): string
 {
     if (!fx_duration_config($panel, $agent)['enabled']) {
         return '';
     }
     $resolved = fx_custom_resolve($panel, $agent, $volume, $days);
-    return "\n📦 " . $volume . ' GB · ' . $days . " روز\n💰 " . number_format($resolved['price_per_gb'])
-        . ' تومان/GB · مبلغ کل: ' . number_format((float) $total) . ' تومان';
+    global $datatextbot;
+    $key = 'text_custom_price_summary';
+    $template = fx_custom_price_text_default();
+    if (is_array($datatextbot) && array_key_exists($key, $datatextbot)) {
+        $template = (string) $datatextbot[$key];
+    }
+    if (function_exists('select')) {
+        try {
+            $row = select('textbot', '*', 'id_text', $key);
+        } catch (Throwable $e) {
+            $row = null;
+        }
+        if (is_array($row) && isset($row['text']) && is_string($row['text'])) {
+            $template = $row['text'];
+        }
+    }
+    $template = (string) preg_replace('~^\s*<!--\s*rxrtl:[01]\s*-->\s*~i', '', $template);
+    if (trim($template) === '') {
+        return '';
+    }
+    return "\n" . strtr($template, [
+        '{volume}' => htmlspecialchars((string) $volume, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+        '{days}' => htmlspecialchars((string) $days, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+        '{price_per_gb}' => number_format($resolved['price_per_gb']),
+        '{total}' => number_format((float) $total),
+    ]);
 }
 
 function fx_duration_keyboard(array $panel, string $agent): string

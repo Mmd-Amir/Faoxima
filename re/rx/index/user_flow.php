@@ -1780,9 +1780,21 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         '{Volume}' => $info_product['Volume_constraint'],
         '{userBalance}' => $userBalance
     ];
-    $textin = strtr($datatextbot['text_pishinvoice'], $replacements);
-    if (($parts[0] ?? '') === 'customvolume') {
-        $textin .= fx_custom_price_text($marzban_list_get, $user['agent'], $parts[2], $parts[1], $info_product['price_product']);
+    $invoiceTemplate = (string) $datatextbot['text_pishinvoice'];
+    $customPriceSummary = ($parts[0] ?? '') === 'customvolume'
+        ? fx_custom_price_text($marzban_list_get, $user['agent'], $parts[2], $parts[1], $info_product['price_product']) : '';
+    if (preg_match('~<!--\s*rxrtl:[01]\s*-->|<table\b~i', $invoiceTemplate)) {
+        foreach ($replacements as $placeholder => $value) {
+            $replacements[$placeholder] = htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        }
+    }
+    $usesPriceSummary = strpos($invoiceTemplate, '{custom_price_summary}') !== false;
+    $replacements['{custom_price_summary}'] = function_exists('rx_richUi_plainText')
+        ? htmlspecialchars(rx_richUi_plainText($customPriceSummary, 'HTML'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+        : htmlspecialchars(strip_tags($customPriceSummary), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $textin = strtr($invoiceTemplate, $replacements);
+    if (!$usesPriceSummary) {
+        $textin .= $customPriceSummary;
     }
     if ($usernameWasRenamed) {
         $textin = "⚠️ نام کاربری «" . guardDisplayUsername($requestedUsername_ac, $marzban_list_get) . "» قبلاً استفاده شده بود؛ نام کاربری «" . guardDisplayUsername($username_ac, $marzban_list_get) . "» برای شما در نظر گرفته شد.\n\n" . $textin;

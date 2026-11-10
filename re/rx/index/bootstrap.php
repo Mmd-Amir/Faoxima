@@ -376,6 +376,7 @@ $datatextbot = array(
     'text_dec_Tariff_list' => '',
     'text_affiliates' => '',
     'text_pishinvoice' => '',
+    'text_custom_price_summary' => fx_custom_price_text_default(),
     'text_account_info' => '',
     'text_service_detail' => '',
     'dyn_errors_verification_failed' => '',
