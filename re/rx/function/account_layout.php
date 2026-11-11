@@ -158,7 +158,8 @@ if (!function_exists('rx_account_condition_met')) {
         }
         if ($condition === 'pending_payments') {
             return (function_exists('tonpayCustomUserPending') && (tonpayPaymentMode() === 'custom' || !empty(tonpayCustomUserPending($userId, 1))))
-                || (function_exists('atlaspayCustomUserPending') && (atlaspayPaymentMode() === 'custom' || !empty(atlaspayCustomUserPending($userId, 1))));
+                || (function_exists('atlaspayCustomUserPending') && (atlaspayPaymentMode() === 'custom' || !empty(atlaspayCustomUserPending($userId, 1))))
+                || (function_exists('rialitUserHasPending') && rialitUserHasPending($userId));
         }
         return false;
     }

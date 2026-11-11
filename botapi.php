@@ -734,6 +734,54 @@ if (!function_exists('rx_resolveAdminPanelCallback')) {
         return null;
     }
 }
+if (!function_exists('rx_keyboardIsAdminInterface')) {
+    function rx_keyboardIsAdminInterface($keyboard): bool {
+        $kb = is_array($keyboard) ? $keyboard : (is_string($keyboard) ? json_decode($keyboard, true) : null);
+        if (!is_array($kb)) return false;
+        $rows = null;
+        if (isset($kb['keyboard']) && is_array($kb['keyboard'])) {
+            $rows = $kb['keyboard'];
+        } elseif (isset($kb['inline_keyboard']) && is_array($kb['inline_keyboard'])) {
+            $rows = $kb['inline_keyboard'];
+        }
+        if ($rows === null) return false;
+
+        $adminLabels = [
+            '🏠 بازگشت به منوی مدیریت' => true,
+            'بازگشت به منوی مدیریت' => true,
+            '▶️ بازگشت به منوی قبل' => true,
+            'بازگشت به منوی قبل' => true,
+        ];
+        $lang = isset($GLOBALS['textbotlang']) && is_array($GLOBALS['textbotlang']) ? $GLOBALS['textbotlang'] : null;
+        if ($lang !== null && isset($lang['Admin']) && is_array($lang['Admin'])) {
+            foreach (['backadmin', 'backmenu'] as $labelKey) {
+                if (!empty($lang['Admin'][$labelKey]) && is_string($lang['Admin'][$labelKey])) {
+                    $adminLabels[trim($lang['Admin'][$labelKey])] = true;
+                }
+            }
+        }
+
+        foreach ($rows as $row) {
+            if (!is_array($row)) continue;
+            foreach ($row as $btn) {
+                if (!is_array($btn)) continue;
+                if (!empty($btn['_rxap']) || !empty($btn['_rxadm'])) return true;
+                if (isset($btn['callback_data']) && is_string($btn['callback_data'])) {
+                    $cb = $btn['callback_data'];
+                    if (strpos($cb, 'apn:') === 0 || strpos($cb, 'apnh:') === 0
+                        || $cb === 'adm_hub_main' || $cb === 'adm_backmenu') {
+                        return true;
+                    }
+                }
+                if (isset($btn['text']) && is_scalar($btn['text'])) {
+                    $label = trim((string)$btn['text']);
+                    if ($label !== '' && isset($adminLabels[$label])) return true;
+                }
+            }
+        }
+        return false;
+    }
+}
 if (!function_exists('rx_finalizeInlineAdminKb')) {
     function rx_finalizeInlineAdminKb(string $json, bool $rxMarkPlain = true): string {
         $kb = json_decode($json, true);
@@ -749,8 +797,12 @@ if (!function_exists('rx_finalizeInlineAdminKb')) {
 
 
 
+        $rxAdminKb = $rxMarkPlain;
+        if (!$rxAdminKb && function_exists('rx_keyboardIsAdminInterface')) {
+            $rxAdminKb = rx_keyboardIsAdminInterface($kb);
+        }
         $rxGlassMode = isset($GLOBALS['setting']['inlinebtnmain']) && $GLOBALS['setting']['inlinebtnmain'] === 'oninline';
-        if (!$rxGlassMode && isset($kb['keyboard'])) {
+        if (!$rxGlassMode && !$rxAdminKb && isset($kb['keyboard'])) {
             foreach ($kb['keyboard'] as &$rxFRow) {
                 if (!is_array($rxFRow)) continue;
                 foreach ($rxFRow as &$rxFBtn) {
@@ -953,7 +1005,7 @@ if (!function_exists('rx_flushPendingReplyKeyboardCleanup')) {
 }
 
 if (!function_exists('removeReplyKeyboardOnStartIfNeeded')) {
-    function removeReplyKeyboardOnStartIfNeeded($chatId): void {
+    function removeReplyKeyboardOnStartIfNeeded($chatId, bool $rxForceAdminEntry = false): void {
         $chatId = trim((string) $chatId);
         if ($chatId === '' || !ctype_digit($chatId)) return;
         if (!function_exists('select') || !function_exists('update')) return;
@@ -963,7 +1015,7 @@ if (!function_exists('removeReplyKeyboardOnStartIfNeeded')) {
 
             $rxRichCleanup = rx_richUserButtonsOn() && function_exists('rx_richActiveForSend') && rx_richActiveForSend($chatId, null, 'main_menu');
 
-            if (!rx_glassModeOn() && !$rxRichCleanup) {
+            if (!rx_glassModeOn() && !$rxRichCleanup && !$rxForceAdminEntry) {
                 $flag = select('user', 'reply_kb_cleared', 'id', $chatId, 'select', ['cache' => false]);
                 $flag = is_scalar($flag) ? (string) $flag : '0';
                 if ($flag === '1') {
@@ -978,11 +1030,11 @@ if (!function_exists('removeReplyKeyboardOnStartIfNeeded')) {
 
             $flag = select('user', 'reply_kb_cleared', 'id', $chatId, 'select', ['cache' => false]);
             $flag = is_scalar($flag) ? (string) $flag : '0';
-            if ($flag === '1') {
+            if ($flag === '1' && !$rxForceAdminEntry) {
                 return;
             }
 
-            if ($rxRichCleanup) {
+            if ($rxRichCleanup && !$rxForceAdminEntry) {
                 $GLOBALS['rx_pending_reply_kb_remove'][$chatId] = true;
                 return;
             }
@@ -1019,8 +1071,8 @@ if (!function_exists('removeReplyKeyboardOnStartIfNeeded')) {
 }
 
 if (!function_exists('removeReplyKeyboardIfNeeded')) {
-    function removeReplyKeyboardIfNeeded($chatId): void {
-        removeReplyKeyboardOnStartIfNeeded($chatId);
+    function removeReplyKeyboardIfNeeded($chatId, bool $rxForceAdminEntry = false): void {
+        removeReplyKeyboardOnStartIfNeeded($chatId, $rxForceAdminEntry);
     }
 }
 
@@ -1378,6 +1430,9 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
 
 
     $rxGlassOn = isset($GLOBALS['setting']['inlinebtnmain']) && $GLOBALS['setting']['inlinebtnmain'] === 'oninline';
+    if (!$rxGlassOn && function_exists('rx_keyboardIsAdminInterface') && rx_keyboardIsAdminInterface($kb)) {
+        $rxGlassOn = true;
+    }
     if (!$rxGlassOn && $rxChatId !== null && function_exists('rx_richActiveForSend') && rx_richActiveForSend($rxChatId, $kb)) {
         $rxGlassOn = true;
     }
@@ -1409,7 +1464,7 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
                     if (!is_array($rxB) || !isset($rxB['text'])) continue;
                     if (!isset($rxB['callback_data']) && !isset($rxB['url'])
                         && !isset($rxB['login_url']) && !isset($rxB['switch_inline_query'])
-                        && !isset($rxB['switch_inline_query_current_chat'])) {
+                        && !isset($rxB['switch_inline_query_current_chat']) && !isset($rxB['web_app'])) {
                         $rxB['callback_data'] = rx_makeAdminPanelCallback((string)$rxB['text']);
                     }
                     $rxNewRow[] = $rxB;
@@ -1891,6 +1946,7 @@ if (!function_exists('rx_getKeyboardDefaultStyles')) {
                     'plisio_back'      => 'danger',
 
                     'tonpay_name'      => 'primary',
+                    'rialit_name'      => 'primary',
                     'cubepay_name'     => 'primary',
                     'blupal_name'      => 'primary',
                     'variza_name'      => 'primary',
@@ -2295,6 +2351,7 @@ if (!function_exists('rx_getKeyboardDefaultStyles')) {
                     'nowpayment'       => 'primary',
                     'digitaltron'      => 'primary',
                     'startelegrams'    => 'primary',
+                    'rialit'           => 'success',
                     'piroozpay'        => 'primary',
                     'aptdc'            => 'success',
                     'chargenodiscount' => 'primary',

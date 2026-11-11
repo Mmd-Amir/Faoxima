@@ -56,7 +56,7 @@ final class PaymentStatusHandler extends BaseHandler
         $sbvView = function_exists('rx_sbv_public_view') ? rx_sbv_public_view($orderId) : null;
         if ($report === null) {
             $report = FaoximaDb::fetchOne(
-                'SELECT * FROM Payment_report WHERE id_order = :o AND id_user = :u AND ' . ($sbvView !== null ? '1 = 1' : '(source = \'miniapp\' OR (Payment_Method = \'tonpay\' AND tonpay_gateway_mode = \'custom\') OR (Payment_Method = \'atlaspay\' AND atlaspay_gateway_mode = \'custom\'))') . ' LIMIT 1',
+                'SELECT * FROM Payment_report WHERE id_order = :o AND id_user = :u AND ' . ($sbvView !== null ? '1 = 1' : '(source = \'miniapp\' OR (Payment_Method = \'tonpay\' AND tonpay_gateway_mode = \'custom\') OR (Payment_Method = \'atlaspay\' AND atlaspay_gateway_mode = \'custom\') OR Payment_Method = \'rialit\')') . ' LIMIT 1',
                 [
                     ':o' => $orderId,
                     ':u' => (string)$this->user['id'],
@@ -71,6 +71,16 @@ final class PaymentStatusHandler extends BaseHandler
         }
         if ($report === null) {
             FaoximaResponse::notFound('Payment not found');
+        }
+
+        if ((string) ($report['Payment_Method'] ?? '') === 'rialit' && function_exists('rialitPollThrottled')) {
+            $fresh = rialitPollThrottled($orderId, (string) $this->user['id']);
+            if (is_array($fresh)) {
+                $report = $fresh;
+            }
+            if (function_exists('rx_redis_del')) {
+                rx_redis_del($rxPayCacheKey);
+            }
         }
 
         $paymentStatus = (string)($report['payment_Status'] ?? 'Unpaid');
@@ -156,6 +166,34 @@ final class PaymentStatusHandler extends BaseHandler
             $tonpayCustomView = tonpayCustomPublicView($report);
         }
 
+        $rialitGatewayUrl = '';
+        $rialitMeta = null;
+        if ((string)($report['Payment_Method'] ?? '') === 'rialit') {
+            $rialitToken = trim((string)($report['rialit_token'] ?? ''));
+            $rialitCreatedAt = function_exists('rialitReportCreatedAt') ? rialitReportCreatedAt($report) : $createdAt;
+            $rialitLinkExpiresAt = $rialitCreatedAt > 0 ? $rialitCreatedAt + 1800 : 0;
+            $rialitStatus = strtolower(trim((string)($report['rialit_status'] ?? '')));
+            $rialitLinkAvailable = function_exists('rialitLinkAvailable')
+                ? rialitLinkAvailable($report)
+                : ($rialitToken !== '' && $paymentStatus !== 'paid' && $rialitLinkExpiresAt > 0 && time() < $rialitLinkExpiresAt);
+            if ($rialitLinkAvailable && function_exists('rialitPaymentUrl')) {
+                $rialitGatewayUrl = rialitPaymentUrl($rialitToken);
+            }
+            $rialitMeta = [
+                'token' => $rialitToken,
+                'remote_status' => $rialitStatus,
+                'link_available' => $rialitLinkAvailable,
+                'link_expires_at' => $rialitLinkExpiresAt,
+                'awaiting_result' => $paymentStatus !== 'paid' && $rialitLinkExpiresAt > 0 && time() >= $rialitLinkExpiresAt && !in_array($rialitStatus, ['expired','cancelled'], true),
+                'payer_amount' => (int)($report['rialit_payer_amount'] ?? 0),
+                'payer_fee' => (int)($report['rialit_payer_fee'] ?? 0),
+                'paid_at' => trim((string)($report['rialit_paid_at'] ?? '')),
+                'reference' => trim((string)($report['rialit_reference'] ?? '')),
+                'fulfillment_done' => (int) ($report['direct_payment_done'] ?? 0) === 1,
+                'locally_cancelled' => (int) ($report['rialit_abandoned_at'] ?? 0) > 0,
+            ];
+        }
+
         $atlaspayCustomView = null;
         if ((string)($report['Payment_Method'] ?? '') === 'atlaspay'
             && (string)($report['atlaspay_gateway_mode'] ?? '') === 'custom'
@@ -183,8 +221,9 @@ final class PaymentStatusHandler extends BaseHandler
             'verify'           => $sbvView,
             'tonpay_custom'    => $tonpayCustomView,
             'atlaspay_custom'  => $atlaspayCustomView,
+            'rialit'           => $rialitMeta,
             'fulfillment'      => ($sbvView !== null && function_exists('rx_sbv_fulfillment_outcome')) ? rx_sbv_fulfillment_outcome($orderId) : null,
-            'gateway_url'      => trim((string)($report['tronado_payment_url'] ?? '')) ?: ($tonpayGatewayUrl ?: (trim((string)($report['cubepay_payment_link'] ?? '')) ?: (trim((string)($report['blupal_payment_link'] ?? '')) ?: (trim((string)($report['atlaspay_payment_url'] ?? '')) ?: (trim((string)($report['tetrapay_payment_link'] ?? '')) ?: $abangatewayUrl))))),
+            'gateway_url'      => $rialitGatewayUrl ?: (trim((string)($report['tronado_payment_url'] ?? '')) ?: ($tonpayGatewayUrl ?: (trim((string)($report['cubepay_payment_link'] ?? '')) ?: (trim((string)($report['blupal_payment_link'] ?? '')) ?: (trim((string)($report['atlaspay_payment_url'] ?? '')) ?: (trim((string)($report['tetrapay_payment_link'] ?? '')) ?: $abangatewayUrl)))))),
         ];
 
         FaoximaResponse::ok($payload);
@@ -303,6 +342,9 @@ final class PaymentStatusHandler extends BaseHandler
         }
         if ((string)($report['Payment_Method'] ?? '') === 'tonpay') {
             return 86400;
+        }
+        if ((string)($report['Payment_Method'] ?? '') === 'rialit') {
+            return 1800;
         }
         return 1800;
     }

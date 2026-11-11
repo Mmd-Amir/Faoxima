@@ -761,6 +761,54 @@ if (!function_exists('rx_resolveAdminPanelCallback')) {
 
 
 
+if (!function_exists('rx_keyboardIsAdminInterface')) {
+    function rx_keyboardIsAdminInterface($keyboard): bool {
+        $kb = is_array($keyboard) ? $keyboard : (is_string($keyboard) ? json_decode($keyboard, true) : null);
+        if (!is_array($kb)) return false;
+        $rows = null;
+        if (isset($kb['keyboard']) && is_array($kb['keyboard'])) {
+            $rows = $kb['keyboard'];
+        } elseif (isset($kb['inline_keyboard']) && is_array($kb['inline_keyboard'])) {
+            $rows = $kb['inline_keyboard'];
+        }
+        if ($rows === null) return false;
+
+        $adminLabels = [
+            '🏠 بازگشت به منوی مدیریت' => true,
+            'بازگشت به منوی مدیریت' => true,
+            '▶️ بازگشت به منوی قبل' => true,
+            'بازگشت به منوی قبل' => true,
+        ];
+        $lang = isset($GLOBALS['textbotlang']) && is_array($GLOBALS['textbotlang']) ? $GLOBALS['textbotlang'] : null;
+        if ($lang !== null && isset($lang['Admin']) && is_array($lang['Admin'])) {
+            foreach (['backadmin', 'backmenu'] as $labelKey) {
+                if (!empty($lang['Admin'][$labelKey]) && is_string($lang['Admin'][$labelKey])) {
+                    $adminLabels[trim($lang['Admin'][$labelKey])] = true;
+                }
+            }
+        }
+
+        foreach ($rows as $row) {
+            if (!is_array($row)) continue;
+            foreach ($row as $btn) {
+                if (!is_array($btn)) continue;
+                if (!empty($btn['_rxap']) || !empty($btn['_rxadm'])) return true;
+                if (isset($btn['callback_data']) && is_string($btn['callback_data'])) {
+                    $cb = $btn['callback_data'];
+                    if (strpos($cb, 'apn:') === 0 || strpos($cb, 'apnh:') === 0
+                        || $cb === 'adm_hub_main' || $cb === 'adm_backmenu') {
+                        return true;
+                    }
+                }
+                if (isset($btn['text']) && is_scalar($btn['text'])) {
+                    $label = trim((string)$btn['text']);
+                    if ($label !== '' && isset($adminLabels[$label])) return true;
+                }
+            }
+        }
+        return false;
+    }
+}
 if (!function_exists('rx_finalizeInlineAdminKb')) {
     function rx_finalizeInlineAdminKb(string $json, bool $rxMarkPlain = true): string {
         $kb = json_decode($json, true);
@@ -773,6 +821,38 @@ if (!function_exists('rx_finalizeInlineAdminKb')) {
             $rows = $kb['inline_keyboard'];
         }
         if ($rows === null) return $json;
+
+        $hasContactRequest = false;
+        foreach ($rows as $row) {
+            if (!is_array($row)) continue;
+            foreach ($row as $btn) {
+                if (is_array($btn) && (isset($btn['request_contact']) || isset($btn['request_location']) || isset($btn['request_poll']) || isset($btn['request_users']) || isset($btn['request_chat']))) {
+                    $hasContactRequest = true;
+                    break 2;
+                }
+            }
+        }
+        if ($hasContactRequest) {
+            return $json;
+        }
+
+        $rxAdminKb = $rxMarkPlain;
+        if (!$rxAdminKb && function_exists('rx_keyboardIsAdminInterface')) {
+            $rxAdminKb = rx_keyboardIsAdminInterface($kb);
+        }
+        $rxGlassMode = isset($GLOBALS['setting']['inlinebtnmain']) && $GLOBALS['setting']['inlinebtnmain'] === 'oninline';
+        if (!$rxGlassMode && !$rxAdminKb && isset($kb['keyboard'])) {
+            foreach ($kb['keyboard'] as &$rxFRow) {
+                if (!is_array($rxFRow)) continue;
+                foreach ($rxFRow as &$rxFBtn) {
+                    if (!is_array($rxFBtn)) continue;
+                    $rxFBtn['_rxkeep'] = 1;
+                }
+                unset($rxFBtn);
+            }
+            unset($rxFRow);
+            return json_encode($kb, JSON_UNESCAPED_UNICODE);
+        }
 
         $newRows = [];
         foreach ($rows as $row) {

@@ -185,6 +185,7 @@ function buildPaymentGatewayKeyboard(array $textbotlang)
     $plisio = getPaySettingValue('nowpaymentstatus', 'offnowpayment');
     $arzireyali2 = getPaySettingValue('statustarnado', 'offternado');
     $tonpay_status_raw = getPaySettingValue('statustonpay', 'offtonpay');
+    $rialit_status_raw = getPaySettingValue('statusrialit', 'offrialit');
     $cubepay_status_raw = getPaySettingValue('statuscubepay', 'offcubepay');
     $blupal_status_raw = getPaySettingValue('statusblupal', 'offblupal');
     $atlaspay_status_raw = getPaySettingValue('statusatlaspay', 'offatlaspay');
@@ -199,6 +200,7 @@ function buildPaymentGatewayKeyboard(array $textbotlang)
     $plisiostatus = $plisio === 'onnowpayment' ? $statusOn : $statusOff;
     $arzireyali2status = $arzireyali2 === 'onternado' ? $statusOn : $statusOff;
     $tonpaystatus = $tonpay_status_raw === 'ontonpay' ? $statusOn : $statusOff;
+    $rialitstatus = $rialit_status_raw === 'onrialit' ? $statusOn : $statusOff;
     $cubepaystatus = $cubepay_status_raw === 'oncubepay' ? $statusOn : $statusOff;
     $blupalstatus = $blupal_status_raw === 'onblupal' ? $statusOn : $statusOff;
     $variza_status_raw = getPaySettingValue('statusvariza', 'offvariza');
@@ -241,6 +243,11 @@ function buildPaymentGatewayKeyboard(array $textbotlang)
             ['text' => '⚙️ تنظیمات', 'callback_data' => 'tonpaysetting'],
             ['text' => $tonpaystatus, 'callback_data' => "editpayment-tonpay-$tonpay_status_raw"],
             ['text' => '💠 تون‌پی', 'callback_data' => 'tonpay'],
+        ],
+        [
+            ['text' => '⚙️ تنظیمات', 'callback_data' => 'rialitsetting'],
+            ['text' => $rialitstatus, 'callback_data' => "editpayment-rialit-$rialit_status_raw"],
+            ['text' => '💚 ریالیت', 'callback_data' => 'rialit'],
         ],
         [
             ['text' => '⚙️ تنظیمات', 'callback_data' => 'cubepaysetting'],
@@ -935,6 +942,21 @@ if (!empty($datain) && in_array($from_id, $admin_ids ?? [])) {
         'tonpay_back'     => $textbotlang['Admin']['backadmin'],
         'tonpay_backmenu' => $textbotlang['Admin']['backmenu'],
 
+        'rialit_name'        => "🏷️ نام نمایشی درگاه ریالیت",
+        'rialit_apikey'      => "🔑 ثبت API Key ریالیت",
+        'rialit_cashback'    => "💰 کش بک ریالیت",
+        'rialit_min'         => "⬇️ کف ریالیت",
+        'rialit_max'         => "⬆️ سقف ریالیت",
+        'rialit_whurl'       => "🌐 آدرس وب‌هوک ریالیت",
+        'rialit_whregister'  => "✅ ثبت وب‌هوک ریالیت",
+        'rialit_whread'      => "🔍 خواندن وب‌هوک تنظیم‌شده",
+        'rialit_whstatus'    => "📊 وضعیت وب‌هوک ریالیت",
+        'rialit_trustips'    => "🛡 آدرس‌های IP مجاز وب‌هوک",
+        'rialit_trustproxies'=> "🧩 پراکسی‌های مورد اعتماد",
+        'rialit_edu'         => "📚 آموزش ریالیت",
+        'rialit_back'        => $textbotlang['Admin']['backadmin'],
+        'rialit_backmenu'    => $textbotlang['Admin']['backmenu'],
+
         'cubepay_name'     => "🏷️ نام نمایشی درگاه کیوب‌پی",
         'cubepay_apikey'   => "🔑 ثبت توکن API کیوب‌پی",
         'cubepay_cashback' => "💰 کش بک کیوب‌پی",
@@ -1062,6 +1084,7 @@ if (!empty($datain) && in_array($from_id, $admin_ids ?? [])) {
         'cart_backmenu'   => 'finance',
         'trnado_backmenu' => 'finance',
         'tonpay_backmenu' => 'finance',
+        'rialit_backmenu' => 'finance',
         'cubepay_backmenu' => 'finance',
         'blupal_backmenu' => 'finance',
         'variza_backmenu' => 'finance',

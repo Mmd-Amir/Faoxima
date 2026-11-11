@@ -1,7 +1,7 @@
 import { call } from '../api.js?v=0.0.53';
 import { escapeHtml, toast } from '../utils.js?v=0.0.52';
 import { icon } from '../icons.js?v=0.0.52';
-import { hapticImpact, hapticNotify, isDesktopPlatform } from '../telegram.js?v=0.0.52';
+import { hapticImpact, hapticNotify, isDesktopPlatform, showConfirm } from '../telegram.js?v=0.0.52';
 
 function openGatewayLink(url, opts) {
     const tg = window.Telegram && window.Telegram.WebApp;
@@ -75,7 +75,9 @@ export function startGatewayWatch(view, opts) {
         onCancel,
     } = opts || {};
 
-    const fmtCountdown = String(method || '').toLowerCase() === 'tonpay' ? fmtHhMmSs : fmtMmSs;
+    const fmtCountdown = (String(method || '').toLowerCase() === 'tonpay') ? fmtHhMmSs : fmtMmSs;
+    const isRialit = String(method || '').toLowerCase() === 'rialit';
+    let currentGatewayUrl = gatewayUrl;
 
 
     const finalizingMessages = {
@@ -155,7 +157,7 @@ export function startGatewayWatch(view, opts) {
 
                     <button type="button" class="btn btn-ghost btn-block mt-sm" id="watch-cancel">
                         ${icon('xCircle', 'class="ico ico-leading"')}
-                        <span>انصراف</span>
+                        <span>${isRialit ? 'انصراف و پرداخت جدید' : 'انصراف'}</span>
                     </button>
                 </div>
             </article>`;
@@ -173,6 +175,27 @@ export function startGatewayWatch(view, opts) {
 
     function enterDeadlineState() {
         deadlineReached = true;
+
+        if (isRialit) {
+            if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+            const subR = view.querySelector('#watch-subtitle');
+            if (subR) subR.textContent = 'مهلت ورود به پرداخت تمام شده؛ در انتظار نتیجه';
+            const timeR = view.querySelector('#watch-time');
+            if (timeR) timeR.textContent = fmtCountdown(0);
+            const reopenR = view.querySelector('#watch-reopen');
+            if (reopenR) reopenR.remove();
+            const checkR = view.querySelector('#watch-check');
+            if (checkR) {
+                checkR.classList.remove('is-locked', 'btn-ghost');
+                checkR.classList.add('btn-primary');
+                const labelR = checkR.querySelector('.watch-check-label');
+                if (labelR) labelR.textContent = 'بررسی وضعیت';
+            }
+            pollOnce();
+            pollTimer = setInterval(pollOnce, 60000);
+            return;
+        }
 
 
         if (pollTimer)      { clearInterval(pollTimer);      pollTimer = null; }
@@ -207,8 +230,33 @@ export function startGatewayWatch(view, opts) {
             const res = await call('payment_status', { params: { order_id: orderId } });
             const obj = res?.obj || {};
             const status = String(obj.payment_status || '');
+            if (isRialit && obj.rialit && obj.rialit.link_available && obj.gateway_url) {
+                currentGatewayUrl = String(obj.gateway_url);
+                if (!view.querySelector('#watch-reopen')) {
+                    const actions = view.querySelector('#watch-check')?.parentElement;
+                    if (actions) {
+                        const reopen = document.createElement('button');
+                        reopen.type = 'button';
+                        reopen.id = 'watch-reopen';
+                        reopen.className = 'btn btn-ghost btn-block mt-sm';
+                        reopen.textContent = 'بازکردن مجدد صفحه پرداخت';
+                        reopen.addEventListener('click', () => openGatewayLink(currentGatewayUrl, { keepMiniAppOpen }));
+                        actions.appendChild(reopen);
+                    }
+                }
+            }
+            if (isRialit && obj.rialit && !obj.rialit.link_available) {
+                const reopen = view.querySelector('#watch-reopen');
+                if (reopen) reopen.remove();
+                if (obj.rialit.awaiting_result && !deadlineReached) enterDeadlineState();
+            }
 
             if (status === 'paid') {
+                if (isRialit && obj.rialit && !obj.rialit.fulfillment_done) {
+                    serviceBuilding = true;
+                    setSubtitle(finalizingMsg);
+                    return;
+                }
 
                 if (mode === 'recharge' || mode === 'pending_action') {
                     cleanup();
@@ -250,7 +298,8 @@ export function startGatewayWatch(view, opts) {
             const obj = res?.obj || {};
             const status = String(obj.payment_status || '');
 
-            const isReady = (mode === 'recharge' || mode === 'pending_action') ? true : !!obj.is_service_ready;
+            const isReady = (!isRialit || !obj.rialit || !!obj.rialit.fulfillment_done)
+                && ((mode === 'recharge' || mode === 'pending_action') ? true : !!obj.is_service_ready);
             if (status === 'paid' && isReady) {
                 cleanup();
                 hapticNotify('success');
@@ -337,7 +386,7 @@ export function startGatewayWatch(view, opts) {
     if ($reopen) {
         $reopen.addEventListener('click', () => {
             hapticImpact('light');
-            openGatewayLink(gatewayUrl, { keepMiniAppOpen });
+            openGatewayLink(currentGatewayUrl, { keepMiniAppOpen });
         });
     }
 
@@ -347,6 +396,10 @@ export function startGatewayWatch(view, opts) {
         $cancel.addEventListener('click', async () => {
             if (cancelling) return;
             cancelling = true;
+            if (isRialit && !await showConfirm('از این پرداخت انصراف می‌دهید؟ می‌توانید پرداخت جدید بسازید. لینک قبلی در ریالیت باطل نمی‌شود؛ اگر بعداً تأیید شود، مبلغ سفارش به کیف پول اضافه می‌شود.')) {
+                cancelling = false;
+                return;
+            }
             hapticImpact('light');
             const $lbl = $cancel.querySelector('span');
             const oldLbl = $lbl ? $lbl.textContent : '';
@@ -373,6 +426,9 @@ export function startGatewayWatch(view, opts) {
 
 
     pollOnce();
+    if (isRialit && deadlineReached) {
+        return cleanup;
+    }
     pollTimer = setInterval(pollOnce, Math.max(2, pollEverySec) * 1000);
     countdownTimer = setInterval(updateCountdown, 500);
     document.addEventListener('visibilitychange', handleVisibility);

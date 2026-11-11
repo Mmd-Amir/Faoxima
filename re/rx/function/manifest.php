@@ -34,4 +34,5 @@ return array (
   31 => 'payment_v2.php',
   32 => 'account_layout.php',
   33 => 'file_naming.php',
+  34 => 'rialit.php',
 );

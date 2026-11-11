@@ -1907,6 +1907,9 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
         [['text' => "👁 نمایش لیست معتمدین"]],
         [['text' => "◀️ بازگشت به تنظیمات پیشرفته"]]
     ], 'resize_keyboard' => true]);
+    if (function_exists('rx_finalizeInlineAdminKb')) {
+        $dynTrustKb = rx_finalizeInlineAdminKb($dynTrustKb, true);
+    }
     nm_adminInstantReply($from_id, "📌 کاربران معتمد برای تایید خودکار فوری
 $statusLine
 تعداد کاربران در لیست: <b>$count</b>", $dynTrustKb, 'HTML');

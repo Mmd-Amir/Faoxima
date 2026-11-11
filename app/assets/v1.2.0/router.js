@@ -47,7 +47,7 @@ async function watchResumePage(view, encodedOrderId) {
         gatewayUrl = String(obj.gateway_url || '');
         paymentStatus = String(obj.payment_status || '');
 
-        const WATCH_WINDOW_SEC = methodStr === 'cubepay' ? 3600 : (methodStr === 'atlaspay' ? 1200 : (methodStr === 'tonpay' ? 86400 : 1800));
+        const WATCH_WINDOW_SEC = methodStr === 'cubepay' ? 3600 : (methodStr === 'atlaspay' ? 1200 : (methodStr === 'tonpay' ? 86400 : (methodStr === 'rialit' ? 1800 : 1800)));
         const nowSec = Math.floor(Date.now() / 1000);
         const hashAt = Number(obj.hash_at || 0);
         const expiresAtFromServer = Number(obj.expires_at || 0);
@@ -58,6 +58,9 @@ async function watchResumePage(view, encodedOrderId) {
             expiresAtSec = Math.min(expiresAtFromServer, nowSec + WATCH_WINDOW_SEC);
         } else {
             expiresAtSec = nowSec + WATCH_WINDOW_SEC;
+        }
+        if (statusObj.rialit && statusObj.rialit.awaiting_result) {
+            expiresAtSec = nowSec;
         }
     } catch (_) {  }
     if (statusObj.tonpay_custom) {
@@ -143,7 +146,7 @@ async function watchResumePage(view, encodedOrderId) {
 
     const isCryptoFlow = methodStr.includes('digital') || methodStr.includes('arze') || methodStr.includes('crypto');
     const isDirectBuy = flowStr === 'direct_buy';
-    const isExternalBotGateway = methodStr === 'iranpay2' || methodStr === 'tonpay' || methodStr === 'cubepay' || methodStr === 'blupal' || methodStr === 'variza' || methodStr === 'abangateway' || methodStr === 'atlaspay';
+    const isExternalBotGateway = methodStr === 'iranpay2' || methodStr === 'tonpay' || methodStr === 'rialit' || methodStr === 'cubepay' || methodStr === 'blupal' || methodStr === 'variza' || methodStr === 'abangateway' || methodStr === 'atlaspay';
     const resolvedMode = isCryptoFlow
         ? (isDirectBuy ? 'crypto_offline' : 'recharge')
         : 'recharge';
@@ -158,7 +161,7 @@ async function watchResumePage(view, encodedOrderId) {
         gatewayUrl,
         keepMiniAppOpen: isExternalBotGateway,
         expiresAtSec,
-        timeoutSec: (methodStr === 'cubepay' || methodStr === 'variza') ? 3600 : (methodStr === 'atlaspay' ? 1200 : (methodStr === 'tonpay' ? 86400 : 1800)),
+        timeoutSec: (methodStr === 'cubepay' || methodStr === 'variza') ? 3600 : (methodStr === 'atlaspay' ? 1200 : (methodStr === 'tonpay' ? 86400 : (methodStr === 'rialit' ? 1800 : 1800))),
         pollEverySec: 5,
         onSuccess: (st) => {
             const amount = Number(st.amount || 0).toLocaleString('en-US');

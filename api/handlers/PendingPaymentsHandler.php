@@ -24,12 +24,14 @@ final class PendingPaymentsHandler extends BaseHandler
         try {
             $rows = FaoximaDb::fetchAll(
                 "SELECT id, id_order, time, price, payment_Status, Payment_Method,
-                        dec_not_confirmed, crypto_currency, crypto_tx_hash, tonpay_invoice_id, cubepay_payment_link, blupal_invoice_id, atlaspay_order_id
+                        dec_not_confirmed, crypto_currency, crypto_tx_hash, tonpay_invoice_id, cubepay_payment_link, blupal_invoice_id, atlaspay_order_id,
+                        rialit_token, rialit_status, rialit_created_at, rialit_payer_amount, rialit_payer_fee
                    FROM Payment_report
                   WHERE id_user = :u
                     AND payment_Status IN ('Unpaid','waiting','AwaitingHash','pending','expire')
-                     AND Payment_Method IN ('plisio','nowpayment','digitaltron','arze digital offline','cart to cart','carttocart_pv','iranpay2','tonpay','cubepay','blupal','variza','abangateway','atlaspay')
-                    AND (source = 'miniapp'" . $sbvSourceSql . " OR (Payment_Method = 'tonpay' AND tonpay_gateway_mode = 'custom') OR (Payment_Method = 'atlaspay' AND atlaspay_gateway_mode = 'custom'))
+                    AND (Payment_Method <> 'rialit' OR COALESCE(rialit_abandoned_at, 0) = 0)
+                     AND Payment_Method IN ('plisio','nowpayment','digitaltron','arze digital offline','cart to cart','carttocart_pv','iranpay2','tonpay','rialit','cubepay','blupal','variza','abangateway','atlaspay')
+                    AND (source = 'miniapp'" . $sbvSourceSql . " OR (Payment_Method = 'tonpay' AND tonpay_gateway_mode = 'custom') OR (Payment_Method = 'atlaspay' AND atlaspay_gateway_mode = 'custom') OR Payment_Method = 'rialit')
                   ORDER BY id DESC
                   LIMIT 8",
                 [':u' => $userId]
@@ -89,6 +91,8 @@ final class PendingPaymentsHandler extends BaseHandler
                     return !empty($labels['iranpay3']) ? $labels['iranpay3'] : 'ترونادو';
                 case 'tonpay':
                     return !empty($labels['tonpay']) ? $labels['tonpay'] : 'تون‌پی';
+                case 'rialit':
+                    return !empty($labels['rialit']) ? $labels['rialit'] : '💚 ریالیت';
                 case 'cubepay':
                     return !empty($labels['cubepay']) ? $labels['cubepay'] : 'کیوب‌پی';
                 case 'blupal':
@@ -167,7 +171,22 @@ final class PendingPaymentsHandler extends BaseHandler
                     }
                 }
             }
-            if ($status !== 'expire' && $expiresAt < $now) {
+            $rialitLinkExpiresAt = 0;
+            $rialitLinkAvailable = false;
+            $rialitAwaitingResult = false;
+            if ($methodLc === 'rialit') {
+                if (in_array(strtolower((string) ($r['rialit_status'] ?? '')), ['expired','cancelled'], true)) continue;
+                $rialitCreated = (int) ($r['rialit_created_at'] ?? 0);
+                if ($rialitCreated <= 0) {
+                    $rialitCreated = $createdAt;
+                }
+                $rialitLinkExpiresAt = $rialitCreated > 0 ? $rialitCreated + 1800 : 0;
+                $expiresAt = $rialitLinkExpiresAt;
+                $rialitRemote = strtolower(trim((string) ($r['rialit_status'] ?? '')));
+                $rialitLinkAvailable = trim((string) ($r['rialit_token'] ?? '')) !== '' && $rialitLinkExpiresAt > 0 && $now < $rialitLinkExpiresAt && !in_array($rialitRemote, ['paid', 'expired', 'cancelled'], true);
+                $rialitAwaitingResult = !$rialitLinkAvailable;
+            }
+            if ($status !== 'expire' && $expiresAt < $now && $methodLc !== 'rialit') {
                 continue;
             }
 
@@ -185,6 +204,15 @@ final class PendingPaymentsHandler extends BaseHandler
                 'remaining_sec' => max(0, $expiresAt - $now),
                 'currency_code' => trim((string)($r['crypto_currency'] ?? '')) ?: null,
                 'verify'        => isset($sbvMap[(string) $r['id_order']]),
+                'rialit'        => $methodLc === 'rialit' ? [
+                    'token' => trim((string)($r['rialit_token'] ?? '')),
+                    'remote_status' => strtolower(trim((string)($r['rialit_status'] ?? ''))),
+                    'link_available' => $rialitLinkAvailable,
+                    'link_expires_at' => $rialitLinkExpiresAt,
+                    'awaiting_result' => $rialitAwaitingResult,
+                    'payer_amount' => (int)($r['rialit_payer_amount'] ?? 0),
+                    'payer_fee' => (int)($r['rialit_payer_fee'] ?? 0),
+                ] : null,
                 'cancellable'   => isset($sbvMap[(string) $r['id_order']]) && $sbvActive !== null && (string) $sbvActive['id_order'] === (string) $r['id_order'] && !empty($sbvActive['cancellable']),
                 'resumable'     => isset($sbvMap[(string) $r['id_order']]) && $sbvActive !== null && (string) $sbvActive['id_order'] === (string) $r['id_order'] && !empty($sbvActive['resumable']),
             ];
@@ -210,6 +238,9 @@ final class PendingPaymentsHandler extends BaseHandler
         }
         if (strtolower($method) === 'tonpay') {
             return 86400;
+        }
+        if (strtolower($method) === 'rialit') {
+            return 1800;
         }
         return 1800;
     }

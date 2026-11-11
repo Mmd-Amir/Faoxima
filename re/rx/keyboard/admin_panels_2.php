@@ -390,8 +390,11 @@ function KeyboardCategoryadmin(){
     ];
 
     $json = json_encode($list_category);
-    if (isset($setting['inlinebtnmain']) && $setting['inlinebtnmain'] == "oninline" && function_exists('rx_keyboardToInline')) {
+    if (function_exists('rx_keyboardToInline')) {
         return rx_keyboardToInline($list_category);
+    }
+    if (function_exists('rx_finalizeInlineAdminKb')) {
+        return rx_finalizeInlineAdminKb($json, true);
     }
     return $json;
 }
@@ -701,34 +704,19 @@ $keyboard_stat = json_encode([
                 ]
             ]
         ]);
-if (isset($setting['inlinebtnmain']) && $setting['inlinebtnmain'] == "oninline") {
-
-
-
-    $all_vars = get_defined_vars();
-    foreach ($all_vars as $varName => $varValue) {
-        if (is_string($varValue) && strpos($varValue, '"keyboard"') !== false && strpos($varValue, '"inline_keyboard"') === false) {
-
-            $rxDecodedKb = json_decode($varValue, true);
-            if (!is_array($rxDecodedKb) || !isset($rxDecodedKb['keyboard']) || !is_array($rxDecodedKb['keyboard'])) {
-                continue;
-            }
-            $rxHasReplyOnly = false;
-            foreach ($rxDecodedKb['keyboard'] as $rxRow) {
-                if (!is_array($rxRow)) continue;
-                foreach ($rxRow as $rxBtn) {
-                    if (is_array($rxBtn) && (
-                        isset($rxBtn['request_contact']) || isset($rxBtn['request_location']) ||
-                        isset($rxBtn['request_poll']) || isset($rxBtn['request_users']) ||
-                        isset($rxBtn['request_chat'])
-                    )) { $rxHasReplyOnly = true; break 2; }
-                }
-            }
-            if ($rxHasReplyOnly) continue;
-            if (function_exists('rx_keyboardToInline')) {
-                $$varName = rx_keyboardToInline($rxDecodedKb);
-            }
+$rxAdminLegacyReplyVars = [
+    'Startelegram',
+    'keyboardchangelimit',
+    'nowpayment_setting_keyboard',
+    'autoconfirm_advanced_keyboard',
+    'Exception_auto_cart_keyboard',
+    'Trust_auto_cart_keyboard',
+];
+if (function_exists('rx_finalizeInlineAdminKb')) {
+    foreach ($rxAdminLegacyReplyVars as $rxAdminLegacyVar) {
+        if (isset($$rxAdminLegacyVar) && is_string($$rxAdminLegacyVar) && $$rxAdminLegacyVar !== '') {
+            $$rxAdminLegacyVar = rx_finalizeInlineAdminKb($$rxAdminLegacyVar, true);
         }
     }
-    unset($all_vars, $rxDecodedKb, $rxRow, $rxBtn, $rxHasReplyOnly);
 }
+unset($rxAdminLegacyReplyVars, $rxAdminLegacyVar);

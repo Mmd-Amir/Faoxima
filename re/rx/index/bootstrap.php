@@ -522,6 +522,7 @@ $datatextbot = array(
     'iranpay2' => '',
     'iranpay3' => '',
     'tonpay' => '',
+    'rialit' => '',
     'cubepay' => '',
     'blupal' => '',
     'variza' => '',

@@ -1797,6 +1797,7 @@ try {
         ['mowpayment', '💸 پرداخت با ارز دیجیتال'],
         ['zarinpal', '🟡 زرین پال'],
         ['tonpay', '💠 تون‌پی'],
+        ['rialit', '💚 ریالیت'],
         ['cubepay', '🟦 کیوب‌پی'],
         ['blupal', '💙 بلوپال'],
         ['variza', '💳 واریزا'],
@@ -2408,6 +2409,19 @@ try {
         ['helptonpay', '2'],
         ['tonpay_payment_mode', 'bot'],
         ['tonpay_custom_api_key', ''],
+        ['statusrialit', 'offrialit'],
+        ['apirialit', ''],
+        ['chashbackrialit', '0'],
+        ['minbalancerialit', 50000],
+        ['maxbalancerialit', 10000000],
+        ['helprialit', '2'],
+        ['rialit_trusted_ips', '3.123.103.100'],
+        ['rialit_trusted_proxies', ''],
+        ['rialit_webhook_url', ''],
+        ['rialit_webhook_status', 'not_configured'],
+        ['rialit_webhook_checked_at', '0'],
+        ['rialit_webhook_last_action', ''],
+        ['rialit_webhook_last_message', ''],
         ['statuscubepay', 'offcubepay'],
         ['apicubepay', ''],
         ['chashbackcubepay', '0'],
@@ -2446,6 +2460,7 @@ try {
         ['chashbackcart_target', 'all'],
         ['chashbackiranpay2_target', 'all'],
         ['chashbacktonpay_target', 'all'],
+        ['chashbackrialit_target', 'all'],
         ['chashbackcubepay_target', 'all'],
         ['chashbackblupal_target', 'all'],
         ['chashbackvariza_target', 'all'],
@@ -3557,6 +3572,17 @@ try {
     rxSafeAddColumn($connect, "Payment_report", "tonpay_local_state", "VARCHAR(24) NULL");
     rxSafeAddColumn($connect, "Payment_report", "tonpay_card_changed_at", "BIGINT NULL");
     rxSafeAddColumn($connect, "Payment_report", "tonpay_change_card_exhausted", "TINYINT(1) NOT NULL DEFAULT 0");
+    rxSafeAddColumn($connect, "Payment_report", "rialit_token", "VARCHAR(64) NULL");
+    rxSafeAddColumn($connect, "Payment_report", "rialit_status", "VARCHAR(20) NULL");
+    rxSafeAddColumn($connect, "Payment_report", "rialit_payer_id", "BIGINT NULL");
+    rxSafeAddColumn($connect, "Payment_report", "rialit_payer_amount", "BIGINT NULL");
+    rxSafeAddColumn($connect, "Payment_report", "rialit_payer_fee", "BIGINT NULL");
+    rxSafeAddColumn($connect, "Payment_report", "rialit_created_at", "BIGINT NULL");
+    rxSafeAddColumn($connect, "Payment_report", "rialit_last_checked_at", "BIGINT NULL");
+    rxSafeAddColumn($connect, "Payment_report", "rialit_local_state", "VARCHAR(32) NULL");
+    rxSafeAddColumn($connect, "Payment_report", "rialit_abandoned_at", "BIGINT NULL");
+    rxSafeAddColumn($connect, "Payment_report", "rialit_paid_at", "VARCHAR(40) NULL");
+    rxSafeAddColumn($connect, "Payment_report", "rialit_reference", "VARCHAR(64) NULL");
     rxSafeAddColumn($connect, "Payment_report", "cubepay_authority",      "VARCHAR(64) NULL");
     rxSafeAddColumn($connect, "Payment_report", "cubepay_payment_link",   "VARCHAR(500) NULL");
     rxSafeAddColumn($connect, "Payment_report", "cubepay_method",         "VARCHAR(20) NULL");
@@ -3614,6 +3640,31 @@ try {
             @$connect->query("ALTER TABLE Payment_report ADD INDEX idx_pr_atlaspay_order (atlaspay_order_id)");
         }
     } catch (Throwable $e) {  }
+
+    rxSafeAddUniqueIndex($connect, "Payment_report", "uniq_pr_rialit_token", ["rialit_token"]);
+    rxSafeAddIndex($connect, "Payment_report", "idx_pr_rialit_created", "rialit_created_at");
+
+    try {
+        $connect->query("CREATE TABLE IF NOT EXISTS rialit_webhook_event (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            event_id VARCHAR(64) NOT NULL,
+            event_type VARCHAR(40) NOT NULL DEFAULT '',
+            token VARCHAR(64) NULL,
+            order_id VARCHAR(64) NULL,
+            payload MEDIUMTEXT NULL,
+            state VARCHAR(20) NOT NULL DEFAULT 'pending',
+            attempts INT NOT NULL DEFAULT 0,
+            next_attempt_at BIGINT NOT NULL DEFAULT 0,
+            last_error VARCHAR(255) NULL,
+            received_at BIGINT NOT NULL DEFAULT 0,
+            processed_at BIGINT NULL,
+            UNIQUE KEY uniq_rialit_event (event_id),
+            KEY idx_rialit_event_state (state, next_attempt_at),
+            KEY idx_rialit_event_order (order_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    } catch (Throwable $e) {
+        error_log('[table.php] rialit_webhook_event create: ' . $e->getMessage());
+    }
 
     try {
         $haveSrcIdx = $connect->query("SHOW INDEX FROM Payment_report WHERE Key_name = 'idx_pr_source_user'");

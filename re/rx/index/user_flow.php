@@ -279,7 +279,66 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     if (function_exists('atlaspayCustomBotListMerge')) {
         $tpcListView = atlaspayCustomBotListMerge($from_id, $tpcListView);
     }
+    if (function_exists('rialitBotListMerge')) {
+        $tpcListView = rialitBotListMerge($from_id, $tpcListView);
+    }
     Editmessagetext($from_id, $message_id, $tpcListView['text'], $tpcListView['keyboard'], 'HTML');
+    tonpayCustomBotAnswer($callback_query_id);
+} elseif (preg_match('/^rl_(cancel|abandon|retry)_([A-Za-z0-9_\-]{1,64})$/', (string) $datain, $rialitActionMatch)) {
+    $rialitOrder = $rialitActionMatch[2];
+    $rialitReport = rialitFetchReport($rialitOrder);
+    if ($rialitReport === null || (string) $rialitReport['id_user'] !== (string) $from_id) {
+        tonpayCustomBotAnswer($callback_query_id, '❌ این فاکتور پیدا نشد.', true);
+        return;
+    }
+    if ($rialitActionMatch[1] === 'cancel') {
+        $rialitCancelKeyboard = json_encode(['inline_keyboard' => [
+            [['text' => '🚫 تأیید انصراف', 'callback_data' => 'rl_abandon_' . $rialitOrder]],
+            [['text' => '🔙 بازگشت', 'callback_data' => 'rl_view_' . $rialitOrder]],
+        ]], JSON_UNESCAPED_UNICODE);
+        Editmessagetext($from_id, $message_id, 'از این پرداخت انصراف می‌دهید؟ پس از انصراف می‌توانید پرداخت جدید بسازید. این کار لینک قبلی ریالیت را باطل نمی‌کند؛ اگر پرداخت قبلی بعداً تأیید شود، مبلغ سفارش به کیف پول اضافه می‌شود و سفارش قبلی اجرا نمی‌شود.', $rialitCancelKeyboard, 'HTML');
+    } elseif ($rialitActionMatch[1] === 'abandon') {
+        $rialitCancelled = rialitCancelLocally($rialitOrder, $from_id);
+        if (empty($rialitCancelled['ok'])) {
+            tonpayCustomBotAnswer($callback_query_id, (string) $rialitCancelled['message'], true);
+            return;
+        }
+        $rialitRetryKeyboard = json_encode(['inline_keyboard' => [
+            [['text' => '💳 انتخاب روش پرداخت جدید', 'callback_data' => 'rl_retry_' . $rialitOrder]],
+            [['text' => '🔙 حساب کاربری', 'callback_data' => 'account']],
+        ]], JSON_UNESCAPED_UNICODE);
+        Editmessagetext($from_id, $message_id, (string) $rialitCancelled['message'], $rialitRetryKeyboard, 'HTML');
+    } else {
+        if ((int) ($rialitReport['rialit_abandoned_at'] ?? 0) <= 0) {
+            tonpayCustomBotAnswer($callback_query_id, 'ابتدا از پرداخت قبلی انصراف دهید.', true);
+            return;
+        }
+        $rialitInvoiceParts = explode('|', (string) ($rialitReport['id_invoice'] ?? ''), 2);
+        $rialitRetryValues = [
+            'Processing_value' => (string) $rialitReport['price'],
+            'Processing_value_tow' => (string) ($rialitInvoiceParts[0] ?? ''),
+            'Processing_value_one' => (string) ($rialitInvoiceParts[1] ?? ''),
+            'Processing_value_four' => '',
+        ];
+        if ($rialitRetryValues['Processing_value_tow'] === '' && trim((string) ($rialitReport['discount_code'] ?? '')) !== '') {
+            $rialitRetryValues['Processing_value_four'] = 'chg|' . (int) ($rialitReport['charge_bonus'] ?? 0) . '|' . (string) $rialitReport['discount_code'] . '|' . (string) ($rialitReport['price_before_discount'] ?? 0);
+        }
+        foreach ($rialitRetryValues as $rialitRetryKey => $rialitRetryValue) {
+            update('user', $rialitRetryKey, $rialitRetryValue, 'id', $from_id);
+        }
+        step('get_step_payment', $from_id);
+        sendmessage($from_id, '💳 روش پرداخت جدید را انتخاب کنید:', $step_payment, 'HTML');
+    }
+    tonpayCustomBotAnswer($callback_query_id);
+} elseif (preg_match('/^rl_view_([A-Za-z0-9_\-]{1,64})$/', (string) $datain, $rialitViewMatch)) {
+    $rialitReport = rialitFetchReport($rialitViewMatch[1]);
+    if ($rialitReport === null || (string) $rialitReport['id_user'] !== (string) $from_id) {
+        tonpayCustomBotAnswer($callback_query_id, '❌ این فاکتور پیدا نشد.', true);
+        return;
+    }
+    $rialitReport = rialitPollThrottled($rialitViewMatch[1], $from_id) ?? $rialitReport;
+    $rialitView = rialitBotPaymentView($rialitReport);
+    Editmessagetext($from_id, $message_id, $rialitView['text'], $rialitView['keyboard'], 'HTML');
     tonpayCustomBotAnswer($callback_query_id);
 } elseif (preg_match('/^apc_(chk|can|cny|view)_(\w+)$/', (string) $datain, $apcMatch)) {
     $apcAction = $apcMatch[1];
@@ -4436,6 +4495,140 @@ $textonebuy
             } elseif ($data['type'] == "photo") {
                 sendphoto($from_id, $data['photoid'], null);
             } elseif ($data['type'] == "video") {
+                sendvideo($from_id, $data['videoid'], null);
+            }
+        }
+        $message_id = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
+        updatePaymentMessageId($message_id, $randomString);
+    } elseif ($datain == "rialit") {
+        [$rialitMin, $rialitMax] = function_exists('rialitAmountRange') ? rialitAmountRange() : [50000, 10000000];
+        $rxRialitAmount = (int) $user['Processing_value'];
+        if ($rxRialitAmount < $rialitMin || $rxRialitAmount > $rialitMax) {
+            sendmessage($from_id, sprintf($datatextbot['dyn_errors_min_max_deposit_amount'] ?? "❌ حداقل مبلغ واریزی این روش پرداخت باید %s و حداکثر %s تومان باشد", number_format($rialitMin), number_format($rialitMax)), null, 'HTML');
+            return;
+        }
+        if (!($pdo instanceof PDO)) {
+            sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
+            return;
+        }
+        $rxRialitInitLock = 'faoxima_payment_init_' . $from_id . '_rialit';
+        $rxRialitLockStatement = $pdo->prepare('SELECT GET_LOCK(?, 5)');
+        $rxRialitLockStatement->execute([$rxRialitInitLock]);
+        if ((int) $rxRialitLockStatement->fetchColumn() !== 1) {
+            sendmessage($from_id, '⏳ درخواست پرداخت شما در حال پردازش است؛ کمی بعد دوباره تلاش کنید.', null, 'HTML');
+            return;
+        }
+        register_shutdown_function(static function () use ($pdo, $rxRialitInitLock): void {
+            try {
+                $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$rxRialitInitLock]);
+            } catch (Throwable $e) {
+            }
+        });
+        $rxRialitInvoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
+        $rxRialitChargeParts = explode('|', (string) ($user['Processing_value_four'] ?? ''));
+        $rxRialitChargeCode = ($rxRialitChargeParts[0] ?? '') === 'chg' ? (string) ($rxRialitChargeParts[2] ?? '') : '';
+        $rxRialitBeforeDiscount = $rxRialitChargeCode !== '' ? (float) ($rxRialitChargeParts[3] ?? 0) : 0;
+        $rxRialitCheckout = function_exists('rx_ck_find_for_key') ? rx_ck_find_for_key($from_id, $rxRialitInvoice) : null;
+        $rxRialitContext = [
+            'checkout_id' => (string) ($rxRialitCheckout['checkout_id'] ?? ''),
+            'charge_bonus' => $__chargeBonus,
+            'discount_code' => $rxRialitChargeCode,
+            'discount_amount' => $rxRialitChargeCode !== '' ? $__chargeBonus : 0,
+            'price_before_discount' => $rxRialitBeforeDiscount,
+        ];
+        $rxRialitPending = function_exists('rialitFindPendingForUser') ? rialitFindPendingForUser($from_id, $rxRialitInvoice, $rxRialitAmount, $rxRialitContext) : null;
+        if ($rxRialitPending !== null && trim((string) ($rxRialitPending['rialit_token'] ?? '')) !== '') {
+            $rxRialitOrder = (string) $rxRialitPending['id_order'];
+            $rxRialitFresh = function_exists('rialitPollThrottled') ? rialitPollThrottled($rxRialitOrder, $from_id) : null;
+            if (is_array($rxRialitFresh)) {
+                $rxRialitPending = $rxRialitFresh;
+            }
+            $rxRialitView = rialitBotPaymentView($rxRialitPending);
+            $message_id = sendmessage($from_id, $rxRialitView['text'], $rxRialitView['keyboard'], 'HTML');
+            updatePaymentMessageId($message_id, $rxRialitOrder);
+            return;
+        }
+        if ($rxRialitPending === null && !rialitEnabled()) {
+            sendmessage($from_id, '❌ درگاه ریالیت در حال حاضر غیرفعال است.', $keyboard, 'HTML');
+            return;
+        }
+        deletemessage($from_id, $message_id);
+        sendmessage($from_id, $textbotlang['users']['Balance']['linkpayments'], $keyboard, 'HTML');
+        $dateacc = date('Y/m/d H:i:s');
+        if ($rxRialitPending !== null) {
+            $randomString = (string) $rxRialitPending['id_order'];
+        } else {
+            $randomString = bin2hex(random_bytes(5));
+            $stmt = $connect->prepare("INSERT INTO Payment_report (id_user,id_order,time,price,payment_Status,Payment_Method,id_invoice,rialit_created_at,charge_bonus,discount_code,discount_amount,price_before_discount) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+            $payment_Status = "Unpaid";
+            $Payment_Method = "rialit";
+            $rxRialitCreatedAt = time();
+            $rxRialitDiscountAmount = $rxRialitContext['discount_amount'];
+            $stmt->bind_param("sssssssiisdd", $from_id, $randomString, $dateacc, $rxRialitAmount, $payment_Status, $Payment_Method, $rxRialitInvoice, $rxRialitCreatedAt, $__chargeBonus, $rxRialitChargeCode, $rxRialitDiscountAmount, $rxRialitBeforeDiscount);
+            $stmt->execute();
+            if ($rxRialitContext['checkout_id'] !== '') {
+                rx_ck_attach_payment($rxRialitContext['checkout_id'], $randomString, 'rialit');
+            }
+        }
+        if (!rialitMarkCreated($randomString, $rxRialitAmount, (int) $from_id)) {
+            sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
+            return;
+        }
+        $payment = rialitCreatePayment($randomString, $rxRialitAmount, (int) $from_id);
+        if (!is_array($payment) || (isset($payment['success']) && $payment['success'] === false)) {
+            $rxRialitErrorCode = is_array($payment) ? (string) ($payment['error_code'] ?? '') : '';
+            update("Payment_report", "dec_not_confirmed", "rialit_create_failed:" . $rxRialitErrorCode, "id_order", $randomString);
+            sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
+            step('home', $from_id);
+            return;
+        }
+        if (!rialitStorePayment($randomString, $payment)) {
+            update("Payment_report", "dec_not_confirmed", "rialit_store_failed", "id_order", $randomString);
+            sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
+            step('home', $from_id);
+            return;
+        }
+        if (strtolower((string) ($payment['status'] ?? '')) === 'paid' && function_exists('rialitVerifyPayment')) {
+            rialitVerifyPayment($randomString, ['source' => 'bot_init']);
+        }
+        $rxRialitStored = rialitFetchReport($randomString);
+        if ($rxRialitStored === null || !rialitLinkAvailable($rxRialitStored)) {
+            if ($rxRialitStored !== null) {
+                $rxRialitView = rialitBotPaymentView($rxRialitStored);
+                $message_id = sendmessage($from_id, $rxRialitView['text'], $rxRialitView['keyboard'], 'HTML');
+                updatePaymentMessageId($message_id, $randomString);
+            }
+            return;
+        }
+        $rxRialitUrl = rialitPaymentUrl((string) $payment['token']);
+        $paymentkeyboard = json_encode([
+            'inline_keyboard' => [
+                [
+                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $rxRialitUrl]
+                ],
+                [['text' => '🔄 بررسی وضعیت', 'callback_data' => 'rl_view_' . $randomString]],
+                [['text' => '🚫 انصراف و پرداخت جدید', 'callback_data' => 'rl_cancel_' . $randomString]]
+            ]
+        ]);
+        $pricetoman = number_format($rxRialitAmount, 0);
+        $textnowpayments = "✅ تراکنش شما ایجاد شد
+
+🛒 کد پیگیری:  <code>$randomString</code>
+💲 مبلغ تراکنش به تومان  : <code>$pricetoman</code>
+
+💢 لطفا به این نکات قبل از پرداخت توجه کنید 👇
+
+🔹 لینک پرداخت تا ۳۰ دقیقه باز است. اگر پس از پایان این مهلت، پرداخت هنوز در انتظار باشد، نتیجه از سمت ریالیت بررسی و در صورت تأیید به‌صورت خودکار اعمال می‌شود.
+
+✅ در صورت مشکل میتوانید با پشتیبانی در ارتباط باشید";
+        $gethelp = select("PaySetting", "ValuePay", "NamePay", "helprialit", "select")['ValuePay'];
+        if ($gethelp != 2) {
+            $data = json_decode($gethelp, true);
+            if (is_array($data) && ($data['type'] ?? '') == "text") {
+                sendmessage($from_id, $data['text'], null, 'HTML');
+            } elseif (is_array($data) && ($data['type'] ?? '') == "photo") {
+                sendphoto($from_id, $data['photoid'], null);
+            } elseif (is_array($data) && ($data['type'] ?? '') == "video") {
                 sendvideo($from_id, $data['videoid'], null);
             }
         }

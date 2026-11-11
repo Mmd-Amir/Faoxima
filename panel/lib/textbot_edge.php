@@ -155,6 +155,7 @@ if (!function_exists('fx_textbot_rich_button_keys')) {
             'variza',
             'abangateway',
             'atlaspay',
+            'rialit',
             'zarinpal',
             'textpaymentnotverify',
             'text_star_telegram',

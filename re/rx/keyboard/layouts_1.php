@@ -78,15 +78,35 @@ if (!function_exists('rx_keyboardToInline')) {
     function rx_keyboardToInline($keyboardArray) {
         if (!is_array($keyboardArray)) return json_encode($keyboardArray);
         if (isset($keyboardArray['inline_keyboard'])) return json_encode($keyboardArray, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        if (!isset($keyboardArray['keyboard'])) return json_encode($keyboardArray, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (!isset($keyboardArray['keyboard']) || !is_array($keyboardArray['keyboard'])) return json_encode($keyboardArray, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        foreach ($keyboardArray['keyboard'] as $rxCheckRow) {
+            if (!is_array($rxCheckRow)) continue;
+            foreach ($rxCheckRow as $rxCheckBtn) {
+                if (is_array($rxCheckBtn) && (
+                    isset($rxCheckBtn['request_contact']) || isset($rxCheckBtn['request_location']) ||
+                    isset($rxCheckBtn['request_poll']) || isset($rxCheckBtn['request_users']) ||
+                    isset($rxCheckBtn['request_chat'])
+                )) {
+                    return json_encode($keyboardArray, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                }
+            }
+        }
 
         $inline = ['inline_keyboard' => []];
         foreach ($keyboardArray['keyboard'] as $row) {
+            if (!is_array($row)) continue;
             $newRow = [];
             foreach ($row as $btn) {
-                if (isset($btn['text'])) {
-                    $buttonText = (string) $btn['text'];
-                    $callbackData = isset($btn['callback_data']) ? (string)$btn['callback_data'] : $buttonText;
+                if (!is_array($btn) || !isset($btn['text'])) continue;
+                $buttonText = (string) $btn['text'];
+                $hasAction = (isset($btn['callback_data']) && (string)$btn['callback_data'] !== '')
+                    || isset($btn['url']) || isset($btn['web_app'])
+                    || isset($btn['login_url']) || isset($btn['switch_inline_query'])
+                    || isset($btn['switch_inline_query_current_chat']) || isset($btn['callback_game'])
+                    || isset($btn['pay']);
+                if (!$hasAction) {
+                    $callbackData = $buttonText;
                     if ($buttonText === ($GLOBALS['textbotlang']['users']['backbtn'] ?? '')) {
                         $callbackData = 'backuser';
                     } elseif ($buttonText === ($GLOBALS['textbotlang']['Admin']['backadmin'] ?? '')) {
@@ -94,8 +114,9 @@ if (!function_exists('rx_keyboardToInline')) {
                     } elseif ($buttonText === ($GLOBALS['textbotlang']['Admin']['backmenu'] ?? '')) {
                         $callbackData = 'backmenu';
                     }
-                    $newRow[] = ['text' => $buttonText, 'callback_data' => rx_safeCallbackData($callbackData, $buttonText)];
+                    $btn['callback_data'] = rx_safeCallbackData($callbackData, $buttonText);
                 }
+                $newRow[] = $btn;
             }
             if (!empty($newRow)) $inline['inline_keyboard'][] = $newRow;
         }
@@ -130,6 +151,7 @@ $datatextbot = array(
     'iranpay2' => '',
     'iranpay3' => '',
     'tonpay' => '',
+    'rialit' => '',
     'cubepay' => '',
     'blupal' => '',
     'abangateway' => '',
@@ -444,6 +466,17 @@ if (!function_exists('rx_kb_encode')) {
         $useInline = ($forceInline !== null)
             ? (bool)$forceInline
             : (isset($setting['inlinebtnmain']) && $setting['inlinebtnmain'] === 'oninline');
+        if ($forceInline === null && !$useInline) {
+            foreach ($rows as $rxScanRow) {
+                if (!is_array($rxScanRow)) continue;
+                foreach ($rxScanRow as $rxScanBtn) {
+                    if (is_array($rxScanBtn) && !empty($rxScanBtn['_rxap'])) {
+                        $useInline = true;
+                        break 2;
+                    }
+                }
+            }
+        }
         if ($useInline) {
             $sanitized = [];
             foreach ($rows as $row) {
@@ -595,6 +628,26 @@ $tonpay = rx_kb_encode([
         [
             rx_kb_style(['text' => $textbotlang['Admin']['backadmin'], 'callback_data' => 'tonpay_back'], 'tonpay_back', $_rx_gw_styles),
             ['text' => $textbotlang['Admin']['backmenu'], 'callback_data' => 'tonpay_backmenu']
+        ]
+    ]);
+$rialit = rx_kb_encode([
+        [rx_kb_style(['text' => "🏷️ نام نمایشی درگاه ریالیت", 'callback_data' => 'rialit_name'], 'rialit_name', $_rx_gw_styles)],
+        [rx_kb_style(['text' => "🔑 ثبت API Key ریالیت", 'callback_data' => 'rialit_apikey'], 'rialit_apikey', $_rx_gw_styles)],
+        [rx_kb_style(['text' => "💰 کش بک ریالیت", 'callback_data' => 'rialit_cashback'], 'rialit_cashback', $_rx_gw_styles)],
+        [
+            rx_kb_style(['text' => "⬇️ کف ریالیت", 'callback_data' => 'rialit_min'], 'rialit_min', $_rx_gw_styles),
+            rx_kb_style(['text' => "⬆️ سقف ریالیت", 'callback_data' => 'rialit_max'], 'rialit_max', $_rx_gw_styles)
+        ],
+        [rx_kb_style(['text' => "🌐 آدرس وب‌هوک ریالیت", 'callback_data' => 'rialit_whurl'], 'rialit_whurl', $_rx_gw_styles)],
+        [rx_kb_style(['text' => "✅ ثبت وب‌هوک ریالیت", 'callback_data' => 'rialit_whregister'], 'rialit_whregister', $_rx_gw_styles)],
+        [rx_kb_style(['text' => "🔍 خواندن وب‌هوک تنظیم‌شده", 'callback_data' => 'rialit_whread'], 'rialit_whread', $_rx_gw_styles)],
+        [rx_kb_style(['text' => "📊 وضعیت وب‌هوک ریالیت", 'callback_data' => 'rialit_whstatus'], 'rialit_whstatus', $_rx_gw_styles)],
+        [rx_kb_style(['text' => "🛡 آدرس‌های IP مجاز وب‌هوک", 'callback_data' => 'rialit_trustips'], 'rialit_trustips', $_rx_gw_styles)],
+        [rx_kb_style(['text' => "🧩 پراکسی‌های مورد اعتماد", 'callback_data' => 'rialit_trustproxies'], 'rialit_trustproxies', $_rx_gw_styles)],
+        [rx_kb_style(['text' => "📚 آموزش ریالیت", 'callback_data' => 'rialit_edu'], 'rialit_edu', $_rx_gw_styles)],
+        [
+            rx_kb_style(['text' => $textbotlang['Admin']['backadmin'], 'callback_data' => 'rialit_back'], 'rialit_back', $_rx_gw_styles),
+            ['text' => $textbotlang['Admin']['backmenu'], 'callback_data' => 'rialit_backmenu']
         ]
     ]);
 $cubepay = rx_kb_encode([
@@ -760,6 +813,7 @@ $PaySettingpv = getPaySettingValue("Cartstatuspv");
 $usernamecart = getPaySettingValue("CartDirect");
 $trnadoo = getPaySettingValue("statustarnado");
 $tonpayStatus = getPaySettingValue("statustonpay");
+$rialitStatus = getPaySettingValue("statusrialit");
 $cubepayStatus = getPaySettingValue("statuscubepay");
 $blupalStatus = getPaySettingValue("statusblupal");
 $varizaStatus = getPaySettingValue("statusvariza");
@@ -814,6 +868,11 @@ $step_payment = [
    if($tonpayStatus == "ontonpay"){
         $step_payment['inline_keyboard'][] = [
             rx_kb_style(['text' => $datatextbot['tonpay'] ?: '💠 تون‌پی', 'callback_data' => "tonpay"], 'tonpay', $_rx_pay_styles)
+    ];
+    }
+   if($rialitStatus == "onrialit"){
+        $step_payment['inline_keyboard'][] = [
+            rx_kb_style(['text' => $datatextbot['rialit'] ?: '💚 ریالیت', 'callback_data' => "rialit"], 'rialit', $_rx_pay_styles)
     ];
     }
    if($cubepayStatus == "oncubepay"){

@@ -126,18 +126,20 @@ final class PaymentInitHandler extends BaseHandler
                     $this->purgeCardAndGuard($keepInvoiceKey);
                 }
             } else {
-                $this->purgeStaleGatewayOrders((int)$this->user['id'], $method);
+                if ($method !== 'rialit') {
+                    $this->purgeStaleGatewayOrders((int)$this->user['id'], $method);
 
-                $pendingFreshGateway = (int) FaoximaDb::fetchScalar(
-                    "SELECT COUNT(*) FROM Payment_report
-                      WHERE id_user = :u
-                        AND payment_Status IN ('Unpaid','pending','waiting')
-                        AND Payment_Method = :m
-                        AND source = 'miniapp'",
-                    [':u' => $this->user['id'], ':m' => $method]
-                );
-                if ($pendingFreshGateway > 0) {
-                    FaoximaResponse::fail(409, faoxima_textbot_get('dyn_paymentinit_pending_request_exists', '⏳ یک درخواست پرداخت در انتظار بررسی دارید. لطفاً ابتدا آن را تکمیل یا لغو کنید.'));
+                    $pendingFreshGateway = (int) FaoximaDb::fetchScalar(
+                        "SELECT COUNT(*) FROM Payment_report
+                          WHERE id_user = :u
+                            AND payment_Status IN ('Unpaid','pending','waiting')
+                            AND Payment_Method = :m
+                            AND source = 'miniapp'",
+                        [':u' => $this->user['id'], ':m' => $method]
+                    );
+                    if ($pendingFreshGateway > 0) {
+                        FaoximaResponse::fail(409, faoxima_textbot_get('dyn_paymentinit_pending_request_exists', '⏳ یک درخواست پرداخت در انتظار بررسی دارید. لطفاً ابتدا آن را تکمیل یا لغو کنید.'));
+                    }
                 }
             }
 
@@ -233,6 +235,10 @@ final class PaymentInitHandler extends BaseHandler
 
                 case 'tonpay':
                     $this->handleTonPay($amount);
+                    return;
+
+                case 'rialit':
+                    $this->handleRialit($amount);
                     return;
 
                 case 'cubepay':
@@ -389,6 +395,9 @@ final class PaymentInitHandler extends BaseHandler
 
     private function purgeStaleGatewayOrders(int $userId, string $method): void
     {
+        if ($method === 'rialit') {
+            return;
+        }
         try {
             $rows = FaoximaDb::fetchAll(
                 "SELECT id_order, time
@@ -467,6 +476,9 @@ final class PaymentInitHandler extends BaseHandler
         if ($method === 'tonpay') {
             return 1440;
         }
+        if ($method === 'rialit') {
+            return 1440;
+        }
         return self::STALE_UNPAID_MINUTES;
     }
 
@@ -501,6 +513,7 @@ final class PaymentInitHandler extends BaseHandler
             'iranpay2'      => ['minbalanceiranpay2',      'maxbalanceiranpay2'],
             'iranpay3'      => ['minbalanceiranpay',       'maxbalanceiranpay'],
             'tonpay'        => ['minbalancetonpay',        'maxbalancetonpay'],
+            'rialit'        => ['minbalancerialit',        'maxbalancerialit'],
             'cubepay'       => ['minbalancecubepay',       'maxbalancecubepay'],
             'blupal'        => ['minbalanceblupal',        'maxbalanceblupal'],
             'variza'        => ['minbalancevariza',        'maxbalancevariza'],
@@ -521,6 +534,10 @@ final class PaymentInitHandler extends BaseHandler
         $maxJson = $get('maxbalance');
         $min = $minMethod > 0 ? $minMethod : (int) $this->jsonAgentValue($minJson, $agent, 1000);
         $max = $maxMethod > 0 ? $maxMethod : (int) $this->jsonAgentValue($maxJson, $agent, 100000000);
+        if ($method === 'rialit') {
+            $min = max(50000, (int) $min);
+            $max = (int) $max > 0 ? min(10000000, (int) $max) : 10000000;
+        }
         return [$min, $max];
     }
 
@@ -905,6 +922,99 @@ final class PaymentInitHandler extends BaseHandler
             'kind'     => 'tonpay_custom',
             'order_id' => $orderId,
             'view'     => $report === null ? null : tonpayCustomPublicView($report),
+        ]);
+    }
+
+
+    private function handleRialit(int $amount): void
+    {
+        if (!function_exists('rialitCreatePayment') || !function_exists('rialitFindPendingForUser')) {
+            FaoximaResponse::fail(503, faoxima_textbot_get('dyn_paymentinit_rialit_function_missing', '❌ تابع درگاه ریالیت روی این سرور موجود نیست.'));
+        }
+
+        [$min, $max] = function_exists('rialitAmountRange') ? rialitAmountRange() : [50000, 10000000];
+        if ($amount < $min) {
+            FaoximaResponse::fail(422, faoxima_render_text(faoxima_textbot_get('dyn_paymentinit_min_amount', '❌ حداقل مبلغ پرداخت {min} تومان است.'), ['min' => number_format($min)]));
+        }
+        if ($amount > $max) {
+            FaoximaResponse::fail(422, faoxima_render_text(faoxima_textbot_get('dyn_paymentinit_max_amount', '❌ حداکثر مبلغ پرداخت {max} تومان است.'), ['max' => number_format($max)]));
+        }
+
+        $invoice = (string) ($this->user['Processing_value_tow'] ?? '') . '|' . (string) ($this->user['Processing_value_one'] ?? '');
+        $existing = rialitFindPendingForUser((string) $this->user['id'], $invoice, $amount, [
+            'checkout_id' => $this->checkoutId ?? '',
+            'charge_bonus' => $this->chargeBonus,
+            'discount_code' => $this->chargeDiscountCode,
+            'discount_amount' => $this->chargeDiscountAmount,
+            'price_before_discount' => $this->chargePriceBeforeDiscount,
+        ]);
+        if ($existing !== null) {
+            $orderId = (string) ($existing['id_order'] ?? '');
+            $token = trim((string) ($existing['rialit_token'] ?? ''));
+            if ($orderId !== '' && $token !== '') {
+                $linkAvailable = rialitLinkAvailable($existing);
+                FaoximaResponse::ok([
+                    'kind' => 'url',
+                    'url' => $linkAvailable ? rialitPaymentUrl($token) : '',
+                    'order_id' => $orderId,
+                    'expires_at' => rialitLinkExpiresAt($existing),
+                    'message' => $linkAvailable
+                        ? faoxima_textbot_get('dyn_paymentinit_rialit_resume', '✅ همان فاکتور ریالیت شما هنوز باز است؛ برای تکمیل پرداخت روی لینک زیر بزنید.')
+                        : faoxima_textbot_get('dyn_paymentinit_rialit_awaiting_result', 'مهلت ورود به پرداخت تمام شده؛ در انتظار نتیجه'),
+                ]);
+                return;
+            }
+        } else {
+            if (!rialitEnabled()) {
+                FaoximaResponse::fail(409, '❌ درگاه ریالیت در حال حاضر غیرفعال است.');
+            }
+            $orderId = bin2hex(random_bytes(5));
+            $this->insertPaymentReport('rialit', $amount, $orderId);
+        }
+
+        if ($orderId === '') {
+            FaoximaResponse::fail(502, faoxima_textbot_get('dyn_paymentinit_payment_record_failed', '❌ ثبت درخواست پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.'));
+        }
+        if (!rialitMarkCreated($orderId, $amount, (int) $this->user['id'])) {
+            FaoximaResponse::serverError(faoxima_textbot_get('dyn_paymentinit_payment_record_failed', '❌ ثبت درخواست پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.'));
+        }
+
+        try {
+            $pay = rialitCreatePayment($orderId, $amount, (int) $this->user['id']);
+        } catch (Throwable $e) {
+            FaoximaLogger::userFacing('rialitCreatePayment() threw', ['err' => $e->getMessage()]);
+            FaoximaResponse::fail(502, faoxima_textbot_get('dyn_paymentinit_rialit_connection_error', '❌ ساخت پرداخت ریالیت ناموفق بود. لطفاً دوباره تلاش کنید.'));
+        }
+
+        if (!is_array($pay) || (isset($pay['success']) && $pay['success'] === false)) {
+            $errorCode = is_array($pay) ? (string) ($pay['error_code'] ?? '') : '';
+            FaoximaLogger::userFacing('rialitCreatePayment() returned bad response', ['code' => $errorCode]);
+            update('Payment_report', 'dec_not_confirmed', 'rialit_create_failed:' . $errorCode, 'id_order', $orderId);
+            $message = ($errorCode === 'AUTH_FAILED' || $errorCode === 'MISSING_API_KEY')
+                ? faoxima_textbot_get('dyn_paymentinit_rialit_config_error', '❌ تنظیمات درگاه ریالیت کامل نیست؛ با پشتیبانی تماس بگیرید.')
+                : faoxima_textbot_get('dyn_paymentinit_rialit_link_creation_failed', '❌ ساخت لینک پرداخت ریالیت ناموفق بود. لطفاً دوباره تلاش کنید.');
+            FaoximaResponse::fail(502, $message);
+        }
+
+        if (!rialitStorePayment($orderId, $pay)) {
+            update('Payment_report', 'dec_not_confirmed', 'rialit_store_failed', 'id_order', $orderId);
+            FaoximaResponse::fail(502, faoxima_textbot_get('dyn_paymentinit_payment_record_failed', '❌ ثبت درخواست پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.'));
+        }
+
+        if (strtolower((string) ($pay['status'] ?? '')) === 'paid' && function_exists('rialitVerifyPayment')) {
+            rialitVerifyPayment($orderId, ['source' => 'init']);
+        }
+
+        $storedPayment = rialitFetchReport($orderId);
+        if ($storedPayment === null) {
+            FaoximaResponse::serverError(faoxima_textbot_get('dyn_paymentinit_payment_record_failed', '❌ ثبت درخواست پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.'));
+        }
+        FaoximaResponse::ok([
+            'kind'     => 'url',
+            'url'      => rialitLinkAvailable($storedPayment) ? rialitPaymentUrl((string) $pay['token']) : '',
+            'order_id' => $orderId,
+            'expires_at' => rialitLinkExpiresAt($storedPayment),
+            'message'  => faoxima_textbot_get('dyn_paymentinit_rialit_click_link', '✅ فاکتور ریالیت ساخته شد. برای پرداخت روی لینک زیر بزنید.'),
         ]);
     }
 

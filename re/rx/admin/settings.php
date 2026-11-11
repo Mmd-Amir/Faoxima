@@ -1335,6 +1335,13 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $trnado, 'HTML');
 } elseif ($datain == "tonpaysetting" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $tonpay, 'HTML');
+} elseif ($datain == "rialitsetting" && $adminrulecheck['rule'] == "administrator") {
+    $rxRialitWhUrl = function_exists('rialitWebhookUrl') ? rialitWebhookUrl() : '';
+    $rxRialitMenuText = (string) $textbotlang['users']['selectoption'];
+    if ($rxRialitWhUrl !== '') {
+        $rxRialitMenuText .= "\n\n🌐 آدرس وب‌هوک:\n<code>" . htmlspecialchars($rxRialitWhUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>";
+    }
+    nm_adminInstantReply($from_id, $rxRialitMenuText, $rialit, 'HTML');
 } elseif ($datain == "cubepaysetting" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $cubepay, 'HTML');
 } elseif ($datain == "blupalsetting" && $adminrulecheck['rule'] == "administrator") {
@@ -1525,6 +1532,192 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         $tonpayCustomWarning = "\n\n⚠️ کلید API درگاه کاستوم هنوز ثبت نشده است؛ تا زمان ثبت کلید، ساخت فاکتور جدید با خطا مواجه می‌شود.";
     }
     nm_adminInstantReply($from_id, "🔀 مقصد پرداخت تون‌پی\n\nلینک پرداختی که برای کاربر ارسال می‌شود را انتخاب کنید. اگر لینک وب از سمت تون‌پی دریافت نشود، لینک ربات تلگرام ارسال خواهد شد.\n\nدر حالت کاستوم، کاربر تمام مراحل پرداخت (کارت، رسید و پیگیری) را داخل ربات یا مینی‌اپ انجام می‌دهد. فاکتورهای قبلی با همان روشی که ساخته شده‌اند ادامه پیدا می‌کنند.\n\nحالت فعلی: <b>{$tonpayModeLabel}</b>{$tonpayCustomWarning}", $tonpayModeKb, 'HTML');
+} elseif ($text == "🔑 ثبت API Key ریالیت" && $adminrulecheck['rule'] == "administrator") {
+    $currentKey = function_exists('rialitMaskSecret') ? rialitMaskSecret(rialitApiKey()) : '';
+    if ($currentKey === '') {
+        $currentKey = 'ثبت نشده';
+    }
+    $currentKey = htmlspecialchars($currentKey, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    nm_adminInstantReply($from_id, "🔑 کلید API ریالیت خود را اینجا وارد کنید.\n\nکلید فعلی شما: {$currentKey}\n\nکلید فقط در سرور ذخیره می‌شود و در مینی‌اپ یا کد سمت کاربر نمایش داده نمی‌شود.", $backadmin, 'HTML');
+    step('apirialit', $from_id);
+} elseif ($user['step'] == "apirialit") {
+    $newRialitKey = trim((string) $text);
+    if ($newRialitKey === '' || preg_match('/\s/', $newRialitKey)) {
+        nm_adminInstantReply($from_id, "❌ کلید API نامعتبر است. کلید را بدون فاصله ارسال کنید.", $backadmin, 'HTML');
+        return;
+    }
+    if (!function_exists('rialitSaveSetting') || !rialitSaveSetting('apirialit', $newRialitKey)) {
+        nm_adminInstantReply($from_id, "❌ ذخیره کلید API ناموفق بود. دوباره تلاش کنید.", $rialit, 'HTML');
+    } else {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['SettingnowPayment']['Savaapi'], $rialit, 'HTML');
+    }
+    step('home', $from_id);
+} elseif ($text == "🏷️ نام نمایشی درگاه ریالیت" && $adminrulecheck['rule'] == "administrator") {
+    $currentName = function_exists('rialitDisplayName') ? rialitDisplayName() : '💚 ریالیت';
+    nm_adminInstantReply($from_id, "🏷️ نام نمایشی فعلی: <b>" . htmlspecialchars($currentName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\nنام نمایشی جدید را ارسال کنید.", $backadmin, 'HTML');
+    step('gettextrialit', $from_id);
+} elseif ($user['step'] == "gettextrialit") {
+    $newName = trim((string) $text);
+    if ($newName === '') {
+        nm_adminInstantReply($from_id, "❌ نام نمایشی نمی‌تواند خالی باشد.", $backadmin, 'HTML');
+        return;
+    }
+    update("textbot", "text", $newName, "id_text", "rialit");
+    nm_adminInstantReply($from_id, "✅ نام نمایشی ریالیت ذخیره شد.", $rialit, 'HTML');
+    step('home', $from_id);
+} elseif ($text == "💰 کش بک ریالیت" && $adminrulecheck['rule'] == "administrator") {
+    nm_adminInstantReply($from_id, "📌 در این بخش می توانید تعیین کنید کاربر پس از پرداخت چه درصدی به عنوان هدیه به حسابش واریز شود. ( برای غیرفعال کردن این قابلیت عدد صفر ارسال کنید)", $backadmin, 'HTML');
+    step("getcashrialit", $from_id);
+} elseif ($user['step'] == "getcashrialit") {
+    if (!ctype_digit($text)) {
+        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
+        return;
+    }
+    savedata("clear", "cashback_percent", $text);
+    savedata("save", "cashback_key", "chashbackrialit");
+    savedata("save", "cashback_menu", "rialit");
+    nm_adminInstantReply($from_id, "📌 جامعه هدف این کش‌بک را انتخاب نمایید", rx_cashbackTargetKeyboard(), 'HTML');
+    step("getcashtarget", $from_id);
+} elseif ($text == "⬇️ کف ریالیت" && $adminrulecheck['rule'] == "administrator") {
+    [$rialitMinNow, $rialitMaxNow] = function_exists('rialitAmountRange') ? rialitAmountRange() : [50000, 10000000];
+    nm_adminInstantReply($from_id, "📌 حداقل مبلغ واریزی ریالیت را ارسال نمایید.\n\nمقدار فعلی: " . number_format($rialitMinNow) . " تومان\nحد مجاز API: از ۵۰,۰۰۰ تا ۱۰,۰۰۰,۰۰۰ تومان", $backadmin, 'HTML');
+    step("getmainrialit", $from_id);
+} elseif ($user['step'] == "getmainrialit") {
+    if (!ctype_digit($text) || (int) $text < 50000 || (int) $text > 10000000) {
+        nm_adminInstantReply($from_id, "❌ مقدار نامعتبر است. عددی بین ۵۰,۰۰۰ و ۱۰,۰۰۰,۰۰۰ تومان ارسال کنید.", $backadmin, 'HTML');
+        return;
+    }
+    $rialitMaxNow = function_exists('rialitAmountRange') ? rialitAmountRange()[1] : 10000000;
+    if ((int) $text > $rialitMaxNow) {
+        nm_adminInstantReply($from_id, "❌ حداقل نمی‌تواند بیشتر از سقف فعلی (" . number_format($rialitMaxNow) . " تومان) باشد.", $backadmin, 'HTML');
+        return;
+    }
+    update("PaySetting", "ValuePay", (string) (int) $text, "NamePay", "minbalancerialit");
+    nm_adminInstantReply($from_id, "✅ حداقل مبلغ واریزی ریالیت تنظیم گردید.", $rialit, 'HTML');
+    step("home", $from_id);
+} elseif ($text == "⬆️ سقف ریالیت" && $adminrulecheck['rule'] == "administrator") {
+    [$rialitMinNow, $rialitMaxNow] = function_exists('rialitAmountRange') ? rialitAmountRange() : [50000, 10000000];
+    nm_adminInstantReply($from_id, "📌 حداکثر مبلغ واریزی ریالیت را ارسال نمایید.\n\nمقدار فعلی: " . number_format($rialitMaxNow) . " تومان\nحد مجاز API: از ۵۰,۰۰۰ تا ۱۰,۰۰۰,۰۰۰ تومان", $backadmin, 'HTML');
+    step("getmaxrialit", $from_id);
+} elseif ($user['step'] == "getmaxrialit") {
+    if (!ctype_digit($text) || (int) $text < 50000 || (int) $text > 10000000) {
+        nm_adminInstantReply($from_id, "❌ مقدار نامعتبر است. عددی بین ۵۰,۰۰۰ و ۱۰,۰۰۰,۰۰۰ تومان ارسال کنید.", $backadmin, 'HTML');
+        return;
+    }
+    $rialitMinNow = function_exists('rialitAmountRange') ? rialitAmountRange()[0] : 50000;
+    if ((int) $text < $rialitMinNow) {
+        nm_adminInstantReply($from_id, "❌ سقف نمی‌تواند کمتر از کف فعلی (" . number_format($rialitMinNow) . " تومان) باشد.", $backadmin, 'HTML');
+        return;
+    }
+    update("PaySetting", "ValuePay", (string) (int) $text, "NamePay", "maxbalancerialit");
+    nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی ریالیت تنظیم گردید.", $rialit, 'HTML');
+    step("home", $from_id);
+} elseif ($text == "🌐 آدرس وب‌هوک ریالیت" && $adminrulecheck['rule'] == "administrator") {
+    if (!function_exists('rialitWebhookStatusSummary')) {
+        nm_adminInstantReply($from_id, "❌ تابع ریالیت روی سرور موجود نیست.", $rialit, 'HTML');
+        return;
+    }
+    $summary = rialitWebhookStatusSummary();
+    $generated = $summary['generated_url'] !== '' ? $summary['generated_url'] : 'آدرس نصب تنظیم نشده است';
+    $remote = $summary['remote_url'] !== '' ? $summary['remote_url'] : 'تنظیم نشده';
+    $statusFa = $summary['status'] === 'ok' ? '✅ سالم' : ($summary['status'] === 'error' ? '❌ خطا' : '⚪ بررسی نشده');
+    $textRialitWh = "🌐 آدرس وب‌هوک ریالیت\n\n🔗 آدرس تولیدشده از تنظیمات نصب:\n<code>" . htmlspecialchars($generated, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>\n\n📌 آدرس ثبت‌شده روی ریالیت: <code>" . htmlspecialchars($remote, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>\n📊 وضعیت: {$statusFa}";
+    if ($summary['last_message'] !== '') {
+        $textRialitWh .= "\n📝 آخرین نتیجه: " . htmlspecialchars($summary['last_message'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+    $textRialitWh .= "\n\nبرای ثبت، از دکمه «✅ ثبت وب‌هوک ریالیت» استفاده کنید.";
+    nm_adminInstantReply($from_id, $textRialitWh, $rialit, 'HTML');
+} elseif ($datain == "rialit_whstatus" && $adminrulecheck['rule'] == "administrator") {
+    $summary = function_exists('rialitWebhookStatusSummary') ? rialitWebhookStatusSummary() : [];
+    $statusFa = ($summary['status'] ?? '') === 'ok' ? '✅ سالم' : (($summary['status'] ?? '') === 'error' ? '❌ خطا' : '⚪ بررسی نشده');
+    $checkedAt = (int) ($summary['checked_at'] ?? 0);
+    $checkedFa = $checkedAt > 0 ? (function_exists('jdate') ? jdate('Y/m/d H:i', $checkedAt) : date('Y/m/d H:i', $checkedAt)) : '—';
+    $lastMessage = trim((string) ($summary['last_message'] ?? ''));
+    $textRialitStatus = "📊 وضعیت وب‌هوک ریالیت\n\n📌 وضعیت: {$statusFa}\n🕒 آخرین بررسی: {$checkedFa}\n🔗 آدرس ثبت‌شده: <code>" . htmlspecialchars((string) ($summary['remote_url'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>";
+    if ($lastMessage !== '') {
+        $textRialitStatus .= "\n📝 نتیجه: " . htmlspecialchars($lastMessage, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+    nm_adminInstantReply($from_id, $textRialitStatus, $rialit, 'HTML');
+} elseif ($datain == "rialit_whread" && $adminrulecheck['rule'] == "administrator") {
+    $result = function_exists('rialitReadWebhook') ? rialitReadWebhook() : ['ok' => false, 'message' => 'تابع ریالیت موجود نیست', 'webhook_url' => ''];
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => !empty($result['ok']) ? '✅ وضعیت وب‌هوک خوانده شد' : '❌ خواندن وب‌هوک ناموفق بود', 'show_alert' => false]);
+    $url = trim((string) ($result['webhook_url'] ?? ''));
+    $textRialitRead = "🔍 نتیجه خواندن وب‌هوک ریالیت\n\n" . htmlspecialchars((string) ($result['message'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    if ($url !== '') {
+        $textRialitRead .= "\n\n🔗 آدرس فعلی: <code>" . htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>";
+    }
+    nm_adminInstantReply($from_id, $textRialitRead, $rialit, 'HTML');
+} elseif ($datain == "rialit_whregister" && $adminrulecheck['rule'] == "administrator") {
+    $generated = function_exists('rialitWebhookUrl') ? rialitWebhookUrl() : '';
+    $result = function_exists('rialitRegisterWebhook') ? rialitRegisterWebhook($generated) : ['ok' => false, 'message' => 'تابع ریالیت موجود نیست', 'webhook_url' => ''];
+    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => !empty($result['ok']) ? '✅ وب‌هوک ثبت شد' : '❌ ثبت وب‌هوک ناموفق بود', 'show_alert' => false]);
+    $textRialitRegister = "✅ ثبت وب‌هوک ریالیت\n\n" . htmlspecialchars((string) ($result['message'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    if ($generated !== '') {
+        $textRialitRegister .= "\n\n🔗 آدرس تولیدشده:\n<code>" . htmlspecialchars($generated, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>";
+    }
+    if (!empty($result['webhook_url'])) {
+        $textRialitRegister .= "\n\n📌 آدرس ثبت‌شده: <code>" . htmlspecialchars((string) $result['webhook_url'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>";
+    }
+    nm_adminInstantReply($from_id, $textRialitRegister, $rialit, 'HTML');
+} elseif ($text == "🛡 آدرس‌های IP مجاز وب‌هوک" && $adminrulecheck['rule'] == "administrator") {
+    $currentIps = function_exists('rialitTrustedIps') ? implode(', ', rialitTrustedIps()) : '';
+    nm_adminInstantReply($from_id, "🛡 آدرس‌های IP مورد اعتماد ریالیت را وارد کنید.\n\nمی‌توانید چند آدرس یا محدوده CIDR را با کاما یا خط جدید جدا کنید.\n\nمقدار فعلی: <code>" . htmlspecialchars($currentIps !== '' ? $currentIps : 'خالی', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>\n\n⚠️ اگر این لیست خالی باشد، همه درخواست‌های وب‌هوک رد می‌شوند.", $backadmin, 'HTML');
+    step("rialit_trustips", $from_id);
+} elseif ($user['step'] == "rialit_trustips") {
+    $list = function_exists('rialitParseIpList') ? rialitParseIpList($text) : [];
+    if (empty($list)) {
+        nm_adminInstantReply($from_id, "❌ هیچ آدرس معتبری پیدا نشد. آدرس‌ها را با کاما یا خط جدید جدا کنید.", $backadmin, 'HTML');
+        return;
+    }
+    update("PaySetting", "ValuePay", implode(',', $list), "NamePay", "rialit_trusted_ips");
+    nm_adminInstantReply($from_id, "✅ آدرس‌های IP مجاز وب‌هوک ریالیت ذخیره شد.", $rialit, 'HTML');
+    step("home", $from_id);
+} elseif ($text == "🧩 پراکسی‌های مورد اعتماد" && $adminrulecheck['rule'] == "administrator") {
+    $currentProxies = function_exists('rialitTrustedProxies') ? implode(', ', rialitTrustedProxies()) : '';
+    nm_adminInstantReply($from_id, "🧩 آدرس پراکسی‌های مورد اعتماد را وارد کنید.\n\nهدرهای X-Forwarded-For و X-Real-IP فقط وقتی پذیرفته می‌شوند که درخواست از یکی از این آدرس‌ها آمده باشد.\n\nمقدار فعلی: <code>" . htmlspecialchars($currentProxies !== '' ? $currentProxies : 'خالی', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</code>\n\nبرای غیرفعال کردن، عبارت none را ارسال کنید.", $backadmin, 'HTML');
+    step("rialit_trustproxies", $from_id);
+} elseif ($user['step'] == "rialit_trustproxies") {
+    $rawProxies = trim((string) $text);
+    $list = strtolower($rawProxies) === 'none' ? [] : (function_exists('rialitParseIpList') ? rialitParseIpList($rawProxies) : []);
+    update("PaySetting", "ValuePay", implode(',', $list), "NamePay", "rialit_trusted_proxies");
+    nm_adminInstantReply($from_id, "✅ پراکسی‌های مورد اعتماد ریالیت ذخیره شد.", $rialit, 'HTML');
+    step("home", $from_id);
+} elseif ($text == "📚 آموزش ریالیت" && $adminrulecheck['rule'] == "administrator") {
+    nm_adminInstantReply($from_id, "📌آموزش خود را ارسال نمایید .
+۱ - در صورتی که میخواید اموزشی نشان داده نشود عدد 2 را ارسال کنید
+۲ - شما می توانید آموزش بصورت فیلم ُ  متن ُ تصویر ارسال نمایید", $backadmin, 'HTML');
+    step("helprialit", $from_id);
+} elseif ($user['step'] == "helprialit") {
+    if ($text) {
+        if (intval($text) == 2) {
+            update("PaySetting", "ValuePay", "0", "NamePay", "helprialit");
+        } else {
+            $data = json_encode(array(
+                'type' => "text",
+                'text' => $text
+            ));
+            update("PaySetting", "ValuePay", $data, "NamePay", "helprialit");
+        }
+    } elseif ($photo) {
+        $data = json_encode(array(
+            'type' => "photo",
+            'text' => $caption,
+            'photoid' => $photoid
+        ));
+        update("PaySetting", "ValuePay", $data, "NamePay", "helprialit");
+    } elseif ($video) {
+        $data = json_encode(array(
+            'type' => "video",
+            'text' => $caption,
+            'videoid' => $videoid
+        ));
+        update("PaySetting", "ValuePay", $data, "NamePay", "helprialit");
+    } else {
+        nm_adminInstantReply($from_id, "❌ محتوای ارسال نامعتبر است.", $backadmin, 'HTML');
+        return;
+    }
+    step('home', $from_id);
+    nm_adminInstantReply($from_id, "✅ آموزش با موفقیت ذخیره گردید.", $rialit, 'HTML');
 } elseif (($text == "🔀 مقصد پرداخت اطلس‌پی" || preg_match('/^atlaspay_paymode_(official|custom)$/', (string) $datain, $atlaspayModeMatch)) && $adminrulecheck['rule'] == "administrator") {
     $atlaspayRegisterNote = '';
     if (!empty($atlaspayModeMatch[1])) {
@@ -3001,6 +3194,13 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
             $valuenew = "ontonpay";
         }
         update("PaySetting", "ValuePay", $valuenew, "NamePay", "statustonpay");
+    } elseif ($type == "rialit") {
+        if ($value == "onrialit") {
+            $valuenew = "offrialit";
+        } else {
+            $valuenew = "onrialit";
+        }
+        update("PaySetting", "ValuePay", $valuenew, "NamePay", "statusrialit");
     } elseif ($type == "cubepay") {
         if ($value == "oncubepay") {
             $valuenew = "offcubepay";
@@ -3256,6 +3456,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
         'CartManage' => $CartManage,
         'trnado' => $trnado,
         'tonpay' => $tonpay,
+        'rialit' => $rialit,
         'blupal' => $blupal,
         'abangateway' => $abangateway,
         'cubepay' => $cubepay,

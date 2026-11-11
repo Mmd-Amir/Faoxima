@@ -266,7 +266,7 @@ async function loadPendingBanner(view) {
     } catch (_) { return () => {}; }
     if (!pending.length) return () => {};
 
-    const externalGatewayPending = pending.find(p => p.method === 'iranpay2' || p.method === 'tonpay' || p.method === 'cubepay' || p.method === 'blupal' || p.method === 'variza' || p.method === 'abangateway' || p.method === 'atlaspay');
+    const externalGatewayPending = pending.find(p => p.method === 'iranpay2' || p.method === 'tonpay' || p.method === 'rialit' || p.method === 'cubepay' || p.method === 'blupal' || p.method === 'variza' || p.method === 'abangateway' || p.method === 'atlaspay');
     if (externalGatewayPending) {
         const autoJumpKey = 'faoxima_extgw_autojump_' + externalGatewayPending.order_id;
         let alreadyJumped = false;
@@ -293,7 +293,9 @@ async function loadPendingBanner(view) {
             hapticImpact('light');
             const order = btn.getAttribute('data-cancel');
             if (!order) return;
-            const ok = await showConfirm('این فاکتور لغو شود؟');
+            const ok = await showConfirm(btn.getAttribute('data-method') === 'rialit'
+                ? 'از این پرداخت انصراف می‌دهید؟ می‌توانید پرداخت جدید بسازید. لینک قبلی در ریالیت باطل نمی‌شود؛ اگر بعداً تأیید شود، مبلغ سفارش به کیف پول اضافه می‌شود.'
+                : 'این فاکتور لغو شود؟');
             if (!ok) return;
             try {
                 if (btn.getAttribute('data-verify') === '1') {
@@ -341,6 +343,13 @@ function startPendingTicker(host) {
             const exp = Number(el.getAttribute('data-expires-at')) || 0;
             if (exp <= 0) return;
             const fmt = el.getAttribute('data-method') === 'tonpay' ? fmtRemainHhMmSs : fmtRemainMmSs;
+            if (el.getAttribute('data-method') === 'rialit' && (exp - nowSec) <= 0) {
+                el.textContent = 'در انتظار نتیجه';
+                const card = el.closest ? el.closest('.pending-banner') : null;
+                const note = card ? card.querySelector('.pending-banner-note') : null;
+                if (note) note.textContent = 'مهلت ورود به پرداخت تمام شده؛ در انتظار نتیجه';
+                return;
+            }
             el.textContent = fmt(exp - nowSec);
         });
     }
@@ -353,12 +362,19 @@ function startPendingTicker(host) {
 function renderPendingCard(p) {
     const expiresAt = Number(p.expires_at) || 0;
     const isTonpay = String(p.method || '').toLowerCase() === 'tonpay';
+    const isRialit = String(p.method || '').toLowerCase() === 'rialit';
     const fmtRemain = isTonpay ? fmtRemainHhMmSs : fmtRemainMmSs;
-    const initialRemain = expiresAt > 0
-        ? fmtRemain(expiresAt - Math.floor(Date.now() / 1000))
-        : fmtRemain(p.remaining_sec || 0);
+    const rialitAwaitingResult = isRialit && ((p.rialit && p.rialit.awaiting_result) || (expiresAt > 0 && expiresAt <= Math.floor(Date.now() / 1000)));
+    const initialRemain = rialitAwaitingResult
+        ? 'در انتظار نتیجه'
+        : (expiresAt > 0
+            ? fmtRemain(expiresAt - Math.floor(Date.now() / 1000))
+            : fmtRemain(p.remaining_sec || 0));
     const methodFa = p.method_label || methodLabel(p.method);
     const cur = p.currency_code ? ` (${escapeHtml(p.currency_code)})` : '';
+    const rialitNote = isRialit
+        ? `<p class="pending-banner-note muted" style="font-size:12px;margin:8px 0 0">${rialitAwaitingResult ? 'مهلت ورود به پرداخت تمام شده؛ در انتظار نتیجه' : ''}</p>`
+        : '';
     return `
         <div class="pending-banner">
             <div class="pending-banner-head">
@@ -370,14 +386,15 @@ function renderPendingCard(p) {
                 <div><span class="muted">مبلغ</span><span class="mono accent">${escapeHtml(fmtPrice(p.amount))}</span></div>
                 <div><span class="muted">باقی‌مانده</span><span class="mono pending-remaining" data-expires-at="${expiresAt}" data-method="${escapeHtml(p.method || '')}">${escapeHtml(initialRemain)}</span></div>
             </div>
+            ${rialitNote}
             <div class="pending-banner-actions">
                 ${!p.verify || p.resumable || p.status !== 'Unpaid' ? `<button type="button" class="btn btn-primary btn-block" data-resume="${escapeHtml(p.order_id)}">
                     ${icon('arrowLeft', 'class="ico ico-leading"')}
                     <span>${p.verify && p.resumable ? 'ادامه پرداخت' : 'ادامه پیگیری'}</span>
                 </button>` : ''}
-                ${!p.verify || p.cancellable ? `<button type="button" class="btn btn-ghost btn-block" data-cancel="${escapeHtml(p.order_id)}" data-verify="${p.verify ? '1' : '0'}">
+                ${!p.verify || p.cancellable ? `<button type="button" class="btn btn-ghost btn-block" data-cancel="${escapeHtml(p.order_id)}" data-method="${escapeHtml(p.method || '')}" data-verify="${p.verify ? '1' : '0'}">
                     ${icon('close', 'class="ico ico-leading"')}
-                    <span>انصراف</span>
+                    <span>${isRialit ? 'انصراف و پرداخت جدید' : 'انصراف'}</span>
                 </button>` : ''}
             </div>
         </div>

@@ -34,7 +34,7 @@ if (!function_exists('rx_featCategoryRows')) {
                 [['text' => $statusverifybyuser, 'callback_data' => "editstsuts-verifybyuser-{$setting['verifybucodeuser']}"],
                  ['text' => "🔑 احراز با لینک", 'callback_data' => "verifybyuser"]],
                 [['text' => $authScopeBtn, 'callback_data' => "editstsuts-authscope-{$authScopeVal}"]],
-                [['text' => "🛡 تنظیمات دکمه شیشه‌ای", 'callback_data' => "glass_mode_settings"]],
+                [['text' => "🛡 تنظیمات حالت شیشه‌ای بخش کاربر", 'callback_data' => "glass_mode_settings"]],
                 [['text' => $forced_miniapp_status, 'callback_data' => "editstsuts-forced_miniapp-{$setting['forced_miniapp_mode']}"],
                  ['text' => "📱 حالت اجباری مینی‌اپ", 'callback_data' => "forced_miniapp_info"]],
                 [['text' => (((string)($setting['miniapp_ticket_mode'] ?? '0')) === '1')
@@ -216,7 +216,7 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     step('home', $from_id);
     if (isset($user) && is_array($user)) { $user['step'] = 'home'; }
     if (function_exists('removeReplyKeyboardOnStartIfNeeded')) {
-        removeReplyKeyboardOnStartIfNeeded($from_id);
+        removeReplyKeyboardOnStartIfNeeded($from_id, true);
     }
     $version_mini_app = file_get_contents('app/version');
     $rxCronAutoStatus = function_exists('activecronStatus') ? activecronStatus() : ['status' => 'error', 'user' => null];
@@ -428,6 +428,14 @@ if (in_array($text, $textadmin) || $datain == "admin") {
             'getmaintonpay' => $tonpay,
             'getmaxtonpay' => $tonpay,
             'helptonpay' => $tonpay,
+            'apirialit' => $rialit,
+            'getcashrialit' => $rialit,
+            'getmainrialit' => $rialit,
+            'getmaxrialit' => $rialit,
+            'helprialit' => $rialit,
+            'gettextrialit' => $rialit,
+            'rialit_trustips' => $rialit,
+            'rialit_trustproxies' => $rialit,
             'apicubepay' => $cubepay,
             'getcashcubepay' => $cubepay,
             'getfeecubepay' => $cubepay,
@@ -1194,6 +1202,7 @@ if (in_array($text, $textadmin) || $datain == "admin") {
             'Currency Rial 2' => $datatextbot['iranpay3'] ?? 'Currency Rial 2',
             'Currency Rial 3' => $datatextbot['iranpay1'] ?? 'Currency Rial 3',
             'tonpay' => $datatextbot['tonpay'] ?? 'tonpay',
+            'rialit' => $datatextbot['rialit'] ?? 'rialit',
             'cubepay' => $datatextbot['cubepay'] ?? 'cubepay',
             'blupal' => $datatextbot['blupal'] ?? 'blupal',
             'abangateway' => $datatextbot['abangateway'] ?? 'abangateway',

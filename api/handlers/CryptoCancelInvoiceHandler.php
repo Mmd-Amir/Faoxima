@@ -19,13 +19,21 @@ final class CryptoCancelInvoiceHandler extends BaseHandler
 
         $report = FaoximaDb::fetchOne(
             'SELECT id_order, payment_Status, Payment_Method, atlaspay_order_id FROM Payment_report
-              WHERE id_order = :o AND id_user = :u AND (source = \'miniapp\' OR (Payment_Method = \'tonpay\' AND tonpay_gateway_mode = \'custom\') OR (Payment_Method = \'atlaspay\' AND atlaspay_gateway_mode = \'custom\')) LIMIT 1',
+              WHERE id_order = :o AND id_user = :u AND (source = \'miniapp\' OR (Payment_Method = \'tonpay\' AND tonpay_gateway_mode = \'custom\') OR (Payment_Method = \'atlaspay\' AND atlaspay_gateway_mode = \'custom\') OR Payment_Method = \'rialit\') LIMIT 1',
             [':o' => $orderId, ':u' => (string)$this->user['id']]
         );
         if ($report === null) {
             FaoximaResponse::notFound('Payment not found');
         }
         $method = trim((string)($report['Payment_Method'] ?? ''));
+        if ($method === 'rialit') {
+            $result = rialitCancelLocally($orderId, (string) $this->user['id']);
+            if (empty($result['ok'])) {
+                FaoximaResponse::fail(409, (string) $result['message']);
+            }
+            FaoximaResponse::ok(['kind' => 'cancelled', 'message' => (string) $result['message']]);
+            return;
+        }
         $cancellable = ['arze digital offline', 'plisio', 'nowpayment', 'digitaltron', 'cart to cart', 'carttocart_pv', 'iranpay2', 'tonpay', 'cubepay', 'blupal', 'variza', 'abangateway', 'atlaspay'];
         if (!in_array($method, $cancellable, true)) {
             FaoximaResponse::fail(422, 'این فاکتور قابل لغو از این طریق نیست');

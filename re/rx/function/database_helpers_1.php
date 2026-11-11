@@ -395,6 +395,7 @@ if (!function_exists('getCronJobDefinitions')) {
             'atlaspaycheck' => ['script' => 'atlaspaycheck.php', 'admin_label' => 'پولر اطلس‌پی', 'instruction' => '🌐 بررسی پرداخت‌های اطلس‌پی — %s', 'default' => ['unit' => 'minute', 'value' => 1]],
             'tronadocheck' => ['script' => 'tronadocheck.php', 'admin_label' => 'پولر ترونادو', 'instruction' => '🔷 بازیابی وضعیت پرداخت‌های ترونادو — %s', 'default' => ['unit' => 'minute', 'value' => 1]],
             'tonpaycheck' => ['script' => 'tonpaycheck.php', 'admin_label' => 'پولر تون‌پی', 'instruction' => '💠 بررسی پرداخت‌های تون‌پی — %s', 'default' => ['unit' => 'minute', 'value' => 1]],
+            'rialitcheck' => ['script' => 'rialitcheck.php', 'admin_label' => 'پولر ریالیت', 'instruction' => '💚 بررسی پرداخت‌های ریالیت — %s', 'default' => ['unit' => 'minute', 'value' => 2]],
             'remnawave_usage' => ['script' => 'remnawave_usage.php', 'admin_label' => 'مصرف رمن‌ویو', 'instruction' => '📊 بررسی مصرف کاربران رمن‌ویو — %s', 'default' => ['unit' => 'minute', 'value' => 15]],
             'logs_cleanup' => ['script' => 'logs_cleanup.php', 'admin_label' => 'پاکسازی لاگ API', 'instruction' => '🧹 پاکسازی لاگ‌های قدیمی API — %s', 'default' => ['unit' => 'day', 'value' => 7]],
             'pin_expire' => ['script' => 'pin_expire.php', 'admin_label' => 'انقضای پین پیام', 'instruction' => '📌 لغو خودکار پیام‌های پین‌شده منقضی — %s', 'default' => ['unit' => 'minute', 'value' => 5]],
@@ -868,6 +869,7 @@ if (!function_exists('rx_gateway_payment_method_map')) {
             'nowpayment'  => 'nowpayment',
             'iranpay2'    => 'Currency Rial 2',
             'tonpay'      => 'tonpay',
+            'rialit'      => 'rialit',
             'blupal'      => 'blupal',
             'atlaspay'    => 'atlaspay',
             'cubepay'     => 'cubepay',
@@ -883,6 +885,9 @@ if (!function_exists('rx_gateway_stale_minutes')) {
         if ($paymentMethod === 'tonpay') {
             return 1440;
         }
+        if ($paymentMethod === 'rialit') {
+            return 1440;
+        }
         return 30;
     }
 }
@@ -892,6 +897,9 @@ if (!function_exists('rx_purge_stale_gateway_invoices')) {
     {
         global $pdo;
         if (!($pdo instanceof PDO)) {
+            return;
+        }
+        if ($paymentMethod === 'rialit') {
             return;
         }
         try {
@@ -987,6 +995,10 @@ if (!function_exists('cancelPendingGatewayInvoice')) {
             return false;
         }
 
+        if ($paymentMethod === 'rialit') {
+            return false;
+        }
+
         try {
             $report = $pdo->prepare(
                 "SELECT id_order, Payment_Method, payment_Status, atlaspay_order_id
@@ -1061,6 +1073,7 @@ if (!function_exists('rx_gateway_display_name')) {
             'nowpayment'  => 'NowPayments',
             'iranpay2'    => 'ایران‌پی',
             'tonpay'      => 'تون‌پی',
+            'rialit'      => '💚 ریالیت',
             'blupal'      => 'بلوپال',
             'atlaspay'    => 'اطلس‌پی',
             'cubepay'     => 'کیوب‌پی',
@@ -1491,6 +1504,28 @@ if (!function_exists('rx_cron_job_work_available')) {
                     . " )) ) LIMIT 1",
                     [(int) ($now - TONPAY_CUSTOM_LATE_RECONCILE_SECONDS), (int) $now, (int) ($now - TONPAY_CUSTOM_UNPAID_LIFETIME_SECONDS)]
                 );
+            case 'rialitcheck':
+                return rx_cron_work_combine([
+                    static fn() => rx_cron_work_probe(
+                        $pdo,
+                        "SELECT 1 FROM rialit_webhook_event WHERE state IN ('pending','retry') AND next_attempt_at <= ? LIMIT 1",
+                        [$now],
+                        'rialit_webhook_event'
+                    ),
+                    static fn() => rx_cron_work_probe(
+                        $pdo,
+                        "SELECT 1 FROM Payment_report WHERE Payment_Method = 'rialit'"
+                        . " AND payment_Status IN ('Unpaid','pending','waiting','expire','cancelled')"
+                        . " AND rialit_created_at >= ?"
+                        . " AND (rialit_last_checked_at IS NULL OR rialit_last_checked_at <= ?) LIMIT 1",
+                        [(int) ($now - 172800), (int) ($now - 120)]
+                    ),
+                    static fn() => rx_cron_work_probe(
+                        $pdo,
+                        "SELECT 1 FROM Payment_report WHERE Payment_Method = 'rialit'"
+                        . " AND payment_Status = 'paid' AND COALESCE(direct_payment_done, 0) = 0 LIMIT 1"
+                    ),
+                ]);
             case 'atlaspaycheck':
                 if (!defined('ATLASPAY_CUSTOM_LATE_RECONCILE_SECONDS') || !defined('ATLASPAY_CUSTOM_CARD_RETENTION_SECONDS')
                     || !defined('RX_PAYMENT_PROCESSING_VERSION')) {
@@ -1543,7 +1578,7 @@ if (!function_exists('rx_cron_job_work_available')) {
                         $pdo,
                         "SELECT 1 FROM Payment_report WHERE payment_Status = 'Unpaid'"
                         . " AND (crypto_currency IS NULL OR crypto_currency = '')"
-                        . " AND Payment_Method != 'tonpay' AND time < ? LIMIT 1",
+                        . " AND Payment_Method != 'tonpay' AND Payment_Method != 'rialit' AND time < ? LIMIT 1",
                         [$rxCutoff]
                     ),
                     static fn() => rx_cron_work_probe(

@@ -9,6 +9,7 @@ export function iconForMethod(m) {
     if (id.startsWith('carttocart'))   return 'creditCard';
     if (id === 'iranpay2')             return 'tronado';
     if (id === 'tonpay')               return 'tronado';
+    if (id === 'rialit')               return 'tronado';
     if (id === 'cubepay')              return 'tronado';
     if (id === 'blupal')               return 'tronado';
     if (id === 'variza')               return 'tronado';
@@ -33,6 +34,7 @@ export function methodLabel(m) {
     if (id === 'cart to cart' || id === 'carttocart_pv') return 'کارت‌به‌کارت';
     if (id === 'iranpay2')                  return 'ترونادو';
     if (id === 'tonpay')                    return 'تون‌پی';
+    if (id === 'rialit')                    return '💚 ریالیت';
     if (id === 'cubepay')                   return 'کیوب‌پی';
     if (id === 'blupal')                    return 'بلوپال';
     if (id === 'variza')                    return 'واریزا';
@@ -419,7 +421,7 @@ function isAutoConfirmGateway(methodId) {
     const id = String(methodId || '').toLowerCase();
     return (
         id === 'plisio' || id === 'nowpayment' || id === 'digitaltron' ||
-        id.startsWith('iranpay') || id === 'tonpay' || id === 'cubepay' ||
+        id.startsWith('iranpay') || id === 'tonpay' || id === 'rialit' || id === 'cubepay' ||
         id === 'zarinpal' || id === 'blupal' || id === 'variza' || id === 'abangateway' || id === 'atlaspay'
     );
 }
@@ -435,6 +437,7 @@ function gatewayTimeoutSec(methodId) {
     if (id === 'variza') return 3600;
     if (id === 'atlaspay') return 1200;
     if (id === 'tonpay') return 86400;
+    if (id === 'rialit') return 1800;
     return 1800;
 }
 
@@ -605,6 +608,7 @@ export function startUrlGatewayFlow(rootView, methodId, obj, opts = {}) {
             mode: opts.purchaseUsername ? 'direct_buy' : 'recharge',
             method: methodId,
             timeoutSec: gatewayTimeoutSec(methodId),
+            expiresAtSec: methodId === 'rialit' ? Number(obj.expires_at || 0) : 0,
             pollEverySec: 5,
             onSuccess: (statusObj) => renderGatewaySuccess(watchHost, statusObj, opts),
             onFail: (statusObj) => renderGatewayFail(watchHost, statusObj, opts),
@@ -823,7 +827,7 @@ export function handleInitResult(view, methodId, obj, opts = {}) {
     const $form = view.querySelector('#pay-form-host');
     if (!$result) return;
 
-    if (obj.kind === 'url' && obj.url) {
+    if (obj.kind === 'url' && (obj.url || methodId === 'rialit')) {
 
         if ($form) $form.innerHTML = '';
 

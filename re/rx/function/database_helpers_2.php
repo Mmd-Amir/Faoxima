@@ -3594,6 +3594,17 @@ function DirectPayment($order_id, $image = 'images.jpg', $rxToken = null)
     if (!is_array($Payment_report)) {
         return rx_pf_abort($order_id, $rxToken, 'payment_report_unavailable', true);
     }
+    if ((string) ($Payment_report['Payment_Method'] ?? '') === 'rialit' && (int) ($Payment_report['rialit_abandoned_at'] ?? 0) > 0) {
+        $rxLateCredit = rx_pf_wallet_credit($order_id, $rxToken, $Payment_report['id_user'], (int) $Payment_report['price'], 'topup_gateway', 'تأیید پرداخت ریالیت پس از انصراف');
+        if ($rxLateCredit === 'already_completed') {
+            return rx_pf_result('already_completed', 'rialit_cancelled_already_credited');
+        }
+        if ($rxLateCredit !== 'credited') {
+            return rx_pf_abort($order_id, $rxToken, 'rialit_cancelled_credit_failed', true);
+        }
+        sendmessage($Payment_report['id_user'], '💚 پرداخت قبلی ریالیت شما پس از انصراف تأیید شد. مبلغ ' . number_format((int) $Payment_report['price']) . ' تومان به کیف پول اضافه شد؛ سفارش قبلی اجرا نشد.', null, 'HTML');
+        return rx_pf_result('completed', 'wallet_credit', ['resolved' => 'wallet_credit']);
+    }
     $_receipt_report_chat = trim((string)($Payment_report['report_chat_id'] ?? ''));
     $_receipt_report_msg = (int)($Payment_report['report_message_id'] ?? 0);
     $_receipt_report_thread = (int)($Payment_report['report_thread_id'] ?? 0);

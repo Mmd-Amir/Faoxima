@@ -26,6 +26,7 @@ final class PaymentMethodsHandler extends BaseHandler
         $zarinpal       = $get('zarinpalstatus');
         $iranpay2Active = $get('statustarnado');
         $tonpayActive   = $get('statustonpay');
+        $rialitActive   = $get('statusrialit');
         $cubepayActive  = $get('statuscubepay');
         $blupalActive   = $get('statusblupal');
         $varizaActive   = $get('statusvariza');
@@ -56,6 +57,7 @@ final class PaymentMethodsHandler extends BaseHandler
             'digitaltron'   => ['minbalancedigitaltron',   'maxbalancedigitaltron'],
             'iranpay2'      => ['minbalanceiranpay2',      'maxbalanceiranpay2'],
             'tonpay'        => ['minbalancetonpay',        'maxbalancetonpay'],
+            'rialit'        => ['minbalancerialit',        'maxbalancerialit'],
             'cubepay'       => ['minbalancecubepay',       'maxbalancecubepay'],
             'blupal'        => ['minbalanceblupal',        'maxbalanceblupal'],
             'variza'        => ['minbalancevariza',        'maxbalancevariza'],
@@ -163,6 +165,14 @@ final class PaymentMethodsHandler extends BaseHandler
                 'kind'  => 'form',
             ];
         }
+        if ($rialitActive === 'onrialit') {
+            $methods[] = [
+                'id'    => 'rialit',
+                'label' => $L('rialit', '💚 ریالیت'),
+                'icon'  => '💚',
+                'kind'  => 'form',
+            ];
+        }
         if ($cubepayActive === 'oncubepay') {
             $methods[] = [
                 'id'    => 'cubepay',
@@ -246,6 +256,10 @@ final class PaymentMethodsHandler extends BaseHandler
             $mid = (string)($m['id'] ?? '');
             if ($mid === '') continue;
             [$mMin, $mMax] = $methodLimitsResolver($mid);
+            if ($mid === 'rialit') {
+                $mMin = max(50000, (int) $mMin);
+                $mMax = (int) $mMax > 0 ? min(10000000, (int) $mMax) : 10000000;
+            }
             $m['min'] = $mMin;
             $m['max'] = $mMax;
         }
