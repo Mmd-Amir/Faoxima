@@ -1248,6 +1248,7 @@ class ManagePanel
             if (is_array($manualRows)) {
                 foreach ($manualRows as $mr) {
                     $manualItems[] = array(
+                        'record_id' => (int) ($mr['id'] ?? 0),
                         'content' => (string) ($mr['contentrecord'] ?? ''),
                         'file_ext' => (string) ($mr['file_ext'] ?? ''),
                         'sub_link' => (string) ($mr['sub_link'] ?? ''),

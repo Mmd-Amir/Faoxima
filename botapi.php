@@ -1045,6 +1045,10 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
     static $_rx_kb_list_styles = null;
     if ($_rx_kb_list_styles === null) {
         $_rx_kb_list_styles = ['lists' => [], 'misc' => [], 'features' => []];
+        $rxKbNoDefault = static function ($arr) {
+            if (!is_array($arr)) { return []; }
+            return array_filter($arr, static function ($v) { return $v !== 'default'; });
+        };
         try {
             global $pdo;
             if (isset($pdo) && $pdo instanceof PDO) {
@@ -1053,17 +1057,17 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
                 if (is_array($row) && !empty($row['keyboard_styles_all'])) {
                     $all = json_decode($row['keyboard_styles_all'], true);
                     if (is_array($all)) {
-                        if (!empty($all['admin_lists']))  $_rx_kb_list_styles['lists'] = $all['admin_lists'];
+                        if (!empty($all['admin_lists']))  $_rx_kb_list_styles['lists'] = $rxKbNoDefault($all['admin_lists']);
                         if (!empty($all['user_dynamic_lists']) && is_array($all['user_dynamic_lists'])) {
 
-                            $_rx_kb_list_styles['lists'] = $_rx_kb_list_styles['lists'] + $all['user_dynamic_lists'];
+                            $_rx_kb_list_styles['lists'] = $_rx_kb_list_styles['lists'] + $rxKbNoDefault($all['user_dynamic_lists']);
                         }
                         if (!empty($all['cron_notifications']) && is_array($all['cron_notifications'])) {
 
-                            $_rx_kb_list_styles['lists'] = $_rx_kb_list_styles['lists'] + $all['cron_notifications'];
+                            $_rx_kb_list_styles['lists'] = $_rx_kb_list_styles['lists'] + $rxKbNoDefault($all['cron_notifications']);
                         }
-                        if (!empty($all['misc_buttons'])) $_rx_kb_list_styles['misc']  = $all['misc_buttons'];
-                        
+                        if (!empty($all['misc_buttons'])) $_rx_kb_list_styles['misc']  = $rxKbNoDefault($all['misc_buttons']);
+
                         $featMenus = [
                             'features_nav','features_bot','features_users','features_shop',
                             'features_lottery','features_crons','features_antispam',
@@ -1078,12 +1082,12 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
                             'admin_features','admin_channel','admin_help','admin_category','admin_products',
 
 
-                            'service','account','payment','user_nav','pay_receipt','invoice_copy_buttons','home_menu','wallet_checkout',
+                            'service','config_list','account','payment','user_nav','pay_receipt','invoice_copy_buttons','home_menu','wallet_checkout',
                         ];
                         foreach ($featMenus as $fm) {
                             if (!empty($all[$fm]) && is_array($all[$fm])) {
                                 $_rx_kb_list_styles['features'] = array_merge(
-                                    $_rx_kb_list_styles['features'], $all[$fm]
+                                    $_rx_kb_list_styles['features'], $rxKbNoDefault($all[$fm])
                                 );
                             }
                         }
@@ -1106,13 +1110,13 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
 
                     if ($rx_kb_sec === 'misc_buttons') {
 
-                        $_rx_kb_list_styles['misc'] = $_rx_kb_list_styles['misc'] + $rx_kb_def_pairs;
+                        $_rx_kb_list_styles['misc'] = $_rx_kb_list_styles['misc'] + $rxKbNoDefault($rx_kb_def_pairs);
                     } elseif ($rx_kb_sec === 'admin_lists' || $rx_kb_sec === 'user_dynamic_lists' || $rx_kb_sec === 'cron_notifications') {
 
-                        $_rx_kb_list_styles['lists'] = $_rx_kb_list_styles['lists'] + $rx_kb_def_pairs;
+                        $_rx_kb_list_styles['lists'] = $_rx_kb_list_styles['lists'] + $rxKbNoDefault($rx_kb_def_pairs);
                     } else {
 
-                        $_rx_kb_list_styles['features'] = $_rx_kb_list_styles['features'] + $rx_kb_def_pairs;
+                        $_rx_kb_list_styles['features'] = $_rx_kb_list_styles['features'] + $rxKbNoDefault($rx_kb_def_pairs);
                     }
                 }
             }
@@ -1122,7 +1126,7 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
     static $_rx_admin_plain_cb = null;
     if ($_rx_admin_plain_cb === null) {
         $_rx_admin_plain_cb = [];
-        $_rx_user_secs = ['service','account','payment','user_nav','pay_receipt','user_subscription','user_dynamic_lists','invoice_copy_buttons','recheckcrypto_buttons','home_menu'];
+        $_rx_user_secs = ['service','config_list','account','payment','user_nav','pay_receipt','user_subscription','user_dynamic_lists','invoice_copy_buttons','recheckcrypto_buttons','home_menu'];
         if (function_exists('rx_getKeyboardDefaultStyles')) {
             $_rx_admin_def = rx_getKeyboardDefaultStyles();
             if (is_array($_rx_admin_def)) {
@@ -1141,7 +1145,7 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
                 }
             }
         }
-        foreach (['confirmandgetservice','confirmserivce','confirmserdiscount','confirmpaid','acceptrule','buyback','startaction','next_page','previous_page','next_page_extends','previous_page_extends','searchservice'] as $_rx_uex) {
+        foreach (['confirmandgetservice','confirmserivce','confirmserdiscount','acceptrule','buyback','startaction','next_page','previous_page','next_page_extends','previous_page_extends','searchservice'] as $_rx_uex) {
             unset($_rx_admin_plain_cb[$_rx_uex]);
         }
     }
@@ -1164,7 +1168,7 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
         'product_'               => 'product_list',
         
         'quickview_'             => 'user_services_list',
-        'categorynames_'         => 'category_list',
+        'categorynames_'         => 'category_buy',
         'category_'              => 'category_list',
         'discountedit_'          => 'discount_list',
         'discountdel_'           => 'discount_list',
@@ -1275,10 +1279,13 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
         'prodcutservices_'       => 'product_buy',
         'prodcutserviceom_'      => 'product_buy',
         'prodcutservicesom_'     => 'product_buy',
+        'customsellvolume'       => 'custom_volume',
         'serviceextendselects-'  => 'product_buy',
         'serviceextendselect-'   => 'product_buy',
         'serviceextend-'         => 'product_buy',
         'producttime_'           => 'time_buy',
+        'productmonth_'          => 'time_buy',
+        'cdpick_'                => 'time_buy',
         'productvolume_'         => 'volume_buy',
         'categorynames_'         => 'category_buy',
         'helpsection_'           => 'helpsection',
@@ -1449,12 +1456,13 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
     if ($rxStyleTargetKey !== null) {
         $rxIsUserKb = false;
         static $rxUserKbPrefixes = [
-            'prodcutservice','serviceextend','producttime_','productvolume_','categorynames_','helpsection_','paneluserbuy_','locationbuy_','buy_service',
+            'prodcutservice','serviceextend','cdpick_','productmonth_','producttime_','productvolume_','categorynames_','helpsection_','paneluserbuy_','locationbuy_','buy_service',
             'quickview_','updateproduct_','subscriptionurl_','removeserviceuser_','transfer_','disorder-','confrimtransfers_','extends_','infocard_qr_',
             'Extra_time_','Extra_volume_','Extra_volumes_','extravolunme','exntedagei','discountvolume-','discounttime-',
             'confirm_pay','confirm_discount','confirm_back','confirmandgetservice','chargehasdiscount','chargenodiscount','rules_accept','acceptrule','nav_back',
             'cart_to_offline','colselist','paymentnotverify','startelegrams',
-            'pay_sendreceipt','pay_done','pay_cancel','pay_back','pay_wallet_copy','pay_card_copy','pay_check','sendresidcart-',
+            'configget_','configpage_',
+            'pay_sendreceipt','pay_done','pay_cancel','pay_back','pay_wallet_copy','pay_card_copy','pay_check','sendresidcart-','sbvresume_','sbvcancel_',
             'currency_pick','copy_wallet','copy_amount','copy_memo','paid_submit','invoice_back','mode_external','cancel_hash_input',
             'digitaltron_pay_','digitaltron_submit_','crypto_cancel_','crypto_pay_','crypto_submit_',
             'recheckcrypto','rcc_pick_','rcc_skip_photo','rcc_cancel','rcc_resubmit_',
@@ -1465,7 +1473,7 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
             'gen_random_uname',
             'nmstocksel_','nmstockextend_','nmstockrefund_','nmstockcfg_','nmstocksub_',
             'cv_use_','cv_new',
-            'confirmpaid','confirmserivce','confirmserdiscount',
+            'confirmserivce','confirmserdiscount',
         ];
         foreach ($kb[$rxStyleTargetKey] as $rxScanRow) {
             if (!is_array($rxScanRow)) continue;
@@ -1481,11 +1489,14 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
             if (!is_array($row)) continue;
             foreach ($row as &$btn) {
                 if (!is_array($btn)) continue;
-                $rxKeep = !empty($btn['_rxkeep']); unset($btn['_rxkeep']);
-                if (!empty($btn['_rxap'])) { unset($btn['_rxap'], $btn['style']); continue; }
+                $rxKeep = !empty($btn['_rxkeep']);
+                $rxAp = !empty($btn['_rxap']);
+                $rxCk = isset($btn['_rxck']) ? (string) $btn['_rxck'] : '';
+                $rxSk = isset($btn['_rxsk']) ? (string) $btn['_rxsk'] : '';
+                unset($btn['_rxkeep'], $btn['_rxap'], $btn['_rxck'], $btn['_rxsk']);
+                if ($rxAp) { unset($btn['style']); continue; }
                 if ($rxPlainAdmin && !$rxKeep && !$rxIsUserKb) { unset($btn['style']); continue; }
                 if (!isset($btn['callback_data'])) {
-                    $rxCk = isset($btn['_rxck']) ? (string)$btn['_rxck'] : ''; unset($btn['_rxck']);
                     if ($rxIsUserKb && !isset($btn['style'])) {
                         $rxCopyStyle = ($rxCk !== '' ? ($_rx_kb_list_styles['lists']['copy_' . $rxCk] ?? null) : null)
                             ?? $_rx_kb_list_styles['lists']['copy_text_btn'] ?? null;
@@ -1500,10 +1511,9 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
                     continue;
                 }
                 $cb = (string)$btn['callback_data'];
-                $rxSk = isset($btn['_rxsk']) ? (string)$btn['_rxsk'] : ''; unset($btn['_rxsk']);
                 if ($rxSk !== '') {
                     if (!isset($btn['style'])) {
-                        $rxSkSt = $_rx_kb_list_styles['features'][$rxSk] ?? null;
+                        $rxSkSt = $_rx_kb_list_styles['features'][$rxSk] ?? $_rx_kb_list_styles['lists'][$rxSk] ?? null;
                         if (!empty($rxSkSt) && $rxSkSt !== 'default') {
                             $btn['style'] = $rxSkSt;
                         } elseif (isset($btn['text']) && function_exists('rx_kb_guess_style_from_text')
@@ -1514,7 +1524,7 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
                     }
                     continue;
                 }
-                if (isset($_rx_admin_plain_cb[$cb]) && !$rxIsUserKb) {
+                if (isset($_rx_admin_plain_cb[$cb]) && !$rxIsUserKb && !$rxKeep) {
                     unset($btn['style']);
                     continue;
                 }
@@ -1561,7 +1571,22 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
         }
         unset($row);
     }
-    
+
+    foreach (['inline_keyboard', 'keyboard'] as $rxCleanKey) {
+        if (!isset($kb[$rxCleanKey]) || !is_array($kb[$rxCleanKey])) { continue; }
+        foreach ($kb[$rxCleanKey] as &$rxCleanRow) {
+            if (!is_array($rxCleanRow)) { continue; }
+            foreach ($rxCleanRow as &$rxCleanBtn) {
+                if (!is_array($rxCleanBtn)) { continue; }
+                if (($rxCleanBtn['style'] ?? null) === 'none') { unset($rxCleanBtn['style']); }
+                unset($rxCleanBtn['_rxsk'], $rxCleanBtn['_rxck'], $rxCleanBtn['_rxap'], $rxCleanBtn['_rxkeep']);
+            }
+            unset($rxCleanBtn);
+        }
+        unset($rxCleanRow);
+    }
+    unset($rxCleanKey);
+
 
     
     
@@ -2217,6 +2242,19 @@ if (!function_exists('rx_getKeyboardDefaultStyles')) {
                     'productcheckdata' => 'primary',
                     'config_header'    => 'primary',
                 ],
+                'config_list' => [
+                    'cfg_download_one'    => 'primary',
+                    'cfg_download_all'    => 'primary',
+                    'cfg_name_cell'       => 'primary',
+                    'cfg_protocol_cell'   => 'primary',
+                    'cfg_header_action'   => 'primary',
+                    'cfg_header_protocol' => 'primary',
+                    'cfg_header_name'     => 'primary',
+                    'cfg_page_prev'       => 'primary',
+                    'cfg_page_next'       => 'primary',
+                    'cfg_page_indicator'  => 'primary',
+                    'cfg_back_service'    => 'primary',
+                ],
                 'account' => [
                     'Discount'             => 'success',
                     'Add_Balance'          => 'success',
@@ -2225,6 +2263,8 @@ if (!function_exists('rx_getKeyboardDefaultStyles')) {
                     'transferbal_confirm'  => 'success',
                     'transferbal_cancel'   => 'danger',
                     'backuser'             => 'danger',
+                    'rw_pick'              => 'primary',
+                    'rw_custom'            => 'primary',
                 ],
                 'tx_stats' => [
                     'tx_24h'      => 'primary',
@@ -2279,6 +2319,7 @@ if (!function_exists('rx_getKeyboardDefaultStyles')) {
                     'pay_sendreceipt' => 'success',
                     'pay_done'        => 'success',
                     'pay_cancel'      => 'danger',
+                    'pay_resume'      => 'primary',
                     'pay_back'        => 'danger',
                     'pay_wallet_copy' => 'primary',
                     'pay_card_copy'   => 'primary',
@@ -2712,7 +2753,7 @@ if (!function_exists('rx_cron_style')) {
                     if (is_array($row) && !empty($row['keyboard_styles_all'])) {
                         $all = json_decode($row['keyboard_styles_all'], true);
                         if (is_array($all) && !empty($all['cron_notifications']) && is_array($all['cron_notifications'])) {
-                            $styles = $all['cron_notifications'];
+                            $styles = array_filter($all['cron_notifications'], static function ($v) { return $v !== 'default'; });
                         }
                     }
                 }

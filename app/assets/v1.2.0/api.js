@@ -5,7 +5,7 @@ const cfg = window.__APP_CONFIG__ || {};
 const API_URL = cfg.apiUrl || '/api';
 
 
-export async function configFileUrl(username, index = 0, clientType = '') {
+export async function configFileUrl(username, index = 0, clientType = '', downloadType = '') {
     let dlToken = null;
     try {
         const res = await call('config_dl_token');
@@ -21,6 +21,7 @@ export async function configFileUrl(username, index = 0, clientType = '') {
         actions: 'config_file',
         username: String(username || ''),
         i: String(index),
+        download_type: downloadType,
         dl_token: dlToken,
     });
     if (clientType && clientType !== 'links') {

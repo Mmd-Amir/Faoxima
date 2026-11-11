@@ -26,7 +26,12 @@ if (empty($_SESSION['csrf_token'])) {
 
 $fields = [
     'receipt_topic_reporting' => 'ارسال رسید کارت‌به‌کارت به تاپیک گزارش',
-    'subscription_link_button' => 'Get Subscription Link Button',
+    'subscription_link_button' => 'دکمه دریافت لینک',
+];
+
+$fieldHints = [
+    'receipt_topic_reporting' => 'ارسال رسیدهای کارت‌به‌کارت به تاپیک گزارش را فعال می‌کند.',
+    'subscription_link_button' => 'نمایش دکمه دریافت لینک سرویس در ربات را فعال می‌کند.',
 ];
 
 $values = array_fill_keys(array_keys($fields), '1');
@@ -77,7 +82,7 @@ function faoxima_misc_enabled($value): bool
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>تنظیمات متفرقه | پنل فاکسیما</title>
     <link rel="stylesheet" href="css/theme.css?v=flat50">
-    <link rel="stylesheet" href="css/admin-extra.css?v=flat34">
+    <link rel="stylesheet" href="css/admin-extra.css?v=flat35">
     <link rel="stylesheet" href="css/logviewer.css?v=lv1">
     <script src="js/theme.js?v=flat50" defer></script>
 </head>
@@ -104,7 +109,7 @@ function faoxima_misc_enabled($value): bool
             <form method="POST" action="miscsettings.php" autocomplete="off">
                 <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8'); ?>">
                 <div class="setting-grid">
-                    <div class="card">
+                    <div class="card misc-settings-card">
                         <div class="card__head">
                             <div class="card__title">
                                 <?php echo icon('sliders', 'svg-icon svg-md'); ?>
@@ -115,10 +120,11 @@ function faoxima_misc_enabled($value): bool
                             <div class="setting-row">
                                 <label for="f_<?php echo htmlspecialchars($key, ENT_QUOTES, 'UTF-8'); ?>" class="setting-row__label">
                                     <?php echo htmlspecialchars($label, ENT_QUOTES, 'UTF-8'); ?>
+                                    <span class="setting-row__hint" id="hint_<?php echo htmlspecialchars($key, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($fieldHints[$key], ENT_QUOTES, 'UTF-8'); ?></span>
                                 </label>
                                 <div class="setting-row__control">
                                     <label class="switch">
-                                        <input type="checkbox" id="f_<?php echo htmlspecialchars($key, ENT_QUOTES, 'UTF-8'); ?>" name="f_<?php echo htmlspecialchars($key, ENT_QUOTES, 'UTF-8'); ?>" <?php echo faoxima_misc_enabled($values[$key]) ? 'checked' : ''; ?>>
+                                        <input type="checkbox" role="switch" aria-describedby="hint_<?php echo htmlspecialchars($key, ENT_QUOTES, 'UTF-8'); ?>" id="f_<?php echo htmlspecialchars($key, ENT_QUOTES, 'UTF-8'); ?>" name="f_<?php echo htmlspecialchars($key, ENT_QUOTES, 'UTF-8'); ?>" <?php echo faoxima_misc_enabled($values[$key]) ? 'checked' : ''; ?>>
                                         <span class="switch__slot"></span>
                                     </label>
                                 </div>
@@ -142,6 +148,14 @@ function faoxima_misc_enabled($value): bool
                 <span class="lv-entry__text">
                     <strong>مشاهده ارور‌ها</strong>
                     <small>بررسی خطاها و لاگ‌های برنامه، جستجو، دانلود و حذف فایل‌های لاگ بدون ورود به هاست</small>
+                </span>
+                <span class="lv-entry__go"><?php echo icon('chevron-left', 'svg-icon svg-md'); ?></span>
+            </a>
+            <a class="lv-entry" href="filenaming.php">
+                <span class="lv-entry__icon"><?php echo icon('package', 'svg-icon svg-lg'); ?></span>
+                <span class="lv-entry__text">
+                    <strong>تنظیمات ارسال فایل توسط ربات</strong>
+                    <small>نام فایل و کپشن سفارشی برای کانفیگ‌های ارسالی ربات، به‌تفکیک پنل و کانفیگ</small>
                 </span>
                 <span class="lv-entry__go"><?php echo icon('chevron-left', 'svg-icon svg-md'); ?></span>
             </a>

@@ -252,8 +252,8 @@ if (!function_exists('rxReceiptConfirm')) {
         if (!$skipTelegramSync) {
             $confirmKb = json_encode([
                 'inline_keyboard' => [
-                    [['text' => '✅ تایید شده', 'callback_data' => 'confirmpaid']],
-                    [['text' => '⚙️ مدیریت کاربر', 'callback_data' => 'manageuser_' . $finalReport['id_user']]],
+                    [['text' => '✅ تایید شده', 'callback_data' => 'confirmpaid', 'style' => 'success', '_rxkeep' => 1]],
+                    [['text' => '⚙️ مدیریت کاربر', 'callback_data' => 'manageuser_' . $finalReport['id_user'], 'style' => 'primary', '_rxkeep' => 1]],
                 ],
             ]);
             $balanceFmt = function_exists('rxFormatToman') ? rxFormatToman($balanceUser['Balance'] ?? 0) : number_format((int)($balanceUser['Balance'] ?? 0));

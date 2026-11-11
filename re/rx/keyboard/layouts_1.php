@@ -384,6 +384,13 @@ if (!empty($setting['keyboard_styles_all'])) {
     }
 }
 
+foreach ([&$_rx_acc_styles, &$_rx_tx_styles, &$_rx_pay_styles, &$_rx_payrcpt_styles, &$_rx_nav_styles, &$_rx_svc_styles] as &$_rxStyleRef) {
+    if (is_array($_rxStyleRef)) {
+        $_rxStyleRef = array_filter($_rxStyleRef, static function ($v) { return $v !== 'default'; });
+    }
+}
+unset($_rxStyleRef);
+
 if (function_exists('rx_getKeyboardDefaultStyles') && (!function_exists('rx_kb_use_defaults') || rx_kb_use_defaults())) {
     $_rx_acc_styles   = $_rx_acc_styles   + rx_getKeyboardDefaultStyles('account');
     $_rx_tx_styles    = $_rx_tx_styles    + rx_getKeyboardDefaultStyles('tx_stats');

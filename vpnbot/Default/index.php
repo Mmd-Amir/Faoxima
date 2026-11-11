@@ -668,7 +668,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         if ($marzban_list_get['type'] == "WGDashboard") {
             $urlimage = "{$marzban_list_get['inboundid']}_{$dataoutput['username']}.conf";
             file_put_contents($urlimage, $output_config_link);
-            sendDocument($from_id, $urlimage, "⚙️ کانفیگ شما");
+            sendDocument($from_id, $urlimage, '');
             unlink($urlimage);
         }
     } elseif ($marzban_list_get['config'] == "onconfig") {
@@ -1406,7 +1406,7 @@ if (mysqli_num_rows($locationproduct) == 1) {
             if ($marzban_list_get['type'] == "WGDashboard") {
                 $urlimage = "{$marzban_list_get['inboundid']}_{$dataoutput['username']}.conf";
                 file_put_contents($urlimage, $output_config_link);
-                sendDocument($from_id, $urlimage, "⚙️ کانفیگ شما");
+                sendDocument($from_id, $urlimage, '');
                 unlink($urlimage);
             }
         }
@@ -1703,7 +1703,7 @@ $textonebuy
                 if ($cleanUser === '') $cleanUser = 'config';
                 $mFile = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $cleanUser . '.' . $ext;
                 file_put_contents($mFile, $mContent);
-                sendDocument($from_id, $mFile, "⚙️ کانفیگ شما");
+                sendDocument($from_id, $mFile, '');
                 @unlink($mFile);
             }
         }

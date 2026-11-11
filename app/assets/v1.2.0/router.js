@@ -206,7 +206,7 @@ function loadServicePage() {
 
 
     const url = new URL('./pages/service.js', import.meta.url);
-    url.searchParams.set('v', `${ver}-0.0.66`);
+    url.searchParams.set('v', `${ver}-0.0.70`);
     _serviceModulePromise = import(url.href).catch((err) => {
 
 
@@ -226,7 +226,7 @@ async function serviceDetailPage(view, ...params) {
 let _usertestModulePromise = null;
 function loadUsertestPage() {
     if (_usertestModulePromise) return _usertestModulePromise;
-    _usertestModulePromise = import('./pages/usertest.js');
+    _usertestModulePromise = import('./pages/usertest.js?v=0.0.70');
     return _usertestModulePromise;
 }
 async function usertestPage(view) {

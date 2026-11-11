@@ -356,6 +356,8 @@ function buildPanelFeatureKeyboard(array $panel, array $customvlume, array $text
     $pOff = (string)($textbotlang['Admin']['Status']['statusoff'] ?? 'غیرفعال');
     $statusconfig     = ($panel['config']      === 'onconfig')          ? $pOn : $pOff;
     $statussublink    = ($panel['sublink']      === 'onsublink')         ? $pOn : $pOff;
+    $autofilevalue    = in_array(($panel['auto_file'] ?? ''), ['onautofile', 'offautofile'], true) ? $panel['auto_file'] : 'offautofile';
+    $statusautofile   = ($autofilevalue === 'onautofile') ? $pOn : $pOff;
     $statusshowbuy    = ($panel['status']       === 'active')            ? $pOn : $pOff;
     $statusshowtest   = ($panel['TestAccount']  === 'ONTestAccount')     ? $pOn : $pOff;
     $statusconnecton  = ($panel['conecton']      === 'onconecton')       ? $pOn : $pOff;
@@ -407,6 +409,12 @@ function buildPanelFeatureKeyboard(array $panel, array $customvlume, array $text
         $Bot_Status['inline_keyboard'][] = [
             ['text' => $statussublink, 'callback_data' => "editpanel-sublink-{$panel['sublink']}-{$panel['code_panel']}"],
             ['text' => "⚙️ لینک اشتراک", 'callback_data' => "none"],
+        ];
+    }
+    if ($panel['type'] != "Manualsale") {
+        $Bot_Status['inline_keyboard'][] = [
+            ['text' => $statusautofile, 'callback_data' => "editpanel-autofile-{$autofilevalue}-{$panel['code_panel']}"],
+            ['text' => "📎 فایل خودکار", 'callback_data' => "none"],
         ];
     }
     if (in_array($panel['type'], ['marzban', "x-ui_single", "rebecca", "guard", "pasarguard"])) {

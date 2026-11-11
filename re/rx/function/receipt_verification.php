@@ -2250,7 +2250,7 @@ if (!function_exists('rx_sbv_cancel_row')) {
         if ($csp === null || (string) $csp['state'] !== 'open' || $csp['deposit_id'] !== null) {
             return null;
         }
-        return [['text' => '❌ لغو پرداخت', 'callback_data' => 'sbvcancel_' . $orderId]];
+        return [['text' => '❌ لغو پرداخت', 'callback_data' => 'sbvcancel_' . $orderId, '_rxsk' => 'pay_cancel']];
     }
 }
 
@@ -2295,10 +2295,10 @@ if (!function_exists('rx_sbv_bot_pending_notice')) {
             . "📌 وضعیت: " . $s['status_label'] . "</blockquote>";
         $rows = [];
         if ($s['resumable']) {
-            $rows[] = [['text' => '▶️ ادامه پرداخت قبلی', 'callback_data' => 'sbvresume_' . $s['order_id']]];
+            $rows[] = [['text' => '▶️ ادامه پرداخت قبلی', 'callback_data' => 'sbvresume_' . $s['order_id'], '_rxsk' => 'pay_resume']];
         }
         if ($s['cancellable']) {
-            $rows[] = [['text' => '❌ لغو پرداخت قبلی', 'callback_data' => 'sbvcancel_' . $s['order_id']]];
+            $rows[] = [['text' => '❌ لغو پرداخت قبلی', 'callback_data' => 'sbvcancel_' . $s['order_id'], '_rxsk' => 'pay_cancel']];
         }
         $rows[] = [['text' => '🔙 بازگشت به منوی اصلی', 'callback_data' => 'backuser']];
         $kb = json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);

@@ -262,7 +262,7 @@ if (!function_exists('tonpayButtonStyleDefaults')) {
 if (!function_exists('tonpayButtonStyleAllowed')) {
     function tonpayButtonStyleAllowed()
     {
-        return ['primary', 'success', 'danger'];
+        return ['none', 'primary', 'success', 'danger'];
     }
 }
 

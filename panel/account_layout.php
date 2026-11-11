@@ -25,7 +25,7 @@ if (!isset($_SESSION["user"]) || !$adminRow) {
     exit;
 }
 
-$ALLOWED_STYLES = ['default', 'primary', 'success', 'danger'];
+$ALLOWED_STYLES = ['default', 'none', 'primary', 'success', 'danger'];
 $registry = rx_account_button_registry();
 
 $readStyleState = function () {
@@ -115,8 +115,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     list($allStyles, $useDefaults) = $readStyleState();
     $account = (isset($allStyles['account']) && is_array($allStyles['account'])) ? $allStyles['account'] : [];
     foreach ($picked as $id => $style) {
-        $factory = $useDefaults ? ($factoryAccount[$id] ?? 'default') : 'default';
-        if ($style === $factory) {
+        $factory = $useDefaults ? ($factoryAccount[$id] ?? null) : null;
+        if ($style === 'default' || ($factory !== null && $style === $factory)) {
             unset($account[$id]);
         } else {
             $account[$id] = $style;
@@ -153,7 +153,11 @@ foreach ($registry as $id => $def) {
     if ($def['textbot'] !== null && isset($textbotMap[$def['textbot']])) {
         $label = $textbotMap[$def['textbot']];
     }
-    $style = $accountStyles[$id] ?? ($useDefaults ? ($factoryAccount[$id] ?? 'default') : 'default');
+    $savedStyle = $accountStyles[$id] ?? null;
+    if (!is_string($savedStyle) || $savedStyle === 'default' || !in_array($savedStyle, $ALLOWED_STYLES, true)) {
+        $savedStyle = null;
+    }
+    $style = $savedStyle ?? ($useDefaults ? ($factoryAccount[$id] ?? 'default') : 'default');
     if (!in_array($style, $ALLOWED_STYLES, true)) {
         $style = 'default';
     }
@@ -195,9 +199,9 @@ $layoutRows = $layoutRaw === '' ? rx_account_default_layout() : rx_account_layou
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>چیدمان حساب — پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
+    <link rel="stylesheet" href="css/theme.css?v=colors51">
     <script src="js/theme.js?v=flat50" defer></script>
-    <script src="js/account_layout_editor.js?v=1" defer></script>
+    <script src="js/account_layout_editor.js?v=colors2" defer></script>
     <style>
         body { padding-top: 0 !important; }
         .kb-topbar {
@@ -369,12 +373,12 @@ $layoutRows = $layoutRaw === '' ? rx_account_default_layout() : rx_account_layou
                 <div class="kb-field">
                     <label>رنگ دکمه</label>
                     <div class="kb-color-picker">
-                        <label class="kb-color-opt" data-color="default">
-                            <input type="radio" name="kb-color" value="default" checked>
+                        <label class="kb-color-opt" data-color="none">
+                            <input type="radio" name="kb-color" value="none" checked>
                             <div class="kb-color-opt__card">
                                 <div class="kb-color-opt__swatch"></div>
-                                <div class="kb-color-opt__name">پیش‌فرض</div>
-                                <div class="kb-color-opt__hint">رنگ خودکار</div>
+                                <div class="kb-color-opt__name">بدون رنگ</div>
+                                <div class="kb-color-opt__hint">بدون رنگ خودکار</div>
                             </div>
                         </label>
                         <label class="kb-color-opt" data-color="primary">

@@ -201,7 +201,7 @@ function fx_duration_keyboard(array $panel, string $agent): string
     $rows = [];
     foreach (fx_duration_public_tariffs($panel, $agent) as $days => $price) {
         $rows[] = [['text' => $days . ' روز · ' . number_format($price) . ' تومان/GB',
-            'callback_data' => 'cdpick_' . $days]];
+            'callback_data' => 'cdpick_' . $days, '_rxsk' => 'time_buy']];
     }
     $rows[] = [['text' => '🔙 بازگشت', 'callback_data' => 'backuser']];
     return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);

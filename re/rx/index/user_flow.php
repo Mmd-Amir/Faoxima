@@ -1377,7 +1377,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     }
     $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
     $_rx_loc_back_key = $statusnote ? "buyback" : "backuser";
-    $rx_loc_kb['inline_keyboard'][] = [rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => $_rx_loc_back_key], $_rx_loc_back_key, $_rx_nav_s)];
+    $rx_loc_kb['inline_keyboard'][] = [['text' => $textbotlang['users']['backbtn'], 'callback_data' => $_rx_loc_back_key, '_rxsk' => 'panel_back']];
     $list_marzban_panel_user = json_encode($rx_loc_kb, JSON_UNESCAPED_UNICODE);
     rx_send_buy_first_step($from_id, $message_id, $datain, $datatextbot['textselectlocation'], $list_marzban_panel_user, ($datain == "buy" || $datain == "buybacktow" || $datain == "buyback"));
 } elseif (preg_match('/^location_(.*)/', $datain, $dataget) || $datain == "backproduct") {
@@ -2141,7 +2141,6 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $randomString);
     }
     sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
-    sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'HTML');
     if (intval($priceproduct) != 0) {
 
         $rxBuyDeductRows = 0;
@@ -2164,6 +2163,10 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
             ]);
         }
     }
+    if (intval($priceproduct) === 0 || ($rxBuyDeductRows ?? 0) > 0) {
+        rxAutoDeliverPurchaseFilesSafe($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $from_id, $randomString);
+    }
+    sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'HTML');
     if ($marzban_list_get['MethodUsername'] == "متن دلخواه + عدد ترتیبی" || $marzban_list_get['MethodUsername'] == "نام کاربری + عدد به ترتیب" || $marzban_list_get['MethodUsername'] == "آیدی عددی+عدد ترتیبی" || $marzban_list_get['MethodUsername'] == "متن دلخواه نماینده + عدد ترتیبی") {
         $value = intval($user['number_username']) + 1;
         update("user", "number_username", $value, "id", $from_id);
@@ -3000,13 +3003,21 @@ $textonebuy
         }
         $textcreatuser = applyConnectionPlaceholders($textcreatuser, $output_config_link, $config);
         sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
+        $rxBulkFilesPaid = (float) $__bulkItemCharge <= 0;
         if (function_exists('balance_atomic_charge')) {
             $__bulkChargeLive = balance_atomic_charge($from_id, (float)$__bulkItemCharge, $__bulkAllowNeg);
+            $rxBulkFilesPaid = $rxBulkFilesPaid || !empty($__bulkChargeLive['ok']);
             if (!empty($__bulkChargeLive['ok']) && function_exists('wallet_ledger_record')) {
                 wallet_ledger_record($from_id, 'debit', $__bulkItemCharge, 'purchase', 'خرید انبوه سرویس', (string)$randomString, 'invoice', (string)$randomString);
             }
         } else {
-            update("user", "Balance", select("user", "Balance", "id", $from_id, "select")['Balance'] - $__bulkItemCharge, "id", $from_id);
+            $rxBulkDebit = $pdo->prepare('UPDATE user SET Balance = Balance - :amount WHERE id = :uid AND Balance >= :minimum');
+            $rxBulkDebit->execute([':amount' => $__bulkItemCharge, ':uid' => $from_id, ':minimum' => (float) $__bulkItemCharge - max(0.0, (float) $__bulkAllowNeg)]);
+            $rxBulkFilesPaid = $rxBulkFilesPaid || $rxBulkDebit->rowCount() > 0;
+            clearSelectCache('user');
+        }
+        if ($rxBulkFilesPaid) {
+            rxAutoDeliverPurchaseFilesSafe($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $from_id, $randomString);
         }
         $__bulkChargedTotal += $__bulkItemCharge;
     }

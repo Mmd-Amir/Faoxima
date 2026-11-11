@@ -385,17 +385,24 @@ function pasarguardIsJsonClientConfig($config)
 
 function pasarguardParseClientDocuments($clientType, $body)
 {
-    $body = trim((string) $body);
-    if ($body === '') {
+    $raw = (string) $body;
+    $trimmed = trim($raw);
+    if ($trimmed === '') {
         return [];
     }
     if ($clientType === 'xray' || $clientType === 'sing_box') {
-        $decoded = json_decode($body, true);
+        $decoded = json_decode($trimmed, true);
         if (!is_array($decoded) || json_last_error() !== JSON_ERROR_NONE) {
             return [];
         }
         $isList = array_keys($decoded) === range(0, count($decoded) - 1);
-        $items = $isList ? $decoded : [$decoded];
+        if (!$isList) {
+            if (!pasarguardIsJsonClientConfig($decoded)) {
+                return [];
+            }
+            return [$raw];
+        }
+        $items = $decoded;
         if ($clientType === 'sing_box' && count($items) !== 1) {
             return [];
         }
@@ -413,13 +420,13 @@ function pasarguardParseClientDocuments($clientType, $body)
         return $documents;
     }
     if ($clientType === 'clash_meta') {
-        if ($body[0] === '{' || $body[0] === '[' || preg_match('#^[a-z][a-z0-9+.\-]*://#i', $body)) {
+        if ($trimmed[0] === '{' || $trimmed[0] === '[' || preg_match('#^[a-z][a-z0-9+.\-]*://#i', $trimmed)) {
             return [];
         }
-        if (!preg_match('/^proxies\s*:/m', $body)) {
+        if (!preg_match('/^proxies\s*:/m', $trimmed)) {
             return [];
         }
-        return [$body];
+        return [$raw];
     }
     return [];
 }

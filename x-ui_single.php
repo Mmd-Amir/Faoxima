@@ -545,6 +545,126 @@ if (!function_exists('xui_wg_conf_protocol')) {
     }
 }
 
+if (!function_exists('xui_wg_parse_endpoint')) {
+    function xui_wg_parse_endpoint($authority)
+    {
+        $authority = (string) $authority;
+        $slashPos = strpos($authority, '/');
+        if ($slashPos !== false) {
+            if (substr($authority, $slashPos) !== '/') {
+                return null;
+            }
+            $authority = substr($authority, 0, $slashPos);
+        }
+        if ($authority === '') {
+            return null;
+        }
+        $host = '';
+        $port = '';
+        if ($authority[0] === '[') {
+            $closePos = strpos($authority, ']');
+            if ($closePos === false) {
+                return null;
+            }
+            $host = substr($authority, 1, $closePos - 1);
+            $tail = substr($authority, $closePos + 1);
+            if ($tail === '' || $tail[0] !== ':') {
+                return null;
+            }
+            $port = substr($tail, 1);
+            if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false) {
+                return null;
+            }
+        } else {
+            $colonPos = strrpos($authority, ':');
+            if ($colonPos === false) {
+                return null;
+            }
+            $host = substr($authority, 0, $colonPos);
+            $port = substr($authority, $colonPos + 1);
+            if ($host === '' || strpos($host, ':') !== false) {
+                return null;
+            }
+            if (preg_match('/^[0-9.]+$/', $host)) {
+                if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
+                    return null;
+                }
+            } else {
+                $dnsHost = substr($host, -1) === '.' ? substr($host, 0, -1) : $host;
+                if ($dnsHost === '' || strlen($dnsHost) > 253) {
+                    return null;
+                }
+                foreach (explode('.', $dnsHost) as $label) {
+                    if (!preg_match('/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/', $label)) {
+                        return null;
+                    }
+                }
+            }
+        }
+        if ($host === ''
+            || strpos($host, '/') !== false
+            || strpos($host, '\\') !== false
+            || strpos($host, '@') !== false
+            || strpos($host, '?') !== false
+            || strpos($host, '#') !== false
+            || strpos($host, '[') !== false
+            || strpos($host, ']') !== false
+            || preg_match('/\s/', $host)) {
+            return null;
+        }
+        if (!preg_match('/\A[0-9]{1,5}\z/', $port)) {
+            return null;
+        }
+        $portNum = (int) $port;
+        if ($portNum < 1 || $portNum > 65535) {
+            return null;
+        }
+        $rendered = $authority[0] === '[' ? '[' . $host . ']' : $host;
+        return array('host' => $host, 'port' => $port, 'endpoint' => $rendered . ':' . $port);
+    }
+}
+
+if (!function_exists('xui_wg_decode_component')) {
+    function xui_wg_decode_component($value)
+    {
+        $value = (string) $value;
+        if (preg_match('/%(?![0-9A-Fa-f]{2})/', $value)) {
+            return null;
+        }
+        $decoded = rawurldecode($value);
+        if (preg_match('//u', $decoded) !== 1 || preg_match('/[\x00-\x1F\x7F]/', $decoded)) {
+            return null;
+        }
+        return $decoded;
+    }
+}
+
+if (!function_exists('xui_wg_parse_query')) {
+    function xui_wg_parse_query($query)
+    {
+        $out = array();
+        $query = (string) $query;
+        if ($query === '') {
+            return $out;
+        }
+        foreach (explode('&', $query) as $pair) {
+            if ($pair === '') {
+                continue;
+            }
+            $eqPos = strpos($pair, '=');
+            $key = $eqPos === false ? $pair : substr($pair, 0, $eqPos);
+            $value = $eqPos === false ? '' : substr($pair, $eqPos + 1);
+            $key = xui_wg_decode_component($key);
+            $value = xui_wg_decode_component($value);
+            if ($key === null || $key === '' || $value === null) {
+                return null;
+            }
+            $out[strtolower($key)] = $value;
+        }
+        return $out;
+    }
+}
+
 if (!function_exists('xui_wg_conf_from_link')) {
     function xui_wg_conf_from_link($link)
     {
@@ -570,39 +690,35 @@ if (!function_exists('xui_wg_conf_from_link')) {
         }
 
         $body = substr($link, strlen($scheme) + 3);
-        $remark = '';
         if (strpos($body, '#') !== false) {
-            list($body, $remarkRaw) = explode('#', $body, 2);
-            $remark = rawurldecode($remarkRaw);
+            list($body) = explode('#', $body, 2);
+        }
+        $query = '';
+        if (strpos($body, '?') !== false) {
+            list($body, $query) = explode('?', $body, 2);
         }
         $atPos = strrpos($body, '@');
         if ($atPos === false) {
             return null;
         }
-        $privateKey = rawurldecode(substr($body, 0, $atPos));
+        $privateKey = xui_wg_decode_component(substr($body, 0, $atPos));
         $rest = substr($body, $atPos + 1);
-        $query = '';
-        if (strpos($rest, '?') !== false) {
-            list($rest, $query) = explode('?', $rest, 2);
-        }
-        $endpoint = $rest;
-        if ($privateKey === '' || $endpoint === '') {
+        $endpoint = xui_wg_parse_endpoint($rest);
+        if ($privateKey === null || $privateKey === '' || $endpoint === null) {
             return null;
         }
-        $params = array();
-        parse_str($query, $params);
-        $lower = array();
-        foreach ($params as $k => $v) {
-            $lower[strtolower($k)] = is_array($v) ? reset($v) : $v;
+        $lower = xui_wg_parse_query($query);
+        if ($lower === null) {
+            return null;
         }
 
         $lines = array('[Interface]');
         $lines[] = "PrivateKey = {$privateKey}";
         if (!empty($lower['address'])) {
-            $lines[] = 'Address = ' . str_replace(',', ', ', $lower['address']);
+            $lines[] = 'Address = ' . $lower['address'];
         }
         if (!empty($lower['dns'])) {
-            $lines[] = 'DNS = ' . str_replace(',', ', ', $lower['dns']);
+            $lines[] = 'DNS = ' . $lower['dns'];
         }
         if (!empty($lower['mtu'])) {
             $lines[] = 'MTU = ' . $lower['mtu'];
@@ -616,9 +732,6 @@ if (!function_exists('xui_wg_conf_from_link')) {
             }
         }
         $lines[] = '';
-        if ($remark !== '') {
-            $lines[] = '# ' . $remark;
-        }
         $lines[] = '[Peer]';
         if (!empty($lower['publickey'])) {
             $lines[] = 'PublicKey = ' . $lower['publickey'];
@@ -626,8 +739,10 @@ if (!function_exists('xui_wg_conf_from_link')) {
         if (!empty($lower['presharedkey'])) {
             $lines[] = 'PresharedKey = ' . $lower['presharedkey'];
         }
-        $lines[] = 'AllowedIPs = ' . (!empty($lower['allowedips']) ? str_replace(',', ', ', $lower['allowedips']) : '0.0.0.0/0, ::/0');
-        $lines[] = "Endpoint = {$endpoint}";
+        if (isset($lower['allowedips']) && $lower['allowedips'] !== '') {
+            $lines[] = 'AllowedIPs = ' . $lower['allowedips'];
+        }
+        $lines[] = 'Endpoint = ' . $endpoint['endpoint'];
         if (!empty($lower['keepalive'])) {
             $lines[] = 'PersistentKeepalive = ' . $lower['keepalive'];
         }

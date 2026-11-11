@@ -426,6 +426,9 @@ if ($datain == "settimecornday" && $adminrulecheck['rule'] == "administrator") {
     } elseif ($type == "sublink") {
         $valuenew = (($panelCurrent['sublink'] ?? '') == "onsublink") ? "offsublink" : "onsublink";
         update("marzban_panel", "sublink", $valuenew, "code_panel", $code_panel);
+    } elseif ($type == "autofile") {
+        $valuenew = (($panelCurrent['auto_file'] ?? 'offautofile') == "onautofile") ? "offautofile" : "onautofile";
+        update("marzban_panel", "auto_file", $valuenew, "code_panel", $code_panel);
     } elseif ($type == "statusbuy") {
         $valuenew = (($panelCurrent['status'] ?? '') == "active") ? "disable" : "active";
         update("marzban_panel", "status", $valuenew, "code_panel", $code_panel);

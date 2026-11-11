@@ -245,8 +245,8 @@ final class TestAccountHandler extends BaseHandler
         $unlimitedVolume = !empty($settings['volume_unlimited']);
 
         $configsArr = array_values(array_filter(array_map(static function ($c) {
-            return is_string($c) ? trim($c) : '';
-        }, $configList), static function ($c) { return $c !== ''; }));
+            return is_string($c) ? $c : '';
+        }, $configList), static function ($c) { return trim($c) !== ''; }));
 
         $template = $this->resolveTestTemplate((string)($panel['type'] ?? ''));
         if (trim($template) === '') {
@@ -301,6 +301,7 @@ final class TestAccountHandler extends BaseHandler
                     continue;
                 }
                 $manualItemsForOutput[] = [
+                    'record_id' => (int) ($mr['id'] ?? 0),
                     'content'  => $mrContent,
                     'file_ext' => strtolower(ltrim(trim((string)($mr['file_ext'] ?? '')), '.')),
                     'sub_link' => trim((string)($mr['sub_link'] ?? '')),
@@ -417,7 +418,7 @@ final class TestAccountHandler extends BaseHandler
                 'delivered_as_file' => $manualDelivered,
                 'file_name'         => $manualFileName,
                 'file_content_b64'  => $manualFileB64,
-                'service_output'    => faoxima_build_service_output([
+                'service_output'    => faoxima_apply_file_names(faoxima_build_service_output([
                     'panel_type'   => (string)($panel['type'] ?? ''),
                     'subscription' => $subLink,
                     'configs'      => $configsArr,
@@ -426,7 +427,7 @@ final class TestAccountHandler extends BaseHandler
                     'file_ext'     => $manualExtForOutput,
                     'items'        => $manualItemsForOutput,
                     'username'     => $usernameAc,
-                ]),
+                ]), $panel, $configsArr),
             ],
         ]);
     }

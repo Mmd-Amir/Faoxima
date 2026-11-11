@@ -1934,7 +1934,8 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), 0 1px 3px rgba(0,0,0,0.18);
     flex-shrink: 0;
 }
-.kb-color-opt[data-color="default"] .kb-color-opt__swatch { background: var(--surface-3); border-color: color-mix(in srgb, var(--text-main) 26%, transparent); }
+.kb-color-opt[data-color="default"] .kb-color-opt__swatch,
+.kb-color-opt[data-color="none"] .kb-color-opt__swatch { background: var(--surface-3); border-color: color-mix(in srgb, var(--text-main) 26%, transparent); }
 .kb-color-opt[data-color="primary"] .kb-color-opt__swatch { background: linear-gradient(135deg, #3b82f6, #2563eb); }
 .kb-color-opt[data-color="success"] .kb-color-opt__swatch { background: linear-gradient(135deg, #22c55e, #16a34a); }
 .kb-color-opt[data-color="danger"]  .kb-color-opt__swatch { background: linear-gradient(135deg, #ef4444, #dc2626); }

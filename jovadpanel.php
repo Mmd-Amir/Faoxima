@@ -2599,7 +2599,7 @@ function jovadpanelCollectEntrySources(array $row, $kind, $baseUrl)
                     continue;
                 }
                 $contents[] = [
-                    'value' => $text,
+                    'value' => (string) $value,
                     'path' => $fieldPath,
                     'group' => $group,
                     'name' => $scope['name'],
@@ -2776,8 +2776,8 @@ function jovadpanelProtocolFiles(array $panel, $remoteId, $kind)
                 if ($resolved !== '') {
                     $candidates[] = ['url' => $resolved, 'content' => '', 'source' => $urlSource];
                 }
-            } elseif (jovadpanelConfigContentKind($text) === $kind) {
-                $candidates[] = ['url' => '', 'content' => $text, 'source' => 'inline'];
+            } elseif (jovadpanelConfigContentKind($row) === $kind) {
+                $candidates[] = ['url' => '', 'content' => $row, 'source' => 'inline'];
             }
         } elseif (is_array($row)) {
             $collected = jovadpanelCollectEntrySources($row, $kind, $baseUrl);
@@ -2841,6 +2841,7 @@ function jovadpanelProtocolFiles(array $panel, $remoteId, $kind)
                 'url' => $candidate['url'],
                 'content' => $candidate['content'],
                 'name' => $candidateName,
+                'server_id' => trim((string) ($candidate['server_id'] ?? '')),
                 'index' => (int) $index + 1,
                 'kind' => $kind,
                 'source' => $candidate['source'],
@@ -2981,19 +2982,41 @@ function jovadpanelSafeFilename($name, $kind)
     return $name . $requiredExt;
 }
 
-function jovadpanelDeliverProtocolFiles($chatId, array $panel, $remoteId, $kind, $caption, $replyMarkup = null)
+function jovadpanelDeliverProtocolFiles($chatId, array $panel, $remoteId, $kind, $caption, $replyMarkup = null, $options = null)
 {
     $files = jovadpanelProtocolFiles($panel, $remoteId, $kind);
     if ($files['status'] !== true) {
-        return ['ok' => false, 'msg' => (string) ($files['msg'] ?? 'file retrieval failed')];
+        return ['ok' => false, 'sent' => 0, 'failed' => 0, 'unknown' => 0, 'skipped' => 0, 'total' => 0, 'msg' => (string) ($files['msg'] ?? 'file retrieval failed')];
     }
     $sent = 0;
-    $duplicateCount = 0;
+    $failed = 0;
+    $unknown = 0;
+    $skipped = 0;
     $deliveredHashes = [];
-    $total = count($files['files']);
+    $total = 0;
+    $shouldSend = is_array($options) && isset($options['should_send']) && is_callable($options['should_send']) ? $options['should_send'] : null;
+    $onResult = is_array($options) && isset($options['on_result']) && is_callable($options['on_result']) ? $options['on_result'] : null;
+    $attemptedKeys = [];
+    $rxJovadNameCounts = [];
+    if (rxFileNamingEnabled()) {
+        foreach ($files['files'] as $rxJovadMetaFile) {
+            $rxJovadDescriptor = rxFileNamingJovadDescriptor($rxJovadMetaFile, $kind);
+            if (is_array($rxJovadDescriptor)) {
+                $rxJovadMetaKey = $rxJovadDescriptor['key'];
+                $rxJovadNameCounts[$rxJovadMetaKey] = isset($rxJovadNameCounts[$rxJovadMetaKey]) ? $rxJovadNameCounts[$rxJovadMetaKey] + 1 : 1;
+            }
+        }
+    }
     foreach ($files['files'] as $file) {
+        $rxJovadFileKey = hash('sha256', 'jovad|' . $kind . '|' . (string) ($file['server_id'] ?? '') . '|' . (string) ($file['name'] ?? '') . '|' . (string) ($file['source'] ?? '') . '|' . (string) ($file['url'] ?? '') . '|' . hash('sha256', (string) ($file['content'] ?? '')));
+        if (!empty($attemptedKeys[$rxJovadFileKey]) || ($shouldSend !== null && !$shouldSend($rxJovadFileKey))) {
+            $skipped++;
+            continue;
+        }
+        $attemptedKeys[$rxJovadFileKey] = true;
         $tempExt = $kind === 'openvpn' ? '.ovpn' : '.conf';
         $tempPath = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'jovad-tmp-' . bin2hex(random_bytes(8)) . $tempExt;
+        $attempted = false;
         try {
             $downloadOk = false;
             $attemptName = '';
@@ -3013,6 +3036,11 @@ function jovadpanelDeliverProtocolFiles($chatId, array $panel, $remoteId, $kind,
                 }
             }
             if (!$downloadOk) {
+                $total++;
+                $failed++;
+                if ($onResult !== null) {
+                    $onResult($rxJovadFileKey, 'failed', 'configuration download failed');
+                }
                 continue;
             }
             $panelName = trim((string) ($file['name'] ?? ''));
@@ -3028,10 +3056,17 @@ function jovadpanelDeliverProtocolFiles($chatId, array $panel, $remoteId, $kind,
             }
             $contentHash = @hash_file('sha256', $tempPath);
             if (is_string($contentHash) && isset($deliveredHashes[$contentHash])) {
-                $duplicateCount++;
                 continue;
             }
-            $thisCaption = $sent === 0 ? $caption : '';
+            $total++;
+            $attempted = true;
+            $thisCaption = $total === 1 ? $caption : '';
+            $rxJovadDescriptor = rxFileNamingJovadDescriptor($file, $kind);
+            $rxJovadKey = is_array($rxJovadDescriptor) ? $rxJovadDescriptor['key'] : '';
+            $rxJovadAmbiguous = ($rxJovadKey !== '' && (($rxJovadNameCounts[$rxJovadKey] ?? 0) > 1));
+            $rxJovadResolved = rxFileNamingResolve($panel, 'jovad', $rxJovadKey, $publicName, $thisCaption, $rxJovadAmbiguous);
+            $publicName = $rxJovadResolved['filename'];
+            $thisCaption = $rxJovadResolved['caption'];
             $payload = [
                 'chat_id' => $chatId,
                 'document' => new CURLFile($tempPath, 'application/octet-stream', $publicName),
@@ -3042,22 +3077,35 @@ function jovadpanelDeliverProtocolFiles($chatId, array $panel, $remoteId, $kind,
                 $payload['reply_markup'] = $replyMarkup;
             }
             $result = telegram('sendDocument', $payload);
-            if (is_array($result) && !empty($result['ok'])) {
+            $sendStatus = is_array($result) ? (!empty($result['ok']) ? 'sent' : 'failed') : 'unknown';
+            if ($sendStatus === 'sent') {
                 $sent++;
                 if (is_string($contentHash)) {
                     $deliveredHashes[$contentHash] = true;
                 }
+            } elseif ($sendStatus === 'failed') {
+                $failed++;
+            } else {
+                $unknown++;
+            }
+            if ($onResult !== null) {
+                $onResult($rxJovadFileKey, $sendStatus, is_array($result) ? (string) ($result['description'] ?? '') : '');
             }
         } catch (Throwable $e) {
+            if ($attempted) {
+                $unknown++;
+                if ($onResult !== null) {
+                    $onResult($rxJovadFileKey, 'unknown', $e->getMessage());
+                }
+            }
         } finally {
             @unlink($tempPath);
         }
     }
-    $total -= $duplicateCount;
     if ($sent !== $total) {
-        return ['ok' => false, 'sent' => $sent, 'total' => $total, 'msg' => "ارسال فایل‌ها کامل نشد ({$sent} از {$total}). برای دریافت فایل‌های باقی‌مانده دوباره تلاش کنید."];
+        return ['ok' => false, 'sent' => $sent, 'failed' => $failed, 'unknown' => $unknown, 'skipped' => $skipped, 'total' => $total, 'msg' => "ارسال فایل‌ها کامل نشد ({$sent} از {$total}). برای دریافت فایل‌های باقی‌مانده دوباره تلاش کنید."];
     }
-    return ['ok' => true, 'sent' => $sent];
+    return ['ok' => true, 'sent' => $sent, 'failed' => $failed, 'unknown' => $unknown, 'skipped' => $skipped, 'total' => $total];
 }
 
 function jovadpanelDnsServerState(array $panel)
@@ -3255,8 +3303,54 @@ function jovadpanelDeliverMarkerFiles($chatId, $panel, $marker, $replyMarkup = n
     if ($kind === 'dns') {
         return jovadpanelDeliverDns($chatId, $panel, $remoteId, "🧭 تنظیمات DNS شما", $replyMarkup);
     }
-    $label = $kind === 'openvpn' ? 'OpenVPN' : 'WireGuard';
-    return jovadpanelDeliverProtocolFiles($chatId, $panel, $remoteId, $kind, "⚙️ کانفیگ شما ({$label})", $replyMarkup);
+    return jovadpanelDeliverProtocolFiles($chatId, $panel, $remoteId, $kind, '', $replyMarkup);
+}
+
+function jovadpanelAutoDeliverFiles($chatId, array $panel, $username, $options = null)
+{
+    $result = ['ok' => true, 'sent' => 0, 'failed' => 0, 'unknown' => 0, 'skipped' => 0, 'total' => 0];
+    if ((string) ($panel['auto_file'] ?? 'offautofile') !== 'onautofile') {
+        return $result;
+    }
+    $resolved = jovadpanelResolve($panel, $username);
+    if (empty($resolved['ok'])) {
+        $result['ok'] = false;
+        return $result;
+    }
+    $cfg = is_array($resolved['config'] ?? null) ? $resolved['config'] : [];
+    $protoFallback = (string) ($resolved['row']['proto'] ?? '');
+    $channelInfo = jovadpanelChannelsFromConfig($cfg, $protoFallback);
+    $channels = [];
+    foreach ((array) ($channelInfo['channels'] ?? []) as $channel) {
+        $channel = strtolower(trim((string) $channel));
+        if (in_array($channel, ['wireguard', 'openvpn'], true)) {
+            $channels[] = $channel;
+        }
+    }
+    if (empty($channels)) {
+        foreach ((array) preg_split('/[,\s]+/', $protoFallback) as $channel) {
+            $channel = strtolower(trim((string) $channel));
+            if (in_array($channel, ['wireguard', 'openvpn'], true)) {
+                $channels[] = $channel;
+            }
+        }
+    }
+    $remoteId = (string) ($cfg['id'] ?? ($resolved['row']['remote_id'] ?? ''));
+    if ($remoteId === '' || empty($channels)) {
+        return $result;
+    }
+    foreach (array_values(array_unique($channels)) as $kind) {
+        $delivery = jovadpanelDeliverProtocolFiles($chatId, $panel, $remoteId, $kind, '', null, $options);
+        $result['sent'] += (int) ($delivery['sent'] ?? 0);
+        $result['failed'] += (int) ($delivery['failed'] ?? 0);
+        $result['unknown'] += (int) ($delivery['unknown'] ?? 0);
+        $result['skipped'] += (int) ($delivery['skipped'] ?? 0);
+        $result['total'] += (int) ($delivery['total'] ?? 0);
+        if (empty($delivery['ok']) && (int) ($delivery['total'] ?? 0) > 0) {
+            $result['ok'] = false;
+        }
+    }
+    return $result;
 }
 
 function jovadMiniAppPanelBlocked($panel)

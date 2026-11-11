@@ -51,7 +51,7 @@ if ($method === 'POST') {
     if (is_array($keyboard)) {
 
         $clean = [];
-        $allowedStyles = ['primary', 'success', 'danger'];
+        $allowedStyles = ['none', 'primary', 'success', 'danger'];
         foreach ($keyboard as $row) {
             if (!is_array($row)) continue;
             $cleanRow = [];
@@ -130,11 +130,11 @@ if (!isset($textbotMap['text_miniapp_button'])) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>چیدمان کیبورد — پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
+    <link rel="stylesheet" href="css/theme.css?v=colors51">
     <script src="js/theme.js?v=flat50" defer>
 
 </script>
-    <script src="js/keyboard_editor.js?v=touch2" defer>
+    <script src="js/keyboard_editor.js?v=colors3" defer>
 
 </script>
     <style>
@@ -299,12 +299,12 @@ if (!isset($textbotMap['text_miniapp_button'])) {
                 <div class="kb-field">
                     <label>رنگ دکمه</label>
                     <div class="kb-color-picker">
-                        <label class="kb-color-opt" data-color="default">
-                            <input type="radio" name="kb-color" value="default" checked>
+                        <label class="kb-color-opt" data-color="none">
+                            <input type="radio" name="kb-color" value="none" checked>
                             <div class="kb-color-opt__card">
                                 <div class="kb-color-opt__swatch"></div>
-                                <div class="kb-color-opt__name">پیش‌فرض</div>
-                                <div class="kb-color-opt__hint">رنگ خودکار</div>
+                                <div class="kb-color-opt__name">بدون رنگ</div>
+                                <div class="kb-color-opt__hint">بدون رنگ خودکار</div>
                             </div>
                         </label>
                         <label class="kb-color-opt" data-color="primary">

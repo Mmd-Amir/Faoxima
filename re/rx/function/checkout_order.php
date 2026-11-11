@@ -933,7 +933,7 @@ if (!function_exists('rx_ck_button_style')) {
                     if (is_array($row) && !empty($row['keyboard_styles_all'])) {
                         $all = json_decode((string) $row['keyboard_styles_all'], true);
                         if (is_array($all) && !empty($all['wallet_checkout']) && is_array($all['wallet_checkout'])) {
-                            $saved = $all['wallet_checkout'];
+                            $saved = array_filter($all['wallet_checkout'], static function ($v) { return $v !== 'default'; });
                         }
                     }
                 }

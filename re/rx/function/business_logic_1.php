@@ -32,7 +32,7 @@ if (!function_exists('rx_promptWalletChargeCustomAmount')) {
         if (!empty($setting['keyboard_styles_all'])) {
             $_rx_all_kbs = json_decode($setting['keyboard_styles_all'], true);
             if (is_array($_rx_all_kbs) && !empty($_rx_all_kbs['account'])) {
-                $_rx_acc_styles = $_rx_all_kbs['account'];
+                $_rx_acc_styles = array_filter($_rx_all_kbs['account'], static function ($v) { return $v !== 'default'; });
             }
         }
         if (function_exists('rx_getKeyboardDefaultStyles') && (!function_exists('rx_kb_use_defaults') || rx_kb_use_defaults())) {
@@ -274,7 +274,9 @@ function rxManualsalePublicName($recordName, $ext)
 }
 function rxManualsaleTempPath($publicName)
 {
-    return sys_get_temp_dir() . DIRECTORY_SEPARATOR . bin2hex(random_bytes(6)) . '-' . $publicName;
+    $tempExtension = strtolower((string) pathinfo((string) $publicName, PATHINFO_EXTENSION));
+    $tempExtension = preg_match('/^[a-z0-9]{1,10}$/', $tempExtension) ? '.' . $tempExtension : '.tmp';
+    return sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'rxmanual-' . bin2hex(random_bytes(8)) . $tempExtension;
 }
 function rxManualsaleDelivery($username_service)
 {
@@ -314,6 +316,8 @@ function rxManualsaleDelivery($username_service)
     $result['is_file'] = $isFile;
     $result['is_text'] = $isText;
     $result['is_link'] = $isLink;
+    $result['codepanel'] = trim((string) ($row['codepanel'] ?? ''));
+    $rxManualPanelRef = $result['codepanel'] !== '' ? 'code:' . $result['codepanel'] : '';
     if ($isLink) {
         $result['sub'] = trim($content) !== '' ? $content : $subLink;
         $result['configs'] = [];
@@ -347,6 +351,8 @@ function rxManualsaleDelivery($username_service)
             continue;
         }
         $items[] = [
+            'id' => (int) ($r['id'] ?? 0),
+            'panel_ref' => $rxManualPanelRef,
             'ext' => $rExt,
             'name' => trim((string) ($r['namerecord'] ?? '')),
             'content' => $rContent,
@@ -391,6 +397,7 @@ function rxManualsaleSendFileItems($user_id, $username_service, $fileItems, $cap
     $fileCount = count($fileItems);
     $index = 0;
     $sentAny = false;
+    $rxManualKeyCounts = function_exists('rxFileNamingManualKeyCounts') ? rxFileNamingManualKeyCounts($fileItems) : [];
     foreach ($fileItems as $fi) {
         if (!is_array($fi)) {
             continue;
@@ -398,10 +405,17 @@ function rxManualsaleSendFileItems($user_id, $username_service, $fileItems, $cap
         $index++;
         $ext = (trim((string) ($fi['ext'] ?? '')) !== '') ? $fi['ext'] : 'bin';
         $publicName = rxManualsalePublicName($fi['name'] ?? '', $ext);
-        $manualFile = rxManualsaleTempPath($publicName);
-        file_put_contents($manualFile, (string) ($fi['content'] ?? ''));
         $isLastFile = ($index === $fileCount);
         $thisCaption = ($index === 1) ? (string) $caption : '';
+        if (function_exists('rxFileNamingResolveManualItem')) {
+            $rxManualKey = rxFileNamingManualItemKey($fi);
+            $rxManualAmbiguous = ($rxManualKey !== '' && (($rxManualKeyCounts[$rxManualKey] ?? 0) > 1));
+            $rxManualResolved = rxFileNamingResolveManualItem($fi, $publicName, $thisCaption, $rxManualAmbiguous);
+            $publicName = $rxManualResolved['filename'];
+            $thisCaption = $rxManualResolved['caption'];
+        }
+        $manualFile = rxManualsaleTempPath($publicName);
+        file_put_contents($manualFile, (string) ($fi['content'] ?? ''));
         $thisMarkup = $isLastFile ? $reply_markup : null;
         if (is_file($manualFile) && is_readable($manualFile)) {
             telegram('sendDocument', [
@@ -510,7 +524,419 @@ function rxBuildDeliveryOffer($panel_info, $invoice_id, $hasConfig, $hasSub, $re
     array_splice($mergedKb['inline_keyboard'], 0, 0, $offerRows);
     return json_encode($mergedKb, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 }
-function sendMessageService($panel_info, $config, $sub_link, $username_service, $reply_markup, $caption, $invoice_id, $user_id = null, $image = 'images.jpg')
+function rxAutoFilePanelRow($panel_info)
+{
+    if (is_array($panel_info)) {
+        if (array_key_exists('auto_file', $panel_info)) {
+            return $panel_info;
+        }
+        $panel_name = trim((string) ($panel_info['name_panel'] ?? ''));
+        $panel_code = trim((string) ($panel_info['code_panel'] ?? ''));
+        if (function_exists('select')) {
+            $fresh = $panel_name !== '' ? select('marzban_panel', '*', 'name_panel', $panel_name, 'select') : false;
+            if (!is_array($fresh) && $panel_code !== '') {
+                $fresh = select('marzban_panel', '*', 'code_panel', $panel_code, 'select');
+            }
+            if (is_array($fresh)) {
+                return $fresh;
+            }
+        }
+        return $panel_info;
+    }
+    if (function_exists('panel_feature_resolve_row')) {
+        $row = panel_feature_resolve_row($panel_info);
+        return is_array($row) ? $row : null;
+    }
+    if (function_exists('select')) {
+        $row = select('marzban_panel', '*', 'name_panel', (string) $panel_info, 'select');
+        return is_array($row) ? $row : null;
+    }
+    return null;
+}
+function rxPanelAutoFileEnabled($panel_info)
+{
+    $row = rxAutoFilePanelRow($panel_info);
+    return is_array($row) && (string) ($row['auto_file'] ?? 'offautofile') === 'onautofile';
+}
+function rxAutoFileDeliveryState($invoice_id)
+{
+    $invoice_id = trim((string) $invoice_id);
+    if ($invoice_id === '') {
+        return [];
+    }
+    $pdo = $GLOBALS['pdo'] ?? null;
+    if (!($pdo instanceof PDO)) {
+        throw new RuntimeException('Automatic file delivery state database is unavailable');
+    }
+    try {
+        $stmt = $pdo->prepare('SELECT file_key, status FROM auto_file_delivery WHERE id_invoice = ?');
+        $stmt->execute([$invoice_id]);
+        $state = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            if (is_array($row)) {
+                $state[(string) ($row['file_key'] ?? '')] = (string) ($row['status'] ?? '');
+            }
+        }
+        return $state;
+    } catch (Throwable $e) {
+        throw new RuntimeException('Automatic file delivery state could not be read', 0, $e);
+    }
+}
+function rxAutoFileDeliveryMark($invoice_id, $file_key, $status, $detail = '')
+{
+    $invoice_id = trim((string) $invoice_id);
+    $file_key = trim((string) $file_key);
+    $status = (string) $status;
+    if ($invoice_id === '' || $file_key === '' || !in_array($status, ['sent', 'failed', 'unknown'], true)) {
+        return false;
+    }
+    $pdo = $GLOBALS['pdo'] ?? null;
+    if (!($pdo instanceof PDO)) {
+        return false;
+    }
+    $detail = trim((string) $detail);
+    if (function_exists('mb_substr')) {
+        $detail = mb_substr($detail, 0, 500, 'UTF-8');
+    } else {
+        $detail = substr($detail, 0, 500);
+    }
+    $now = time();
+    try {
+        $stmt = $pdo->prepare('INSERT INTO auto_file_delivery (id_invoice, file_key, status, detail, attempts, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?) ON DUPLICATE KEY UPDATE status = IF(status = \'sent\', \'sent\', VALUES(status)), detail = VALUES(detail), attempts = attempts + 1, updated_at = VALUES(updated_at)');
+        $stmt->execute([$invoice_id, $file_key, $status, $detail, $now, $now]);
+        return true;
+    } catch (Throwable $e) {
+        error_log('rxAutoFileDeliveryMark failed: ' . $e->getMessage());
+        return false;
+    }
+}
+function rxAutoFileKey($prefix, $value)
+{
+    return hash('sha256', trim((string) $prefix) . '|' . (string) $value);
+}
+function rxAutoFileTempPath($public_name)
+{
+    $ext = strtolower((string) pathinfo((string) $public_name, PATHINFO_EXTENSION));
+    $ext = preg_match('/^[a-z0-9]{1,10}$/', $ext) ? '.' . $ext : '.tmp';
+    return rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'rxauto-' . bin2hex(random_bytes(8)) . $ext;
+}
+function rxAutoFileResolveNaming($panel, $source, $key, $name, $caption, $ambiguous = false)
+{
+    if (function_exists('rxFileNamingResolve')) {
+        return rxFileNamingResolve($panel, $source, $key, $name, $caption, $ambiguous);
+    }
+    return ['filename' => (string) $name, 'caption' => (string) $caption];
+}
+function rxAutoFileSendDocument($user_id, $invoice_id, $file_key, $path, $public_name, $caption)
+{
+    if (!is_file($path) || !is_readable($path)) {
+        rxAutoFileDeliveryMark($invoice_id, $file_key, 'failed', 'temporary file unavailable');
+        return 'failed';
+    }
+    try {
+        $result = telegram('sendDocument', [
+            'chat_id' => $user_id,
+            'document' => new CURLFile($path, 'application/octet-stream', $public_name),
+            'caption' => (string) $caption,
+            'parse_mode' => 'HTML',
+        ]);
+    } catch (Throwable $e) {
+        rxAutoFileDeliveryMark($invoice_id, $file_key, 'unknown', $e->getMessage());
+        return 'unknown';
+    }
+    $status = is_array($result) ? (!empty($result['ok']) ? 'sent' : 'failed') : 'unknown';
+    $detail = is_array($result) ? (string) ($result['description'] ?? '') : '';
+    rxAutoFileDeliveryMark($invoice_id, $file_key, $status, $detail);
+    return $status;
+}
+function rxAutoFileSendContent($user_id, $invoice_id, $file_key, $content, $public_name, $caption)
+{
+    $temp = rxAutoFileTempPath($public_name);
+    try {
+        if (file_put_contents($temp, (string) $content) === false) {
+            rxAutoFileDeliveryMark($invoice_id, $file_key, 'failed', 'temporary file write failed');
+            return 'failed';
+        }
+        return rxAutoFileSendDocument($user_id, $invoice_id, $file_key, $temp, $public_name, $caption);
+    } finally {
+        @unlink($temp);
+    }
+}
+function rxAutoDeliverPurchaseFiles($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id)
+{
+    $empty = ['ok' => true, 'sent' => 0, 'failed' => 0, 'unknown' => 0, 'skipped' => 0, 'total' => 0];
+    $panel = rxAutoFilePanelRow($panel_info);
+    if (!rxPanelAutoFileEnabled($panel) || ($panel['type'] ?? '') === 'Manualsale') return $empty;
+    if (trim((string) $invoice_id) === '' || trim((string) $user_id) === '') return $empty;
+    $pdo = $GLOBALS['pdo'] ?? null;
+    if (!($pdo instanceof PDO)) throw new RuntimeException('Automatic file delivery database is unavailable');
+    $lock = 'rxauto:' . substr(hash('sha256', (string) ($GLOBALS['dbname'] ?? '') . '|' . (string) $invoice_id), 0, 56);
+    $stmt = $pdo->prepare('SELECT GET_LOCK(?, 0)');
+    $stmt->execute([$lock]);
+    $acquired = $stmt->fetchColumn();
+    $stmt->closeCursor();
+    if ((string) $acquired !== '1') {
+        $empty['ok'] = false;
+        return $empty;
+    }
+    try {
+        return rxAutoDeliverPurchaseFilesUnlocked($panel, $config, $sub_link, $username_service, $user_id, $invoice_id);
+    } finally {
+        try {
+            $release = $pdo->prepare('SELECT RELEASE_LOCK(?)');
+            $release->execute([$lock]);
+            $release->closeCursor();
+        } catch (Throwable $e) {
+            error_log('Automatic file delivery lock release failed: ' . $e->getMessage());
+        }
+    }
+}
+function rxAutoDeliverPurchaseFilesUnlocked($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id)
+{
+    global $ManagePanel;
+    $result = ['ok' => true, 'sent' => 0, 'failed' => 0, 'unknown' => 0, 'skipped' => 0, 'total' => 0];
+    $panel = rxAutoFilePanelRow($panel_info);
+    if (!rxPanelAutoFileEnabled($panel)) {
+        return $result;
+    }
+    $user_id = trim((string) $user_id);
+    $invoice_id = trim((string) $invoice_id);
+    $username_service = trim((string) $username_service);
+    if (!is_array($panel) || $user_id === '' || $invoice_id === '' || $username_service === '') {
+        return $result;
+    }
+    if ((string) ($panel['type'] ?? '') === 'Manualsale') {
+        return $result;
+    }
+    $autoManager = is_object($ManagePanel) ? $ManagePanel : (class_exists('ManagePanel') ? new ManagePanel() : null);
+    $state = rxAutoFileDeliveryState($invoice_id);
+    if ((string) ($panel['type'] ?? '') === 'jovadpanel') {
+        if (function_exists('jovadpanelAutoDeliverFiles')) {
+            $jovadResult = jovadpanelAutoDeliverFiles($user_id, $panel, $username_service, [
+                'should_send' => function ($fileKey) use ($state) {
+                    return (string) ($state[$fileKey] ?? '') !== 'sent';
+                },
+                'on_result' => function ($fileKey, $status, $detail) use ($invoice_id) {
+                    rxAutoFileDeliveryMark($invoice_id, $fileKey, $status, $detail);
+                },
+            ]);
+            if (is_array($jovadResult)) {
+                $result['ok'] = !empty($jovadResult['ok']);
+                $result['sent'] = (int) ($jovadResult['sent'] ?? 0);
+                $result['failed'] = (int) ($jovadResult['failed'] ?? 0);
+                $result['unknown'] = (int) ($jovadResult['unknown'] ?? 0);
+                $result['skipped'] = (int) ($jovadResult['skipped'] ?? 0);
+                $result['total'] = (int) ($jovadResult['total'] ?? 0);
+            }
+        }
+        return $result;
+    }
+    if ((string) ($panel['type'] ?? '') === 'WGDashboard') {
+        $content = (string) $sub_link;
+        if (trim($content) === '' && is_object($autoManager)) {
+            $wgUser = $autoManager->DataUser($panel['name_panel'], $username_service);
+            if (is_array($wgUser)) {
+                $content = (string) ($wgUser['subscription_url'] ?? '');
+            }
+        }
+        if (trim($content) === '') {
+            return $result;
+        }
+        $defaultName = normalizeConfigFilename("{$panel['inboundid']}-{$username_service}.conf", $panel['namecustom'] ?? '', true);
+        $key = function_exists('rxFileNamingKeySubscription') ? rxFileNamingKeySubscription($panel['inboundid'] ?? '') : '';
+        $resolved = rxAutoFileResolveNaming($panel, 'wgdashboard', $key, $defaultName, '');
+        $fileKey = rxAutoFileKey('wgdashboard', $content);
+        if ((string) ($state[$fileKey] ?? '') === 'sent') {
+            $result['skipped']++;
+            return $result;
+        }
+        $result['total']++;
+        $status = rxAutoFileSendContent($user_id, $invoice_id, $fileKey, $content, $resolved['filename'], $resolved['caption']);
+        $result[$status] = (int) $result[$status] + 1;
+        $result['ok'] = $status === 'sent';
+        return $result;
+    }
+    $links = [];
+    if (is_array($config)) {
+        foreach ($config as $item) {
+            if (is_string($item) && trim($item) !== '') {
+                $links[] = (string) $item;
+            }
+        }
+    } elseif (is_string($config) && trim($config) !== '') {
+        $links[] = $config;
+    }
+    if ((string) ($panel['type'] ?? '') === 'x-ui_single' && trim((string) $sub_link) !== '') {
+        $subContent = (string) $sub_link;
+        if (preg_match('/\[Interface\]/i', $subContent) && preg_match('/\[Peer\]/i', $subContent)) {
+            array_unshift($links, $subContent);
+        }
+    }
+    $lazyDataUser = null;
+    if (($panel['type'] ?? '') === 'x-ui_single' && is_object($autoManager)) {
+        $hasFileSource = false;
+        foreach ($links as $candidateLink) {
+            if (preg_match('~^(?:xuifile|xuiawgfile|wireguard|wg|vpn|awg|amneziawg)://~i', trim($candidateLink))
+                || (preg_match('/^\h*\[Interface\]\h*\r?$/mi', $candidateLink) && preg_match('/^\h*\[Peer\]\h*\r?$/mi', $candidateLink))) {
+                $hasFileSource = true;
+                break;
+            }
+        }
+        if (!$hasFileSource) {
+            $lazyDataUser = $autoManager->DataUser($panel['name_panel'], $username_service);
+            $singleFile = is_array($lazyDataUser) ? ($lazyDataUser['single_config_file'] ?? null) : null;
+            if (is_array($singleFile) && trim((string) ($singleFile['value'] ?? '')) !== '') {
+                $scheme = ($singleFile['protocol'] ?? '') === 'amneziawg' ? 'xuiawgfile' : 'xuifile';
+                array_unshift($links, $scheme . '://' . rawurlencode((string) ($singleFile['filename'] ?? 'wireguard.conf')));
+            }
+        }
+    }
+    if (empty($links)) {
+        return $result;
+    }
+    $namingLinks = [];
+    foreach ($links as $namingLink) {
+        $namingLinks[] = ($panel['type'] ?? '') === 'x-ui_single'
+            && preg_match('/^\h*\[Interface\]\h*\r?$/mi', $namingLink)
+            && preg_match('/^\h*\[Peer\]\h*\r?$/mi', $namingLink)
+            ? 'vpn://' . base64_encode($namingLink) : $namingLink;
+    }
+    $keyCounts = function_exists('rxFileNamingLinkKeyCounts') ? rxFileNamingLinkKeyCounts($namingLinks, $panel) : [];
+    $deliveredKeys = [];
+    foreach ($links as $index => $link) {
+        $rawLink = (string) $link;
+        $link = trim((string) $link);
+        if ($link === '' || (function_exists('jovadIsProtocolMarker') && jovadIsProtocolMarker($link))) {
+            continue;
+        }
+        $fileKey = '';
+        $content = '';
+        $publicName = '';
+        $caption = '';
+        if (($panel['type'] ?? '') === 'x-ui_single' && preg_match('/^\h*\[Interface\]\h*\r?$/mi', $rawLink) && preg_match('/^\h*\[Peer\]\h*\r?$/mi', $rawLink)) {
+            $content = $rawLink;
+            $protocol = xui_wg_conf_protocol($content) ?? 'wireguard';
+            if ($lazyDataUser === null && is_object($autoManager)) {
+                $lazyDataUser = $autoManager->DataUser($panel['name_panel'], $username_service);
+            }
+            $singleFile = is_array($lazyDataUser) ? ($lazyDataUser['single_config_file'] ?? null) : null;
+            if (is_array($singleFile) && (string) ($singleFile['value'] ?? '') === $content) {
+                $defaultName = normalizeConfigFilename($singleFile['filename'] ?? 'wireguard.conf', '', true);
+                $namingKey = rxFileNamingScopedKey(rxFileNamingKeyFile($singleFile['filename'] ?? ''), $protocol);
+                $resolved = rxAutoFileResolveNaming($panel, 'xui_file', $namingKey, $defaultName, '');
+            } else {
+                $encodedLink = 'vpn://' . base64_encode($content);
+                $descriptor = rxFileNamingDescriptorFromLink($encodedLink);
+                $namingKey = is_array($descriptor) ? $descriptor['key'] : '';
+                $defaultName = normalizeConfigFilename(xui_wg_conf_filename($encodedLink, $protocol, (int) $index), '', true);
+                $resolved = rxAutoFileResolveNaming($panel, 'xui_wg', $namingKey, $defaultName, '', $namingKey !== '' && (($keyCounts[$namingKey] ?? 0) > 1));
+            }
+            $publicName = $resolved['filename'];
+            $caption = $resolved['caption'];
+            $fileKey = rxAutoFileKey('config_content', $protocol . '|' . $content);
+        } elseif (preg_match('~^(xuifile|xuiawgfile)://~i', $link, $fileMatch)) {
+            if ($lazyDataUser === null && is_object($autoManager)) {
+                $lazyDataUser = $autoManager->DataUser($panel['name_panel'], $username_service);
+            }
+            $singleFile = is_array($lazyDataUser) ? ($lazyDataUser['single_config_file'] ?? null) : null;
+            if (!is_array($singleFile) || trim((string) ($singleFile['value'] ?? '')) === '') {
+                continue;
+            }
+            $content = (string) $singleFile['value'];
+            $protocol = (string) ($singleFile['protocol'] ?? (strtolower($fileMatch[1]) === 'xuiawgfile' ? 'amneziawg' : 'wireguard'));
+            $defaultName = normalizeConfigFilename($singleFile['filename'] ?? 'config.conf', '', true);
+            $namingKey = function_exists('rxFileNamingScopedKey') && function_exists('rxFileNamingKeyFile')
+                ? rxFileNamingScopedKey(rxFileNamingKeyFile($singleFile['filename'] ?? ''), $protocol)
+                : '';
+            $resolved = rxAutoFileResolveNaming($panel, 'xui_file', $namingKey, $defaultName, '');
+            $publicName = $resolved['filename'];
+            $caption = $resolved['caption'];
+            $fileKey = rxAutoFileKey('config_content', $protocol . '|' . $content);
+        } elseif (function_exists('xui_wg_conf_from_link')) {
+            $wg = xui_wg_conf_from_link($link);
+            if (is_array($wg) && isset($wg['conf']) && (string) $wg['conf'] !== '') {
+                $content = (string) $wg['conf'];
+                $protocol = (string) ($wg['protocol'] ?? 'wireguard');
+                $defaultName = normalizeConfigFilename(xui_wg_conf_filename($link, $protocol, (int) $index), '', true);
+                $descriptor = function_exists('rxFileNamingDescriptorFromLink') ? rxFileNamingDescriptorFromLink($link) : null;
+                $namingKey = is_array($descriptor) ? (string) ($descriptor['key'] ?? '') : '';
+                $ambiguous = $namingKey !== '' && (($keyCounts[$namingKey] ?? 0) > 1);
+                $resolved = rxAutoFileResolveNaming($panel, 'xui_wg', $namingKey, $defaultName, '', $ambiguous);
+                $publicName = $resolved['filename'];
+                $caption = $resolved['caption'];
+                $fileKey = rxAutoFileKey('config_content', $protocol . '|' . $content);
+            }
+        }
+        if ($fileKey === '' && function_exists('rebeccaConfigDownloadInfo')) {
+            $rebeccaInfo = rebeccaConfigDownloadInfo($link);
+            if (is_array($rebeccaInfo)) {
+                $descriptor = function_exists('rxFileNamingDescriptorFromLink') ? rxFileNamingDescriptorFromLink($link) : null;
+                $namingKey = is_array($descriptor) ? (string) ($descriptor['key'] ?? '') : '';
+                $ambiguous = $namingKey !== '' && (($keyCounts[$namingKey] ?? 0) > 1);
+                $defaultName = normalizeConfigFilename($rebeccaInfo['filename'], '', ($rebeccaInfo['kind'] ?? '') === 'wireguard');
+                $resolved = rxAutoFileResolveNaming($panel, 'rebecca', $namingKey, $defaultName, '', $ambiguous);
+                $fileKey = rxAutoFileKey('rebecca', (string) ($rebeccaInfo['kind'] ?? '') . '|' . (string) ($rebeccaInfo['url'] ?? ''));
+                if (!empty($deliveredKeys[$fileKey]) || (string) ($state[$fileKey] ?? '') === 'sent') {
+                    $result['skipped']++;
+                    continue;
+                }
+                $deliveredKeys[$fileKey] = true;
+                $result['total']++;
+                $tempExt = strtolower((string) pathinfo($resolved['filename'], PATHINFO_EXTENSION));
+                $tempExt = preg_match('/^[a-z0-9]{1,10}$/', $tempExt) ? '.' . $tempExt : '.tmp';
+                $temp = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'rxauto-' . bin2hex(random_bytes(8)) . $tempExt;
+                $status = 'failed';
+                try {
+                    if (rebeccaDownloadConfigFile($rebeccaInfo['url'], $temp)) {
+                        $status = rxAutoFileSendDocument($user_id, $invoice_id, $fileKey, $temp, $resolved['filename'], $resolved['caption']);
+                    } else {
+                        rxAutoFileDeliveryMark($invoice_id, $fileKey, 'failed', 'configuration download failed');
+                    }
+                } finally {
+                    @unlink($temp);
+                }
+                $result[$status] = (int) $result[$status] + 1;
+                continue;
+            }
+        }
+        if ($fileKey === '') {
+            continue;
+        }
+        if ($content !== '') {
+            $legacyKeys = [rxAutoFileKey('xui_wg', $content)];
+            $previousSingleFile = is_array($lazyDataUser) ? ($lazyDataUser['single_config_file'] ?? null) : null;
+            if (is_array($previousSingleFile) && (string) ($previousSingleFile['value'] ?? '') === $content) {
+                $legacyKeys[] = rxAutoFileKey('xui_file', $protocol . '|' . (string) ($previousSingleFile['filename'] ?? '') . '|' . $content);
+            }
+            foreach ($legacyKeys as $legacyKey) {
+                if (($state[$legacyKey] ?? '') === 'sent') {
+                    $state[$fileKey] = 'sent';
+                    break;
+                }
+            }
+        }
+        if (!empty($deliveredKeys[$fileKey]) || (string) ($state[$fileKey] ?? '') === 'sent') {
+            $result['skipped']++;
+            continue;
+        }
+        $deliveredKeys[$fileKey] = true;
+        $result['total']++;
+        $status = rxAutoFileSendContent($user_id, $invoice_id, $fileKey, $content, $publicName, $caption);
+        $result[$status] = (int) $result[$status] + 1;
+    }
+    $result['ok'] = $result['total'] === 0 || ($result['sent'] === $result['total'] && $result['failed'] === 0 && $result['unknown'] === 0);
+    return $result;
+}
+function rxAutoDeliverPurchaseFilesSafe($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id)
+{
+    try {
+        return rxAutoDeliverPurchaseFiles($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id);
+    } catch (Throwable $e) {
+        error_log('rxAutoDeliverPurchaseFiles failed: ' . $e->getMessage());
+        return ['ok' => false, 'sent' => 0, 'failed' => 0, 'unknown' => 0, 'skipped' => 0, 'total' => 0];
+    }
+}
+function sendMessageService($panel_info, $config, $sub_link, $username_service, $reply_markup, $caption, $invoice_id, $user_id = null, $image = 'images.jpg', $auto_files = false)
 {
     global $setting, $from_id;
     $config = normalizeServiceConfigs($config);
@@ -540,14 +966,22 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
         if (!empty($fileItems)) {
             $fileCount = count($fileItems);
             $index = 0;
+            $rxManualKeyCounts = function_exists('rxFileNamingManualKeyCounts') ? rxFileNamingManualKeyCounts($fileItems) : [];
             foreach ($fileItems as $fi) {
                 $index++;
                 $ext = (trim((string) ($fi['ext'] ?? '')) !== "") ? $fi['ext'] : "bin";
                 $publicName = rxManualsalePublicName($fi['name'] ?? '', $ext);
-                $manualFile = rxManualsaleTempPath($publicName);
-                file_put_contents($manualFile, (string) ($fi['content'] ?? ''));
                 $isLastFile = ($index === $fileCount);
                 $thisCaption = ($index === 1) ? $cleanCaption : '';
+                if (function_exists('rxFileNamingResolveManualItem')) {
+                    $rxManualKey = rxFileNamingManualItemKey($fi);
+                    $rxManualAmbiguous = ($rxManualKey !== '' && (($rxManualKeyCounts[$rxManualKey] ?? 0) > 1));
+                    $rxManualResolved = rxFileNamingResolveManualItem($fi, $publicName, $thisCaption, $rxManualAmbiguous);
+                    $publicName = $rxManualResolved['filename'];
+                    $thisCaption = $rxManualResolved['caption'];
+                }
+                $manualFile = rxManualsaleTempPath($publicName);
+                file_put_contents($manualFile, (string) ($fi['content'] ?? ''));
                 $offerConfig = ($isLastFile && $hasConfigOffer);
                 $offerSub = ($isLastFile && $hasSubOffer);
                 $fileKeyboard = rxBuildDeliveryOffer($panel_info, $invoice_id, $offerConfig, $offerSub, $reply_markup);
@@ -604,6 +1038,9 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
                     'reply_markup' => $cardKeyboard,
                 ]);
                 @unlink($cardPath);
+                if ($auto_files) {
+                    rxAutoDeliverPurchaseFilesSafe($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id);
+                }
                 return;
             } catch (Throwable $e) {
                 @unlink($cardPath);
@@ -611,12 +1048,18 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
             }
         } elseif (function_exists('nm_sendServiceQrFallback') && is_string($sub_link) && trim($sub_link) !== '') {
             if (nm_sendServiceQrFallback($user_id, $sub_link, $image, $cleanCaption, $finalKeyboard)) {
+                if ($auto_files) {
+                    rxAutoDeliverPurchaseFilesSafe($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id);
+                }
                 return;
             }
         }
     }
 
     sendmessage($user_id, $cleanCaption, $finalKeyboard, 'HTML');
+    if ($auto_files) {
+        rxAutoDeliverPurchaseFilesSafe($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id);
+    }
 }
 function isValidInvitationCode($setting, $fromId, $verfy_status)
 {

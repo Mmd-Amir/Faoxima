@@ -1,5 +1,5 @@
 import { durationCardsHtml, bindDurationCards, customPriceSummaryHtml, updateCustomPriceSummary } from '../custom-duration.js?v=1';
-import { call, ApiError, configFileUrl } from '../api.js?v=0.0.53';
+import { call, ApiError, configFileUrl } from '../api.js?v=0.0.54';
 import { downloadFromUrl, downloadBlob, dataUriToBlob, decodeDataUriText, isTelegramApp, tgPlatform } from '../download.js?v=0.0.52';
 import {
     escapeHtml, fmtPrice, fmtGb, fmtBytes, fmtIpLimit, skeletonList, copyToClipboard, toast, trafficPercent, serviceStatusBadge, blobToDataUrl,
@@ -97,8 +97,8 @@ function configName(c, i) {
     return 'کانفیگ ' + (i + 1);
 }
 
-async function serverDownload(username, index, name, clientType = '') {
-    const url = await configFileUrl(username, index, clientType);
+async function serverDownload(username, index, name, clientType = '', downloadType = 'config') {
+    const url = await configFileUrl(username, index, clientType, downloadType);
     if (!url) {
         return false;
     }
@@ -185,6 +185,96 @@ function wgConfProtocol(conf) {
     return 'wireguard';
 }
 
+function wgValidIpv4(host) {
+    const parts = host.split('.');
+    return parts.length === 4 && parts.every((part) => /^(?:0|[1-9][0-9]{0,2})$/.test(part) && Number(part) <= 255);
+}
+
+function wgValidIpv6(host) {
+    if (!host.includes(':') || !/^[0-9A-Fa-f:.]+$/.test(host)) return false;
+    let address = host;
+    if (address.includes('.')) {
+        const colon = address.lastIndexOf(':');
+        if (!wgValidIpv4(address.slice(colon + 1))) return false;
+        address = address.slice(0, colon + 1) + '0:0';
+    }
+    const halves = address.split('::');
+    if (halves.length > 2) return false;
+    const validGroup = (group) => /^[0-9A-Fa-f]{1,4}$/.test(group);
+    if (halves.length === 1) {
+        const groups = address.split(':');
+        return groups.length === 8 && groups.every(validGroup);
+    }
+    const left = halves[0] ? halves[0].split(':') : [];
+    const right = halves[1] ? halves[1].split(':') : [];
+    return left.length + right.length < 8 && left.every(validGroup) && right.every(validGroup);
+}
+
+function wgParseEndpoint(authorityRaw) {
+    let authority = String(authorityRaw || '');
+    const slash = authority.indexOf('/');
+    if (slash !== -1) {
+        if (authority.slice(slash) !== '/') return null;
+        authority = authority.slice(0, slash);
+    }
+    if (!authority) return null;
+    let host = '';
+    let port = '';
+    if (authority.charAt(0) === '[') {
+        const close = authority.indexOf(']');
+        if (close === -1) return null;
+        host = authority.slice(1, close);
+        const tail = authority.slice(close + 1);
+        if (tail.charAt(0) !== ':') return null;
+        port = tail.slice(1);
+        if (!wgValidIpv6(host)) return null;
+    } else {
+        const colon = authority.lastIndexOf(':');
+        if (colon === -1) return null;
+        host = authority.slice(0, colon);
+        port = authority.slice(colon + 1);
+        if (!host || host.indexOf(':') !== -1) return null;
+        if (/^[0-9.]+$/.test(host)) {
+            if (!wgValidIpv4(host)) return null;
+        } else {
+            const dnsHost = host.endsWith('.') ? host.slice(0, -1) : host;
+            if (!dnsHost || dnsHost.length > 253 || !dnsHost.split('.').every((label) => /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label))) return null;
+        }
+    }
+    if (!host || /[\s\[\]@?#\\]/.test(host)) return null;
+    if (port.length < 1 || port.length > 5 || /[^0-9]/.test(port)) return null;
+    const portNum = parseInt(port, 10);
+    if (portNum < 1 || portNum > 65535) return null;
+    return (authority.charAt(0) === '[' ? '[' + host + ']' : host) + ':' + port;
+}
+
+function wgDecodeComponent(raw) {
+    if (/%(?![0-9A-Fa-f]{2})/.test(raw)) return null;
+    try {
+        const decoded = decodeURIComponent(raw);
+        return /[\u0000-\u001F\u007F]/.test(decoded) ? null : decoded;
+    } catch (_) {
+        return null;
+    }
+}
+
+function wgParseQuery(queryRaw) {
+    const params = Object.create(null);
+    const query = String(queryRaw || '');
+    if (!query) return params;
+    for (const pair of query.split('&')) {
+        if (!pair) continue;
+        const eq = pair.indexOf('=');
+        const keyRaw = eq === -1 ? pair : pair.slice(0, eq);
+        const valueRaw = eq === -1 ? '' : pair.slice(eq + 1);
+        const key = wgDecodeComponent(keyRaw);
+        const value = wgDecodeComponent(valueRaw);
+        if (key === null || key === '' || value === null) return null;
+        params[key.toLowerCase()] = value;
+    }
+    return params;
+}
+
 function wgConfFromLink(link) {
     const s = String(link || '').trim();
     if (!s) return null;
@@ -202,36 +292,24 @@ function wgConfFromLink(link) {
     if (scheme !== 'wireguard' && scheme !== 'wg') return null;
 
     let body = s.slice(scheme.length + 3);
-    let remark = '';
     const hash = body.indexOf('#');
-    if (hash !== -1) {
-        try { remark = decodeURIComponent(body.slice(hash + 1)); } catch (_) { remark = body.slice(hash + 1); }
-        body = body.slice(0, hash);
-    }
+    if (hash !== -1) body = body.slice(0, hash);
+    let query = '';
+    const q = body.indexOf('?');
+    if (q !== -1) { query = body.slice(q + 1); body = body.slice(0, q); }
     const at = body.lastIndexOf('@');
     if (at === -1) return null;
-    let privateKey = body.slice(0, at);
-    try { privateKey = decodeURIComponent(privateKey); } catch (_) {}
-    let rest = body.slice(at + 1);
-    let query = '';
-    const q = rest.indexOf('?');
-    if (q !== -1) { query = rest.slice(q + 1); rest = rest.slice(0, q); }
-    const endpoint = rest;
+    const privateKey = wgDecodeComponent(body.slice(0, at));
+    const rest = body.slice(at + 1);
+    const endpoint = wgParseEndpoint(rest);
     if (!privateKey || !endpoint) return null;
 
-    const params = {};
-    query.split('&').forEach((pair) => {
-        if (!pair) return;
-        const eq = pair.indexOf('=');
-        const k = (eq === -1 ? pair : pair.slice(0, eq)).toLowerCase();
-        let v = eq === -1 ? '' : pair.slice(eq + 1);
-        try { v = decodeURIComponent(v.replace(/\+/g, ' ')); } catch (_) {}
-        params[k] = v;
-    });
+    const params = wgParseQuery(query);
+    if (params === null) return null;
 
     const lines = ['[Interface]', `PrivateKey = ${privateKey}`];
-    if (params.address) lines.push('Address = ' + params.address.replace(/,/g, ', '));
-    if (params.dns) lines.push('DNS = ' + params.dns.replace(/,/g, ', '));
+    if (params.address) lines.push('Address = ' + params.address);
+    if (params.dns) lines.push('DNS = ' + params.dns);
     if (params.mtu) lines.push('MTU = ' + params.mtu);
     const awgKeys = { jc: 'Jc', jmin: 'Jmin', jmax: 'Jmax', s1: 'S1', s2: 'S2', s3: 'S3', s4: 'S4', h1: 'H1', h2: 'H2', h3: 'H3', h4: 'H4', i1: 'I1' };
     let isAwg = false;
@@ -239,11 +317,10 @@ function wgConfFromLink(link) {
         if (params[k]) { lines.push(`${awgKeys[k]} = ${params[k]}`); isAwg = true; }
     });
     lines.push('');
-    if (remark) lines.push('# ' + remark);
     lines.push('[Peer]');
     if (params.publickey) lines.push('PublicKey = ' + params.publickey);
     if (params.presharedkey) lines.push('PresharedKey = ' + params.presharedkey);
-    lines.push('AllowedIPs = ' + (params.allowedips ? params.allowedips.replace(/,/g, ', ') : '0.0.0.0/0, ::/0'));
+    if (params.allowedips) lines.push('AllowedIPs = ' + params.allowedips);
     lines.push(`Endpoint = ${endpoint}`);
     if (params.keepalive) lines.push('PersistentKeepalive = ' + params.keepalive);
 
@@ -325,8 +402,8 @@ function configProtocolLabel(c) {
     if (isHttpDownloadLink(s)) {
         let path = '';
         try { path = new URL(s.split('#')[0]).pathname; } catch (_) { path = s.split('#')[0]; }
-        if (path.indexOf('/wg/') !== -1) return 'WireGuard';
-        if (path.indexOf('/ov/') !== -1) return 'OpenVPN';
+        if (/\/(?:wg|wireguard)(?:\/|$)/i.test(path)) return 'WireGuard';
+        if (/\/(?:ov|openvpn)(?:\/|$)/i.test(path) || /\.ovpn$/i.test(path)) return 'OpenVPN';
         return null;
     }
 
@@ -421,7 +498,7 @@ export function setConfigUsername(u, prefix) {
     }
 }
 
-function configListHtml(configs, isManual, offset = 0) {
+function configListHtml(configs, isManual, offset = 0, downloads = {}) {
     return '<div class="cfg-list" style="display:flex;flex-direction:column;gap:10px">' + configs.map((c, localI) => {
         const i = offset + localI;
         const structured = isStructuredConnectionInfo(c);
@@ -429,8 +506,13 @@ function configListHtml(configs, isManual, offset = 0) {
         const payload = wgInfo ? wgConfDataUri(wgInfo.conf) : configPayload(c);
         const protocolLabel = configProtocolLabel(c);
         const isFileDownload = !!wgInfo || isDownloadableFileLink(protocolLabel);
-        const wgFileName = wgInfo ? wgConfFilename(c, wgInfo.protocol, i) : '';
-        const remoteFileName = !wgInfo ? configDownloadFilename(payload, 'config.conf', false) : '';
+        const download = downloads[i] || {};
+        const displayName = download.custom && download.filename
+            ? String(download.filename).replace(/\.[^.]+$/, '')
+            : configName(c, i);
+        const serverIndex = Number.isInteger(download.index) ? download.index : i;
+        const wgFileName = wgInfo ? (download.filename || wgConfFilename(c, wgInfo.protocol, i)) : '';
+        const remoteFileName = !wgInfo ? (download.filename || configDownloadFilename(payload, protocolLabel === 'OpenVPN' ? 'openvpn.ovpn' : 'wireguard.conf', protocolLabel === 'WireGuard')) : '';
         const downloadId = isFileDownload && !wgInfo ? storeDownloadSource(payload) : '';
         return `
         <div class="cfg-item">
@@ -438,16 +520,16 @@ function configListHtml(configs, isManual, offset = 0) {
                 <span style="display:flex;align-items:center;gap:8px">
                     ${icon('config', 'class="ico ico-sm"')}
                     ${protocolLabel ? `<span class="muted" style="font-size:11px;white-space:nowrap;padding:2px 8px;border:1px solid var(--border);border-radius:999px">${escapeHtml(protocolLabel)}</span>` : ''}
-                    ${escapeHtml(configName(c, i))}
+                    ${escapeHtml(displayName)}
                 </span>
                 <span class="muted" style="font-size:12px;white-space:nowrap">${icon('download', 'class="ico ico-sm"')} دریافت کانفیگ</span>
             </button>
             <div class="cfg-detail" data-i="${i}" style="display:none;margin:8px 0 12px">
                 ${isFileDownload
                     ? (wgInfo
-                        ? `<button type="button" class="btn btn-ghost btn-block" data-wg-download data-wg-name="${escapeHtml(wgFileName)}" data-wg-user="${escapeHtml(__cfgUsername)}" data-wg-index="${i}" data-wg-conf="${escapeHtml(wgInfo.conf)}">${icon('download', 'class="ico ico-sm"')} دانلود فایل کانفیگ (${escapeHtml(wgFileName)})</button>
+                        ? `<button type="button" class="btn btn-ghost btn-block" data-wg-download data-wg-name="${escapeHtml(wgFileName)}" data-wg-user="${escapeHtml(__cfgUsername)}" data-wg-index="${serverIndex}" data-wg-conf="${escapeHtml(wgInfo.conf)}">${icon('download', 'class="ico ico-sm"')} دانلود فایل کانفیگ (${escapeHtml(wgFileName)})</button>
                        <button type="button" class="btn btn-ghost btn-block copy-btn" data-copy="${escapeHtml(wgInfo.conf)}" style="margin-top:6px">${icon('copy', 'class="ico ico-sm"')} کپی متن کانفیگ</button>`
-                        : `<button type="button" class="btn btn-ghost btn-block" data-url-download data-url-name="${escapeHtml(remoteFileName)}" data-download-id="${downloadId}">${icon('download', 'class="ico ico-sm"')} دانلود فایل کانفیگ</button>`)
+                        : `<button type="button" class="btn btn-ghost btn-block" data-url-download data-url-name="${escapeHtml(remoteFileName)}" data-url-user="${escapeHtml(__cfgUsername)}" data-url-index="${serverIndex}" data-download-id="${downloadId}">${icon('download', 'class="ico ico-sm"')} دانلود فایل کانفیگ (${escapeHtml(remoteFileName)})</button>`)
                     : structured
                     ? `
                 <div class="rx-info-card-wrap" style="position:relative">
@@ -468,16 +550,16 @@ function configListHtml(configs, isManual, offset = 0) {
 
 const CFG_PAGE_SIZE = 5;
 
-function configListPaginatedHtml(configs, isManual) {
+function configListPaginatedHtml(configs, isManual, downloads = {}) {
     const totalPages = Math.max(1, Math.ceil(configs.length / CFG_PAGE_SIZE));
     if (totalPages <= 1) {
-        return configListHtml(configs, isManual);
+        return configListHtml(configs, isManual, 0, downloads);
     }
     const pages = [];
     for (let p = 0; p < totalPages; p++) {
         const offset = p * CFG_PAGE_SIZE;
         const pageConfigs = configs.slice(offset, offset + CFG_PAGE_SIZE);
-        pages.push(`<div class="cfg-page" data-page="${p}" ${p === 0 ? '' : 'hidden'}>${configListHtml(pageConfigs, isManual, offset)}</div>`);
+        pages.push(`<div class="cfg-page" data-page="${p}" ${p === 0 ? '' : 'hidden'}>${configListHtml(pageConfigs, isManual, offset, downloads)}</div>`);
     }
     return `
         <div class="cfg-pages" data-total-pages="${totalPages}">${pages.join('')}</div>
@@ -571,6 +653,14 @@ export function bindConfigList($scope) {
             const src = downloadSources.get(btn.dataset.downloadId || '') || '';
             const name = btn.dataset.urlName || 'config.conf';
             if (!src) return;
+            const sourceUser = btn.dataset.urlUser || '';
+            if (sourceUser) {
+                const served = await serverDownload(sourceUser, parseInt(btn.dataset.urlIndex || '0', 10) || 0, name);
+                if (served) {
+                    closeOpenConfigDetail(btn);
+                    return;
+                }
+            }
             const uok = await downloadFromUrl(src, name, { label: 'remote-file' });
             if (uok) closeOpenConfigDetail(btn);
         });
@@ -589,7 +679,7 @@ export function bindConfigList($scope) {
             try { hapticImpact('light'); } catch (_) {}
             const fileUser = btn.dataset.fileUser || '';
             if (isTelegramApp() && fileUser) {
-                const served = await serverDownload(fileUser, 0, name);
+                const served = await serverDownload(fileUser, parseInt(btn.dataset.fileIndex || '0', 10) || 0, name, '', 'file');
                 if (served) {
                     closeOpenConfigDetail(btn);
                     return;
@@ -1160,7 +1250,7 @@ async function showConfigSection($body, info, username) {
         function renderPage() {
             const offset = (page - 1) * pageSize;
             const pageConfigs = configs.slice(offset, offset + pageSize);
-            $listHost.innerHTML = configListHtml(pageConfigs, undefined, offset);
+            $listHost.innerHTML = configListHtml(pageConfigs, undefined, offset, obj.downloads || {});
 
             $listHost.querySelectorAll('.copy-btn').forEach((btn) => {
                 btn.addEventListener('click', async (ev) => {
@@ -2518,10 +2608,14 @@ export function renderOutput(o) {
     if (type === 'config') {
         const items = Array.isArray(o.value) ? o.value : String(o.value || '').split('\n').filter(Boolean);
         if (items.length === 0) return '';
+        const downloads = {};
+        items.forEach((_, index) => {
+            downloads[index] = { filename: o.download_filenames?.[index] || '', custom: !!o.download_custom_names?.[index], index: (o.download_offset || 0) + index };
+        });
         return `
             <div class="sub-card">
                 <p class="section-title">${icon('config')} کانفیگ‌ها (${items.length})</p>
-                ${configListPaginatedHtml(items, o.isManual)}
+                ${configListPaginatedHtml(items, o.isManual, downloads)}
             </div>
         `;
     }
@@ -2561,7 +2655,7 @@ export function renderOutput(o) {
                 <p class="section-title">${icon('fileText')} فایل کانفیگ</p>
                 ${isRemoteUrl
                     ? `<button type="button" class="btn btn-ghost btn-block" data-url-download data-url-name="${escapeHtml(fileName)}" data-download-id="${downloadId}">${icon('download', 'class="ico ico-leading"')} دانلود ${escapeHtml(fileName)}</button>`
-                    : `<button type="button" class="btn btn-ghost btn-block" data-file-download data-file-name="${escapeHtml(fileName)}" data-file-user="${escapeHtml(__cfgUsername)}" ${isDataUri ? `data-file-src="${escapeHtml(fileValue)}"` : `data-file-text="${escapeHtml(fileValue)}"`}>${icon('download', 'class="ico ico-leading"')} دانلود ${escapeHtml(fileName)}</button>
+                    : `<button type="button" class="btn btn-ghost btn-block" data-file-download data-file-name="${escapeHtml(fileName)}" data-file-user="${escapeHtml(__cfgUsername)}" data-file-index="${Number.isInteger(o.file_index) ? o.file_index : 0}" ${isDataUri ? `data-file-src="${escapeHtml(fileValue)}"` : `data-file-text="${escapeHtml(fileValue)}"`}>${icon('download', 'class="ico ico-leading"')} دانلود ${escapeHtml(fileName)}</button>
                        ${fileText ? `<button type="button" class="btn btn-ghost btn-block copy-btn" data-copy="${escapeHtml(fileText)}" style="margin-top:6px">${icon('copy', 'class="ico ico-sm"')} کپی متن فایل</button>` : ''}`}
             </div>
         `;

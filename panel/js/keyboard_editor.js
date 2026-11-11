@@ -38,7 +38,7 @@
                     if (typeof btn === 'string') return { text: btn };
                     if (btn && typeof btn === 'object') {
                         var out = { text: String(btn.text || '') };
-                        if (btn.style && ['primary', 'success', 'danger'].indexOf(btn.style) !== -1) {
+                        if (btn.style && ['none', 'primary', 'success', 'danger'].indexOf(btn.style) !== -1) {
                             out.style = btn.style;
                         }
                         return out;
@@ -402,7 +402,7 @@
             modalCustomTextEl.value = '';
         }
 
-        var curStyle = current.style || 'default';
+        var curStyle = current.style && current.style !== 'default' ? current.style : 'none';
         modalColorEls.forEach(function (r) { r.checked = (r.value === curStyle); });
         modalEl.classList.add('open');
         setTimeout(function () {
@@ -425,7 +425,7 @@
         var selVal = modalSelectEl.value;
         var text = selVal;
 
-        var style = 'default';
+        var style = 'none';
         modalColorEls.forEach(function (r) { if (r.checked) style = r.value; });
 
         var btn = { text: text };

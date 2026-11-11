@@ -874,6 +874,7 @@ try {
         agent varchar(200) NULL,
         sublink varchar(500) NULL,
         config varchar(500) NULL,
+        auto_file varchar(20) NULL DEFAULT 'offautofile',
         MethodUsername varchar(700) NULL,
         TestAccount varchar(100) NULL,
         limit_panel varchar(100) NULL,
@@ -1016,6 +1017,7 @@ try {
         addFieldToTable("marzban_panel", "status", "active", "VARCHAR(50)");
         addFieldToTable("marzban_panel", "sublink", "onsublink", "VARCHAR(50)");
         addFieldToTable("marzban_panel", "config", "offconfig", "VARCHAR(50)");
+        addFieldToTable("marzban_panel", "auto_file", "offautofile", "VARCHAR(20)");
         addFieldToTable("marzban_panel", "national_net_status", "off_national_net", "VARCHAR(50)");
         addFieldToTable("marzban_panel", "stock_source_panel", null, "VARCHAR(191)");
         addFieldToTable("marzban_panel", "remna_api_token", null, "VARCHAR(2000)");
@@ -3962,6 +3964,54 @@ try {
 }
 
 try {
+    addFieldToTable("setting", "config_file_custom_status", "0", "VARCHAR(20) NULL DEFAULT '0'");
+} catch (Throwable $e) {
+    file_put_contents('error_log', '[table.php setting config file naming col] ' . $e->getMessage() . "\n", FILE_APPEND);
+}
+
+try {
+    $connect->query("CREATE TABLE IF NOT EXISTS config_file_rule (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        panel_ref VARCHAR(191) NOT NULL DEFAULT '',
+        panel_code VARCHAR(100) NOT NULL DEFAULT '',
+        panel_name VARCHAR(191) NOT NULL DEFAULT '',
+        panel_type VARCHAR(50) NOT NULL DEFAULT '',
+        source VARCHAR(32) NOT NULL DEFAULT '',
+        source_service VARCHAR(191) NOT NULL DEFAULT '',
+        match_key VARCHAR(191) NOT NULL DEFAULT '',
+        match_label VARCHAR(255) NOT NULL DEFAULT '',
+        match_basis VARCHAR(20) NOT NULL DEFAULT '',
+        file_ext VARCHAR(20) NOT NULL DEFAULT '',
+        custom_filename VARCHAR(191) NOT NULL DEFAULT '',
+        custom_caption VARCHAR(1024) NOT NULL DEFAULT '',
+        is_enabled TINYINT(1) NOT NULL DEFAULT 1,
+        created_at INT UNSIGNED NOT NULL DEFAULT 0,
+        updated_at INT UNSIGNED NOT NULL DEFAULT 0,
+        UNIQUE KEY uq_cfr_target (panel_ref, source, match_key),
+        KEY idx_cfr_panel (panel_ref)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+} catch (Throwable $e) {
+    file_put_contents('error_log', '[table.php config file rule table] ' . $e->getMessage() . "\n", FILE_APPEND);
+}
+
+try {
+    $connect->query("CREATE TABLE IF NOT EXISTS auto_file_delivery (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        id_invoice VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+        file_key CHAR(64) NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'failed',
+        detail VARCHAR(500) NOT NULL DEFAULT '',
+        attempts INT UNSIGNED NOT NULL DEFAULT 0,
+        created_at INT UNSIGNED NOT NULL DEFAULT 0,
+        updated_at INT UNSIGNED NOT NULL DEFAULT 0,
+        UNIQUE KEY uniq_afd_invoice_file (id_invoice, file_key),
+        KEY idx_afd_invoice_status (id_invoice, status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+} catch (Throwable $e) {
+    file_put_contents('error_log', '[table.php auto file delivery table] ' . $e->getMessage() . "\n", FILE_APPEND);
+}
+
+try {
     $connect->query("DELETE FROM textbot WHERE id_text IN ('miniapp_suggest_2','miniapp_suggest_3','miniapp_suggest_4')");
 } catch (Exception $e) {}
 
@@ -4036,6 +4086,7 @@ try {
         'manualsell','departman','support_message','wheel_list','botsaz','app','logs_api','category',
         'reagent_report','crypto_wallets','crypto_verified_hashes','crypto_sender_locks','premium_emojis',
         'nm_config_stock','nm_stock_shelves','nm_config_stock_log','nm_stock_product_map','cron_runtime_state','processed_updates',
+        'config_file_rule',
     ];
     $rxEngRes = $connect->query("SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND ENGINE IS NOT NULL AND ENGINE <> 'InnoDB'");
     if ($rxEngRes) {

@@ -2156,7 +2156,7 @@ $nameconfig";
         if (!empty($setting['keyboard_styles_all'])) {
             $_rx_all_kbd_s = json_decode($setting['keyboard_styles_all'], true);
             if (is_array($_rx_all_kbd_s) && !empty($_rx_all_kbd_s['service'])) {
-                $_rx_svc_styles = $_rx_all_kbd_s['service'];
+                $_rx_svc_styles = array_filter($_rx_all_kbd_s['service'], static function ($v) { return $v !== 'default'; });
             }
         }
         if (function_exists('rx_getKeyboardDefaultStyles') && (!function_exists('rx_kb_use_defaults') || rx_kb_use_defaults())) {
@@ -2528,10 +2528,12 @@ $nameconfig";
 
     if ($marzban_list_get['type'] == "WGDashboard") {
         sendmessage($from_id, $textsub, $bakinfos, 'HTML');
-        $urlimage = normalizeConfigFilename("{$marzban_list_get['inboundid']}-{$nameloc['username']}.conf", $marzban_list_get['namecustom'] ?? '', true);
-        file_put_contents($urlimage, $DataUserOut['subscription_url']);
-        sendDocument($from_id, $urlimage, "⚙️ کانفیگ شما");
-        unlink($urlimage);
+        $wgSubName = normalizeConfigFilename("{$marzban_list_get['inboundid']}-{$nameloc['username']}.conf", $marzban_list_get['namecustom'] ?? '', true);
+        $wgSubResolved = rxFileNamingResolve($marzban_list_get, 'wgdashboard', rxFileNamingKeySubscription($marzban_list_get['inboundid'] ?? ''), $wgSubName, '');
+        $wgSubPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'rxconf-' . bin2hex(random_bytes(8)) . '.conf';
+        file_put_contents($wgSubPath, $DataUserOut['subscription_url']);
+        sendDocument($from_id, $wgSubPath, $wgSubResolved['caption'], $wgSubResolved['filename']);
+        @unlink($wgSubPath);
     } elseif ((!function_exists('isQrDisabled') || !isQrDisabled())
         && !(function_exists('nmPanelNationalEnabled') && nmPanelNationalEnabled($marzban_list_get))
         && trim((string) $subscriptionurl) !== '') {
@@ -2785,9 +2787,30 @@ $nameconfig";
         return;
     }
     $config = "";
+    $rxAllWgKeyCounts = rxFileNamingEnabled() ? rxFileNamingLinkKeyCounts($DataUserOut['links'], $_configgetPanelChk) : [];
     if ($dataget[2] == "1520") {
+        $rxDeliveredConfigHashes = [];
         for ($i = 0; $i < count($DataUserOut['links']); ++$i) {
             if ($i === 0 && !empty($DataUserOut['single_config_file']) && is_array($DataUserOut['single_config_file'])) {
+                $allSingleFile = $DataUserOut['single_config_file'];
+                $allSingleName = normalizeConfigFilename($allSingleFile['filename'], '', true);
+                $allSingleKey = rxFileNamingScopedKey(rxFileNamingKeyFile($allSingleFile['filename']), $allSingleFile['protocol'] ?? 'wireguard');
+                $allSingleResolved = rxFileNamingResolve($_configgetPanelChk, 'xui_file', $allSingleKey, $allSingleName, '');
+                $allSingleTemp = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'rxconf-' . bin2hex(random_bytes(8)) . '.conf';
+                try {
+                    if (file_put_contents($allSingleTemp, (string) $allSingleFile['value']) === false) {
+                        sendmessage($from_id, '❌ خطا در آماده‌سازی فایل کانفیگ.', null, 'HTML');
+                        return;
+                    }
+                    $allSingleSent = sendDocument($from_id, $allSingleTemp, $allSingleResolved['caption'], $allSingleResolved['filename']);
+                    if (!is_array($allSingleSent) || empty($allSingleSent['ok'])) {
+                        sendmessage($from_id, '❌ ارسال فایل کانفیگ ناموفق بود؛ دوباره تلاش کنید.', null, 'HTML');
+                        return;
+                    }
+                    $rxDeliveredConfigHashes[hash('sha256', (string) $allSingleFile['value'])] = true;
+                } finally {
+                    @unlink($allSingleTemp);
+                }
                 continue;
             }
             $allConfigItem = (string) $DataUserOut['links'][$i];
@@ -2802,19 +2825,56 @@ $nameconfig";
             if (function_exists('xui_wg_conf_from_link')) {
                 $allWgConf = xui_wg_conf_from_link($allConfigItem);
                 if (is_array($allWgConf)) {
+                    $allWgHash = hash('sha256', (string) $allWgConf['conf']);
+                    if (isset($rxDeliveredConfigHashes[$allWgHash])) {
+                        continue;
+                    }
                     $allWgName = normalizeConfigFilename(xui_wg_conf_filename($allConfigItem, $allWgConf['protocol'], $i), '', true);
-                    $allWgDest = "{$from_id}-" . bin2hex(random_bytes(3)) . '-' . $allWgName;
-                    file_put_contents($allWgDest, $allWgConf['conf']);
-                    $allWgLabel = $allWgConf['protocol'] === 'amneziawg' ? 'AmneziaWG' : 'WireGuard';
-                    telegram('sendDocument', [
-                        'chat_id' => $from_id,
-                        'document' => new CURLFile($allWgDest, 'application/octet-stream', $allWgName),
-                        'caption' => "⚙️ کانفیگ شما ({$allWgLabel})",
-                        'parse_mode' => 'HTML',
-                    ]);
-                    unlink($allWgDest);
+                    $allWgDescriptor = rxFileNamingEnabled() ? rxFileNamingDescriptorFromLink($allConfigItem) : null;
+                    $allWgKey = is_array($allWgDescriptor) ? (string) ($allWgDescriptor['key'] ?? '') : '';
+                    $allWgAmbiguous = ($allWgKey !== '' && (($rxAllWgKeyCounts[$allWgKey] ?? 0) > 1));
+                    $allWgResolved = rxFileNamingResolve($_configgetPanelChk, 'xui_wg', $allWgKey, $allWgName, '', $allWgAmbiguous);
+                    $allWgName = $allWgResolved['filename'];
+                    $allWgDest = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'rxconf-' . bin2hex(random_bytes(8)) . '.conf';
+                    try {
+                        if (file_put_contents($allWgDest, $allWgConf['conf']) === false) {
+                            sendmessage($from_id, '❌ خطا در آماده‌سازی فایل کانفیگ.', null, 'HTML');
+                            return;
+                        }
+                        $allWgSent = sendDocument($from_id, $allWgDest, $allWgResolved['caption'], $allWgName);
+                        if (!is_array($allWgSent) || empty($allWgSent['ok'])) {
+                            sendmessage($from_id, '❌ ارسال فایل کانفیگ ناموفق بود؛ دوباره تلاش کنید.', null, 'HTML');
+                            return;
+                        }
+                        $rxDeliveredConfigHashes[$allWgHash] = true;
+                    } finally {
+                        @unlink($allWgDest);
+                    }
                     continue;
                 }
+            }
+            $allRebeccaInfo = function_exists('rebeccaConfigDownloadInfo') ? rebeccaConfigDownloadInfo($allConfigItem) : null;
+            if (is_array($allRebeccaInfo)) {
+                $allRebeccaDescriptor = rxFileNamingDescriptorFromLink($allConfigItem);
+                $allRebeccaKey = is_array($allRebeccaDescriptor) ? $allRebeccaDescriptor['key'] : '';
+                $allRebeccaName = normalizeConfigFilename($allRebeccaInfo['filename'], '', $allRebeccaInfo['kind'] === 'wireguard');
+                $allRebeccaAmbiguous = $allRebeccaKey !== '' && (($rxAllWgKeyCounts[$allRebeccaKey] ?? 0) > 1);
+                $allRebeccaResolved = rxFileNamingResolve($_configgetPanelChk, 'rebecca', $allRebeccaKey, $allRebeccaName, '', $allRebeccaAmbiguous);
+                $allRebeccaTemp = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'rxconf-' . bin2hex(random_bytes(8)) . '.tmp';
+                try {
+                    if (!rebeccaDownloadConfigFile($allRebeccaInfo['url'], $allRebeccaTemp)) {
+                        sendmessage($from_id, '❌ خطا در دریافت فایل کانفیگ از پنل.', null, 'HTML');
+                        return;
+                    }
+                    $allRebeccaSent = sendDocument($from_id, $allRebeccaTemp, $allRebeccaResolved['caption'], $allRebeccaResolved['filename']);
+                    if (!is_array($allRebeccaSent) || empty($allRebeccaSent['ok'])) {
+                        sendmessage($from_id, '❌ ارسال فایل کانفیگ ناموفق بود؛ دوباره تلاش کنید.', null, 'HTML');
+                        return;
+                    }
+                } finally {
+                    @unlink($allRebeccaTemp);
+                }
+                continue;
             }
             if (preg_match('/^https?:\/\//i', $allConfigItem)) {
                 $allConfigItem = strtok($allConfigItem, '#');
@@ -2827,31 +2887,38 @@ $nameconfig";
     if ((int) $dataget[2] === 0 && !empty($DataUserOut['single_config_file']) && is_array($DataUserOut['single_config_file'])) {
         $singleConfigFile = $DataUserOut['single_config_file'];
         $xuiFileName = normalizeConfigFilename($singleConfigFile['filename'], '', true);
-        $xuiFileDest = "{$from_id}-" . bin2hex(random_bytes(3)) . '-' . $xuiFileName;
+        $xuiFileKey = rxFileNamingScopedKey(rxFileNamingKeyFile($singleConfigFile['filename']), $singleConfigFile['protocol'] ?? 'wireguard');
+        $xuiFileResolved = rxFileNamingResolve($_configgetPanelChk, 'xui_file', $xuiFileKey, $xuiFileName, '');
+        $xuiFileName = $xuiFileResolved['filename'];
+        $xuiFileDest = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'rxconf-' . bin2hex(random_bytes(8)) . '.conf';
         file_put_contents($xuiFileDest, $singleConfigFile['value']);
         telegram('sendDocument', [
             'chat_id' => $from_id,
             'document' => new CURLFile($xuiFileDest, 'application/octet-stream', $xuiFileName),
-            'caption' => "⚙️ کانفیگ شما",
+            'caption' => $xuiFileResolved['caption'],
             'parse_mode' => 'HTML',
         ]);
-        unlink($xuiFileDest);
+        @unlink($xuiFileDest);
         return;
     }
     if (function_exists('xui_wg_conf_from_link')) {
         $xuiWgConf = xui_wg_conf_from_link($selectedConfig);
         if (is_array($xuiWgConf)) {
             $xuiWgName = normalizeConfigFilename(xui_wg_conf_filename($selectedConfig, $xuiWgConf['protocol'], (int) $dataget[2]), '', true);
-            $xuiWgDest = "{$from_id}-" . bin2hex(random_bytes(3)) . '-' . $xuiWgName;
+            $xuiWgDescriptor = rxFileNamingDescriptorFromLink($selectedConfig);
+            $xuiWgKey = is_array($xuiWgDescriptor) ? (string) ($xuiWgDescriptor['key'] ?? '') : '';
+            $xuiWgAmbiguous = $xuiWgKey !== '' && (($rxAllWgKeyCounts[$xuiWgKey] ?? 0) > 1);
+            $xuiWgResolved = rxFileNamingResolve($_configgetPanelChk, 'xui_wg', $xuiWgKey, $xuiWgName, '', $xuiWgAmbiguous);
+            $xuiWgName = $xuiWgResolved['filename'];
+            $xuiWgDest = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'rxconf-' . bin2hex(random_bytes(8)) . '.conf';
             file_put_contents($xuiWgDest, $xuiWgConf['conf']);
-            $xuiWgLabel = $xuiWgConf['protocol'] === 'amneziawg' ? 'AmneziaWG' : 'WireGuard';
             telegram('sendDocument', [
                 'chat_id' => $from_id,
                 'document' => new CURLFile($xuiWgDest, 'application/octet-stream', $xuiWgName),
-                'caption' => "⚙️ کانفیگ شما ({$xuiWgLabel})",
+                'caption' => $xuiWgResolved['caption'],
                 'parse_mode' => 'HTML',
             ]);
-            unlink($xuiWgDest);
+            @unlink($xuiWgDest);
             return;
         }
     }
@@ -2871,9 +2938,16 @@ $nameconfig";
         $rebeccaDownloadInfo = rebeccaConfigDownloadInfo($selectedConfig);
         if ($rebeccaDownloadInfo !== null) {
             $rebeccaPublicName = normalizeConfigFilename($rebeccaDownloadInfo['filename'], '', $rebeccaDownloadInfo['kind'] === 'wireguard');
-            $rebeccaDownloadDest = "{$from_id}-" . bin2hex(random_bytes(3)) . '-' . $rebeccaPublicName;
+            $rebeccaDescriptor = rxFileNamingDescriptorFromLink($selectedConfig);
+            $rebeccaKey = is_array($rebeccaDescriptor) ? (string) ($rebeccaDescriptor['key'] ?? '') : '';
+            $rebeccaAmbiguous = $rebeccaKey !== '' && (($rxAllWgKeyCounts[$rebeccaKey] ?? 0) > 1);
+            $rebeccaResolved = rxFileNamingResolve($_configgetPanelChk, 'rebecca', $rebeccaKey, $rebeccaPublicName, '', $rebeccaAmbiguous);
+            $rebeccaPublicName = $rebeccaResolved['filename'];
+            $rebeccaTempExt = strtolower((string) pathinfo($rebeccaPublicName, PATHINFO_EXTENSION));
+            $rebeccaTempExt = preg_match('/^[a-z0-9]{1,10}$/', $rebeccaTempExt) ? '.' . $rebeccaTempExt : '.tmp';
+            $rebeccaDownloadDest = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'rxconf-' . bin2hex(random_bytes(8)) . $rebeccaTempExt;
             if (rebeccaDownloadConfigFile($rebeccaDownloadInfo['url'], $rebeccaDownloadDest)) {
-                $rebeccaSendResult = sendDocument($from_id, $rebeccaDownloadDest, "⚙️ کانفیگ شما", $rebeccaPublicName);
+                $rebeccaSendResult = sendDocument($from_id, $rebeccaDownloadDest, $rebeccaResolved['caption'], $rebeccaPublicName);
                 @unlink($rebeccaDownloadDest);
                 if (!is_array($rebeccaSendResult) || empty($rebeccaSendResult['ok'])) {
                     sendmessage($from_id, $datatextbot['dyn_errors_config_read_from_panel_error'] ?? "❌ خطا در خواندن کانفیگ از پنل.", null, 'html');

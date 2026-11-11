@@ -41,7 +41,7 @@ if (!function_exists('nmStockStyles')) {
         if (!empty($setting['keyboard_styles_all'])) {
             $all = json_decode($setting['keyboard_styles_all'], true);
             if (is_array($all) && !empty($all['user_dynamic_lists'])) {
-                $styles = $all['user_dynamic_lists'];
+                $styles = array_filter($all['user_dynamic_lists'], static function ($v) { return $v !== 'default'; });
             }
         }
         if (function_exists('rx_getKeyboardDefaultStyles') && (!function_exists('rx_kb_use_defaults') || rx_kb_use_defaults())) {

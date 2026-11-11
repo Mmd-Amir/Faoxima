@@ -5187,10 +5187,10 @@ $caption";
     $Confirm_pay = json_encode([
         'inline_keyboard' => [
             [
-                ['text' => "✅ تایید شده", 'callback_data' => "confirmpaid"],
+                ['text' => "✅ تایید شده", 'callback_data' => "confirmpaid", 'style' => 'success', '_rxkeep' => 1],
             ],
             [
-                ['text' => "⚙️ مدیریت کاربر", 'callback_data' => "manageuser_" . $Payment_report['id_user']],
+                ['text' => "⚙️ مدیریت کاربر", 'callback_data' => "manageuser_" . $Payment_report['id_user'], 'style' => 'primary', '_rxkeep' => 1],
             ]
         ]
     ]);

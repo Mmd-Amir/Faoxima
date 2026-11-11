@@ -642,10 +642,11 @@ function rebeccaConfigDownloadInfo(string $link)
     }
     $urlOnly = strtok($link, '#');
     $path = parse_url($urlOnly, PHP_URL_PATH) ?: '';
-    if (preg_match('#/wg/#', $path)) {
+    $extension = strtolower((string) pathinfo($path, PATHINFO_EXTENSION));
+    if (preg_match('#/(?:wg|wireguard)(?:/|$)#i', $path)) {
         $kind = 'wireguard';
         $ext = '.conf';
-    } elseif (preg_match('#/ov/#', $path)) {
+    } elseif (preg_match('#/(?:ov|openvpn)(?:/|$)#i', $path) || $extension === 'ovpn') {
         $kind = 'openvpn';
         $ext = '.ovpn';
     } else {

@@ -76,6 +76,11 @@ final class ConfigFileHandler extends BaseHandler
 
         $content = null;
         $filename = null;
+        $customFilename = false;
+        $downloadType = FaoximaInput::nullableString($this->data, 'download_type') ?? '';
+        if (!in_array($downloadType, ['', 'file', 'config'], true)) {
+            FaoximaResponse::badRequest('Invalid download type');
+        }
 
         if ($requestedType !== 'links') {
             $documents = ServiceHandler::clientDocumentsFromPayload($payload, $requestedType);
@@ -86,8 +91,15 @@ final class ConfigFileHandler extends BaseHandler
             $this->sendDownload($document, ServiceHandler::clientDocumentFilename($requestedType, $index, count($documents)), (string)($payload['file_prefix'] ?? ''), false);
         }
 
+        $fileIndex = 0;
         foreach ((array)($payload['service_output'] ?? []) as $entry) {
+            if ($downloadType === 'config') {
+                break;
+            }
             if (strtolower((string)($entry['type'] ?? '')) !== 'file') {
+                continue;
+            }
+            if ($downloadType === 'file' && $fileIndex++ !== $index) {
                 continue;
             }
             $value = (string)($entry['value'] ?? '');
@@ -96,22 +108,28 @@ final class ConfigFileHandler extends BaseHandler
             }
             $content = $this->materialize($value);
             $filename = (string)($entry['filename'] ?? 'config.conf');
+            $customFilename = !empty($entry['filename_custom']);
             break;
         }
 
-        if ($content === null) {
+        if ($content === null && $downloadType !== 'file') {
             $links = [];
+            $linkFilenames = [];
             foreach ((array)($payload['service_output'] ?? []) as $entry) {
                 if (strtolower((string)($entry['type'] ?? '')) !== 'config') {
                     continue;
                 }
                 $val = $entry['value'] ?? null;
                 if (is_array($val)) {
-                    foreach ($val as $v) {
-                        if (is_string($v) && $v !== '') $links[] = $v;
+                    foreach (array_values($val) as $localIndex => $v) {
+                        if (is_string($v) && $v !== '') {
+                            $links[] = $v;
+                            $linkFilenames[] = (string) ($entry['download_filenames'][$localIndex] ?? '');
+                        }
                     }
                 } elseif (is_string($val) && $val !== '') {
                     $links[] = $val;
+                    $linkFilenames[] = (string) ($entry['download_filenames'][0] ?? '');
                 }
             }
             $link = $links[$index] ?? null;
@@ -122,6 +140,28 @@ final class ConfigFileHandler extends BaseHandler
                     $filename = xui_wg_conf_filename($link, $wg['protocol'], $index);
                 }
             }
+            if ($content === null && is_string($link) && function_exists('rebeccaConfigDownloadInfo')) {
+                $downloadInfo = rebeccaConfigDownloadInfo($link);
+                if (is_array($downloadInfo)) {
+                    $downloadTemp = tempnam(sys_get_temp_dir(), 'rxmini-');
+                    if ($downloadTemp === false) {
+                        FaoximaResponse::fail(500, 'Unable to prepare download');
+                    }
+                    try {
+                        if (rebeccaDownloadConfigFile($downloadInfo['url'], $downloadTemp)) {
+                            $downloadContent = file_get_contents($downloadTemp);
+                            $content = is_string($downloadContent) ? $downloadContent : null;
+                            $filename = $downloadInfo['filename'];
+                        }
+                    } finally {
+                        @unlink($downloadTemp);
+                    }
+                }
+            }
+            if ($content !== null && ($linkFilenames[$index] ?? '') !== '') {
+                $filename = $linkFilenames[$index];
+                $customFilename = true;
+            }
         }
 
         if ($content === null || $content === '') {
@@ -130,7 +170,7 @@ final class ConfigFileHandler extends BaseHandler
 
         $wireguard = strtolower((string)pathinfo((string)$filename, PATHINFO_EXTENSION)) === 'conf'
             && stripos((string)$content, '[Interface]') !== false;
-        $this->sendDownload((string)$content, (string)$filename, (string)($payload['file_prefix'] ?? ''), $wireguard);
+        $this->sendDownload((string)$content, (string)$filename, $customFilename ? '' : (string)($payload['file_prefix'] ?? ''), $wireguard);
     }
 
     private function sendDownload(string $content, string $filename, string $prefix, bool $wireguard): void

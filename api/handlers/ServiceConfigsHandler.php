@@ -51,18 +51,29 @@ final class ServiceConfigsHandler extends BaseHandler
 
 
         $configs = [];
+        $downloadsByConfig = [];
+        $sourceIndex = 0;
         foreach ((array)($payload['service_output'] ?? []) as $entry) {
             $t = strtolower((string)($entry['type'] ?? ''));
             if ($t === 'config') {
                 $val = $entry['value'] ?? null;
                 if (is_array($val)) {
-                    foreach ($val as $v) {
-                        if (is_string($v) && $v !== '') $configs[] = $v;
+                    foreach (array_values($val) as $localIndex => $v) {
+                        if (is_string($v) && $v !== '') {
+                            $configs[] = $v;
+                            if (!isset($downloadsByConfig[$v])) {
+                                $downloadsByConfig[$v] = ['filename' => (string) ($entry['download_filenames'][$localIndex] ?? ''), 'custom' => !empty($entry['download_custom_names'][$localIndex]), 'index' => $sourceIndex];
+                            }
+                            $sourceIndex++;
+                        }
                     }
                 } elseif (is_string($val) && $val !== '') {
                     foreach (preg_split('/\r?\n/', $val) as $line) {
                         $line = trim($line);
-                        if ($line !== '') $configs[] = $line;
+                        if ($line !== '') {
+                            $configs[] = $line;
+                            $downloadsByConfig[$line] = ['filename' => (string) ($entry['download_filenames'][0] ?? ''), 'custom' => !empty($entry['download_custom_names'][0]), 'index' => $sourceIndex++];
+                        }
                     }
                 }
             } elseif ($t === 'password' && !empty($entry['value'])) {
@@ -78,11 +89,18 @@ final class ServiceConfigsHandler extends BaseHandler
             }
         }
 
+        $configs = array_values(array_unique($configs));
+        $downloads = [];
+        foreach ($configs as $index => $config) {
+            $downloads[$index] = $downloadsByConfig[$config] ?? ['filename' => '', 'index' => $index];
+        }
+
         FaoximaResponse::ok([
             'username'         => (string)($payload['username'] ?? $username),
-            'configs'          => array_values(array_unique($configs)),
+            'configs'          => $configs,
+            'downloads'        => $downloads,
             'subscription_url' => (string)($payload['subscription_url'] ?? ''),
-            'count'            => count(array_values(array_unique($configs))),
+            'count'            => count($configs),
             'client_type'           => 'links',
             'requested_client_type' => $requestedType,
         ]);

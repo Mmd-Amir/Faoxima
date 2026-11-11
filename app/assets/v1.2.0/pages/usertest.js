@@ -2,7 +2,7 @@ import { call } from '../api.js?v=0.0.53';
 import { escapeHtml, skeletonList, emptyState, copyToClipboard, toast } from '../utils.js?v=0.0.52';
 import { hapticImpact, hapticNotify } from '../telegram.js?v=0.0.52';
 import { icon } from '../icons.js?v=0.0.52';
-import { renderServiceOutputs } from './service.js?v=0.0.56';
+import { renderServiceOutputs } from './service.js?v=0.0.70';
 import { downloadBlob, base64ToBlob } from '../download.js?v=0.0.52';
 
 export async function usertest(view) {

@@ -406,9 +406,10 @@ final class PurchaseHandler extends BaseHandler
                 FaoximaResponse::fail(409, faoxima_textbot_get('dyn_purchase_stock_depleted', '❌ موجودی انبار برای این محصول تمام شده است؛ مبلغی کسر نشد.'));
             }
 
-            $stockContent = trim((string)($stock['content'] ?? ''));
+            $stockContent = (string)($stock['content'] ?? '');
+            $stockContentTrimmed = trim($stockContent);
             $stockSubLink = trim((string)($stock['sub_link'] ?? ''));
-            if ($stockSubLink === '' && preg_match('/^https?:\/\//i', $stockContent)) $stockSubLink = $stockContent;
+            if ($stockSubLink === '' && preg_match('/^https?:\/\//i', $stockContentTrimmed)) $stockSubLink = $stockContentTrimmed;
 
             update('invoice', 'user_info', $stockContent, 'id_invoice', $orderId);
             try { update('invoice', 'source_panel_code', $panel['code_panel'] ?? '', 'id_invoice', $orderId); } catch (Throwable $e) {}
@@ -433,12 +434,12 @@ final class PurchaseHandler extends BaseHandler
             }
             $this->reportPurchase($buyReport, $product, $panel, $usernameAc, $orderId, $invoiceCount, $balanceBeforePurchase);
 
-            $stockConfigs = ($stockContent !== '' && $stockContent !== $stockSubLink) ? [$stockContent] : [];
+            $stockConfigs = ($stockContentTrimmed !== '' && $stockContentTrimmed !== $stockSubLink) ? [$stockContent] : [];
             $stockOutput = [];
             if ($stockSubLink !== '') {
                 $stockOutput[] = ['type' => 'link', 'value' => $stockSubLink];
             }
-            if ($stockContent !== '' && $stockContent !== $stockSubLink) {
+            if ($stockContentTrimmed !== '' && $stockContentTrimmed !== $stockSubLink) {
                 $stockFormat = strtolower((string)($stock['format'] ?? ''));
                 if ($stockFormat === '' && function_exists('nmStockDetectFormat')) {
                     $stockFormat = strtolower((string)nmStockDetectFormat($stockContent));
@@ -672,12 +673,22 @@ final class PurchaseHandler extends BaseHandler
                 $panel,
                 $configList,
                 $subLink,
-                $this->user['username'] ?? '',
+                trim((string) ($remote['username'] ?? '')) !== '' ? $remote['username'] : $usernameAc,
                 $serviceKeyboard,
                 $template,
                 $orderId,
                 $this->user['id'],
-                $backgroundImage
+                $backgroundImage,
+                true
+            );
+        } else {
+            rxAutoDeliverPurchaseFilesSafe(
+                $panel,
+                $configList,
+                $subLink,
+                trim((string) ($remote['username'] ?? '')) !== '' ? $remote['username'] : $usernameAc,
+                $this->user['id'],
+                $orderId
             );
         }
 
@@ -727,8 +738,8 @@ final class PurchaseHandler extends BaseHandler
         $totalBytes = (int)$product['Volume_constraint'] * (int) pow(1024, 3);
         $serviceTimeInt = (int)$serviceTime;
         $configsArr = array_values(array_filter(array_map(static function ($c) {
-            return is_string($c) ? trim($c) : '';
-        }, $configList), static function ($c) { return $c !== ''; }));
+            return is_string($c) ? $c : '';
+        }, $configList), static function ($c) { return trim($c) !== ''; }));
 
         if (($panel['type'] ?? '') === 'Manualsale') {
             $manualItemsOut = is_array($remote['manual_items'] ?? null) ? $remote['manual_items'] : [];
@@ -747,6 +758,8 @@ final class PurchaseHandler extends BaseHandler
                 'configs'    => $configsArr,
             ]);
         }
+
+        $serviceOutput = faoxima_apply_file_names($serviceOutput, $panel, $configsArr);
 
         $payload = [
             'success'  => true,

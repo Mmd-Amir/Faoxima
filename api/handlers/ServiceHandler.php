@@ -5,6 +5,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/BaseHandler.php';
 require_once __DIR__ . '/service_output.php';
+require_once __DIR__ . '/../../re/rx/function/file_naming.php';
 
 final class ServiceHandler extends BaseHandler
 {
@@ -223,6 +224,8 @@ final class ServiceHandler extends BaseHandler
                         'type'     => 'file',
                         'value'    => 'data:application/octet-stream;base64,' . base64_encode((string)($xuiSingleConfigFile['value'] ?? '')),
                         'filename' => (string)($xuiSingleConfigFile['filename'] ?? 'wireguard.conf'),
+                        'naming_source' => 'xui_file',
+                        'naming_key' => rxFileNamingScopedKey(rxFileNamingKeyFile($xuiSingleConfigFile['filename'] ?? ''), $xuiSingleConfigFile['protocol'] ?? 'wireguard'),
                     ];
                 }
                 if (!empty($configLinks)) {
@@ -237,6 +240,8 @@ final class ServiceHandler extends BaseHandler
                 'type'     => 'file',
                 'value'    => $remote['subscription_url'] ?? '',
                 'filename' => ($panel['inboundid'] ?? 'cfg') . '-' . $invoice['id_user'] . '-' . $invoice['id_invoice'] . '.conf',
+                'naming_source' => 'wgdashboard',
+                'naming_key' => rxFileNamingKeySubscription($panel['inboundid'] ?? ''),
             ];
         } elseif ($type === 'guard') {
             $guardSubUrl = $remote['subscription_url'] ?? '';
@@ -295,19 +300,7 @@ final class ServiceHandler extends BaseHandler
             ]));
         }
 
-        foreach ($config as &$configEntry) {
-            if (($configEntry['type'] ?? '') !== 'file') {
-                continue;
-            }
-            $configFilename = (string)($configEntry['filename'] ?? 'config.conf');
-            $isWireGuardFile = strtolower((string)pathinfo($configFilename, PATHINFO_EXTENSION)) === 'conf';
-            if (function_exists('normalizeConfigFilename')) {
-                $configEntry['filename'] = normalizeConfigFilename($configFilename, $filePrefix, $isWireGuardFile);
-            } else {
-                $configEntry['filename'] = str_replace('_', '-', $configFilename);
-            }
-        }
-        unset($configEntry);
+        $config = faoxima_apply_file_names($config, $panel, (array) ($remote['links'] ?? []), $filePrefix);
 
         $lastUpdate = null;
         if (!empty($remote['sub_updated_at'])) {
@@ -627,12 +620,13 @@ final class ServiceHandler extends BaseHandler
 
     private function buildStockPayload(array $invoice, array $stock): array
     {
-        $content = trim((string)($stock['content']  ?? ($invoice['user_info'] ?? '')));
+        $content = (string)($stock['content']  ?? ($invoice['user_info'] ?? ''));
+        $contentTrimmed = trim($content);
         $subLink = trim((string)($stock['sub_link'] ?? ''));
 
 
-        if ($subLink === '' && preg_match('/^https?:\/\//i', $content)) {
-            $subLink = $content;
+        if ($subLink === '' && preg_match('/^https?:\/\//i', $contentTrimmed)) {
+            $subLink = $contentTrimmed;
         }
 
 
@@ -640,7 +634,7 @@ final class ServiceHandler extends BaseHandler
         if ($subLink !== '') {
             $output[] = ['type' => 'link', 'value' => $subLink];
         }
-        if ($content !== '' && $content !== $subLink) {
+        if ($contentTrimmed !== '' && $contentTrimmed !== $subLink) {
 
             $format = strtolower((string)($stock['format'] ?? '')) ?: $this->detectStockFormat($content);
             if ($format === 'wireguard') {

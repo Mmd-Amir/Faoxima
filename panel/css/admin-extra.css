@@ -449,6 +449,26 @@
 }
 
 
+#main-content .wrapper.fx-page-settings .setting-grid > .misc-settings-card {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+#main-content .wrapper.fx-page-settings .misc-settings-card .setting-row {
+    min-width: 0;
+    flex-wrap: nowrap;
+    padding-block: var(--space-4);
+}
+
+#main-content .wrapper.fx-page-settings .misc-settings-card .setting-row:last-child {
+    border-bottom: 0;
+}
+
+#main-content .wrapper.fx-page-settings .misc-settings-card .setting-row__label {
+    min-width: 0;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+
 /* ---- 3D-B1.3  Field rows ------------------------------------------------ */
 
 #main-content .wrapper.fx-page-settings .setting-row {

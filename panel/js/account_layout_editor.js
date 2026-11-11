@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    var STYLES = ['default', 'primary', 'success', 'danger'];
+    var STYLES = ['none', 'primary', 'success', 'danger'];
     var rows = [];
     var catalog = {};
     var saveTimer = null;
@@ -402,7 +402,7 @@
             current = { id: ids[0], style: catalog[ids[0]].style };
             showCondNote(ids[0]);
         }
-        var cur = current.style || 'default';
+        var cur = STYLES.indexOf(current.style) !== -1 ? current.style : 'none';
         modalColorEls.forEach(function (r) { r.checked = (r.value === cur); });
         modalEl.classList.add('open');
     }
@@ -414,9 +414,9 @@
 
     function commitEdit() {
         if (!editing) return;
-        var style = 'default';
+        var style = 'none';
         modalColorEls.forEach(function (r) { if (r.checked) style = r.value; });
-        if (STYLES.indexOf(style) === -1) style = 'default';
+        if (STYLES.indexOf(style) === -1) style = 'none';
         if (editing.btnIdx !== null) {
             rows[editing.rowIdx][editing.btnIdx].style = style;
         } else {
