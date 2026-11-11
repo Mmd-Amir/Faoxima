@@ -168,7 +168,7 @@ if (isset($pdo) && $pdo instanceof PDO) {
     padding: 0 14px 0 4px;
     background: var(--surface-2);
     border: 1px solid var(--border-soft);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     box-shadow: var(--shadow-1);
     height: 38px;
 }
@@ -183,7 +183,7 @@ if (isset($pdo) && $pdo instanceof PDO) {
 }
 .profile-trigger.brand-pill .logo {
     width: 30px; height: 30px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
     display: grid; place-items: center;
     overflow: hidden;
     flex-shrink: 0;
@@ -219,7 +219,7 @@ if (isset($pdo) && $pdo instanceof PDO) {
 :root:not([data-theme="light"]) .version-pill { box-shadow: none; }
 .version-pill .logo {
     width: 20px; height: 20px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-xs);
     display: grid; place-items: center;
     overflow: hidden;
     flex-shrink: 0;
@@ -254,7 +254,7 @@ if (isset($pdo) && $pdo instanceof PDO) {
     display: flex; align-items: center; gap: 10px;
     width: 100%;
     padding: 10px 12px;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     color: var(--text-main);
     font-size: 13px;
     text-decoration: none;
@@ -285,7 +285,7 @@ if (isset($pdo) && $pdo instanceof PDO) {
     min-width: 220px;
     background: var(--surface-2);
     border: 1px solid var(--border-soft);
-    border-radius: 16px;
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-2);
     padding: 8px;
     opacity: 0; transform: translateX(8px) scale(0.97);
@@ -329,7 +329,7 @@ if (isset($pdo) && $pdo instanceof PDO) {
 }
 .hdr-search__quick a, .hdr-search__res {
     display: flex; align-items: center; gap: 10px;
-    padding: 9px 11px; border-radius: 10px;
+    padding: 8px 10px; border-radius: var(--radius-sm);
     color: var(--text-main); font-size: 13px; text-decoration: none;
 }
 .hdr-search__quick a:hover, .hdr-search__res:hover { background: var(--accent-soft); color: var(--accent); }
@@ -354,20 +354,60 @@ if (isset($pdo) && $pdo instanceof PDO) {
     }
     .hdr-search.is-mobile-open .hdr-search__dd { max-height: min(60vh, 320px); }
 }
+.hdr-context { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.hdr-context__copy { display: none; }
+.hdr-account-name { display: none; }
+.app-header .hdr-search > .svg-icon { right: auto; left: auto; inset-inline-start: 14px; }
+.app-header .hdr-search input { padding-inline-start: 42px; padding-inline-end: 14px; }
+@media (min-width: 993px) {
+    :root { --header-h: 68px; }
+    .app-header {
+        display: grid;
+        grid-template-columns: minmax(190px, 1fr) minmax(240px, 560px) minmax(190px, 1fr);
+        gap: 24px;
+        padding-inline-start: calc(24px + var(--safe-r));
+        padding-inline-end: calc(24px + var(--safe-l));
+    }
+    .app-header .hdr-actions { display: contents; }
+    .app-header .hdr-context { justify-self: start; }
+    .app-header .hdr-context__copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+    .hdr-context__title { color: var(--text-main); font-size: 14px; font-weight: 700; line-height: 1.5; }
+    .hdr-context__subtitle { color: var(--text-dim); font-size: 11px; line-height: 1.5; white-space: nowrap; }
+    .app-header .hdr-search { width: 100%; max-width: none; margin: 0; min-width: 0; }
+    .app-header .hdr-search input { height: 42px; background: var(--surface-2); font-size: 12.5px; }
+    .app-header .hdr-search__dd { top: calc(100% + 10px); }
+    .app-header .app-header__left { justify-self: end; gap: 16px; min-width: 0; }
+    .app-header .btn-icon { width: 40px; height: 40px; flex-shrink: 0; background: var(--surface-2); border: 1px solid var(--border-soft); }
+    .app-header .btn-icon:hover { background: var(--surface-3); border-color: var(--border-mid); }
+    .app-header .profile-trigger.brand-pill { height: 42px; gap: 10px; padding: 4px 12px 4px 5px; }
+    .app-header .profile-trigger.brand-pill .profile-info { gap: 2px; align-items: flex-start; min-width: 0; }
+    .app-header .hdr-account-name { display: block; max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+    .app-header .hdr-bell__badge { top: -5px; right: -5px; border: 2px solid var(--surface-1); }
+    .app-header .hdr-context .btn-icon:focus-visible,
+    .app-header .hdr-bell:focus-visible,
+    .app-header .profile-trigger:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 3px; }
+}
 </style>
 
 <header class="app-header">
     <div class="hdr-actions">
-        <button class="btn-icon" id="sidebar-toggle-btn" type="button" aria-label="باز/بسته کردن منو">
-            <?php echo icon('bars', 'svg-icon'); ?>
-        </button>
+        <div class="hdr-context">
+            <button class="btn-icon" id="sidebar-toggle-btn" type="button" aria-label="باز/بسته کردن منو">
+                <?php echo icon('bars', 'svg-icon'); ?>
+            </button>
+            <div class="hdr-context__copy">
+                <span class="hdr-context__title">پنل مدیریت</span>
+                <span class="hdr-context__subtitle">فروش، کاربران و سرویس‌ها</span>
+            </div>
+        </div>
 
         <button class="btn-icon hdr-search__mobtoggle" id="hdrSearchMob" type="button" aria-label="جستجو">
             <?php echo icon('search', 'svg-icon'); ?>
         </button>
 
         <div class="hdr-search" id="hdrSearch">
-            <input type="search" id="hdrSearchInput" placeholder="جستجو..." aria-label="جستجو" autocomplete="off">
+            <?php echo icon('search', 'svg-icon'); ?>
+            <input type="search" id="hdrSearchInput" placeholder="جستجو در پنل…" aria-label="جستجو" autocomplete="off">
             <div class="hdr-search__dd">
                 <div class="hdr-search__quick">
                     <a href="users.php"><?php echo icon('users', 'svg-icon'); ?><span>کاربران</span></a>
@@ -415,6 +455,7 @@ if (isset($pdo) && $pdo instanceof PDO) {
                 </span>
                 <span class="profile-info">
                     <b>faoxima</b>
+                    <small class="hdr-account-name"><?php echo $__user; ?></small>
                 </span>
                 <?php echo icon('chevron-down', 'svg-icon svg-xs'); ?>
             </button>

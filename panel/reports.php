@@ -313,7 +313,7 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
                 <?php if (!empty($prodData)): ?>
                     <div class="chart-box sm chart-box--auto"><div class="chart-scroll"><canvas id="productChart"></canvas></div></div>
                 <?php else: ?>
-                    <div class="hdr-dd__empty" style="padding:60px 10px;">داده‌ای برای نمایش نیست</div>
+                    <div class="mdt-empty">داده‌ای برای نمایش نیست</div>
                 <?php endif; ?>
             </div>
 
@@ -349,7 +349,7 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
                             </table>
                         </div>
                     <?php else: ?>
-                        <div class="hdr-dd__empty" style="padding:60px 10px;">داده‌ای برای نمایش نیست</div>
+                        <div class="mdt-empty">داده‌ای برای نمایش نیست</div>
                     <?php endif; ?>
             </div>
 
@@ -539,7 +539,7 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
     function accent(){ return (getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#a855f7').trim(); }
     function vw(){ return window.innerWidth || 1024; }
     function narrow(){ return vw() <= 640; }
-    function tick(){ var w = vw(); if (w <= 420) return 9; if (w <= 640) return 10; if (w <= 900) return 10.5; return 11.5; }
+    function tick(){ return vw() <= 900 ? 11 : 11.5; }
     function longest(arr){ var n = 0; for (var i = 0; i < arr.length; i++){ var l = String(arr[i]).length; if (l > n) n = l; } return n; }
     function textPx(len, size){ return Math.ceil(len * size * 0.62); }
     function shortOne(s, max){
@@ -562,6 +562,7 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
         return {
             text: dark ? '#94a3b8' : '#475569',
             grid: dark ? 'rgba(148,163,184,0.12)' : 'rgba(100,116,139,0.18)',
+            neutral: dark ? 'rgba(148,163,184,0.30)' : 'rgba(100,116,139,0.22)',
             tipBg: dark ? '#1d1d1e' : '#ffffff',
             tipBorder: dark ? '#2a2a2d' : '#e2e8f0'
         };
@@ -570,7 +571,9 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
 
     var PALETTE = ['#6366f1','#a855f7','#06b6d4','#10b981','#f59e0b','#f43f5e','#3b82f6','#94a3b8'];
     var PROD_LABELS = <?php echo $json_prod_labels; ?>;
+    var PROD_DATA = <?php echo $json_prod_data; ?>;
     var GROUP_LABELS = <?php echo $json_group_labels; ?>;
+    var GROUP_DATA = <?php echo $json_group_users; ?>;
     var product, groupc;
 
     function buildProduct(){
@@ -579,6 +582,10 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
         var box = inner.classList.contains('chart-scroll') ? inner.parentNode : inner;
         var c = colors();
         var fs = tick();
+        var ac = accent();
+        var maxProd = 0;
+        for (var i = 1; i < PROD_DATA.length; i++){ if ((Number(PROD_DATA[i]) || 0) > (Number(PROD_DATA[maxProd]) || 0)) maxProd = i; }
+        var barColors = PROD_DATA.map(function (v, i) { return i === maxProd ? ac : c.neutral; });
         var maxChars = vw() <= 420 ? 16 : vw() <= 640 ? 20 : 28;
         var labels = shortLabels(PROD_LABELS, maxChars);
         var axisNeed = Math.min(Math.round(vw() * 0.42), textPx(longest(labels), fs) + 20);
@@ -600,11 +607,11 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
         if (product) product.destroy();
         product = new Chart(el, {
             type:'bar',
-            data:{ labels: labels, datasets:[{ label:'فروش', data: <?php echo $json_prod_data; ?>, backgroundColor: PALETTE, borderRadius:10, borderSkipped:false, maxBarThickness:26, minBarLength:2, categoryPercentage:0.82, barPercentage:0.9 }]},
+            data:{ labels: labels, datasets:[{ label:'فروش', data: PROD_DATA, backgroundColor: barColors, borderRadius:8, borderSkipped:false, maxBarThickness:26, minBarLength:2, categoryPercentage:0.82, barPercentage:0.9 }]},
             options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y',
                 layout:{ padding:{ left:4, right:12, top:4, bottom:4 } },
                 plugins:{ legend:{display:false},
-                    tooltip:{ rtl:true, textDirection:'rtl', backgroundColor:c.tipBg, titleColor:c.text, bodyColor:c.text, borderColor:c.tipBorder, borderWidth:1, padding:12, cornerRadius:10, displayColors:false, caretPadding:8, titleFont:{size:12.5}, bodyFont:{size:12.5}, titleMarginBottom:6, position:'nearest',
+                    tooltip:{ rtl:true, textDirection:'rtl', backgroundColor:c.tipBg, titleColor:c.text, bodyColor:c.text, borderColor:c.tipBorder, borderWidth:1, padding:12, cornerRadius:8, displayColors:false, caretPadding:8, titleFont:{size:12.5}, bodyFont:{size:12.5}, titleMarginBottom:6, position:'nearest',
                         callbacks:{ title:function(items){ return items.length ? String(PROD_LABELS[items[0].dataIndex]) : ''; }, label:function(ctx){ return fa(ctx.parsed.x) + ' فروش'; } } } },
                 scales:{
                     x:{ grid:{color:c.grid}, ticks:{ color:c.text, font:{size:fs}, precision:0, maxTicksLimit:narrow() ? 5 : 8, callback:function(v){ return fa(v); } } },
@@ -617,13 +624,17 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
         var el = document.getElementById('groupChart'); if(!el) return;
         var c = colors();
         var fs = tick();
+        var ac = accent();
+        var maxGroup = 0;
+        for (var i = 1; i < GROUP_DATA.length; i++){ if ((Number(GROUP_DATA[i]) || 0) > (Number(GROUP_DATA[maxGroup]) || 0)) maxGroup = i; }
+        var groupColors = GROUP_DATA.map(function (v, i) { return i === maxGroup ? ac : c.neutral; });
         if (groupc) groupc.destroy();
         groupc = new Chart(el, {
             type:'bar',
-            data:{ labels: GROUP_LABELS, datasets:[{ label:'کاربران', data: <?php echo $json_group_users; ?>, backgroundColor: PALETTE, borderRadius:10, borderSkipped:false }]},
+            data:{ labels: GROUP_LABELS, datasets:[{ label:'کاربران', data: GROUP_DATA, backgroundColor: groupColors, borderRadius:8, borderSkipped:false }]},
             options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y',
                 layout:{ padding:{ left:4, right:10, top:4, bottom:4 } },
-                plugins:{ legend:{display:false}, tooltip:{ rtl:true, textDirection:'rtl', backgroundColor:c.tipBg, titleColor:c.text, bodyColor:c.text, borderColor:c.tipBorder, borderWidth:1, padding:12, cornerRadius:10, displayColors:false, caretPadding:8, titleFont:{size:12.5}, bodyFont:{size:12.5}, titleMarginBottom:6, position:'nearest', callbacks:{ title:function(items){ return items.length ? String(items[0].label) : ''; }, label:function(ctx){ return fa(ctx.parsed.x) + ' کاربر'; } } } },
+                plugins:{ legend:{display:false}, tooltip:{ rtl:true, textDirection:'rtl', backgroundColor:c.tipBg, titleColor:c.text, bodyColor:c.text, borderColor:c.tipBorder, borderWidth:1, padding:12, cornerRadius:8, displayColors:false, caretPadding:8, titleFont:{size:12.5}, bodyFont:{size:12.5}, titleMarginBottom:6, position:'nearest', callbacks:{ title:function(items){ return items.length ? String(items[0].label) : ''; }, label:function(ctx){ return fa(ctx.parsed.x) + ' کاربر'; } } } },
                 scales:{ x:{ grid:{color:c.grid}, ticks:{ color:c.text, font:{size:fs}, precision:0, maxTicksLimit:narrow() ? 5 : 8, callback:function(v){ return fa(v); } } }, y:{ grid:{display:false}, afterFit:function(scale){ var need = textPx(longest(GROUP_LABELS), fs) + 22; if (scale.width < need) scale.width = need; }, ticks:{ color:c.text, font:{size:fs}, autoSkip:false, crossAlign:'far', padding:8, callback:function(val){ return this.getLabelForValue(val); } } } } }
         });
     }

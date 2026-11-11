@@ -503,3 +503,286 @@ document.addEventListener('click', function (ev) {
     }
 })();
 
+(function () {
+    'use strict';
+    var pickers = new Map();
+    var active = null;
+    var serial = 0;
+    var scheduled = false;
+
+    function normalize(value) {
+        return String(value || '').toLowerCase().replace(/ي/g, 'ی').replace(/ك/g, 'ک')
+            .replace(/[۰-۹]/g, function (digit) { return String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)); });
+    }
+
+    function close(restoreFocus) {
+        if (!active) return;
+        var picker = active;
+        active = null;
+        picker.popup.hidden = true;
+        picker.trigger.setAttribute('aria-expanded', 'false');
+        picker.host.classList.remove('is-open');
+        if (restoreFocus && picker.trigger.isConnected) picker.trigger.focus({ preventScroll: true });
+    }
+
+    function position(picker) {
+        var rect = picker.trigger.getBoundingClientRect();
+        if (!rect.width || !rect.height || !picker.trigger.getClientRects().length) { close(false); return; }
+        var gap = 8;
+        var margin = 12;
+        var width = Math.min(Math.max(rect.width, 220), window.innerWidth - margin * 2);
+        var below = window.innerHeight - rect.bottom - gap - margin;
+        var above = rect.top - gap - margin;
+        var upwards = below < 280 && above > below;
+        var available = Math.max(80, upwards ? above : below);
+        picker.popup.style.width = width + 'px';
+        picker.popup.style.maxHeight = Math.min(360, available) + 'px';
+        picker.popup.style.left = Math.max(margin, Math.min(rect.right - width, window.innerWidth - width - margin)) + 'px';
+        picker.popup.style.top = Math.max(margin, upwards ? rect.top - gap - picker.popup.offsetHeight : Math.min(rect.bottom + gap, window.innerHeight - picker.popup.offsetHeight - margin)) + 'px';
+    }
+
+    function create(select) {
+        var id = 'fx-select-' + (++serial);
+        var host = document.createElement('div');
+        host.className = 'fx-select';
+        ['width', 'minWidth', 'maxWidth', 'flex'].forEach(function (property) {
+            if (select.style[property]) host.style[property] = select.style[property];
+        });
+        var trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'fx-select__trigger';
+        trigger.setAttribute('aria-haspopup', 'listbox');
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.setAttribute('aria-controls', id);
+        var value = document.createElement('span');
+        value.className = 'fx-select__value';
+        var arrow = document.createElement('span');
+        arrow.className = 'fx-select__arrow';
+        arrow.setAttribute('aria-hidden', 'true');
+        trigger.appendChild(value);
+        trigger.appendChild(arrow);
+        var popup = document.createElement('div');
+        popup.className = 'fx-select-popup';
+        popup.dir = 'rtl';
+        popup.hidden = true;
+        var search = document.createElement('input');
+        search.type = 'search';
+        search.className = 'fx-select-popup__search';
+        search.placeholder = 'جستجو در گزینه‌ها…';
+        search.setAttribute('aria-label', 'جستجو در گزینه‌ها');
+        search.autocomplete = 'off';
+        var list = document.createElement('div');
+        list.className = 'fx-select-popup__list';
+        list.id = id;
+        list.setAttribute('role', 'listbox');
+        var empty = document.createElement('div');
+        empty.className = 'fx-select-popup__empty';
+        empty.textContent = 'گزینه‌ای پیدا نشد';
+        empty.setAttribute('role', 'status');
+        empty.hidden = true;
+        popup.appendChild(search);
+        popup.appendChild(list);
+        popup.appendChild(empty);
+        select.parentNode.insertBefore(host, select);
+        host.appendChild(select);
+        host.appendChild(trigger);
+        select.classList.add('fx-select-native');
+        select.tabIndex = -1;
+        select.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(popup);
+        var picker = { select: select, host: host, trigger: trigger, popup: popup, search: search, list: list, signature: '' };
+        pickers.set(select, picker);
+
+        function labelText() {
+            var labelledBy = select.getAttribute('aria-labelledby');
+            if (labelledBy) return labelledBy.split(/\s+/).map(function (labelId) {
+                var label = document.getElementById(labelId);
+                return label ? label.textContent.trim() : '';
+            }).join(' ').trim();
+            var label = select.labels && select.labels[0];
+            var group = host.closest('.form-group, .kb-field, .setting-row, .fx-extra-filter__field');
+            if (!label && group) label = group.querySelector('label, .form-label');
+            return select.getAttribute('aria-label') || (label ? label.textContent.trim() : 'انتخاب گزینه');
+        }
+
+        function options() {
+            return Array.prototype.filter.call(select.options, function (option) {
+                return !option.hidden && !(option.parentElement.tagName === 'OPTGROUP' && option.parentElement.hidden);
+            });
+        }
+
+        function render() {
+            var terms = normalize(search.value).trim().split(/\s+/).filter(Boolean);
+            list.textContent = '';
+            var groupLabel = null;
+            options().forEach(function (option) {
+                if (!terms.every(function (term) { return normalize(option.textContent).indexOf(term) !== -1; })) return;
+                var group = option.parentElement.tagName === 'OPTGROUP' ? option.parentElement : null;
+                if (group && group !== groupLabel) {
+                    var heading = document.createElement('div');
+                    heading.className = 'fx-select-popup__group';
+                    heading.setAttribute('role', 'presentation');
+                    heading.textContent = group.label;
+                    list.appendChild(heading);
+                }
+                groupLabel = group;
+                var item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'fx-select-popup__option';
+                item.tabIndex = -1;
+                item.setAttribute('role', 'option');
+                item.setAttribute('aria-selected', option.selected ? 'true' : 'false');
+                item.disabled = option.disabled || !!(group && group.disabled);
+                var title = document.createElement('span');
+                title.textContent = option.textContent;
+                item.appendChild(title);
+                item.addEventListener('click', function () {
+                    if (item.disabled || select.disabled || !option.isConnected) return;
+                    var changed = select.selectedIndex !== option.index;
+                    select.selectedIndex = option.index;
+                    close(true);
+                    picker.refresh();
+                    if (changed) {
+                        select.dispatchEvent(new Event('input', { bubbles: true }));
+                        select.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    picker.refresh();
+                });
+                list.appendChild(item);
+            });
+            empty.hidden = !!list.querySelector('[role="option"]');
+        }
+
+        picker.refresh = function () {
+            var selected = select.options[select.selectedIndex];
+            var text = selected ? selected.textContent.trim() : 'انتخاب کنید';
+            if (value.textContent !== text) value.textContent = text;
+            var label = labelText();
+            var name = label + '، ' + text;
+            if (trigger.getAttribute('aria-label') !== name) trigger.setAttribute('aria-label', name);
+            if (list.getAttribute('aria-label') !== label) list.setAttribute('aria-label', label);
+            trigger.disabled = select.matches(':disabled');
+            host.hidden = select.hidden || select.style.display === 'none';
+            trigger.setAttribute('aria-required', select.required ? 'true' : 'false');
+            trigger.setAttribute('aria-invalid', select.validity.valid ? 'false' : 'true');
+            search.hidden = options().length < 9;
+            var signature = Array.prototype.map.call(select.options, function (option) {
+                return [option.textContent, option.value, option.selected, option.disabled, option.hidden, option.parentElement.label, option.parentElement.disabled, option.parentElement.hidden];
+            });
+            signature = JSON.stringify(signature);
+            if (active === picker) {
+                if (trigger.disabled || host.hidden || !trigger.getClientRects().length) close(false);
+                else {
+                    if (signature !== picker.signature) render();
+                    position(picker);
+                }
+            }
+            picker.signature = signature;
+        };
+
+        function open() {
+            picker.refresh();
+            if (trigger.disabled || host.hidden) return;
+            close(false);
+            active = picker;
+            search.value = '';
+            render();
+            popup.hidden = false;
+            trigger.setAttribute('aria-expanded', 'true');
+            host.classList.add('is-open');
+            position(picker);
+            var selected = list.querySelector('[aria-selected="true"]:not(:disabled)') || list.querySelector('button:not(:disabled)');
+            if (!search.hidden) search.focus({ preventScroll: true });
+            else if (selected) { selected.focus({ preventScroll: true }); selected.scrollIntoView({ block: 'nearest' }); }
+            else trigger.focus({ preventScroll: true });
+        }
+
+        function keydown(event) {
+            if (event.key === 'Escape' && active === picker) {
+                event.preventDefault();
+                event.stopPropagation();
+                close(true);
+                return;
+            }
+            if (event.key === 'Tab' && active === picker) { close(true); return; }
+            if (active !== picker) {
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); open(); }
+                return;
+            }
+            var items = Array.prototype.slice.call(list.querySelectorAll('button:not(:disabled)'));
+            var index = items.indexOf(document.activeElement);
+            if (event.key === 'Enter' && event.target === search && items.length) {
+                event.preventDefault();
+                items[0].click();
+            } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || ((event.key === 'Home' || event.key === 'End') && event.target !== search)) {
+                event.preventDefault();
+                if (!items.length) return;
+                var next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : index + (event.key === 'ArrowUp' ? -1 : 1);
+                next = Math.max(0, Math.min(items.length - 1, next));
+                items[next].focus({ preventScroll: true });
+                items[next].scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        trigger.addEventListener('click', function () { if (active === picker) close(false); else open(); });
+        trigger.addEventListener('keydown', keydown);
+        popup.addEventListener('keydown', keydown);
+        search.addEventListener('input', function () { render(); position(picker); });
+        select.addEventListener('change', picker.refresh);
+        select.addEventListener('focus', function () { trigger.focus(); });
+        select.addEventListener('invalid', function (event) { event.preventDefault(); if (!active) open(); });
+        picker.refresh();
+    }
+
+    function refresh() {
+        scheduled = false;
+        pickers.forEach(function (picker, select) {
+            if (!select.isConnected) {
+                if (active === picker) close(false);
+                picker.popup.remove();
+                picker.host.remove();
+                pickers.delete(select);
+            } else picker.refresh();
+        });
+        document.querySelectorAll('select').forEach(function (select) {
+            if (pickers.has(select) || select.hidden || select.multiple || select.size > 1 || select.matches('#fnPanel, #fnService, [data-native-select]')) return;
+            if (select.closest('.fn-picker, .kb-combo')) return;
+            create(select);
+        });
+    }
+
+    function schedule() {
+        if (scheduled) return;
+        scheduled = true;
+        requestAnimationFrame(refresh);
+    }
+
+    function init() {
+        refresh();
+        new MutationObserver(function (records) {
+            if (records.some(function (record) {
+                var target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
+                return target && (!target.closest('.fx-select, .fx-select-popup') || target.closest('select'));
+            })) schedule();
+        }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'disabled', 'selected', 'label', 'required'] });
+        document.addEventListener('click', function (event) {
+            if (active && !active.host.contains(event.target) && !active.popup.contains(event.target)) close(false);
+            schedule();
+        });
+        document.addEventListener('focusin', function (event) {
+            if (active && !active.host.contains(event.target) && !active.popup.contains(event.target)) close(false);
+            schedule();
+        });
+        document.addEventListener('reset', function () { setTimeout(refresh, 0); });
+        document.addEventListener('change', schedule);
+        window.addEventListener('resize', function () { if (active) position(active); });
+        document.addEventListener('scroll', function (event) {
+            if (active && !active.popup.contains(event.target)) close(false);
+        }, true);
+        if (window.visualViewport) window.visualViewport.addEventListener('resize', function () { if (active) position(active); });
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+})();
+

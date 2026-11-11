@@ -86,12 +86,12 @@ $faoximaLiveText = faoxima_text_php_live_overlay();
       .text-editor-row {
         display: grid;
         grid-template-columns: 1fr 2fr;
-        gap: 14px;
+        gap: var(--space-4);
         align-items: center;
-        padding: 12px 14px;
+        padding: 12px 16px;
         background: var(--surface-2);
         border: 1px solid var(--border-soft);
-        border-radius: 10px;
+        border-radius: var(--radius-md);
         transition: border-color .15s ease;
       }
       .text-editor-row:hover { border-color: var(--border-mid); }
@@ -110,10 +110,10 @@ $faoximaLiveText = faoxima_text_php_live_overlay();
       }
       .text-editor-row input[type="text"] {
         width: 100%;
-        padding: 9px 12px;
+        padding: 10px 12px;
         background: var(--surface-1);
         border: 1px solid var(--border-mid);
-        border-radius: 8px;
+        border-radius: var(--radius-md);
         color: var(--text-main);
         font-family: 'Vazirmatn', system-ui, sans-serif;
         font-size: 13px;
@@ -123,16 +123,16 @@ $faoximaLiveText = faoxima_text_php_live_overlay();
       .text-editor-row input[type="text"]:focus {
         outline: none;
         border-color: var(--accent);
-        box-shadow: 0 0 0 3px var(--accent-glow);
+        box-shadow: 0 0 0 3px var(--accent-ring);
       }
       .text-editor-actions {
         position: sticky;
         bottom: 0;
-        margin-top: 18px;
-        padding-top: 14px;
+        margin-top: var(--space-4);
+        padding-top: var(--space-3);
         background: linear-gradient(to top, var(--bg-body) 60%, transparent);
         display: flex;
-        gap: 10px;
+        gap: var(--space-2);
         justify-content: flex-end;
       }
       @media (max-width: 720px) {
@@ -157,7 +157,7 @@ $faoximaLiveText = faoxima_text_php_live_overlay();
         padding: 10px 14px;
         background: var(--surface-2);
         border: 1px solid var(--border-mid);
-        border-radius: 10px;
+        border-radius: var(--radius-md);
         color: var(--text-main);
         font-family: 'Vazirmatn', system-ui, sans-serif;
         font-size: 13.5px;
@@ -165,21 +165,21 @@ $faoximaLiveText = faoxima_text_php_live_overlay();
       .text-search-bar input[type="search"]:focus {
         outline: none;
         border-color: var(--accent);
-        box-shadow: 0 0 0 3px var(--accent-glow);
+        box-shadow: 0 0 0 3px var(--accent-ring);
       }
-      .text-group { margin-bottom: 18px; }
+      .text-group { margin-bottom: var(--space-4); }
       .text-group__head {
         display: flex;
         align-items: center;
         gap: 8px;
         cursor: pointer;
-        padding: 10px 4px;
+        padding: 8px 4px;
         font-family: 'Vazirmatn', system-ui, monospace;
         font-size: 13px;
-        font-weight: 700;
+        font-weight: 600;
         color: var(--text-main);
         border-bottom: 1px solid var(--border-soft);
-        margin-bottom: 10px;
+        margin-bottom: var(--space-3);
         user-select: none;
       }
       .text-group__head .chip { margin-inline-start: auto; }
@@ -208,7 +208,7 @@ $faoximaLiveText = faoxima_text_php_live_overlay();
                 </div>
             </div>
 
-            <div class="alert" style="background:var(--color-warning-soft); border:1px solid var(--color-warning); color:var(--color-warning); padding:12px 16px; border-radius:10px; margin-bottom:18px;">
+            <div class="alert" style="background:var(--color-warning-soft); border:1px solid var(--color-warning); color:var(--color-warning); padding:12px 16px; border-radius:var(--radius-md); margin-bottom:18px;">
                 این صفحه دیگر قابل ویرایش نیست. برای تغییر این متن‌ها به صفحه «متن‌های ربات» مراجعه کنید.
             </div>
 

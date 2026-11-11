@@ -165,7 +165,7 @@ try {
             width: 100%;
             min-height: 220px;
             padding: 14px;
-            border-radius: 12px;
+            border-radius: var(--radius-md);
             background: var(--surface-3);
             border: 1px solid var(--border-mid);
             color: var(--text-main);
@@ -179,7 +179,7 @@ try {
         .bc-stat {
             background: var(--surface-2);
             border: 1px solid var(--border-soft);
-            border-radius: 12px;
+            border-radius: var(--radius-md);
             padding: 14px;
             margin-bottom: 10px;
         }

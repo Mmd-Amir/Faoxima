@@ -150,7 +150,7 @@ $settingsValueForTextarea = htmlspecialchars($settingsValue, ENT_NOQUOTES, 'UTF-
 
 </script>
     <style>
-      .xui-form { display: grid; gap: 14px; }
+      .xui-form { display: grid; gap: var(--space-4); }
       .xui-field { display: grid; gap: 6px; }
       .xui-field label {
         font-size: 12px;
@@ -168,7 +168,7 @@ $settingsValueForTextarea = htmlspecialchars($settingsValue, ENT_NOQUOTES, 'UTF-
         padding: 10px 12px;
         background: var(--surface-1);
         border: 1px solid var(--border-mid);
-        border-radius: 8px;
+        border-radius: var(--radius-md);
         color: var(--text-main);
         font-family: 'Vazirmatn', system-ui, sans-serif;
         font-size: 13px;
@@ -187,7 +187,7 @@ $settingsValueForTextarea = htmlspecialchars($settingsValue, ENT_NOQUOTES, 'UTF-
         border-color: var(--accent);
         box-shadow: 0 0 0 3px var(--accent-glow);
       }
-      .xui-actions { display: flex; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+      .xui-actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); flex-wrap: wrap; }
       .xui-preset-row {
         display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap;
       }

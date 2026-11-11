@@ -177,7 +177,7 @@ $listinvoice = $query->fetchAll();
             <?php echo fx_status_filter_ui('invoice.php', $invStatusOptions, $invStatus, array_merge(['q' => $invQ !== '' ? $invQ : null], $invDateKeep, $invExtraKeep)); ?>
 
             <?php if ($invDeleteBlocked): ?>
-                <div class="alert" style="background:var(--color-warning-soft); border:1px solid var(--color-warning); color:var(--color-warning); padding:12px 16px; border-radius:10px; margin-bottom:18px;">برخی مقادیر فیلتر نامعتبر هستند و نادیده گرفته شدند؛ برای جلوگیری از حذف ناخواسته، «حذف همه نتایج فیلترشده» غیرفعال است.</div>
+                <div class="alert" style="background:var(--color-warning-soft); border:1px solid var(--color-warning); color:var(--color-warning); padding:12px 16px; border-radius:var(--radius-md); margin-bottom:18px;">برخی مقادیر فیلتر نامعتبر هستند و نادیده گرفته شدند؛ برای جلوگیری از حذف ناخواسته، «حذف همه نتایج فیلترشده» غیرفعال است.</div>
             <?php endif; ?>
 
             <?php $fxFd = fx_filter_delete_parts('invoice.php', $invFilterParams, ($invFilterActive && !$invDeleteBlocked) ? (int)$pg['total'] : 0, $invFilterCriteria, '', $invDeleteNote); ?>

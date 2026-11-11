@@ -406,12 +406,12 @@ if (isset($_SESSION['textbot_save_error'])) {
         .text-row {
             background: var(--surface-2);
             border: 1px solid var(--border-soft);
-            border-radius: 10px;
-            padding: 12px 14px;
+            border-radius: var(--radius-md);
+            padding: 12px 16px;
             margin-bottom: 8px;
             display: grid;
             grid-template-columns: 220px 1fr auto;
-            gap: 14px;
+            gap: var(--space-4);
             align-items: start;
             transition: border-color .15s ease;
         }
@@ -440,7 +440,7 @@ if (isset($_SESSION['textbot_save_error'])) {
             background: var(--color-warning-soft);
             border: 1px solid var(--color-warning);
             color: var(--color-warning);
-            font-size: 10px;
+            font-size: 11px;
             font-family: 'Vazirmatn', sans-serif;
             white-space: nowrap;
         }
@@ -448,9 +448,9 @@ if (isset($_SESSION['textbot_save_error'])) {
             width: 100%;
             background: var(--surface-3);
             border: 1px solid var(--border-mid);
-            border-radius: 8px;
+            border-radius: var(--radius-md);
             color: var(--text-main);
-            padding: 9px 12px;
+            padding: 10px 12px;
             font-family: 'Vazirmatn', sans-serif;
             font-size: 13.5px;
             min-height: 44px;
@@ -460,7 +460,7 @@ if (isset($_SESSION['textbot_save_error'])) {
         .text-row textarea:focus {
             outline: none;
             border-color: var(--accent);
-            box-shadow: 0 0 0 3px var(--accent-glow);
+            box-shadow: 0 0 0 3px var(--accent-ring);
         }
         .text-row textarea[readonly] {
             cursor: pointer;
@@ -534,7 +534,7 @@ if (isset($_SESSION['textbot_save_error'])) {
             padding: 10px 14px;
             background: var(--surface-2);
             border: 1px solid var(--border-mid);
-            border-radius: 10px;
+            border-radius: var(--radius-md);
             color: var(--text-main);
             font-family: 'Vazirmatn', sans-serif;
             font-size: 13.5px;
@@ -542,7 +542,7 @@ if (isset($_SESSION['textbot_save_error'])) {
         .filter-bar input:focus {
             outline: none;
             border-color: var(--accent);
-            box-shadow: 0 0 0 3px var(--accent-glow);
+            box-shadow: 0 0 0 3px var(--accent-ring);
         }
         .search-scope {
             display: grid;
@@ -551,14 +551,14 @@ if (isset($_SESSION['textbot_save_error'])) {
             flex: 0 1 360px;
             padding: 4px;
             border: 1px solid var(--border-soft);
-            border-radius: 12px;
+            border-radius: var(--radius-md);
             background: var(--surface-2);
         }
         .search-scope__btn {
             min-height: 36px;
             padding: 7px 12px;
             border: 0;
-            border-radius: 8px;
+            border-radius: var(--radius-sm);
             background: transparent;
             color: var(--text-muted);
             font-family: 'Vazirmatn', sans-serif;
@@ -566,7 +566,7 @@ if (isset($_SESSION['textbot_save_error'])) {
             font-weight: 600;
             white-space: nowrap;
             cursor: pointer;
-            transition: .16s ease;
+            transition: background-color .15s ease, color .15s ease, box-shadow .15s ease;
         }
         .search-scope__btn:hover { color: var(--text-main); background: var(--surface-3); }
         .search-scope__btn.active {
@@ -586,7 +586,7 @@ if (isset($_SESSION['textbot_save_error'])) {
             gap: 10px;
             width: 100%;
             padding: 10px 14px;
-            border-radius: 13px;
+            border-radius: var(--radius-md);
             border: 1px solid var(--border-soft);
             background: var(--surface-2);
             color: var(--text-main);
@@ -611,7 +611,7 @@ if (isset($_SESSION['textbot_save_error'])) {
             right: 0; left: 0;
             background: var(--surface-2);
             border: 1px solid var(--border-soft);
-            border-radius: 14px;
+            border-radius: var(--radius-lg);
             box-shadow: var(--shadow-2);
             padding: 8px;
             max-height: min(340px, calc(100vh - 180px));
@@ -628,7 +628,7 @@ if (isset($_SESSION['textbot_save_error'])) {
             padding: 9px 11px;
             border: none;
             background: transparent;
-            border-radius: 10px;
+            border-radius: var(--radius-sm);
             color: var(--text-main); font-size: 13px;
             font-family: 'Vazirmatn', sans-serif;
             cursor: pointer;
@@ -688,7 +688,7 @@ if (isset($_SESSION['textbot_save_error'])) {
             padding: 7px 12px;
             background: var(--surface-2);
             border: 1px solid var(--border-mid);
-            border-radius: 8px;
+            border-radius: var(--radius-sm);
             color: var(--text-main);
             font-family: 'Vazirmatn', sans-serif;
             font-size: 12.5px;
@@ -747,7 +747,7 @@ if (isset($_SESSION['textbot_save_error'])) {
         .rich-table-controls > summary { padding: 10px 12px; cursor: pointer; color: var(--text-muted); font-size: 12px; background: var(--surface-3); }
         .rich-table-drag-hint { margin: 0; padding: 8px 10px 2px; color: var(--text-muted); font-size: 10.5px; line-height: 1.7; }
         .rich-table td.rich-row-grip-cell { width: 32px; padding: 2px; background: var(--surface-3); vertical-align: middle; }
-        .rich-row-grip { display: flex; align-items: center; justify-content: center; width: 28px; min-height: 38px; padding: 0; border: 0; border-radius: 6px; color: var(--text-muted); background: transparent; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+        .rich-row-grip { display: flex; align-items: center; justify-content: center; width: 28px; min-height: 38px; padding: 0; border: 0; border-radius: var(--radius-sm); color: var(--text-muted); background: transparent; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
         .rich-row-grip svg { width: 18px; height: 18px; }
         .rich-row-grip:hover, .rich-row-grip:focus-visible { color: var(--accent); background: var(--accent-soft); outline: 2px solid var(--accent); }
         .rich-table tr.is-row-dragging { opacity: .4; }
@@ -763,10 +763,10 @@ if (isset($_SESSION['textbot_save_error'])) {
         .rich-cell-grip:hover, .rich-cell-grip:focus-visible { opacity: 1; }
         .rich-cell-grip:disabled { opacity: .25; cursor: not-allowed; }
         .rich-table td.is-row-dragging, .rich-table th.is-row-dragging { opacity: .4; }
-        .rich-row-ghost { position: fixed; z-index: 11000; pointer-events: none; max-width: min(320px, 80vw); padding: 12px 16px; border: 1px solid var(--accent); border-radius: 12px; background: var(--surface-2); color: var(--text-main); box-shadow: var(--shadow-2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; }
+        .rich-row-ghost { position: fixed; z-index: 11000; pointer-events: none; max-width: min(320px, 80vw); padding: 12px 16px; border: 1px solid var(--accent); border-radius: var(--radius-md); background: var(--surface-2); color: var(--text-main); box-shadow: var(--shadow-2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; }
         @media (max-width: 700px) {
             #modal-rich-text { padding: 8px; padding-top: calc(8px + env(safe-area-inset-top, 0px)); padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
-            #modal-rich-text .modal-box--rich { width: 100%; max-width: none; height: calc(100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); max-height: 100%; border-radius: 16px; }
+            #modal-rich-text .modal-box--rich { width: 100%; max-width: none; height: calc(100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); max-height: 100%; border-radius: var(--radius-lg); }
             .modal-box--rich .modal-head { position: static; align-items: flex-start; gap: 10px; padding: 12px; }
             .modal-box--rich .modal-head__title { min-width: 0; font-size: 13px; line-height: 1.7; }
             .modal-box--rich .modal-head__title code { display: block; max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; direction: ltr; }
@@ -777,8 +777,8 @@ if (isset($_SESSION['textbot_save_error'])) {
             .modal-box--rich .rich-toolbar { margin: 0 0 10px; }
             .modal-box--rich .rich-toolbar__group { width: 100%; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; padding: 4px; }
             .modal-box--rich .rich-toolbar .fmt-btn { min-height: 38px; padding: 5px 2px; font-size: 11px; justify-content: center; }
-            .rich-mobile-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 12px; padding: 4px; border-radius: 10px; background: var(--surface-3); }
-            .rich-mobile-tabs button { min-height: 36px; border: 0; border-radius: 7px; background: transparent; color: var(--text-muted); font: inherit; font-size: 12px; cursor: pointer; }
+            .rich-mobile-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 12px; padding: 4px; border-radius: var(--radius-md); background: var(--surface-3); }
+            .rich-mobile-tabs button { min-height: 36px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: inherit; font-size: 12px; cursor: pointer; }
             .rich-mobile-tabs button[aria-pressed="true"] { background: var(--surface-1); color: var(--accent); box-shadow: 0 1px 5px rgba(0,0,0,.08); }
             .rich-modal-body[data-mobile-view="editor"] .rich-preview-pane, .rich-modal-body[data-mobile-view="preview"] .rich-editor-pane { display: none; }
             .rich-modal-body[data-mobile-view="preview"] .rich-toolbar { display: none; }
@@ -812,7 +812,7 @@ if (isset($_SESSION['textbot_save_error'])) {
             gap: 6px;
             padding: 4px;
             border: 1px solid var(--border-soft);
-            border-radius: 10px;
+            border-radius: var(--radius-md);
             background: var(--surface-2);
         }
         .rich-toolbar .fmt-btn { padding: 6px 10px; font-size: 12px; }
@@ -822,7 +822,7 @@ if (isset($_SESSION['textbot_save_error'])) {
             gap: 4px;
             padding: 8px;
             border: 1px solid var(--border-mid);
-            border-radius: 10px;
+            border-radius: var(--radius-lg);
             background: var(--surface-2);
             margin-bottom: 10px;
             max-height: 190px;
@@ -831,7 +831,7 @@ if (isset($_SESSION['textbot_save_error'])) {
         .rich-emoji-panel[hidden] { display: none; }
         .rich-emoji {
             border: 1px solid var(--border-soft);
-            border-radius: 8px;
+            border-radius: var(--radius-sm);
             background: var(--surface-3);
             font-size: 20px;
             line-height: 1;
@@ -857,7 +857,7 @@ if (isset($_SESSION['textbot_save_error'])) {
         .rich-blocks { max-height: 52vh; overflow-y: auto; padding-inline-end: 4px; }
         .rich-block {
             border: 1px solid var(--border-soft);
-            border-radius: 10px;
+            border-radius: var(--radius-md);
             background: var(--surface-2);
             margin-bottom: 8px;
             overflow: hidden;
@@ -879,7 +879,7 @@ if (isset($_SESSION['textbot_save_error'])) {
             justify-content: center;
             gap: 4px;
             border: 1px solid var(--border-mid);
-            border-radius: 7px;
+            border-radius: var(--radius-sm);
             background: var(--surface-2);
             color: var(--text-main);
             font-family: 'Vazirmatn', sans-serif;
@@ -891,7 +891,7 @@ if (isset($_SESSION['textbot_save_error'])) {
         .rich-mini-btn:disabled { opacity: .45; cursor: not-allowed; }
         .rich-select, .rich-input {
             border: 1px solid var(--border-mid);
-            border-radius: 7px;
+            border-radius: var(--radius-md);
             background: var(--surface-2);
             color: var(--text-main);
             font-family: 'Vazirmatn', sans-serif;
@@ -945,7 +945,7 @@ if (isset($_SESSION['textbot_save_error'])) {
         .rich-table-formatbar { display: flex; flex-wrap: wrap; gap: 7px; padding: 8px; border-bottom: 1px solid var(--border-soft); background: var(--surface-2); }
         .rich-table-formatbar button { flex: 1 1 auto; min-height: 36px; }
         .rich-table tr[hidden], .rich-table-pager[hidden] { display: none; }
-        .rich-table-pager { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; margin: 0 8px 8px; padding: 10px; border: 1px solid var(--border-soft); border-radius: 10px; background: var(--surface-2); }
+        .rich-table-pager { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; margin: 0 8px 8px; padding: 10px; border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: var(--surface-2); }
         .rich-table-pager button { min-height: 42px; width: 100%; }
         .rich-table-pager__status { color: var(--text-main); text-align: center; font-size: 11px; line-height: 1.8; }
         .rich-table-pager__status small { display: block; color: var(--text-muted); font-size: 10px; }
@@ -979,14 +979,14 @@ if (isset($_SESSION['textbot_save_error'])) {
         .rich-addbar {
             margin-top: 12px;
         }
-        .rich-addbar .rich-add-text { width: 100%; min-height: 42px; justify-content: center; border: 1px dashed var(--border-mid); border-radius: 10px; background: var(--surface-2); color: var(--text-main); }
+        .rich-addbar .rich-add-text { width: 100%; min-height: 42px; justify-content: center; border: 1px dashed var(--border-mid); border-radius: var(--radius-md); background: var(--surface-2); color: var(--text-main); }
         .rich-type-trigger { display: inline-flex; align-items: center; justify-content: space-between; gap: 24px; min-width: 150px; padding: 7px 10px; cursor: pointer; }
         .rich-type-trigger[aria-expanded="true"] { border-color: var(--accent); background: var(--accent-soft); }
         .rich-alignment-trigger { min-width: 110px; gap: 12px; }
         .rich-alignment-trigger:disabled { opacity: .45; cursor: not-allowed; }
-        .rich-type-menu { position: fixed; inset: auto; margin: 0; z-index: 10000; width: 220px; max-height: min(340px, 60vh); overflow-y: auto; padding: 6px; border: 1px solid var(--border-mid); border-radius: 12px; background: var(--surface-2); color: var(--text-main); box-shadow: 0 12px 36px rgba(0,0,0,.22); direction: rtl; }
+        .rich-type-menu { position: fixed; inset: auto; margin: 0; z-index: 10000; width: 220px; max-height: min(340px, 60vh); overflow-y: auto; padding: 6px; border: 1px solid var(--border-mid); border-radius: var(--radius-lg); background: var(--surface-2); color: var(--text-main); box-shadow: 0 12px 36px rgba(0,0,0,.22); direction: rtl; }
         .rich-type-menu[hidden] { display: none; }
-        .rich-type-option { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 9px 11px; border: 0; border-radius: 7px; background: transparent; color: var(--text-main); font: inherit; font-size: 12px; text-align: right; cursor: pointer; }
+        .rich-type-option { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 9px 11px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-main); font: inherit; font-size: 12px; text-align: right; cursor: pointer; }
         .rich-type-option:hover, .rich-type-option:focus-visible, .rich-type-option[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); outline: none; }
         .rich-type-option:disabled { opacity: .45; cursor: not-allowed; }
         .rich-addbar__label { font-size: 11.5px; color: var(--text-muted); }
@@ -1000,7 +1000,7 @@ if (isset($_SESSION['textbot_save_error'])) {
         .rich-preview__bubble {
             background: #182533;
             color: #ffffff;
-            border-radius: 14px;
+            border-radius: var(--radius-lg);
             padding: 12px 14px;
             font-family: 'Vazirmatn', sans-serif;
             font-size: 13.5px;
@@ -1024,7 +1024,7 @@ if (isset($_SESSION['textbot_save_error'])) {
         }
         .rich-preview__bubble pre {
             background: #0f1a24;
-            border-radius: 8px;
+            border-radius: var(--radius-sm);
             padding: 8px 10px;
             overflow-x: auto;
             direction: ltr;
@@ -1034,14 +1034,14 @@ if (isset($_SESSION['textbot_save_error'])) {
         }
         .rich-preview__bubble code {
             background: rgba(255,255,255,.08);
-            border-radius: 4px;
+            border-radius: var(--radius-xs);
             padding: 1px 4px;
             font-family: 'JetBrains Mono', monospace;
             font-size: 12px;
         }
         .rich-preview__bubble pre code { background: transparent; padding: 0; }
-        .rich-preview__bubble mark { background: #ffd54f; color: #182533; border-radius: 3px; padding: 0 2px; }
-        .rich-preview__bubble tg-spoiler { background: #2c3e50; color: transparent; border-radius: 4px; }
+        .rich-preview__bubble mark { background: #ffd54f; color: #182533; border-radius: var(--radius-xs); padding: 0 2px; }
+        .rich-preview__bubble tg-spoiler { background: #2c3e50; color: transparent; border-radius: var(--radius-xs); }
         .rich-preview__bubble ul, .rich-preview__bubble ol { margin: 6px 0; padding-inline-start: 22px; }
         .rich-preview__bubble hr { border: 0; border-top: 1px solid rgba(255,255,255,.2); margin: 10px 0; }
         .rich-preview__bubble table {
@@ -1078,7 +1078,7 @@ if (isset($_SESSION['textbot_save_error'])) {
         .rich-placeholders code {
             background: var(--surface-3);
             border: 1px solid var(--border-soft);
-            border-radius: 5px;
+            border-radius: var(--radius-xs);
             padding: 1px 5px;
             direction: ltr;
             display: inline-block;
@@ -1105,7 +1105,7 @@ if (isset($_SESSION['textbot_save_error'])) {
             word-break: break-word;
             background: var(--surface-3);
             border: 1px solid var(--border-soft);
-            border-radius: 8px;
+            border-radius: var(--radius-sm);
             padding: 8px 10px;
             max-height: 160px;
             overflow-y: auto;
@@ -1118,7 +1118,7 @@ if (isset($_SESSION['textbot_save_error'])) {
             color: var(--text-muted);
             font-size: 12.5px;
             border: 1px dashed var(--border-mid);
-            border-radius: 10px;
+            border-radius: var(--radius-md);
             margin-bottom: 8px;
         }
     </style>

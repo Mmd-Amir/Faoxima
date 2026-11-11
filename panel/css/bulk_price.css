@@ -51,13 +51,13 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 6px;
-    padding: 18px;
+    padding: var(--space-5);
     text-align: start;
     font-family: inherit;
     color: var(--text-main);
     background: var(--surface-2);
     border: 1px solid var(--border-mid);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     cursor: pointer;
     transition: border-color 0.15s, background 0.15s;
 }

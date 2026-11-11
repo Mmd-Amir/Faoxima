@@ -632,13 +632,13 @@ function faoxima_d_label_section($s) {
             </div>
 
             <?php if ($flash['ok']): ?>
-                <div class="alert" style="background:var(--color-success-soft); border:1px solid var(--color-success); color:var(--color-success); padding:12px 16px; border-radius:10px; margin-bottom:18px; display:flex; align-items:center; gap:10px;">
+                <div class="alert" style="background:var(--color-success-soft); border:1px solid var(--color-success); color:var(--color-success); padding:12px 16px; border-radius:var(--radius-md); margin-bottom:18px; display:flex; align-items:center; gap:10px;">
                     <?php echo icon('circle-check', 'svg-icon'); ?>
                     <span><?php echo htmlspecialchars($flash['ok'], ENT_QUOTES); ?></span>
                 </div>
             <?php endif; ?>
             <?php if ($flash['err']): ?>
-                <div class="alert" style="background:var(--color-danger-soft); border:1px solid var(--color-danger); color:var(--color-danger); padding:12px 16px; border-radius:10px; margin-bottom:18px;">
+                <div class="alert" style="background:var(--color-danger-soft); border:1px solid var(--color-danger); color:var(--color-danger); padding:12px 16px; border-radius:var(--radius-md); margin-bottom:18px;">
                     <?php echo htmlspecialchars($flash['err'], ENT_QUOTES); ?>
                 </div>
             <?php endif; ?>
@@ -702,7 +702,7 @@ function faoxima_d_label_section($s) {
                         ?>
                             <tr data-detail-row data-detail-title="کد <?php echo htmlspecialchars($d['codeDiscount'], ENT_QUOTES); ?>">
                                 <td><label class="fx-check-row"><input type="checkbox" name="ids[]" value="<?php echo (int)$d['id']; ?>"></label></td>
-                                <td data-label="کد" data-summary="1"><code style="direction:ltr; background:var(--accent-soft); color:var(--accent); padding:4px 8px; border-radius:6px; font-weight:700;"><?php echo htmlspecialchars($d['codeDiscount'], ENT_QUOTES); ?></code></td>
+                                <td data-label="کد" data-summary="1"><code style="direction:ltr; background:var(--accent-soft); color:var(--accent); padding:4px 8px; border-radius:var(--radius-xs); font-weight:700;"><?php echo htmlspecialchars($d['codeDiscount'], ENT_QUOTES); ?></code></td>
                                 <td data-label="نوع" data-summary="1">
                                     <?php
                                         $discountTypeBadgesHtml = [
@@ -829,7 +829,7 @@ function faoxima_d_label_section($s) {
                         ?>
                             <tr data-detail-row data-detail-title="کد هدیه <?php echo htmlspecialchars((string)$g['code'], ENT_QUOTES); ?>">
                                 <td><label class="fx-check-row"><input type="checkbox" name="ids[]" value="<?php echo (int)$g['id']; ?>"></label></td>
-                                <td data-label="کد" data-summary="1"><code style="direction:ltr; background:var(--accent-soft); color:var(--accent); padding:4px 8px; border-radius:6px; font-weight:700;"><?php echo htmlspecialchars((string)$g['code'], ENT_QUOTES); ?></code></td>
+                                <td data-label="کد" data-summary="1"><code style="direction:ltr; background:var(--accent-soft); color:var(--accent); padding:4px 8px; border-radius:var(--radius-xs); font-weight:700;"><?php echo htmlspecialchars((string)$g['code'], ENT_QUOTES); ?></code></td>
                                 <td data-label="مبلغ" data-summary="1"><?php echo number_format((int)($g['price'] ?? 0)); ?> <small>T</small></td>
                                 <td data-label="سقف کل"><?php echo $glimit > 0 ? $glimit : '<span class="text-muted">نامحدود</span>'; ?></td>
                                 <td data-label="تعداد استفاده"><?php echo $gused; ?><?php if ($glimit > 0): ?> / <?php echo $glimit; ?><?php endif; ?></td>

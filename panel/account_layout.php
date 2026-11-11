@@ -245,12 +245,12 @@ $layoutRows = $layoutRaw === '' ? rx_account_default_layout() : rx_account_layou
         }
         .kb-btn__lock { opacity: .8; margin-inline-start: 6px; font-size: 12px; }
         .acc-pv {
-            max-width: 380px; margin: 14px auto 0; padding: 10px; border-radius: 14px;
+            max-width: 380px; margin: 14px auto 0; padding: 10px; border-radius: var(--radius-2xl);
             background: var(--surface-2, rgba(127,127,127,.12)); display: flex; flex-direction: column; gap: 6px;
         }
         .acc-pv__row { display: flex; gap: 6px; }
         .acc-pv__btn {
-            flex: 1 1 0; min-width: 0; text-align: center; padding: 9px 8px; border-radius: 9px;
+            flex: 1 1 0; min-width: 0; text-align: center; padding: 9px 8px; border-radius: var(--radius-md);
             font-size: 13px; font-weight: 600; color: #fff; background: #3b6a86;
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }

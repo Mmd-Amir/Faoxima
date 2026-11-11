@@ -235,7 +235,7 @@ if (isset($_POST['login'])) {
                 <a href="https://t.me/faoxima" target="_blank" rel="noopener noreferrer"
                    aria-label="کانال تلگرام فاکسیما"
                    title="کانال تلگرام فاکسیما"
-                   style="display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:10px; background:var(--accent-soft, rgba(59,130,246,0.12)); color:var(--accent, #3b82f6); transition:transform .15s ease, background .15s ease;"
+                   style="display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:var(--radius-md); background:var(--accent-soft, rgba(59,130,246,0.12)); color:var(--accent, #3b82f6); transition:transform .15s ease, background .15s ease;"
                    onmouseover="this.style.transform='translateY(-2px)';"
                    onmouseout="this.style.transform='translateY(0)';">
                     <?php echo icon('telegram', 'svg-icon'); ?>
@@ -243,7 +243,7 @@ if (isset($_POST['login'])) {
                 <a href="https://github.com/Mmd-Amir/Faoxima" target="_blank" rel="noopener noreferrer"
                    aria-label="مخزن گیت‌هاب فاکسیما"
                    title="مخزن گیت‌هاب فاکسیما"
-                   style="display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:10px; background:var(--accent-soft, rgba(59,130,246,0.12)); color:var(--accent, #3b82f6); transition:transform .15s ease, background .15s ease;"
+                   style="display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:var(--radius-md); background:var(--accent-soft, rgba(59,130,246,0.12)); color:var(--accent, #3b82f6); transition:transform .15s ease, background .15s ease;"
                    onmouseover="this.style.transform='translateY(-2px)';"
                    onmouseout="this.style.transform='translateY(0)';">
                     <?php echo icon('github', 'svg-icon'); ?>

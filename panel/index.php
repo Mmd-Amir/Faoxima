@@ -335,15 +335,24 @@ function faoxima_users_between(PDO $pdo, int $from, int $to): int {
     $s->bindValue(':a', (int)$from, PDO::PARAM_INT); $s->bindValue(':b', (int)$to, PDO::PARAM_INT); $s->execute();
     return (int)$s->fetchColumn();
 }
-function faoxima_pct(float $cur, float $prev): int {
-    if ($prev <= 0) return $cur > 0 ? 100 : 0;
+function faoxima_pct(float $cur, float $prev): ?int {
+    if ($prev <= 0) return null;
     return (int)round(($cur - $prev) / $prev * 100);
 }
-function faoxima_trend_pill(int $pct, ?string $text = null): string {
+function faoxima_trend_pill(?int $pct, ?string $text = null): string {
     $cls = $pct > 0 ? 'up' : ($pct < 0 ? 'down' : 'flat');
     $ic  = $pct > 0 ? 'arrow-up' : ($pct < 0 ? 'arrow-down' : 'arrow-right');
-    $txt = $text !== null ? $text : (($pct > 0 ? '+' : '') . $pct . '٪');
-    return '<span class="stat-card__trend ' . $cls . '">' . icon($ic, 'svg-icon') . ' ' . htmlspecialchars($txt, ENT_QUOTES, 'UTF-8') . '</span>';
+    if ($text !== null) {
+        $body = '<span>' . htmlspecialchars($text, ENT_QUOTES, 'UTF-8') . '</span>';
+    } elseif ($pct === null) {
+        $body = '<span>بدون سابقهٔ مقایسه</span>';
+    } elseif ($pct > 100) {
+        $body = '<span>بیش از ۱۰۰٪ رشد</span><span>نسبت به ۲۴ ساعت قبل</span>';
+    } else {
+        $pctText = ($pct > 0 ? '+' : '') . $pct . '٪';
+        $body = '<span dir="ltr">' . htmlspecialchars($pctText, ENT_QUOTES, 'UTF-8') . '</span><span>نسبت به ۲۴ ساعت قبل</span>';
+    }
+    return '<span class="stat-card__trend ' . $cls . '">' . icon($ic, 'svg-icon') . ' ' . $body . '</span>';
 }
 function faoxima_status_badge(string $s): array {
     switch ($s) {
@@ -540,13 +549,13 @@ $json_week_data   = json_encode($weekData);
                             <div class="panel__title">روند درآمد</div>
                             <div class="panel__sub" id="revenueSub">۷ روز اخیر</div>
                         </div>
-                        <div class="chart-toolbar">
+                        <div class="chart-toolbar" role="group" aria-label="بازه زمانی">
                             <button class="chart-range-btn" data-range="24h">۲۴ ساعت</button>
                             <button class="chart-range-btn active" data-range="7d">هفته</button>
                             <button class="chart-range-btn" data-range="3m">۳ ماه</button>
                             <button class="chart-range-btn" id="customRangeBtn">روز دلخواه</button>
                             <span id="customRangeBox" style="display:none; align-items:center; gap:6px;">
-                                <input type="number" id="customRangeInput" min="1" max="365" placeholder="روز" inputmode="numeric" style="width:62px; padding:6px 8px; border-radius:8px; border:1px solid var(--border-soft); background:var(--surface-1); color:var(--text-main); font-family:inherit; font-size:12px; text-align:center;">
+                                <input type="number" id="customRangeInput" min="1" max="365" placeholder="روز" inputmode="numeric" aria-label="تعداد روز" style="width:62px; padding:6px 8px; border-radius:var(--radius-md); border:1px solid var(--border-soft); background:var(--surface-1); color:var(--text-main); font-family:inherit; font-size:12px; text-align:center;">
                                 <button class="chart-range-btn" id="customRangeApply">نمایش</button>
                             </span>
                         </div>
@@ -564,7 +573,7 @@ $json_week_data   = json_encode($weekData);
                     <?php if (!empty($catData)): ?>
                         <div class="donut-wrap"><canvas id="categoryChart"></canvas></div>
                     <?php else: ?>
-                        <div class="hdr-dd__empty" style="padding:60px 10px;">داده‌ای برای نمایش نیست</div>
+                        <div class="mdt-empty">داده‌ای برای نمایش نیست</div>
                     <?php endif; ?>
                 </div>
             </div>
@@ -601,7 +610,7 @@ $json_week_data   = json_encode($weekData);
                         </div>
                         <div class="mdt-foot"><span class="mdt-info"></span><div class="mdt-pager" data-pager="dashActivity" data-page-size="3"></div></div>
                     <?php else: ?>
-                        <div class="hdr-dd__empty" style="padding:40px 10px;">فعالیتی در ۲۴ ساعت گذشته ثبت نشده است</div>
+                        <div class="mdt-empty">فعالیتی در ۲۴ ساعت گذشته ثبت نشده است</div>
                     <?php endif; ?>
                     <div class="activity-foot"><a href="reports.php">مشاهدهٔ گزارش‌ها</a></div>
                 </div>
@@ -645,7 +654,7 @@ $json_week_data   = json_encode($weekData);
                 </div>
                 <div class="mdt-foot"><span class="mdt-info"></span><div class="mdt-pager" data-pager-rows="dashOrders" data-page-size="3"></div></div>
                 <?php else: ?>
-                    <div class="hdr-dd__empty" style="padding:40px 10px;">سفارشی در ۲۴ ساعت گذشته ثبت نشده است</div>
+                    <div class="mdt-empty">سفارشی در ۲۴ ساعت گذشته ثبت نشده است</div>
                 <?php endif; ?>
             </div>
 
@@ -677,6 +686,7 @@ $json_week_data   = json_encode($weekData);
         };
     }
     Chart.defaults.font.family = "Vazirmatn, Tahoma, sans-serif";
+    Chart.defaults.font.size = 11.5;
 
     var PALETTE = ['#6366f1','#a855f7','#06b6d4','#10b981','#f59e0b','#f43f5e'];
     var revenue, category, traffic;
@@ -694,7 +704,7 @@ $json_week_data   = json_encode($weekData);
             type:'line',
             data:{ labels: revLabels, datasets:[{ label:'درآمد', data: revData, borderColor: ac, backgroundColor: g, fill:true, tension:0.4, borderWidth:3, pointRadius:3, pointHoverRadius:6, pointBackgroundColor: ac }]},
             options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-                plugins:{ legend:{display:false}, tooltip:{ rtl:true, backgroundColor:c.tipBg, titleColor:c.text, bodyColor:c.text, borderColor:c.tipBorder, borderWidth:1, padding:12, cornerRadius:12, callbacks:{ label:function(ctx){ return new Intl.NumberFormat('fa-IR').format(ctx.parsed.y) + ' T'; } } } },
+                plugins:{ legend:{display:false}, tooltip:{ rtl:true, backgroundColor:c.tipBg, titleColor:c.text, bodyColor:c.text, borderColor:c.tipBorder, borderWidth:1, padding:12, cornerRadius:8, callbacks:{ label:function(ctx){ return new Intl.NumberFormat('fa-IR').format(ctx.parsed.y) + ' T'; } } } },
                 scales:{ x:{ grid:{display:false}, ticks:{color:c.text} }, y:{ grid:{color:c.grid}, ticks:{ color:c.text, callback:function(v){ return faShort(v); } } } } }
         });
     }
@@ -708,7 +718,7 @@ $json_week_data   = json_encode($weekData);
             data:{ labels: <?php echo $json_cat_labels; ?>, datasets:[{ data: <?php echo $json_cat_data; ?>, backgroundColor: PALETTE, borderWidth:0, hoverOffset:10 }]},
             options:{ responsive:true, maintainAspectRatio:false, cutout:'66%',
                 plugins:{ legend:{ position:'bottom', rtl:true, labels:{ color:c.text, padding:14, usePointStyle:true, font:{size:12} } },
-                    tooltip:{ rtl:true, backgroundColor:c.tipBg, titleColor:c.text, bodyColor:c.text, borderColor:c.tipBorder, borderWidth:1, padding:12, cornerRadius:12, callbacks:{ label:function(ctx){ return ctx.label + ': ' + new Intl.NumberFormat('fa-IR').format(ctx.parsed) + ' T'; } } } } }
+                    tooltip:{ rtl:true, backgroundColor:c.tipBg, titleColor:c.text, bodyColor:c.text, borderColor:c.tipBorder, borderWidth:1, padding:12, cornerRadius:8, callbacks:{ label:function(ctx){ return ctx.label + ': ' + new Intl.NumberFormat('fa-IR').format(ctx.parsed) + ' T'; } } } } }
         });
     }
 
@@ -719,9 +729,9 @@ $json_week_data   = json_encode($weekData);
         traffic = new Chart(el, {
             type:'bar',
             data:{ labels: <?php echo $json_week_labels; ?>, datasets:[{ label:'فروش', data: <?php echo $json_week_data; ?>,
-                backgroundColor:function(ctx){ var a=ctx.chart.ctx.createLinearGradient(0,0,0,240); a.addColorStop(0, hexA(ac,0.95)); a.addColorStop(1, hexA(ac,0.35)); return a; }, borderRadius:10, borderSkipped:false }]},
+                backgroundColor:function(ctx){ var a=ctx.chart.ctx.createLinearGradient(0,0,0,240); a.addColorStop(0, hexA(ac,0.95)); a.addColorStop(1, hexA(ac,0.35)); return a; }, borderRadius:8, borderSkipped:false }]},
             options:{ responsive:true, maintainAspectRatio:false,
-                plugins:{ legend:{display:false}, tooltip:{ rtl:true, backgroundColor:c.tipBg, titleColor:c.text, bodyColor:c.text, borderColor:c.tipBorder, borderWidth:1, padding:10, cornerRadius:10, callbacks:{ label:function(ctx){ return fa(ctx.parsed.y) + ' فروش'; } } } },
+                plugins:{ legend:{display:false}, tooltip:{ rtl:true, backgroundColor:c.tipBg, titleColor:c.text, bodyColor:c.text, borderColor:c.tipBorder, borderWidth:1, padding:10, cornerRadius:8, callbacks:{ label:function(ctx){ return fa(ctx.parsed.y) + ' فروش'; } } } },
                 scales:{ x:{ grid:{display:false}, ticks:{color:c.text} }, y:{ grid:{color:c.grid}, ticks:{ color:c.text, precision:0, callback:function(v){ return fa(v); } } } } }
         });
     }

@@ -17,7 +17,7 @@
     min-height: 52px;
     padding: 12px 14px;
     border: 1px solid var(--border-mid);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     color: var(--text-main);
     background: var(--input-bg, var(--surface-1));
     font: inherit;
@@ -330,7 +330,7 @@ body.fn-modal-open {
     unicode-bidi: embed;
     background: var(--surface-3);
     border: 1px solid var(--border-soft);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-xs);
     padding: 3px 8px;
     font-size: 12.5px;
     color: var(--text-strong);
@@ -371,7 +371,7 @@ body.fn-modal-open {
     place-items: center;
     width: 34px;
     height: 34px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border-mid);
     background: var(--surface-1);
     color: var(--text-muted);
@@ -582,7 +582,7 @@ body.fn-modal-open {
 
 .fn-hintbox {
     border: 1px dashed var(--border-mid);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     padding: 12px 14px;
     font-size: 12.5px;
     line-height: 1.9;
@@ -595,7 +595,7 @@ body.fn-modal-open {
     align-items: flex-start;
     gap: 10px;
     border: 1px solid var(--border-soft);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     background: var(--surface-1);
     padding: 10px 12px;
     cursor: pointer;
@@ -715,7 +715,7 @@ body.fn-modal-open {
 
 .fn-preview__note {
     margin-top: 10px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     padding: 9px 12px;
     font-size: 11.5px;
     line-height: 1.9;
@@ -740,7 +740,7 @@ body.fn-modal-open {
 }
 
 .fn-form__error {
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     padding: 11px 13px;
     font-size: 12.5px;
     line-height: 1.8;
@@ -770,7 +770,7 @@ body.fn-modal-open {
     z-index: 2100;
     max-width: min(420px, calc(100vw - 32px));
     padding: 12px 18px;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     background: var(--surface-1);
     border: 1px solid var(--border-mid);
     box-shadow: var(--shadow-2);

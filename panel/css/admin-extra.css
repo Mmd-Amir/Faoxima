@@ -49,8 +49,8 @@
 
 
 .alert {
-    padding: 13px 16px;
-    border-radius: 12px;
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
     margin-bottom: 18px;
     display: flex;
     align-items: flex-start;
@@ -131,7 +131,7 @@
 .setting-row input[type="text"] {
     width: 130px;
     padding: 7px 10px;
-    border-radius: 7px;
+    border-radius: var(--control-radius);
     background: var(--surface-3);
     border: 1px solid var(--border-mid);
     color: var(--text-main);
@@ -179,7 +179,7 @@
 .panel-card {
     background: linear-gradient(180deg, var(--glass-sheen), transparent 38%), var(--surface-2);
     border: 1px solid var(--glass-border);
-    border-radius: 14px;
+    border-radius: var(--radius-lg);
     overflow: hidden;
     transition: border-color .15s;
     box-shadow: var(--shadow-1), var(--glass-edge);
@@ -193,7 +193,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 14px;
+    padding: 12px 16px;
     background: rgba(0, 0, 0, 0.1);
     border-bottom: 1px solid var(--border-soft);
     gap: 10px;
@@ -224,7 +224,7 @@
 }
 
 .panel-card__body {
-    padding: 14px;
+    padding: var(--space-4);
 }
 
 .panel-card__info {
@@ -317,7 +317,7 @@
     display: inline-flex;
     background: var(--surface-2);
     border: 1px solid var(--border-mid);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     padding: 3px;
     gap: 2px;
 }
@@ -326,7 +326,7 @@
     background: transparent;
     border: 0;
     padding: 7px 11px;
-    border-radius: 7px;
+    border-radius: var(--radius-sm);
     color: var(--text-muted);
     cursor: pointer;
     display: inline-flex;
@@ -359,7 +359,7 @@
     border: 1px solid var(--color-success);
     color: var(--color-success);
     padding: 12px 16px;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     margin-bottom: 18px;
     display: flex;
     align-items: center;
@@ -706,7 +706,7 @@
 #modal-rx-view .receipt-detail-photo {
     margin-top: 8px;
     border: 1px solid var(--glass-border);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: var(--surface-2);
     padding: 8px;
     text-align: center;
@@ -715,7 +715,7 @@
 #modal-rx-view .receipt-detail-photo img {
     max-width: 100%;
     height: auto;
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     display: block;
     margin: 0 auto;
     cursor: zoom-in;
@@ -744,7 +744,7 @@
     max-height: calc(92vh - 90px);
     height: auto;
     width: auto;
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     display: block;
 }
 

@@ -54,11 +54,11 @@
                 '.mdt-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;}' +
                 '.mdt-search{position:relative;display:inline-flex;align-items:center;flex:1 1 240px;max-width:360px;}' +
                 '.mdt-search__icon{position:absolute;inset-inline-start:12px;display:flex;color:var(--text-dim,#8a8a9a);pointer-events:none;}' +
-                '.mdt-search input{width:100%;padding-block:9px;padding-inline-start:38px;padding-inline-end:14px;border-radius:10px;background:var(--surface-3,#1a1a22);border:1px solid var(--border-mid,#33333f);color:var(--text-main,#eee);font-size:13px;outline:none;transition:border-color .15s,box-shadow .15s;}' +
+                '.mdt-search input{width:100%;padding-block:9px;padding-inline-start:38px;padding-inline-end:14px;border-radius:var(--radius-md);background:var(--surface-3,#1a1a22);border:1px solid var(--border-mid,#33333f);color:var(--text-main,#eee);font-size:13px;outline:none;transition:border-color .15s,box-shadow .15s;}' +
                 '.mdt-search input:focus{border-color:var(--accent,#8b5cf6);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent,#8b5cf6) 22%,transparent);}' +
                 '.mdt-filters{display:flex;gap:16px;flex-wrap:wrap;align-items:center;flex-basis:100%;margin-top:4px;}' +
                 '.mdt-filters--collapsed{display:none;}' +
-                '.mdt-filter-toggle{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:10px;background:var(--surface-2,#1a1a22);border:1px solid var(--border-soft,#33333f);color:var(--text-main,#eee);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;}' +
+                '.mdt-filter-toggle{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:var(--radius-md);background:var(--surface-2,#1a1a22);border:1px solid var(--border-soft,#33333f);color:var(--text-main,#eee);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;}' +
                 '.mdt-filter-toggle:hover,.mdt-filter-toggle.active{border-color:var(--accent,#8b5cf6);color:var(--accent,#8b5cf6);}' +
                 '.mdt-pillgroup{display:inline-flex;gap:7px;flex-wrap:wrap;align-items:center;}' +
                 '.mdt-pillgroup__label{font-size:12px;color:var(--text-dim,#8a8a9a);margin-inline-end:2px;}' +

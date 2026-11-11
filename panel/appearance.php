@@ -25,13 +25,13 @@ if (empty($_SESSION['user']) || !is_string($_SESSION['user']) || $_SESSION['user
     <script src="js/theme.js?v=flat50" defer></script>
     <style>
         .ap-card { max-width: 720px; }
-        .ap-lead { color: var(--text-muted, #8a8a9a); font-size: 13px; margin: 2px 0 18px; }
-        .ap-section-title { font-weight: 700; font-size: 15px; margin: 6px 0 4px; display: flex; align-items: center; gap: 8px; }
-        .ap-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 10px; }
+        .ap-lead { color: var(--text-muted, #8a8a9a); font-size: 13px; margin: 0 0 var(--space-4); }
+        .ap-section-title { font-weight: 600; font-size: 15px; margin: 6px 0 4px; display: flex; align-items: center; gap: 8px; }
+        .ap-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-3); margin-top: var(--space-3); }
         @media (min-width: 560px) { .ap-grid { grid-template-columns: repeat(3, 1fr); } }
         .ap-swatch {
             display: flex; align-items: center; justify-content: space-between; gap: 10px;
-            padding: 14px 16px; border-radius: 16px;
+            padding: 14px 16px; border-radius: var(--radius-md);
             background: var(--surface-2, #1c1917); border: 1px solid var(--border-soft, #2a2a35);
             cursor: pointer; color: var(--text-main); font-weight: 600; font-size: 14px;
             transition: transform .15s ease, border-color .15s ease, box-shadow .18s ease;
@@ -40,18 +40,18 @@ if (empty($_SESSION['user']) || !is_string($_SESSION['user']) || $_SESSION['user
         .ap-swatch:hover { transform: translateY(-2px); border-color: var(--accent); }
         .ap-swatch.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
         .ap-dot { width: 26px; height: 26px; border-radius: 50%; flex: 0 0 auto; box-shadow: inset 0 0 0 2px rgba(255,255,255,0.16); }
-        .ap-custom { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border-soft, #2a2a35); }
+        .ap-custom { margin-top: var(--space-6); padding-top: var(--space-4); border-top: 1px solid var(--border-soft, #2a2a35); }
         .ap-hexrow { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
         .ap-hexrow input[type="text"] {
             flex: 1; direction: ltr; text-align: left; font-family: 'JetBrains Mono', monospace;
-            padding: 12px 14px; border-radius: 12px; background: var(--surface-1);
+            padding: 12px 14px; border-radius: var(--radius-md); background: var(--surface-1);
             border: 1px solid var(--border-soft, #2a2a35); color: var(--text-main); font-size: 15px;
         }
         .ap-hexrow input[type="text"]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-        .ap-hexrow input[type="color"] { width: 48px; height: 48px; border: none; background: none; padding: 0; border-radius: 12px; cursor: pointer; }
-        .ap-preview { width: 48px; height: 48px; border-radius: 12px; background: var(--accent); border: 1px solid rgba(255,255,255,0.16); flex: 0 0 auto; }
+        .ap-hexrow input[type="color"] { width: 48px; height: 48px; border: none; background: none; padding: 0; border-radius: var(--radius-md); cursor: pointer; }
+        .ap-preview { width: 48px; height: 48px; border-radius: var(--radius-md); background: var(--accent); border: 1px solid rgba(255,255,255,0.16); flex: 0 0 auto; }
         .ap-note { color: var(--text-muted, #8a8a9a); font-size: 12.5px; margin-top: 10px; }
-        .ap-actions { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
+        .ap-actions { margin-top: var(--space-4); display: flex; gap: var(--space-2); flex-wrap: wrap; }
     </style>
 </head>
 <body>

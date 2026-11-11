@@ -184,7 +184,7 @@ $savedNum  = isset($_GET['saved']) ? (int)$_GET['saved'] : 0;
             align-items: center;
             gap: 8px;
             padding: 10px 16px;
-            border-radius: 12px;
+            border-radius: var(--radius-md);
             border: 1px solid var(--border-mid);
             background: var(--surface-1);
             color: var(--text-main);
@@ -192,14 +192,14 @@ $savedNum  = isset($_GET['saved']) ? (int)$_GET['saved'] : 0;
             font-size: 13px;
             font-weight: 600;
             cursor: pointer;
-            transition: 0.2s;
+            transition: background-color .15s ease, border-color .15s ease, color .15s ease;
             white-space: nowrap;
         }
         .bn-upload__btn:hover {
             border-color: var(--accent);
             color: var(--accent);
             background: var(--accent-soft);
-            transform: translateY(-1px);
+            transform: none;
         }
         .bn-upload__btn svg { width: 16px; height: 16px; }
         .bn-upload__name {
@@ -216,16 +216,16 @@ $savedNum  = isset($_GET['saved']) ? (int)$_GET['saved'] : 0;
             align-items: center;
             justify-content: center;
             width: 26px; height: 26px;
-            border-radius: 8px;
+            border-radius: var(--radius-sm);
             border: 1px solid var(--border-mid);
             background: var(--surface-1);
             color: var(--color-danger);
             cursor: pointer;
-            transition: 0.2s;
+            transition: background-color .15s ease, border-color .15s ease, color .15s ease;
         }
         .bn-upload__clear:hover { background: var(--color-danger-soft); border-color: var(--color-danger); }
         .bn-upload__clear.show { display: inline-flex; }
-        .bn-upload__clear svg { width: 13px; height: 13px; }
+        .bn-upload__clear svg { width: 14px; height: 14px; }
     </style>
 </head>
 <body>

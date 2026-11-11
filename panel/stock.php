@@ -690,14 +690,14 @@ function faoxima_stock_status_label(string $s): array
         .shelf-card {
             background: var(--surface-2);
             border: 1px solid var(--border-soft);
-            border-radius: var(--radius);
+            border-radius: var(--radius-lg);
             overflow: hidden;
             transition: box-shadow .15s, border-color .15s;
         }
 
         .shelf-card:hover {
             border-color: var(--border-mid);
-            box-shadow: 0 4px 18px rgba(0, 0, 0, .12);
+            box-shadow: none;
         }
 
         .shelf-card__head {
@@ -713,14 +713,14 @@ function faoxima_stock_status_label(string $s): array
 
         .shelf-card__title {
             font-size: var(--text-md);
-            font-weight: 700;
+            font-weight: 600;
             line-height: 1.5;
         }
 
         .shelf-card__body {
             display: flex;
             flex-direction: column;
-            gap: 7px;
+            gap: 8px;
             padding: var(--space-4);
             font-size: var(--text-sm);
             line-height: 1.6;
@@ -729,7 +729,7 @@ function faoxima_stock_status_label(string $s): array
         .shelf-card__body>div {
             display: flex;
             align-items: center;
-            gap: 7px;
+            gap: 8px;
         }
 
         .shelf-card__body .svg-icon {
@@ -770,7 +770,7 @@ function faoxima_stock_status_label(string $s): array
             padding: var(--space-4);
             margin-bottom: var(--space-3);
             border: 1px solid var(--border-soft);
-            border-radius: var(--radius);
+            border-radius: var(--radius-md);
             background: var(--surface-2);
             transition: border-color .15s;
         }
@@ -854,7 +854,7 @@ function faoxima_stock_status_label(string $s): array
             margin-top: var(--space-1);
             padding: var(--space-2) var(--space-3);
             border: 1px solid var(--border-soft);
-            border-radius: var(--radius-sm);
+            border-radius: var(--radius-md);
             background: var(--surface-3);
         }
 

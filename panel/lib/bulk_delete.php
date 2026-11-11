@@ -52,15 +52,15 @@ if (!function_exists('fx_bulk_delete_flash_html')) {
         if ($bulk === 'ok') {
             $n = (int)($_GET[$param . 'n'] ?? 0);
             $msg = $prefix . $n . ' مورد با موفقیت حذف شد.';
-            return '<div class="alert" style="background:var(--color-success-soft); border:1px solid var(--color-success); color:var(--color-success); padding:12px 16px; border-radius:10px; margin-bottom:18px; display:flex; align-items:center; gap:10px;">' . htmlspecialchars($msg, ENT_QUOTES, 'UTF-8') . '</div>';
+            return '<div class="alert" style="background:var(--color-success-soft); border:1px solid var(--color-success); color:var(--color-success); padding:12px 16px; border-radius:var(--radius-md); margin-bottom:18px; display:flex; align-items:center; gap:10px;">' . htmlspecialchars($msg, ENT_QUOTES, 'UTF-8') . '</div>';
         }
         if ($bulk === 'fail') {
-            return '<div class="alert" style="background:var(--color-danger-soft); border:1px solid var(--color-danger); color:var(--color-danger); padding:12px 16px; border-radius:10px; margin-bottom:18px;">' . htmlspecialchars($prefix . 'حذف موارد انتخاب‌شده به‌دلیل خطای پایگاه داده انجام نشد و هیچ رکوردی حذف نشد. جزئیات خطا در لاگ سرور ثبت شد.', ENT_QUOTES, 'UTF-8') . '</div>';
+            return '<div class="alert" style="background:var(--color-danger-soft); border:1px solid var(--color-danger); color:var(--color-danger); padding:12px 16px; border-radius:var(--radius-md); margin-bottom:18px;">' . htmlspecialchars($prefix . 'حذف موارد انتخاب‌شده به‌دلیل خطای پایگاه داده انجام نشد و هیچ رکوردی حذف نشد. جزئیات خطا در لاگ سرور ثبت شد.', ENT_QUOTES, 'UTF-8') . '</div>';
         }
         if ($bulk === 'empty') {
-            return '<div class="alert" style="background:var(--color-warning-soft); border:1px solid var(--color-warning); color:var(--color-warning); padding:12px 16px; border-radius:10px; margin-bottom:18px;">' . htmlspecialchars($prefix . 'هیچ موردی انتخاب نشده بود.', ENT_QUOTES, 'UTF-8') . '</div>';
+            return '<div class="alert" style="background:var(--color-warning-soft); border:1px solid var(--color-warning); color:var(--color-warning); padding:12px 16px; border-radius:var(--radius-md); margin-bottom:18px;">' . htmlspecialchars($prefix . 'هیچ موردی انتخاب نشده بود.', ENT_QUOTES, 'UTF-8') . '</div>';
         }
-        return '<div class="alert" style="background:var(--color-danger-soft); border:1px solid var(--color-danger); color:var(--color-danger); padding:12px 16px; border-radius:10px; margin-bottom:18px;">' . htmlspecialchars($prefix . 'حذف موارد انتخاب‌شده ناموفق بود.', ENT_QUOTES, 'UTF-8') . '</div>';
+        return '<div class="alert" style="background:var(--color-danger-soft); border:1px solid var(--color-danger); color:var(--color-danger); padding:12px 16px; border-radius:var(--radius-md); margin-bottom:18px;">' . htmlspecialchars($prefix . 'حذف موارد انتخاب‌شده ناموفق بود.', ENT_QUOTES, 'UTF-8') . '</div>';
     }
 }
 
@@ -174,7 +174,7 @@ if (!function_exists('fx_filter_delete_flash_html')) {
         $prefix = $label !== '' ? $label . ': ' : '';
         $n = max(0, (int)($_GET[$param . 'n'] ?? 0));
         $t = max(0, (int)($_GET[$param . 't'] ?? 0));
-        $box = 'padding:12px 16px; border-radius:10px; margin-bottom:18px;';
+        $box = 'padding:12px 16px; border-radius:var(--radius-md); margin-bottom:18px;';
 
         if ($state === 'ok' && $n >= $t) {
             $msg = $prefix . number_format($n) . ' نتیجه فیلترشده با موفقیت حذف شد.';

@@ -721,7 +721,7 @@ function faoxima_ms_status_label(string $s): array
             align-items: center;
             gap: 6px;
             padding: 3px 10px;
-            border-radius: 8px;
+            border-radius: var(--radius-md);
             background: var(--surface-2);
             border: 1px solid var(--border-color);
             font-size: 12px;
@@ -1135,7 +1135,7 @@ function faoxima_ms_status_label(string $s): array
                             <form method="POST" action="manual_service.php" autocomplete="off">
                                 <input type="hidden" name="_action" value="update_storage_limit">
                                 <div class="modal-body" style="padding: 1.25rem;">
-                                    <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                                    <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius-md); padding: 12px; margin-bottom: 16px;">
                                         <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 6px;">
                                             <span>حجم اشغال‌شده: <strong><?php echo $usedGbVal; ?> GB</strong></span>
                                             <span>سقف مجاز: <strong><?php echo $maxStorageGb; ?> GB</strong></span>
