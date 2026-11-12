@@ -130,7 +130,7 @@ export function startAtlaspayCustom(view, orderId, opts = {}) {
         if (!v.card_complete) {
             return `
                 <div class="card-section mt-md">
-                    <p class="muted" style="font-size:12px;color:var(--yellow)">شماره کارت به‌صورت کامل دریافت نشد؛ برای مشاهده شماره کارت و پرداخت، از دکمه «ارسال رسید» وارد صفحه رسمی اطلس‌پی شوید.</p>
+                    <p class="muted" style="font-size:12px;color:var(--yellow)">${v.payment_url ? 'شماره کارت به‌صورت کامل دریافت نشد؛ برای مشاهده اطلاعات کارت و پرداخت، از دکمه «مشاهده اطلاعات پرداخت» استفاده کنید.' : 'شماره کارت به‌صورت کامل دریافت نشد؛ برای دریافت اطلاعات پرداخت با پشتیبانی فروشگاه در ارتباط باشید.'}</p>
                 </div>`;
         }
         const holder = v.card_name
@@ -157,6 +157,11 @@ export function startAtlaspayCustom(view, orderId, opts = {}) {
             ]));
         }
         const terminal = FAIL_PHASES.includes(v.phase) || v.phase === 'paid';
+        if (v.phase === 'awaiting_payment' && !v.card_complete && v.payment_url) {
+            rows.push(actionRow([
+                actionButton('apc-payment', 'pay_link', v, `${icon('creditCard', 'class="ico ico-leading"')}<span>مشاهده اطلاعات پرداخت</span>`),
+            ]));
+        }
         rows.push(actionRow([
             !terminal && v.phase !== 'confirming' ? actionButton('apc-refresh', 'check_status', v, `${icon('refresh', 'class="ico ico-leading"')}<span>بررسی</span>`) : '',
             v.receipt_url ? actionButton('apc-receipt', 'send_receipt', v, `${icon('camera', 'class="ico ico-leading"')}<span>ارسال رسید</span>`) : '',
@@ -200,6 +205,7 @@ export function startAtlaspayCustom(view, orderId, opts = {}) {
             ${cardBlock(v)}
             ${timerBlock(v)}
             ${actionsBlock(v)}
+            ${v.messages && v.messages.receipt ? `<p class="muted mt-md" style="font-size:12px;line-height:1.8;white-space:pre-line">${escapeHtml(v.messages.receipt)}</p>` : ''}
             <p class="muted mt-md" style="font-size:12px;text-align:center">شناسه پیگیری: <span class="mono gold" dir="ltr">${escapeHtml(v.tracking_code || orderId)}</span></p>`);
         bind();
     }
@@ -230,11 +236,19 @@ export function startAtlaspayCustom(view, orderId, opts = {}) {
             if ($again) $again.disabled = false;
         });
 
+        const $payment = $('#apc-payment');
+        if ($payment) $payment.addEventListener('click', () => {
+            hapticImpact('light');
+            if (!openOfficialApp(data.payment_url)) {
+                toast('لینک پرداخت اطلس‌پی در دسترس نیست', 'error', 3500);
+            }
+        });
+
         const $receipt = $('#apc-receipt');
         if ($receipt) $receipt.addEventListener('click', () => {
             hapticImpact('light');
             if (!openOfficialApp(data.receipt_url)) {
-                toast('لینک رسمی اطلس‌پی در دسترس نیست', 'error', 3500);
+                toast('لینک ربات اطلس‌پی در دسترس نیست', 'error', 3500);
             }
         });
 
@@ -262,7 +276,7 @@ export function startAtlaspayCustom(view, orderId, opts = {}) {
     }
 
     function signatureOf(v) {
-        return [v.phase, v.card_number, v.payable_rial, v.can_cancel, v.card_complete, v.receipt_url, JSON.stringify(v.button_styles || {})].join('|');
+        return [v.phase, v.card_number, v.payable_rial, v.can_cancel, v.card_complete, v.payment_url, v.receipt_url, JSON.stringify(v.button_styles || {})].join('|');
     }
 
     function applyView(v, force) {

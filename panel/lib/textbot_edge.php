@@ -183,7 +183,7 @@ if (!function_exists('fx_textbot_rich_eligibility')) {
                 'allowed' => false,
                 'tables'  => false,
                 'kind'    => 'tonpay',
-                'reason'  => 'این متن قالب پیام پرداخت تون‌پی است و محدودیت طول و ساختار مخصوص خود را دارد.',
+                'reason'  => 'این متن مربوط به پرداخت است و محدودیت طول و ساختار مخصوص خود را دارد.',
             ];
         }
         static $buttonKeys = null;

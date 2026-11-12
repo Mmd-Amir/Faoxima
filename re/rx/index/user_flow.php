@@ -4801,7 +4801,7 @@ $textonebuy
         $atlaspayCustomMode = atlaspayPaymentMode() === 'custom';
         $payment = $atlaspayCustomMode
             ? atlaspayCustomCreateOrder($randomString, (int) $user['Processing_value'], (int) $from_id)
-            : atlaspayCreateOrder($randomString, (int) $user['Processing_value']);
+            : atlaspayCreateOrder($randomString, (int) $user['Processing_value'], (int) $from_id);
 
         $paymentErrorData = null;
         if (!is_array($payment)) {
@@ -4845,6 +4845,7 @@ $textonebuy
 
         $atlaspayOrderId = trim((string) ($payment['orderId'] ?? ''));
         $paymentUrl = trim((string) ($payment['customerStartLink'] ?? ''));
+        $receiptUrl = atlaspayReceiptBotUrl($payment['receiptBotLink'] ?? '');
         $trackingCode = trim((string) ($payment['trackingCode'] ?? ''));
         if ($atlaspayOrderId === '' || $paymentUrl === '') {
             $text_error = json_encode($payment, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -4885,14 +4886,21 @@ $textonebuy
         update("Payment_report", "atlaspay_order_id", $atlaspayOrderId, "id_order", $randomString);
         update("Payment_report", "atlaspay_tracking_code", $trackingCode, "id_order", $randomString);
         update("Payment_report", "atlaspay_payment_url", $paymentUrl, "id_order", $randomString);
+        update("Payment_report", "atlaspay_receipt_url", $receiptUrl, "id_order", $randomString);
         update("Payment_report", "atlaspay_total_amount", $totalAmountToman, "id_order", $randomString);
         rxPaymentV2Mark($randomString, ['atlaspay_created_at' => time()]);
-        $paymentkeyboard = json_encode([
-            'inline_keyboard' => [
-                [
-                    rx_payment_button('atlaspay', 'pay_link', ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $paymentUrl])
-                ]
+        $atlaspayPaymentButtons = [
+            [
+                rx_payment_button('atlaspay', 'pay_link', ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $paymentUrl])
             ]
+        ];
+        if ($receiptUrl !== '') {
+            $atlaspayPaymentButtons[] = [
+                rx_payment_button('atlaspay', 'send_receipt', ['text' => atlaspayBotReceiptButtonText(), 'url' => $receiptUrl])
+            ];
+        }
+        $paymentkeyboard = json_encode([
+            'inline_keyboard' => $atlaspayPaymentButtons
         ]);
         $pricetoman = number_format($totalAmountToman, 0);
         $textnowpayments = "✅ تراکنش شما ایجاد شد
@@ -4902,7 +4910,13 @@ $textonebuy
 
 💢 لطفا به این نکات قبل از پرداخت توجه کنید 👇
 
-🔹 تراکنش تا ۲۰ دقیقه اعتبار و پس از آن در صورت پرداخت تایید نخواهد شد .
+🔹 تراکنش تا ۲۰ دقیقه اعتبار و پس از آن در صورت پرداخت تایید نخواهد شد .";
+        if ($receiptUrl !== '') {
+            $textnowpayments .= "
+
+" . atlaspayBotReceiptInstructions();
+        }
+        $textnowpayments .= "
 
 ✅ در صورت مشکل میتوانید با پشتیبانی در ارتباط باشید";
         $gethelp = select("PaySetting", "ValuePay", "NamePay", "helpatlaspay", "select")['ValuePay'];

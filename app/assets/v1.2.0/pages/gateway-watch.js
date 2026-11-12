@@ -77,7 +77,10 @@ export function startGatewayWatch(view, opts) {
 
     const fmtCountdown = (String(method || '').toLowerCase() === 'tonpay') ? fmtHhMmSs : fmtMmSs;
     const isRialit = String(method || '').toLowerCase() === 'rialit';
+    const isAtlaspay = String(method || '').toLowerCase() === 'atlaspay';
     let currentGatewayUrl = gatewayUrl;
+    let atlaspayReceiptUrl = '';
+    let atlaspayReceiptExpiresAt = 0;
 
 
     const finalizingMessages = {
@@ -155,6 +158,10 @@ export function startGatewayWatch(view, opts) {
                         ${reopenBtn}
                     </div>
 
+                    ${isAtlaspay ? `<div id="watch-atlaspay-receipt" class="mt-md" hidden>
+                        <p class="muted" id="watch-atlaspay-receipt-note" style="font-size:12px;line-height:1.8;white-space:pre-line"></p>
+                        <button type="button" class="btn btn-primary btn-block mt-sm" id="watch-send-receipt">📎 ارسال رسید</button>
+                    </div>` : ''}
                     <button type="button" class="btn btn-ghost btn-block mt-sm" id="watch-cancel">
                         ${icon('xCircle', 'class="ico ico-leading"')}
                         <span>${isRialit ? 'انصراف و پرداخت جدید' : 'انصراف'}</span>
@@ -163,7 +170,27 @@ export function startGatewayWatch(view, opts) {
             </article>`;
     }
 
+    function updateAtlaspayReceipt(obj) {
+        if (!isAtlaspay) return;
+        const receipt = obj.atlaspay_receipt;
+        const url = String(receipt?.url || '');
+        const expiresAt = Number(receipt?.expires_at || 0);
+        atlaspayReceiptUrl = /^https:\/\/(?:t\.me|telegram\.me)\/atlaspaybot\?start=r_[A-Za-z0-9_-]+$/i.test(url)
+            && !['paid', 'reject', 'cancelled', 'expire'].includes(String(obj.payment_status || ''))
+            && expiresAt * 1000 > Date.now() ? url : '';
+        atlaspayReceiptExpiresAt = expiresAt;
+        const host = view.querySelector('#watch-atlaspay-receipt');
+        if (host) host.hidden = !atlaspayReceiptUrl;
+        const note = view.querySelector('#watch-atlaspay-receipt-note');
+        if (note) note.textContent = String(receipt?.message || '');
+    }
+
     function updateCountdown() {
+        if (isAtlaspay && atlaspayReceiptExpiresAt * 1000 <= Date.now()) {
+            atlaspayReceiptUrl = '';
+            const receiptHost = view.querySelector('#watch-atlaspay-receipt');
+            if (receiptHost) receiptHost.hidden = true;
+        }
         const $time = view.querySelector('#watch-time');
         if (!$time) return;
         const remain = Math.max(0, Math.floor((deadline - Date.now()) / 1000));
@@ -230,6 +257,7 @@ export function startGatewayWatch(view, opts) {
             const res = await call('payment_status', { params: { order_id: orderId } });
             const obj = res?.obj || {};
             const status = String(obj.payment_status || '');
+            updateAtlaspayReceipt(obj);
             if (isRialit && obj.rialit && obj.rialit.link_available && obj.gateway_url) {
                 currentGatewayUrl = String(obj.gateway_url);
                 if (!view.querySelector('#watch-reopen')) {
@@ -297,6 +325,7 @@ export function startGatewayWatch(view, opts) {
             const res = await call('payment_status', { params: { order_id: orderId } });
             const obj = res?.obj || {};
             const status = String(obj.payment_status || '');
+            updateAtlaspayReceipt(obj);
 
             const isReady = (!isRialit || !obj.rialit || !!obj.rialit.fulfillment_done)
                 && ((mode === 'recharge' || mode === 'pending_action') ? true : !!obj.is_service_ready);
@@ -363,6 +392,15 @@ export function startGatewayWatch(view, opts) {
     _gwSetActive(cleanup);
 
     html();
+
+    const $receipt = view.querySelector('#watch-send-receipt');
+    if ($receipt) {
+        $receipt.addEventListener('click', () => {
+            if (stopped || !atlaspayReceiptUrl || atlaspayReceiptExpiresAt * 1000 <= Date.now()) return;
+            hapticImpact('light');
+            openGatewayLink(atlaspayReceiptUrl, { keepMiniAppOpen: false });
+        });
+    }
 
     if (deadlineReached) {
         deadlineReached = false;

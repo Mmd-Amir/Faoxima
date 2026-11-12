@@ -2426,6 +2426,41 @@ function atlaspayCurlJson($method, $endpoint, array $payload, $apiKey)
     return $decoded;
 }
 
+function atlaspayEnsureReceiptSchema()
+{
+    global $pdo;
+    static $ready = false;
+    if ($ready) {
+        return true;
+    }
+    if (!($pdo instanceof PDO)) {
+        return false;
+    }
+    try {
+        $column = $pdo->query("SHOW COLUMNS FROM Payment_report WHERE Field = 'atlaspay_receipt_url'");
+        if ($column === false) {
+            return false;
+        }
+        if ($column->fetch(PDO::FETCH_ASSOC) === false) {
+            try {
+                if ($pdo->exec("ALTER TABLE Payment_report ADD COLUMN atlaspay_receipt_url VARCHAR(500) NULL") === false) {
+                    throw new RuntimeException('AtlasPay receipt column could not be added');
+                }
+            } catch (Throwable $e) {
+                $column = $pdo->query("SHOW COLUMNS FROM Payment_report WHERE Field = 'atlaspay_receipt_url'");
+                if ($column === false || $column->fetch(PDO::FETCH_ASSOC) === false) {
+                    throw $e;
+                }
+            }
+        }
+        $ready = true;
+        return true;
+    } catch (Throwable $e) {
+        error_log('AtlasPay receipt schema failed: ' . $e->getMessage());
+        return false;
+    }
+}
+
 function atlaspayCreateOrder($order_id, $amount, $telegramId = null)
 {
     $apiKey = atlaspayApiKey();
@@ -2434,6 +2469,10 @@ function atlaspayCreateOrder($order_id, $amount, $telegramId = null)
             'success' => false,
             'error' => 'کلید API اطلس‌پی تنظیم نشده است',
         ];
+    }
+
+    if (!atlaspayEnsureReceiptSchema()) {
+        return ['success' => false, 'error' => 'آماده‌سازی ذخیره لینک رسید اطلس‌پی ناموفق بود؛ با پشتیبانی فروشگاه تماس بگیرید.'];
     }
 
     $requestPayload = [

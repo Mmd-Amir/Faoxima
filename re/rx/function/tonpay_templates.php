@@ -22,6 +22,18 @@ if (!function_exists('tonpayTemplateDefinitions')) {
             'expired' => ["⌛️ این فاکتور منقضی شده است.\nدر صورت واریز وجه با پشتیبانی تماس بگیرید و شناسه فاکتور {invoice_id} را اعلام کنید.", 'وضعیت: فاکتور منقضی‌شده'],
         ];
         $definitions = [
+            'dyn_atlaspay_bot_receipt_button' => [
+                'label' => 'اطلس‌پی ربات: متن دکمه ارسال رسید',
+                'default' => '📎 ارسال رسید',
+                'allowed' => [],
+                'required' => [],
+            ],
+            'dyn_atlaspay_bot_receipt_instructions' => [
+                'label' => 'اطلس‌پی ربات: راهنمای ارسال رسید',
+                'default' => '📎 پس از واریز، در صورتی که پرداخت ظرف ۲ دقیقه به‌صورت خودکار تأیید نشد، از دکمه «{receipt_button}» وارد ربات اطلس‌پی شوید و تصویر رسید را ارسال نمایید. برای هر سفارش تنها یک رسید قابل ثبت است.',
+                'allowed' => ['receipt_button'],
+                'required' => [],
+            ],
             'dyn_tonpay_invoice_tpl' => [
                 'label' => 'پیام اولیه فاکتور (با اطلاعات کارت)',
                 'default' => "💠 <b>{gateway_title}</b>\n\n💰 مبلغ شارژ / خرید: <b>{purchase_amount}</b> تومان\n💳 مبلغ قابل پرداخت: <b>{payable_amount}</b> ریال\n\n{amount_warning}\n\n🏦 شماره کارت:\n<code>{card_number}</code>\n👤 به نام: {cardholder_name}\n\n🧾 شناسه فاکتور: <code>{invoice_id}</code>\n🛒 کد پیگیری: <code>{tracking_code}</code>",
@@ -168,6 +180,10 @@ if (!function_exists('tonpayTemplateValidate')) {
             return '';
         }
         $text = (string) $text;
+        if ($key === 'dyn_atlaspay_bot_receipt_button'
+            && (mb_strlen($text) > 64 || preg_match('/[<>\r\n{}]/u', $text))) {
+            return 'متن دکمه باید حداکثر ۶۴ کاراکتر و بدون تگ HTML، متغیر یا خط جدید باشد.';
+        }
         if (trim($text) === '') {
             return 'متن نمی‌تواند خالی باشد.';
         }

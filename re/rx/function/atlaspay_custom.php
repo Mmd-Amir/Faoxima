@@ -151,6 +151,38 @@ function atlaspayCustomValidReceiptUrl($url)
     return $url;
 }
 
+function atlaspayReceiptBotUrl($url)
+{
+    $url = atlaspayCustomValidReceiptUrl($url);
+    if ($url === '') {
+        return '';
+    }
+    $parts = parse_url($url);
+    parse_str((string) ($parts['query'] ?? ''), $query);
+    if (strtolower((string) ($parts['path'] ?? '')) !== '/atlaspaybot'
+        || isset($query['startapp'])
+        || !is_string($query['start'] ?? null)
+        || preg_match('/^r_[A-Za-z0-9_-]+$/D', $query['start']) !== 1) {
+        return '';
+    }
+    return 'https://t.me/atlaspaybot?start=' . rawurlencode($query['start']);
+}
+
+function atlaspayReceiptInstructions()
+{
+    return '📎 پس از واریز، در صورتی که پرداخت ظرف ۲ دقیقه به‌صورت خودکار تأیید نشد، از دکمه «ارسال رسید» وارد ربات اطلس‌پی شوید و تصویر رسید را ارسال نمایید. برای هر سفارش تنها یک رسید قابل ثبت است.';
+}
+
+function atlaspayBotReceiptButtonText()
+{
+    return tonpayTemplateRender('dyn_atlaspay_bot_receipt_button', [], false);
+}
+
+function atlaspayBotReceiptInstructions()
+{
+    return tonpayTemplateRender('dyn_atlaspay_bot_receipt_instructions', ['receipt_button' => atlaspayBotReceiptButtonText()]);
+}
+
 function atlaspayCustomCardIsComplete($cardNumber)
 {
     $raw = (string) $cardNumber;
@@ -190,6 +222,7 @@ function atlaspayCustomCreateOrder($orderId, $amount, $telegramId)
         $discard();
         return atlaspayCustomError('لینک رسمی اطلس‌پی معتبر نیست', 'INVALID_LINK');
     }
+    $receiptLink = atlaspayReceiptBotUrl($decoded['receiptBotLink'] ?? '');
     $card = isset($decoded['cardNumber']) && is_scalar($decoded['cardNumber']) ? substr(trim((string) $decoded['cardNumber']), 0, 40) : '';
     if (!atlaspayCustomCardIsComplete($card)) {
         $card = '';
@@ -199,6 +232,7 @@ function atlaspayCustomCreateOrder($orderId, $amount, $telegramId)
         'orderId' => $remoteId,
         'trackingCode' => isset($decoded['trackingCode']) && is_scalar($decoded['trackingCode']) ? substr(trim((string) $decoded['trackingCode']), 0, 64) : '',
         'customerStartLink' => $link,
+        'receiptBotLink' => $receiptLink,
         'totalAmountToman' => (int) $total,
         'baseAmountToman' => $amount,
         'cardNumber' => $card,
@@ -247,6 +281,7 @@ function atlaspayCustomStoreOrder($orderId, array $order)
                     atlaspay_order_id = ?,
                     atlaspay_tracking_code = ?,
                     atlaspay_payment_url = ?,
+                    atlaspay_receipt_url = ?,
                     atlaspay_total_amount = ?,
                     atlaspay_card_number = ?,
                     atlaspay_card_name = ?,
@@ -262,6 +297,7 @@ function atlaspayCustomStoreOrder($orderId, array $order)
             $order['orderId'],
             $order['trackingCode'],
             $order['customerStartLink'],
+            $order['receiptBotLink'] ?? '',
             $order['totalAmountToman'],
             $order['cardNumber'],
             $order['cardHolderName'],
@@ -433,15 +469,15 @@ function atlaspayCustomPhaseDetail($phase, $reason = '')
 {
     $details = [
         'awaiting_payment' => '📌 پرداخت شما به‌صورت خودکار بررسی می‌شود.',
-        'deadline_check' => '⏱ مهلت پرداخت به پایان رسید و وضعیت نهایی سفارش در اطلس‌پی در حال بررسی است. اگر مبلغ را واریز کرده‌اید، از دکمه «ارسال رسید پرداخت» استفاده کنید.',
+        'deadline_check' => '⏱ مهلت پرداخت به پایان رسید و وضعیت نهایی سفارش در اطلس‌پی در حال بررسی است. سفارش منقضی‌شده رسید جدید نمی‌پذیرد؛ اگر مبلغ را واریز کرده‌اید، با پشتیبانی فروشگاه تماس بگیرید.',
         'under_review' => '🔎 رسید شما در اطلس‌پی در حال بررسی است. پس از تأیید، پرداخت به‌صورت خودکار ثبت می‌شود.',
         'underpaid_review' => '⚠️ مبلغ واریزی کمتر از مبلغ سفارش تشخیص داده شده و مغایرت در حال بررسی است.',
-        'underpaid_remainder' => '⚠️ مبلغ واریزی کمتر از مبلغ سفارش بوده است. برای تکمیل مبلغ باقی‌مانده یا تصمیم نهایی، از دکمه «ارسال رسید پرداخت» وارد صفحه اطلس‌پی شوید.',
+        'underpaid_remainder' => '⚠️ مبلغ واریزی کمتر از مبلغ سفارش بوده است. برای تکمیل مبلغ باقی‌مانده یا تصمیم نهایی، با پشتیبانی فروشگاه در ارتباط باشید.',
         'confirming' => '✅ پرداخت شما تأیید شد و در حال نهایی‌سازی است.',
         'manual_review' => '⚠️ پرداخت شما با مبلغ کمتر از مبلغ کامل تأیید شد و برای تصمیم نهایی به مدیریت ارجاع شد. لطفاً با پشتیبانی در ارتباط باشید.',
         'paid' => '✅ پرداخت شما با موفقیت تأیید شد.',
         'rejected' => '❌ پرداخت شما توسط اطلس‌پی رد شد.' . ($reason !== '' ? "\n" . $reason : '') . "\nاگر مبلغ را واریز کرده‌اید، با پشتیبانی تماس بگیرید.",
-        'expired' => '⏰ مهلت پرداخت این فاکتور به پایان رسید. اگر مبلغ را واریز کرده‌اید، با پشتیبانی تماس بگیرید؛ در صورت تأیید اطلس‌پی، پرداخت شما ثبت خواهد شد.',
+        'expired' => '⏰ مهلت پرداخت این فاکتور به پایان رسید و سفارش منقضی شده است؛ برای سفارش منقضی‌شده رسید پذیرفته نمی‌شود. اگر مبلغ را واریز کرده‌اید، با پشتیبانی فروشگاه تماس بگیرید تا از گزارش واریز دیرهنگام استفاده شود.',
         'canceled' => '🚫 این تراکنش لغو شد. لغو فاکتور به‌معنی بازگشت وجه واریزشده نیست.',
     ];
     return $details[$phase] ?? '';
@@ -492,7 +528,9 @@ function atlaspayCustomBuildState(array $report, $now = null)
     }
 
     $open = in_array($phase, atlaspayCustomOpenPhases(), true);
-    $link = atlaspayCustomValidReceiptUrl($report['atlaspay_payment_url'] ?? '');
+    $paymentLink = atlaspayCustomValidReceiptUrl($report['atlaspay_payment_url'] ?? '');
+    $receiptLink = atlaspayReceiptBotUrl($report['atlaspay_receipt_url'] ?? '');
+    $receiptAvailable = $open && $phase === 'awaiting_payment';
     $cardVisible = $phase === 'awaiting_payment';
 
     return [
@@ -514,7 +552,8 @@ function atlaspayCustomBuildState(array $report, $now = null)
         'deadline_at' => $deadlineAt,
         'remaining' => $deadlineAt > 0 ? max(0, $deadlineAt - $now) : 0,
         'reason' => trim((string) ($report['dec_not_confirmed'] ?? '')),
-        'receipt_url' => $open ? $link : '',
+        'payment_url' => $paymentLink,
+        'receipt_url' => $receiptAvailable ? $receiptLink : '',
         'can_cancel' => in_array($phase, ['awaiting_payment', 'deadline_check'], true),
         'terminal' => in_array($phase, ['paid', 'rejected', 'canceled', 'expired'], true),
         'open' => $open,
@@ -534,6 +573,7 @@ function atlaspayCustomPublicView(array $report)
         'status' => atlaspayCustomPhaseDetail($state['phase'], $reason),
         'amount_warning' => sprintf(atlaspayCustomAmountWarningTemplate(), 'کپی مبلغ'),
         'card_only_warning' => atlaspayCustomCardOnlyWarning(),
+        'receipt' => $state['receipt_url'] !== '' ? atlaspayReceiptInstructions() : '',
     ];
     $state['button_styles'] = tonpayButtonStyleMap();
     $state['gateway_title'] = atlaspayCustomGatewayTitle();
@@ -591,7 +631,9 @@ function atlaspayCustomBotText(array $state)
             $lines[] = '👤 به نام: ' . $e($state['card_name'] !== '' ? $state['card_name'] : '—');
             $lines[] = '🏦 بانک: ' . $e($state['bank_name'] !== '' ? $state['bank_name'] : '—');
         } else {
-            $lines[] = '⚠️ شماره کارت به‌صورت کامل دریافت نشد؛ برای مشاهده شماره کارت و پرداخت، از دکمه «ارسال رسید پرداخت» وارد صفحه رسمی اطلس‌پی شوید.';
+            $lines[] = $state['payment_url'] !== ''
+                ? '⚠️ شماره کارت به‌صورت کامل دریافت نشد؛ برای مشاهده اطلاعات کارت و پرداخت، از دکمه «مشاهده اطلاعات پرداخت» استفاده کنید.'
+                : '⚠️ شماره کارت به‌صورت کامل دریافت نشد؛ برای دریافت اطلاعات پرداخت با پشتیبانی فروشگاه در ارتباط باشید.';
         }
         $lines[] = '';
     }
@@ -600,6 +642,10 @@ function atlaspayCustomBotText(array $state)
     $reason = $state['phase'] === 'rejected' ? $e($state['reason']) : '';
     $lines[] = $e(atlaspayCustomPhaseDetail($state['phase'], '')) . ($reason !== '' ? "\n" . $reason : '');
     if ($state['phase'] === 'awaiting_payment') {
+        if ($state['receipt_url'] !== '') {
+            $lines[] = '';
+            $lines[] = atlaspayBotReceiptInstructions();
+        }
         $lines[] = '';
         $lines[] = '⏱ زمان باقی‌مانده تا پایان مهلت پرداخت: <b>' . atlaspayCustomFormatClock($state['remaining']) . '</b>';
     }
@@ -634,6 +680,9 @@ function atlaspayCustomBotKeyboard(array $state)
     $orderId = $state['order_id'];
     $rows = [];
     if ($state['phase'] === 'awaiting_payment') {
+        if (!$state['card_complete'] && $state['payment_url'] !== '') {
+            $rows[] = [tonpayStyledButton(['text' => '💳 مشاهده اطلاعات پرداخت', 'url' => $state['payment_url']], 'pay_link', 'atlaspay')];
+        }
         $copyRow = [];
         if ($state['card_complete']) {
             $copyRow[] = tonpayStyledButton(['text' => '📋 کپی شماره کارت', 'copy_text' => ['text' => preg_replace('/\D/', '', $state['card_number'])], '_rxck' => 'card_num'], 'copy_card', 'atlaspay');
@@ -646,7 +695,7 @@ function atlaspayCustomBotKeyboard(array $state)
         $actionRow[] = tonpayStyledButton(['text' => '🔄 بررسی وضعیت پرداخت', 'callback_data' => 'apc_chk_' . $orderId], 'check_status', 'atlaspay');
     }
     if ($state['receipt_url'] !== '') {
-        $actionRow[] = tonpayStyledButton(['text' => '📤 ارسال رسید پرداخت', 'url' => $state['receipt_url']], 'send_receipt', 'atlaspay');
+        $actionRow[] = tonpayStyledButton(['text' => atlaspayBotReceiptButtonText(), 'url' => $state['receipt_url']], 'send_receipt', 'atlaspay');
     }
     if (!empty($actionRow)) {
         $rows[] = $actionRow;
@@ -1102,7 +1151,7 @@ function atlaspayCustomBotListEntries($userId)
         $lines[] = '';
         $buttons = [rx_payment_button('atlaspay', 'list_view', ['text' => '🔍 مشاهده جزئیات و وضعیت', 'callback_data' => 'apc_view_' . $state['order_id']])];
         if ($state['receipt_url'] !== '') {
-            $buttons[] = rx_payment_button('atlaspay', 'list_receipt', ['text' => '📤 ارسال رسید پرداخت', 'url' => $state['receipt_url']]);
+            $buttons[] = rx_payment_button('atlaspay', 'list_receipt', ['text' => atlaspayBotReceiptButtonText(), 'url' => $state['receipt_url']]);
         }
         $rows[] = $buttons;
         if ($state['can_cancel']) {

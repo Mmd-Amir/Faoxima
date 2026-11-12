@@ -1086,7 +1086,7 @@ final class PaymentInitHandler extends BaseHandler
         $this->insertPaymentReport('atlaspay', $amount, $orderId);
 
         try {
-            $pay = atlaspayCreateOrder($orderId, $amount);
+            $pay = atlaspayCreateOrder($orderId, $amount, (int)$this->user['id']);
         } catch (Throwable $e) {
             FaoximaLogger::userFacing('atlaspayCreateOrder() threw', ['err' => $e->getMessage()]);
             FaoximaResponse::fail(502, faoxima_textbot_get('dyn_paymentinit_gateway_generic_error', '❌ خطا در ارتباط با درگاه پرداخت.'));
@@ -1094,6 +1094,9 @@ final class PaymentInitHandler extends BaseHandler
 
         $atlaspayOrderId = is_array($pay) ? trim((string)($pay['orderId'] ?? '')) : '';
         $paymentUrl = is_array($pay) ? trim((string)($pay['customerStartLink'] ?? '')) : '';
+        $receiptUrl = is_array($pay) && function_exists('atlaspayReceiptBotUrl')
+            ? atlaspayReceiptBotUrl($pay['receiptBotLink'] ?? '')
+            : '';
         $trackingCode = is_array($pay) ? trim((string)($pay['trackingCode'] ?? '')) : '';
 
         if ($atlaspayOrderId === '' || $paymentUrl === '') {
@@ -1109,6 +1112,7 @@ final class PaymentInitHandler extends BaseHandler
         update('Payment_report', 'atlaspay_order_id', $atlaspayOrderId, 'id_order', $orderId);
         update('Payment_report', 'atlaspay_tracking_code', $trackingCode, 'id_order', $orderId);
         update('Payment_report', 'atlaspay_payment_url', $paymentUrl, 'id_order', $orderId);
+        update('Payment_report', 'atlaspay_receipt_url', $receiptUrl, 'id_order', $orderId);
         update('Payment_report', 'atlaspay_total_amount', $totalAmountToman, 'id_order', $orderId);
         rxPaymentV2Mark($orderId, ['atlaspay_created_at' => time()]);
 

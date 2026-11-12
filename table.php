@@ -3591,6 +3591,7 @@ try {
     rxSafeAddColumn($connect, "Payment_report", "atlaspay_order_id",      "VARCHAR(64) NULL");
     rxSafeAddColumn($connect, "Payment_report", "atlaspay_tracking_code", "VARCHAR(64) NULL");
     rxSafeAddColumn($connect, "Payment_report", "atlaspay_payment_url",   "VARCHAR(500) NULL");
+    rxSafeAddColumn($connect, "Payment_report", "atlaspay_receipt_url",   "VARCHAR(500) NULL");
     rxSafeAddColumn($connect, "Payment_report", "atlaspay_gateway_mode", "VARCHAR(10) NULL");
     rxSafeAddColumn($connect, "Payment_report", "atlaspay_total_amount", "BIGINT NULL");
     rxSafeAddColumn($connect, "Payment_report", "atlaspay_card_number", "VARCHAR(40) NULL");

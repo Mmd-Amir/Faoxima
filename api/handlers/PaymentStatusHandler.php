@@ -201,6 +201,17 @@ final class PaymentStatusHandler extends BaseHandler
             $atlaspayCustomView = atlaspayCustomPublicView($report);
         }
 
+        $atlaspayReceipt = null;
+        if ((string)($report['Payment_Method'] ?? '') === 'atlaspay'
+            && function_exists('atlaspayCustomBuildState')) {
+            $atlaspayState = atlaspayCustomBuildState($report);
+            $atlaspayReceipt = [
+                'url' => $atlaspayState['receipt_url'],
+                'message' => $atlaspayState['receipt_url'] !== '' ? atlaspayReceiptInstructions() : '',
+                'expires_at' => $atlaspayState['deadline_at'],
+            ];
+        }
+
         $payload = [
             'order_id'         => $orderId,
             'payment_status'   => $paymentStatus,
@@ -221,6 +232,7 @@ final class PaymentStatusHandler extends BaseHandler
             'verify'           => $sbvView,
             'tonpay_custom'    => $tonpayCustomView,
             'atlaspay_custom'  => $atlaspayCustomView,
+            'atlaspay_receipt' => $atlaspayReceipt,
             'rialit'           => $rialitMeta,
             'fulfillment'      => ($sbvView !== null && function_exists('rx_sbv_fulfillment_outcome')) ? rx_sbv_fulfillment_outcome($orderId) : null,
             'gateway_url'      => $rialitGatewayUrl ?: (trim((string)($report['tronado_payment_url'] ?? '')) ?: ($tonpayGatewayUrl ?: (trim((string)($report['cubepay_payment_link'] ?? '')) ?: (trim((string)($report['blupal_payment_link'] ?? '')) ?: (trim((string)($report['atlaspay_payment_url'] ?? '')) ?: (trim((string)($report['tetrapay_payment_link'] ?? '')) ?: $abangatewayUrl)))))),
