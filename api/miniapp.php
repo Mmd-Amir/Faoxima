@@ -114,6 +114,7 @@ try {
         'tonpay_custom_change_card' => ['class' => 'TonpayCustomHandler', 'mode' => 'change_card'],
         'tonpay_custom_cancel'   => ['class' => 'TonpayCustomHandler', 'mode' => 'cancel'],
         'tonpay_custom_receipt'  => ['class' => 'TonpayCustomHandler', 'mode' => 'receipt'],
+        'tonpay_custom_refund'   => ['class' => 'TonpayCustomHandler', 'mode' => 'refund'],
         'atlaspay_custom_view'   => ['class' => 'AtlaspayCustomHandler', 'mode' => 'view'],
         'atlaspay_custom_cancel' => ['class' => 'AtlaspayCustomHandler', 'mode' => 'cancel'],
         'payment_reset'          => 'PaymentResetHandler',

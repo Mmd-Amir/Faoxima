@@ -1189,11 +1189,12 @@ function atlaspayCustomRunCron()
         return;
     }
     atlaspayCustomPurgeCards();
+    $rxPaymentWindow = rx_pf_cron_window_sql();
     $now = time();
     $batches = [
         [
             "SELECT * FROM Payment_report
-              WHERE Payment_Method = 'atlaspay' AND atlaspay_gateway_mode = 'custom'
+              WHERE $rxPaymentWindow AND Payment_Method = 'atlaspay' AND atlaspay_gateway_mode = 'custom'
                 AND atlaspay_order_id IS NOT NULL AND atlaspay_order_id <> ''
                 AND payment_Status = 'Unpaid'
                 AND (atlaspay_local_state IS NULL OR atlaspay_local_state <> 'manual_review')
@@ -1205,7 +1206,7 @@ function atlaspayCustomRunCron()
         ],
         [
             "SELECT * FROM Payment_report
-              WHERE Payment_Method = 'atlaspay' AND atlaspay_gateway_mode = 'custom'
+              WHERE $rxPaymentWindow AND Payment_Method = 'atlaspay' AND atlaspay_gateway_mode = 'custom'
                 AND atlaspay_order_id IS NOT NULL AND atlaspay_order_id <> ''
                 AND payment_Status IN ('Unpaid','expire','reject')
                 AND atlaspay_local_state = 'manual_review'
@@ -1217,7 +1218,7 @@ function atlaspayCustomRunCron()
         ],
         [
             "SELECT * FROM Payment_report
-              WHERE Payment_Method = 'atlaspay' AND atlaspay_gateway_mode = 'custom'
+              WHERE $rxPaymentWindow AND Payment_Method = 'atlaspay' AND atlaspay_gateway_mode = 'custom'
                 AND atlaspay_order_id IS NOT NULL AND atlaspay_order_id <> ''
                 AND payment_Status IN ('expire','reject')
                 AND (atlaspay_local_state IS NULL OR atlaspay_local_state NOT IN ('closed','manual_review'))
@@ -1240,6 +1241,9 @@ function atlaspayCustomRunCron()
         foreach ($rows as $row) {
             if (function_exists('rx_cron_time_up') && rx_cron_time_up()) {
                 return;
+            }
+            if (!rx_pf_cron_payment_allowed($row)) {
+                continue;
             }
             atlaspayCustomUpdateColumns($row['id_order'], ['atlaspay_last_checked_at' => time()], false);
             try {

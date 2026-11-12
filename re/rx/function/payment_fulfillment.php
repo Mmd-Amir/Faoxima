@@ -13,6 +13,47 @@ if (!defined('RX_PF_GIB')) {
     define('RX_PF_GIB', 1073741824);
 }
 
+if (!function_exists('rx_pf_cron_payment_allowed')) {
+    function rx_pf_cron_payment_allowed(array $payment, ?int $now = null): bool
+    {
+        if (!defined('RX_CRON_INIT_LOADED')) {
+            return true;
+        }
+        $now = $now ?? time();
+        $raw = trim((string) ($payment['time'] ?? ''));
+        if (preg_match('/^[0-9]{10}$/D', $raw)) {
+            $created = (int) $raw;
+        } else {
+            $normalized = str_replace('/', '-', $raw);
+            $date = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $normalized, new DateTimeZone('Asia/Tehran'));
+            if ($date === false || $date->format('Y-m-d H:i:s') !== $normalized) {
+                return false;
+            }
+            $created = $date->getTimestamp();
+        }
+        if ((string) ($payment['Payment_Method'] ?? '') === 'tonpay'
+            && (string) ($payment['tonpay_gateway_mode'] ?? '') === 'custom') {
+            return $created > 0 && $created <= $now;
+        }
+        return $created > 0 && $created <= $now && $created >= $now - (function_exists('rx_cron_catchup_seconds') ? rx_cron_catchup_seconds() : 3600);
+    }
+}
+
+if (!function_exists('rx_pf_cron_window_sql')) {
+    function rx_pf_cron_window_sql(string $alias = 'Payment_report'): string
+    {
+        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $alias)) {
+            throw new InvalidArgumentException('Invalid payment table alias');
+        }
+        $now = time();
+        $zone = new DateTimeZone('Asia/Tehran');
+        $until = (new DateTimeImmutable('@' . $now))->setTimezone($zone)->format('Y-m-d H:i:s');
+        $since = (new DateTimeImmutable('@' . ($now - (function_exists('rx_cron_catchup_seconds') ? rx_cron_catchup_seconds() : 3600))))->setTimezone($zone)->format('Y-m-d H:i:s');
+        $column = $alias . '.`time`';
+        return "(CASE WHEN $column REGEXP '^[0-9]{10}$' THEN CAST($column AS UNSIGNED) BETWEEN " . ($now - (function_exists('rx_cron_catchup_seconds') ? rx_cron_catchup_seconds() : 3600)) . " AND $now ELSE REPLACE($column, '/', '-') BETWEEN '$since' AND '$until' END)";
+    }
+}
+
 if (!function_exists('rx_pf_log')) {
     function rx_pf_log(string $event, string $message, array $ctx = []): void
     {
@@ -585,6 +626,9 @@ if (!function_exists('rx_pf_claim')) {
                 if ($payment === null) {
                     return ['status' => 'not_found'];
                 }
+                if (!rx_pf_cron_payment_allowed($payment, $now)) {
+                    return ['status' => 'not_eligible', 'reason' => 'cron_window_elapsed'];
+                }
                 if ((int) ($payment['direct_payment_done'] ?? 0) === 1) {
                     return ['status' => 'already_completed', 'report' => $payment];
                 }
@@ -668,10 +712,16 @@ if (!function_exists('rx_pf_begin')) {
                 if ($payment === null) {
                     return $deny(rx_pf_result('failed', 'payment_not_found'));
                 }
+                if (!rx_pf_cron_payment_allowed($payment, $now)) {
+                    return $deny(rx_pf_result('manual_review', 'cron_window_elapsed'));
+                }
                 if ((int) ($payment['direct_payment_done'] ?? 0) === 1) {
                     return $deny(rx_pf_result('already_completed', 'direct_payment_done'));
                 }
                 $record = rx_pf_lock_record($pdo, $orderId);
+                if ($record === null && defined('RX_CRON_INIT_LOADED') && strtolower((string) ($payment['payment_Status'] ?? '')) === 'paid') {
+                    return $deny(rx_pf_result('manual_review', 'legacy_payment_requires_review'));
+                }
                 $state = $record !== null ? (string) $record['state'] : '';
                 $leaseActive = $record !== null && (int) ($record['lease_expires_at'] ?? 0) > $now;
                 if ($state === 'completed') {
@@ -1042,6 +1092,9 @@ if (!function_exists('rx_pf_recover')) {
                 if ($payment === null) {
                     return ['status' => 'skip'];
                 }
+                if (!rx_pf_cron_payment_allowed($payment, $now)) {
+                    return ['status' => 'not_eligible', 'reason' => 'cron_window_elapsed'];
+                }
                 $status = (string) ($payment['payment_Status'] ?? '');
                 $paidUndelivered = $status === 'paid' && (int) ($payment['direct_payment_done'] ?? 0) === 0;
                 if (!in_array($status, ['processing', 'reconciling'], true) && !$paidUndelivered) {
@@ -1052,6 +1105,9 @@ if (!function_exists('rx_pf_recover')) {
                     return ['status' => 'finalized', 'report' => $payment];
                 }
                 $record = rx_pf_lock_record($pdo, $orderId);
+                if ($record === null && $paidUndelivered && defined('RX_CRON_INIT_LOADED')) {
+                    return ['status' => 'manual_review', 'reason' => 'legacy_payment_requires_review'];
+                }
                 if ($record === null && $paidUndelivered) {
                     $token = rx_pf_new_token();
                     $stmt = $pdo->prepare(
@@ -2487,6 +2543,9 @@ if (!function_exists('rx_pf_wallet_credit')) {
                 $payment = rx_pf_lock_payment($pdo, $orderId);
                 if ($payment === null) {
                     return 'missing';
+                }
+                if (!rx_pf_cron_payment_allowed($payment, $now)) {
+                    return 'cron_window_elapsed';
                 }
                 if ((int) ($payment['direct_payment_done'] ?? 0) === 1) {
                     $stmt = $pdo->prepare("UPDATE payment_fulfillment SET state = 'completed', lease_expires_at = NULL, completed_at = ?, updated_at = ? WHERE id_order = ?");

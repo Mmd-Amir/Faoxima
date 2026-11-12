@@ -377,7 +377,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         updatePaymentMessageId(['ok' => true, 'result' => ['message_id' => $message_id]], $apcOrder);
         atlaspayCustomBotAnswer($callback_query_id, '✅ تراکنش لغو شد');
     }
-} elseif (preg_match('/^tpc_(chk|chg|rcp|can|cny|view)_(\w+)$/', (string) $datain, $tpcMatch)) {
+} elseif (preg_match('/^tpc_(chk|chg|rcp|can|cny|view|rfd)_(\w+)$/', (string) $datain, $tpcMatch)) {
     $tpcAction = $tpcMatch[1];
     $tpcOrder = $tpcMatch[2];
     $tpcReport = tonpayCustomFetchReport($tpcOrder);
@@ -385,7 +385,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         tonpayCustomBotAnswer($callback_query_id, '❌ این فاکتور پیدا نشد.', true);
         return;
     }
-    if ($user['step'] == "tpc_receipt") {
+    if (in_array($user['step'], ['tpc_receipt', 'tpc_refund'], true)) {
         step('home', $from_id);
     }
     if ($tpcAction == 'view') {
@@ -407,6 +407,17 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         tonpayCustomPollThrottled($tpcOrder, $from_id);
         tonpayCustomBotRefreshOriginal($from_id, $tpcOrder, $message_id);
         tonpayCustomBotAnswer($callback_query_id, '🔄 وضعیت به‌روزرسانی شد');
+    } elseif ($tpcAction == 'rfd') {
+        $tpcRefundState = tonpayCustomBuildState($tpcReport);
+        if (!$tpcRefundState['can_refund']) {
+            tonpayCustomBotAnswer($callback_query_id, 'ثبت کارت عودت برای این فاکتور مجاز نیست.', true);
+            return;
+        }
+        step('tpc_refund', $from_id);
+        update("user", "Processing_value", $tpcOrder, "id", $from_id);
+        tonpayCustomBotAnswer($callback_query_id);
+        $tpcRefundView = tonpayCustomBotRefundPromptView($tpcOrder, 'tpc_view_' . $tpcOrder);
+        sendmessage($from_id, $tpcRefundView['text'], $tpcRefundView['keyboard'], 'HTML');
     } elseif ($tpcAction == 'chg') {
         $tpcResult = tonpayCustomChangeCard($tpcOrder, $from_id);
         if (empty($tpcResult['ok'])) {
@@ -447,6 +458,25 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     }
     step('home', $from_id);
     sendmessage($from_id, tonpayCustomReceiptSubmittedText(), null, 'HTML');
+    tonpayCustomBotRefreshOriginal($from_id, $tpcOrder, 0);
+} elseif ($user['step'] == "tpc_refund" && $datain === '' && isset($update['message'])) {
+    global $update;
+    $tpcOrder = (string) $user['Processing_value'];
+    $tpcRefundView = tonpayCustomBotRefundPromptView($tpcOrder, 'tpc_view_' . $tpcOrder);
+    $tpcRefundLines = preg_split('/\r\n|\r|\n/', trim((string) $text));
+    $tpcRefundCard = preg_replace('/[\s\-]/', '', (string) ($tpcRefundLines[0] ?? ''));
+    $tpcRefundHolder = trim((string) ($tpcRefundLines[1] ?? ''));
+    if (count($tpcRefundLines) < 2 || !preg_match('/^\d{16}$/', $tpcRefundCard) || $tpcRefundHolder === '') {
+        sendmessage($from_id, "❌ شماره کارت و نام صاحب کارت را در دو خط معتبر ارسال کنید.\n\n" . $tpcRefundView['text'], $tpcRefundView['keyboard'], 'HTML');
+        return;
+    }
+    $tpcResult = tonpayCustomSubmitRefund($tpcOrder, $from_id, $tpcRefundCard, $tpcRefundHolder);
+    if (empty($tpcResult['ok'])) {
+        sendmessage($from_id, '❌ ' . ($tpcResult['message'] ?? 'ثبت کارت عودت ناموفق بود.'), $tpcRefundView['keyboard'], 'HTML');
+        return;
+    }
+    step('home', $from_id);
+    sendmessage($from_id, '✅ ' . ($tpcResult['message'] ?? 'کارت عودت ثبت شد.'), null, 'HTML');
     tonpayCustomBotRefreshOriginal($from_id, $tpcOrder, 0);
 } elseif (preg_match('/^ckw_(pick|ok|menu|cancel)_/', (string) $datain)) {
     rx_ck_bot_callback($user, (string) $datain, $message_id, $callback_query_id ?? null);
@@ -4442,7 +4472,21 @@ $textonebuy
 
         if ($tonpayCustomMode) {
             if (!tonpayCustomStoreInvoice($randomString, $payment)) {
+                $recovery = tonpayCustomRecoverUnstoredInvoice($randomString, $payment);
+                if (!empty($recovery['saved'])) {
+                    tonpayCustomBotSend($from_id, $randomString);
+                    return;
+                }
+                $invoiceRef = (string) ($recovery['invoice_id'] ?? ($payment['invoice_id'] ?? ''));
+                $remoteState = (string) ($recovery['remote_state'] ?? 'unknown');
+                $storeFailure = 'tonpay_custom_store_unresolved:' . $invoiceRef . ':' . $remoteState;
+                error_log('TonPay custom store unresolved: ' . json_encode([
+                    'order_id' => $randomString,
+                    'invoice_id' => $invoiceRef,
+                    'remote_state' => $remoteState,
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
                 update("Payment_report", "payment_Status", "reject", "id_order", $randomString);
+                update("Payment_report", "dec_not_confirmed", $storeFailure, "id_order", $randomString);
                 sendmessage($from_id, $textbotlang['users']['Balance']['errorLinkPayment'], $keyboard, 'HTML');
                 step('home', $from_id);
                 return;

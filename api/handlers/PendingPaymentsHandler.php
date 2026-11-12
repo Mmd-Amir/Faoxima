@@ -28,7 +28,9 @@ final class PendingPaymentsHandler extends BaseHandler
                         rialit_token, rialit_status, rialit_created_at, rialit_payer_amount, rialit_payer_fee
                    FROM Payment_report
                   WHERE id_user = :u
-                    AND payment_Status IN ('Unpaid','waiting','AwaitingHash','pending','expire')
+                    AND (payment_Status IN ('Unpaid','waiting','AwaitingHash','pending','expire')
+                         OR (Payment_Method = 'tonpay' AND tonpay_gateway_mode = 'custom'
+                             AND payment_Status = 'cancelled' AND tonpay_remote_status = 'pending'))
                     AND (Payment_Method <> 'rialit' OR COALESCE(rialit_abandoned_at, 0) = 0)
                      AND Payment_Method IN ('plisio','nowpayment','digitaltron','arze digital offline','cart to cart','carttocart_pv','iranpay2','tonpay','rialit','cubepay','blupal','variza','abangateway','atlaspay')
                     AND (source = 'miniapp'" . $sbvSourceSql . " OR (Payment_Method = 'tonpay' AND tonpay_gateway_mode = 'custom') OR (Payment_Method = 'atlaspay' AND atlaspay_gateway_mode = 'custom') OR Payment_Method = 'rialit')
@@ -127,6 +129,7 @@ final class PendingPaymentsHandler extends BaseHandler
         foreach ($rows as $r) {
             $createdAt = $this->parseLegacyTime((string)($r['time'] ?? ''));
             if ($createdAt === null) continue;
+            $customCancelEligible = null;
 
             $method = (string)$r['Payment_Method'];
             $methodLc = strtolower($method);
@@ -156,8 +159,16 @@ final class PendingPaymentsHandler extends BaseHandler
             $expiresAt = isset($sbvMap[(string) $r['id_order']]) ? (int) $sbvMap[(string) $r['id_order']]['expires_at'] : $createdAt + $windowSec;
             if ($methodLc === 'tonpay' && $status !== 'expire' && function_exists('tonpayCustomFetchReport')) {
                 $customRow = tonpayCustomFetchReport((string) $r['id_order']);
-                if ($customRow !== null && (int) ($customRow['tonpay_review_deadline_at'] ?? 0) > 0) {
-                    $expiresAt = (int) $customRow['tonpay_review_deadline_at'];
+                if ($customRow !== null) {
+                    if (function_exists('tonpayCustomBuildState')) {
+                        $customCancelEligible = !empty(tonpayCustomBuildState($customRow)['can_cancel']);
+                    }
+                    if ((int) ($customRow['tonpay_review_deadline_at'] ?? 0) > 0) {
+                        $expiresAt = (int) $customRow['tonpay_review_deadline_at'];
+                    }
+                    if ($customCancelEligible) {
+                        $expiresAt = max($expiresAt, $now + 60);
+                    }
                 }
             }
             if ($methodLc === 'atlaspay' && function_exists('atlaspayCustomFetchReport')) {
@@ -214,6 +225,7 @@ final class PendingPaymentsHandler extends BaseHandler
                     'payer_fee' => (int)($r['rialit_payer_fee'] ?? 0),
                 ] : null,
                 'cancellable'   => isset($sbvMap[(string) $r['id_order']]) && $sbvActive !== null && (string) $sbvActive['id_order'] === (string) $r['id_order'] && !empty($sbvActive['cancellable']),
+                'cancel_eligible' => $customCancelEligible,
                 'resumable'     => isset($sbvMap[(string) $r['id_order']]) && $sbvActive !== null && (string) $sbvActive['id_order'] === (string) $r['id_order'] && !empty($sbvActive['resumable']),
             ];
             if (isset($sbvMap[(string) $r['id_order']]) && $sbvActive !== null && (string) $sbvActive['id_order'] === (string) $r['id_order']) {

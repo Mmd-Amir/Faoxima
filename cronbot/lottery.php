@@ -128,6 +128,10 @@ try {
         }
         return;
     }
+    if (is_array($rxLotteryState) && !rx_cron_catchup_allowed((int) ($rxLotteryState['occurrence'] ?? 0))) {
+        rx_cron_task_complete('lottery_catchup_window_elapsed');
+        return;
+    }
     if (is_array($rxLotteryState) && empty($rxLotteryState['ledger_version'])) {
         foreach ((array) ($rxLotteryState['awards'] ?? []) as $legacyAward) {
             if (!in_array((string) ($legacyAward['state'] ?? ''), ['awarded', 'skipped'], true)) {

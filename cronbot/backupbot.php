@@ -409,6 +409,11 @@ try {
         if ($id <= 0) {
             return 'failed';
         }
+        if (!rx_cron_catchup_allowed((int) ($row['occurrence'] ?? 0), $now)) {
+            $expire = $pdo->prepare("UPDATE cron_backup_delivery SET state = 'failed', next_attempt_at = 0, last_error = 'catchup_window_elapsed', updated_at = NOW() WHERE id = ? AND state = 'pending'");
+            $expire->execute([$id]);
+            return 'failed';
+        }
         $claim = $pdo->prepare("UPDATE cron_backup_delivery SET state = 'sending', attempts = attempts + 1, last_error = NULL, updated_at = NOW() WHERE id = ? AND state = 'pending' AND attempts < 5 AND next_attempt_at <= ?");
         $claim->execute([$id, $now]);
         if ($claim->rowCount() !== 1) {
@@ -471,6 +476,8 @@ try {
         }
         $now = time();
         try {
+            $expire = $pdo->prepare("UPDATE cron_backup_delivery SET state = 'failed', next_attempt_at = 0, last_error = 'catchup_window_elapsed', updated_at = NOW() WHERE state = 'pending' AND occurrence < ?");
+            $expire->execute([$now - rx_cron_catchup_seconds()]);
             $prune = $pdo->prepare("DELETE FROM cron_backup_delivery WHERE state IN ('sent','failed') AND updated_at < FROM_UNIXTIME(?) LIMIT 100");
             $prune->execute([$now - 2592000]);
             $stale = $pdo->prepare("UPDATE cron_backup_delivery SET state = 'uncertain', next_attempt_at = ?, last_error = 'delivery_interrupted', updated_at = NOW() WHERE state = 'sending' AND updated_at < FROM_UNIXTIME(?)");

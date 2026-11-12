@@ -5,13 +5,17 @@ if (!function_exists('tonpayTemplateDefinitions')) {
     {
         $payment = ['purchase_amount', 'payable_amount', 'invoice_id', 'tracking_code'];
         $titled = array_merge($payment, ['gateway_title']);
-        $status = array_merge($payment, ['review_deadline']);
+        $status = array_merge($payment, ['review_deadline', 'remaining_amount', 'remaining_card_number', 'remaining_card_holder', 'refund_amount']);
         $card = array_merge($titled, ['card_number', 'cardholder_name', 'amount_warning']);
         $progress = array_merge($titled, ['review_deadline']);
         $statusDefaults = [
+            'cancel_pending' => ['این فاکتور قبلاً در سیستم لغو شده، اما هنوز در تون‌پی باز است. برای بستن آن دکمهٔ لغو تراکنش را بزنید. اگر وجهی واریز کرده‌اید، ابتدا وضعیت پرداخت را بررسی کنید.', 'وضعیت: در انتظار لغو در تون‌پی'],
             'awaiting_payment' => ['📌 پرداخت شما به‌صورت خودکار در حال بررسی است. اگر تا ۱۰ دقیقه تأیید نشد، می‌توانید رسید خود را ارسال کنید.', 'وضعیت: در انتظار پرداخت و تأیید خودکار'],
             'receipt_available' => ['📌 پرداخت شما به‌صورت خودکار تأیید نشده است. اکنون می‌توانید رسید پرداخت را برای بررسی ارسال کنید.', 'وضعیت: امکان ارسال رسید'],
-            'need_action' => ['📌 تون‌پی برای این پرداخت اقدام بیشتری از شما خواسته است. لطفاً رسید واضح‌تری ارسال کنید.', 'وضعیت: نیاز به اقدام'],
+            'action_required_less' => ["📌 مبلغ واریزی شما کمتر از مبلغ فاکتور بوده است.\n💰 مبلغ باقی‌مانده: <b>{remaining_amount}</b> تومان\n💳 کارت مقصد مابقی: <code>{remaining_card_number}</code>\n👤 به نام: {remaining_card_holder}\n\nلطفاً فقط مبلغ باقی‌مانده را به همین کارت واریز کنید. اگر واریز خودکار تأیید نشد، رسید مبلغ مابقی را ارسال کنید.", 'وضعیت: نیاز به اقدام برای واریز مبلغ باقی‌مانده'],
+            'action_required_more' => ["📌 مبلغ واریزی شما بیشتر از مبلغ فاکتور بوده است.\n💸 مبلغ مازاد قابل عودت: <b>{refund_amount}</b> تومان\n\nبرای دریافت مبلغ مازاد، شماره کارت و نام صاحب کارت خود را ثبت کنید. ثبت کارت به‌معنی واریز فوری مازاد نیست و پس از بررسی تون‌پی انجام می‌شود.", 'وضعیت: نیاز به اقدام برای ثبت کارت عودت مبلغ مازاد'],
+            'local_timeout' => ["⌛️ مهلت محلی این فاکتور به پایان رسیده است، اما وضعیت نهایی هنوز از تون‌پی تأیید نشده است.\nبرای جلوگیری از اشتباه، وضعیت را دوباره بررسی کنید. اگر پرداخت شما تأیید شود، به‌صورت خودکار ثبت خواهد شد.", 'وضعیت: پایان مهلت محلی و در انتظار بررسی نهایی'],
+            'unknown' => ["📌 وضعیت این فاکتور هنوز از تون‌پی تأیید نشده است.\nلطفاً وضعیت را دوباره بررسی کنید و تا مشخص شدن نتیجه، پرداخت جدیدی انجام ندهید.", 'وضعیت: در حال بررسی'],
             'receipt_submitted' => ['📌 رسید شما با موفقیت ارسال شد و توسط تون‌پی در حال بررسی است. بررسی پرداخت ممکن است تا ۲۴ ساعت طول بکشد.', 'وضعیت: رسید ارسال‌شده و در حال بررسی'],
             'receipt_rejected' => ["⚠️ رسید پرداخت شما در بررسی اولیه رد شده است.\nدر صورتی که وجه را واریز کرده‌اید، تراکنش تا ۲۴ ساعت برای پیگیری و بررسی مجدد در دسترس خواهد بود.\nلطفاً در صورت نیاز با پشتیبانی تماس بگیرید.", 'وضعیت: رسید در بررسی اولیه رد شده و در حال پیگیری'],
             'review_timeout' => ["⌛️ مهلت بررسی ۲۴ ساعته به پایان رسید و پرداخت شما هنوز تأیید نشده است.\nاگر وجه را واریز کرده‌اید با پشتیبانی تماس بگیرید و شناسه فاکتور {invoice_id} را اعلام کنید.\nدر صورت تأیید بعدی تون‌پی، پرداخت شما به‌صورت خودکار ثبت می‌شود.", 'وضعیت: پایان مهلت بررسی'],
@@ -39,6 +43,12 @@ if (!function_exists('tonpayTemplateDefinitions')) {
                 'default' => "💠 <b>{gateway_title}</b>\n\n💰 مبلغ شارژ / خرید: <b>{purchase_amount}</b> تومان\n💳 مبلغ قابل پرداخت: <b>{payable_amount}</b> ریال\n\n{amount_warning}\n\n🏦 شماره کارت:\n<code>{card_number}</code>\n👤 به نام: {cardholder_name}\n\n🧾 شناسه فاکتور: <code>{invoice_id}</code>\n🛒 کد پیگیری: <code>{tracking_code}</code>",
                 'allowed' => $card,
                 'required' => ['payable_amount', 'amount_warning', 'card_number', 'invoice_id'],
+            ],
+            'dyn_tonpay_remaining_tpl' => [
+                'label' => 'پیام پرداخت مبلغ باقی‌مانده (با اطلاعات کارت مابقی)',
+                'default' => "💠 <b>{gateway_title}</b>\n\n💰 مبلغ باقی‌مانده: <b>{remaining_amount}</b> تومان\n💳 مبلغ قابل پرداخت: <b>{remaining_payable_amount}</b> ریال\n\n🏦 شماره کارت مقصد مابقی:\n<code>{remaining_card_number}</code>\n👤 به نام: {remaining_card_holder}\n\n🧾 شناسه فاکتور اصلی: <code>{invoice_id}</code>\n🛒 کد پیگیری: <code>{tracking_code}</code>",
+                'allowed' => array_merge($titled, ['remaining_amount', 'remaining_payable_amount', 'remaining_card_number', 'remaining_card_holder']),
+                'required' => ['remaining_amount', 'remaining_card_number'],
             ],
             'dyn_tonpay_progress_tpl' => [
                 'label' => 'پیام وضعیت فاکتور (بدون اطلاعات کارت)',
@@ -72,7 +82,7 @@ if (!function_exists('tonpayTemplateDefinitions')) {
             ],
             'dyn_tonpay_receipt_prompt' => [
                 'label' => 'راهنمای ارسال رسید',
-                'default' => "📤 تصویر رسید پرداخت را ارسال کنید.\n\nفقط تصاویر JPG، PNG یا WEBP تا حجم ۱۰ مگابایت پذیرفته می‌شود.",
+                'default' => "📤 تصویر رسید پرداخت را ارسال کنید.\n\nفقط تصاویر JPG، PNG، WEBP یا GIF تا حجم ۱۰ مگابایت پذیرفته می‌شود.",
                 'allowed' => [],
                 'required' => [],
             ],
@@ -248,6 +258,7 @@ if (!function_exists('tonpayButtonStyleLabels')) {
             'copy_card' => '📋 کپی شماره کارت',
             'copy_amount' => '📋 کپی مبلغ پرداخت',
             'change_card' => '🔁 تعویض کارت',
+            'refund_card' => '💳 ثبت کارت عودت',
             'check_status' => '🔄 بررسی وضعیت پرداخت',
             'send_receipt' => '📤 ارسال رسید پرداخت',
             'cancel_transaction' => '❌ لغو تراکنش',
@@ -265,6 +276,7 @@ if (!function_exists('tonpayButtonStyleDefaults')) {
             'copy_card' => 'primary',
             'copy_amount' => 'success',
             'change_card' => 'primary',
+            'refund_card' => 'primary',
             'check_status' => 'primary',
             'send_receipt' => 'danger',
             'cancel_transaction' => 'danger',

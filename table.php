@@ -3572,6 +3572,17 @@ try {
     rxSafeAddColumn($connect, "Payment_report", "tonpay_local_state", "VARCHAR(24) NULL");
     rxSafeAddColumn($connect, "Payment_report", "tonpay_card_changed_at", "BIGINT NULL");
     rxSafeAddColumn($connect, "Payment_report", "tonpay_change_card_exhausted", "TINYINT(1) NOT NULL DEFAULT 0");
+    rxSafeAddColumn($connect, "Payment_report", "tonpay_show_change_card", "TINYINT(1) NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tonpay_change_card_cooldown_seconds", "INT NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tonpay_remaining_amount", "BIGINT NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tonpay_remaining_invoice_id", "VARCHAR(64) NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tonpay_remaining_card_number", "VARCHAR(40) NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tonpay_remaining_card_holder", "VARCHAR(120) NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tonpay_remaining_receipt_received", "TINYINT(1) NOT NULL DEFAULT 0");
+    rxSafeAddColumn($connect, "Payment_report", "tonpay_remaining_receipt_at", "BIGINT NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tonpay_refund_amount", "BIGINT NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tonpay_refund_pending", "TINYINT(1) NOT NULL DEFAULT 0");
+    rxSafeAddColumn($connect, "Payment_report", "tonpay_refund_card_submitted_at", "BIGINT NULL");
     rxSafeAddColumn($connect, "Payment_report", "rialit_token", "VARCHAR(64) NULL");
     rxSafeAddColumn($connect, "Payment_report", "rialit_status", "VARCHAR(20) NULL");
     rxSafeAddColumn($connect, "Payment_report", "rialit_payer_id", "BIGINT NULL");

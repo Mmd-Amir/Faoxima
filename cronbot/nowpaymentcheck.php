@@ -35,10 +35,11 @@ $log = static function (string $level, string $msg, array $ctx = []) use ($logFi
 };
 
 try {
+    $rxPaymentWindow = rx_pf_cron_window_sql();
     $rxNowPayCursor = function_exists('rx_cron_invoice_cursor') ? rx_cron_invoice_cursor('nowpayment_poll') : '';
     $rxNowPaySql = "SELECT id, id_order, dec_not_confirmed, price, id_user, time
            FROM Payment_report
-          WHERE payment_Status = 'Unpaid'
+          WHERE $rxPaymentWindow AND payment_Status = 'Unpaid'
             AND Payment_Method = 'nowpayment'
             AND dec_not_confirmed IS NOT NULL
             AND dec_not_confirmed <> ''

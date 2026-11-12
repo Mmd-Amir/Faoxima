@@ -65,11 +65,12 @@ if (function_exists('rx_sbv_cron_run')) {
 $rxSbvExclude = (function_exists('rx_sbv_has_schema') && rx_sbv_has_schema()) ? " AND NOT EXISTS (SELECT 1 FROM card_sms_payment csp WHERE csp.id_order = Payment_report.id_order)" : "";
 list($rxW, $rxN) = function_exists('rx_cron_shard') ? rx_cron_shard() : [0, 1];
 $rxShard = ($rxN > 1) ? " AND MOD(id, $rxN) = $rxW " : "";
+$rxCroncardWindow = rx_pf_cron_window_sql();
 $rxCroncardQueue = [];
 $rxWaitingLastId = 0;
 $rxCroncardStopped = false;
 $rxRecoverCursor = function_exists('rx_cron_invoice_cursor') ? rx_cron_invoice_cursor('croncard_recover:' . $rxN . ':' . $rxW) : '';
-$recoverSql = "SELECT id, id_order FROM Payment_report WHERE (payment_Status IN ('processing', 'reconciling') OR (payment_Status = 'paid' AND COALESCE(direct_payment_done, 0) = 0)) AND (Payment_Method = 'cart to cart' OR Payment_Method = 'arze digital offline') AND bottype IS NULL AND NOT EXISTS (SELECT 1 FROM payment_fulfillment pf WHERE pf.id_order = Payment_report.id_order AND pf.state IN ('completed', 'manual_review'))$rxSbvExclude$rxShard AND id > ? ORDER BY id ASC LIMIT 20";
+$recoverSql = "SELECT id, id_order FROM Payment_report WHERE $rxCroncardWindow AND (payment_Status IN ('processing', 'reconciling') OR (payment_Status = 'paid' AND COALESCE(direct_payment_done, 0) = 0 AND EXISTS (SELECT 1 FROM payment_fulfillment recover_pf WHERE recover_pf.id_order = Payment_report.id_order))) AND (Payment_Method = 'cart to cart' OR Payment_Method = 'arze digital offline') AND bottype IS NULL AND NOT EXISTS (SELECT 1 FROM payment_fulfillment pf WHERE pf.id_order = Payment_report.id_order AND pf.state IN ('completed', 'manual_review'))$rxSbvExclude$rxShard AND id > ? ORDER BY id ASC LIMIT 20";
 $recoverStmt = $pdo->prepare($recoverSql);
 $recoverStmt->execute([$rxRecoverCursor]);
 $recoverRows = $recoverStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -88,7 +89,7 @@ $rxAutoConfirmEnabled = $paymentverify != "offauto" && ($setting['card_verify_st
 if ($rxAutoConfirmEnabled) {
     $rxWaitingCursor = function_exists('rx_cron_invoice_cursor') ? rx_cron_invoice_cursor('croncard_waiting:' . $rxN . ':' . $rxW) : '';
     $rxWaitingAgeClause = $trustModeOn ? '' : " AND at_updated IS NOT NULL AND at_updated >= ?";
-    $rxWaitingSql = "SELECT * FROM Payment_report WHERE payment_Status = 'waiting' AND COALESCE(direct_payment_done, 0) = 0 AND (Payment_Method = 'cart to cart' OR Payment_Method = 'arze digital offline') AND bottype IS NULL AND NOT EXISTS (SELECT 1 FROM payment_fulfillment pf WHERE pf.id_order = Payment_report.id_order AND pf.state IN ('completed', 'manual_review'))$rxSbvExclude$rxShard" . $rxWaitingAgeClause . " AND id > ? ORDER BY id ASC LIMIT 50";
+    $rxWaitingSql = "SELECT * FROM Payment_report WHERE $rxCroncardWindow AND payment_Status = 'waiting' AND COALESCE(direct_payment_done, 0) = 0 AND (Payment_Method = 'cart to cart' OR Payment_Method = 'arze digital offline') AND bottype IS NULL AND NOT EXISTS (SELECT 1 FROM payment_fulfillment pf WHERE pf.id_order = Payment_report.id_order AND pf.state IN ('completed', 'manual_review'))$rxSbvExclude$rxShard" . $rxWaitingAgeClause . " AND id > ? ORDER BY id ASC LIMIT 50";
     $stmt = $pdo->prepare($rxWaitingSql);
     $rxWaitingParams = $trustModeOn ? [$rxWaitingCursor] : [date('Y-m-d H:i:s', time() - 3600), $rxWaitingCursor];
     $stmt->execute($rxWaitingParams);
@@ -120,7 +121,7 @@ if ($rxAutoConfirmEnabled) {
     }
     if (!$trustModeOn) {
         $rxStaleCursor = function_exists('rx_cron_invoice_cursor') ? rx_cron_invoice_cursor('croncard_stale:' . $rxN . ':' . $rxW) : '';
-        $rxStaleStmt = $pdo->prepare("SELECT id, id_order, at_updated FROM Payment_report WHERE payment_Status = 'waiting' AND COALESCE(direct_payment_done, 0) = 0 AND (Payment_Method = 'cart to cart' OR Payment_Method = 'arze digital offline') AND bottype IS NULL AND at_updated IS NOT NULL AND at_updated < ?$rxSbvExclude$rxShard AND id > ? ORDER BY id ASC LIMIT 20");
+        $rxStaleStmt = $pdo->prepare("SELECT id, id_order, at_updated FROM Payment_report WHERE $rxCroncardWindow AND payment_Status = 'waiting' AND COALESCE(direct_payment_done, 0) = 0 AND (Payment_Method = 'cart to cart' OR Payment_Method = 'arze digital offline') AND bottype IS NULL AND at_updated IS NOT NULL AND at_updated < ?$rxSbvExclude$rxShard AND id > ? ORDER BY id ASC LIMIT 20");
         $rxStaleStmt->execute([date('Y-m-d H:i:s', time() - 3600), $rxStaleCursor]);
         $rxStaleRows = $rxStaleStmt->fetchAll(PDO::FETCH_ASSOC);
         if (!$rxStaleRows && $rxStaleCursor !== '') {

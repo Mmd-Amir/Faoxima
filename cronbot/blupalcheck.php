@@ -30,10 +30,11 @@ if (!function_exists('blupalCheckInvoice')) {
 }
 
 try {
+    $rxPaymentWindow = rx_pf_cron_window_sql();
     $rxBlupalCursor = function_exists('rx_cron_invoice_cursor') ? rx_cron_invoice_cursor('blupal_poll') : '';
     $rxBlupalSql = "SELECT id, id_order, blupal_invoice_id, price
            FROM Payment_report
-          WHERE payment_Status = 'Unpaid'
+          WHERE $rxPaymentWindow AND payment_Status = 'Unpaid'
             AND Payment_Method = 'blupal'
             AND blupal_invoice_id IS NOT NULL
             AND blupal_invoice_id <> ''

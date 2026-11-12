@@ -350,11 +350,12 @@ function tronadoV2RunCron()
     if (!($pdo instanceof PDO)) {
         return;
     }
+    $rxPaymentWindow = rx_pf_cron_window_sql();
     $now = time();
     try {
         $stmt = $pdo->prepare(
             "SELECT * FROM Payment_report
-              WHERE Payment_Method IN ('Currency Rial 2','iranpay2')
+              WHERE $rxPaymentWindow AND Payment_Method IN ('Currency Rial 2','iranpay2')
                 AND payment_processing_version >= " . RX_PAYMENT_PROCESSING_VERSION . "
                 AND (payment_Status IN ('Unpaid','pending','waiting','expire','reject')
                      OR (payment_Status = 'paid' AND COALESCE(direct_payment_done, 0) = 0))
@@ -386,6 +387,9 @@ function tronadoV2RunCron()
     foreach ($rows as $row) {
         if (function_exists('rx_cron_time_up') && rx_cron_time_up()) {
             return;
+        }
+        if (!rx_pf_cron_payment_allowed($row)) {
+            continue;
         }
         tronadoV2UpdateColumns($row['id_order'], ['tronado_last_checked_at' => time()]);
         try {

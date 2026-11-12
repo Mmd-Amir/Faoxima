@@ -51,8 +51,9 @@ function statusplisio($tx_id){
 
 list($rxW, $rxN) = function_exists('rx_cron_shard') ? rx_cron_shard() : [0, 1];
 $rxShard = ($rxN > 1) ? " AND MOD(id, $rxN) = $rxW " : "";
+$rxPaymentWindow = rx_pf_cron_window_sql();
 $rxPlisioCursor = function_exists('rx_cron_invoice_cursor') ? rx_cron_invoice_cursor('plisio_poll:' . $rxN . ':' . $rxW) : '';
-$rxPlisioSql = "SELECT id, id_order FROM Payment_report WHERE payment_Status = 'Unpaid' AND Payment_Method = 'plisio'$rxShard AND id > ? ORDER BY id ASC LIMIT 15";
+$rxPlisioSql = "SELECT id, id_order FROM Payment_report WHERE $rxPaymentWindow AND payment_Status = 'Unpaid' AND Payment_Method = 'plisio'$rxShard AND id > ? ORDER BY id ASC LIMIT 15";
 $rxPlisioQuery = static function (string $cursor) use ($connect, $rxPlisioSql): array {
     $rows = [];
     try {

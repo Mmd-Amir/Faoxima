@@ -913,8 +913,19 @@ final class PaymentInitHandler extends BaseHandler
         }
 
         if (!tonpayCustomStoreInvoice($orderId, $invoice)) {
-            update('Payment_report', 'payment_Status', 'reject', 'id_order', $orderId);
-            FaoximaResponse::fail(502, faoxima_textbot_get('dyn_paymentinit_payment_record_failed', '❌ ثبت درخواست پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.'));
+            $recovery = tonpayCustomRecoverUnstoredInvoice($orderId, $invoice);
+            if (empty($recovery['saved'])) {
+                $invoiceRef = (string) ($recovery['invoice_id'] ?? ($invoice['invoice_id'] ?? ''));
+                $remoteState = (string) ($recovery['remote_state'] ?? 'unknown');
+                FaoximaLogger::userFacing('tonpayCustomStoreInvoice() unresolved', [
+                    'order_id' => $orderId,
+                    'invoice_id' => $invoiceRef,
+                    'remote_state' => $remoteState,
+                ]);
+                update('Payment_report', 'payment_Status', 'reject', 'id_order', $orderId);
+                update('Payment_report', 'dec_not_confirmed', 'tonpay_custom_store_unresolved:' . $invoiceRef . ':' . $remoteState, 'id_order', $orderId);
+                FaoximaResponse::fail(502, faoxima_textbot_get('dyn_paymentinit_payment_record_failed', '❌ ثبت درخواست پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.'));
+            }
         }
 
         $report = tonpayCustomFetchReport($orderId);

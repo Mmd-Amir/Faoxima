@@ -444,25 +444,53 @@ function gatewayTimeoutSec(methodId) {
 
 function renderGatewaySuccess(view, statusObj, opts) {
     const isDirectBuy = !!opts.purchaseUsername;
-    if (isDirectBuy && statusObj.service) {
-
-        loadSuccessModule().then((mod) => {
-            if (mod && typeof mod.renderServiceSuccess === 'function') {
-                mod.renderServiceSuccess(view, {
-                    order_id: statusObj.order_id,
-                    service: statusObj.service,
-                }, {
-                    productName: statusObj.service.product_name || '',
-                    panelName: statusObj.service.panel_name || '',
-                });
-            } else {
-                renderGenericSuccess(view, statusObj, opts);
-            }
-        }).catch(() => renderGenericSuccess(view, statusObj, opts));
+    if (isDirectBuy) {
+        if (statusObj.is_service_ready && statusObj.service) {
+            loadSuccessModule().then((mod) => {
+                if (mod && typeof mod.renderServiceSuccess === 'function') {
+                    mod.renderServiceSuccess(view, {
+                        order_id: statusObj.order_id,
+                        service: statusObj.service,
+                    }, {
+                        productName: statusObj.service.product_name || '',
+                        panelName: statusObj.service.panel_name || '',
+                    });
+                } else {
+                    renderFulfillmentPending(view, statusObj);
+                }
+            }).catch(() => renderFulfillmentPending(view, statusObj));
+        } else {
+            renderFulfillmentPending(view, statusObj);
+        }
         return;
     }
 
     renderGenericSuccess(view, statusObj, opts);
+}
+
+function renderFulfillmentPending(view, statusObj) {
+    view.innerHTML = `
+        <article class="card card-window">
+            <header class="card-window-bar">
+                <span class="dots"><span></span><span></span><span></span></span>
+                <span class="window-url">faoxima/payment/pending</span>
+            </header>
+            <div class="card-body" style="text-align:center;padding:22px">
+                <div style="font-size:42px;line-height:1;color:var(--yellow);margin:4px 0 10px">
+                    ${icon('hourglass', 'class="ico ico-xxl ico-warn"')}
+                </div>
+                <h2 style="margin:6px 0;font-size:18px">پرداخت تایید شد</h2>
+                <p class="muted">سرویس شما در حال آماده‌سازی است و هنوز فعال‌شدن آن تایید نشده است. نتیجه نهایی در بخش سفارش‌های شما نمایش داده می‌شود.</p>
+                <div class="kv mt-md">
+                    <span class="kv-label">کد پیگیری</span>
+                    <span class="kv-value mono gold">${escapeHtml(statusObj.order_id || '—')}</span>
+                </div>
+                <div class="row-spread mt-md stack-on-mobile" style="gap:10px">
+                    <a href="#/account" class="btn btn-primary btn-block" style="flex:1">حساب من</a>
+                    <a href="#/buy" class="btn btn-ghost btn-block" style="flex:1">خرید سرویس</a>
+                </div>
+            </div>
+        </article>`;
 }
 
 function renderGenericSuccess(view, statusObj, opts) {

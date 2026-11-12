@@ -1534,12 +1534,14 @@ if (!function_exists('rialitProcessWebhookEvents')) {
         if (!($pdo instanceof PDO) || !rialitEnsureWebhookSchema($pdo)) {
             return $stats;
         }
+        $rxPaymentWindow = defined('RX_CRON_INIT_LOADED') ? rx_pf_cron_window_sql() : '1=1';
         $limit = max(1, min(100, (int) $limit));
         $now = time();
         try {
             $stmt = $pdo->prepare(
                 "SELECT * FROM rialit_webhook_event
                   WHERE state IN ('pending','retry')
+                    AND EXISTS (SELECT 1 FROM Payment_report WHERE Payment_report.id_order = rialit_webhook_event.order_id AND $rxPaymentWindow)
                     AND next_attempt_at <= ?
                   ORDER BY id ASC
                   LIMIT " . $limit
@@ -1630,12 +1632,13 @@ if (!function_exists('rialitProcessPendingOrders')) {
         if (!($pdo instanceof PDO)) {
             return $stats;
         }
+        $rxPaymentWindow = defined('RX_CRON_INIT_LOADED') ? rx_pf_cron_window_sql() : '1=1';
         $limit = max(1, min(100, (int) $limit));
         $now = time();
         try {
             $stmt = $pdo->prepare(
                 "SELECT id_order FROM Payment_report
-                  WHERE Payment_Method = 'rialit'
+                  WHERE $rxPaymentWindow AND Payment_Method = 'rialit'
                     AND (
                         (payment_Status IN ('Unpaid','pending','waiting')
                          AND rialit_created_at >= ?
@@ -1689,11 +1692,12 @@ if (!function_exists('rialitRecoverPaidOrders')) {
         if (!($pdo instanceof PDO) || !function_exists('rx_pf_recover')) {
             return 0;
         }
+        $rxPaymentWindow = defined('RX_CRON_INIT_LOADED') ? rx_pf_cron_window_sql() : '1=1';
         $limit = max(1, min(50, (int) $limit));
         try {
             $stmt = $pdo->query(
                 "SELECT id_order FROM Payment_report
-                  WHERE Payment_Method = 'rialit'
+                  WHERE $rxPaymentWindow AND Payment_Method = 'rialit'
                     AND payment_Status = 'paid'
                     AND COALESCE(direct_payment_done, 0) = 0
                     AND NOT EXISTS (

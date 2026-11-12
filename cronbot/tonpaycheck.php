@@ -37,12 +37,13 @@ if (function_exists('tonpayCustomRunCron')) {
     tonpayCustomRunCron();
 }
 
+$rxPaymentWindow = rx_pf_cron_window_sql();
 $fairPolling = true;
 try {
     $stmt = $pdo->prepare(
         "SELECT id_order, tonpay_invoice_id, price
            FROM Payment_report
-          WHERE payment_Status = 'Unpaid'
+          WHERE $rxPaymentWindow AND payment_Status = 'Unpaid'
             AND Payment_Method = 'tonpay'
             AND (tonpay_gateway_mode IS NULL OR tonpay_gateway_mode <> 'custom')
             AND tonpay_invoice_id IS NOT NULL
@@ -61,7 +62,7 @@ try {
         $stmt = $pdo->prepare(
             "SELECT id_order, tonpay_invoice_id, price
                FROM Payment_report
-              WHERE payment_Status = 'Unpaid'
+              WHERE $rxPaymentWindow AND payment_Status = 'Unpaid'
                 AND Payment_Method = 'tonpay'
                 AND tonpay_invoice_id IS NOT NULL
                 AND tonpay_invoice_id <> ''
@@ -133,11 +134,12 @@ foreach ($rows as $row) {
         continue;
     }
 
-    $remoteStatus = (string) ($check['status'] ?? '');
-    if ($remoteStatus === 'need_action') {
+    $remoteStatus = strtolower((string) ($check['status'] ?? ''));
+    if (in_array($remoteStatus, ['need_action', 'action_required_less', 'action_required_more'], true)) {
         error_log('[tonpaycheck] invoice needs buyer action: ' . json_encode([
             'order_id' => $orderId,
             'invoice_id' => $invoiceId,
+            'status' => $remoteStatus,
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         continue;
     }

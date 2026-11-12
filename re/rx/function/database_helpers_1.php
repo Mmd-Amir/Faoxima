@@ -482,13 +482,13 @@ if (!function_exists('rx_cron_job_due')) {
         }
         if ($unit === 'day') {
             $occurrence = rx_cron_schedule_occurrence($config, $now, $targetHour);
-            if ($occurrence <= 0 || $lastRun >= $occurrence) {
+            if ($occurrence <= 0 || $now - $occurrence > 3600 || $lastRun >= $occurrence) {
                 return null;
             }
             return $occurrence;
         }
         $occurrence = rx_cron_schedule_occurrence($config, $now, $targetHour);
-        return $occurrence > 0 && $lastRun < $occurrence ? $occurrence : null;
+        return $occurrence > 0 && $now - $occurrence <= 3600 && $lastRun < $occurrence ? $occurrence : null;
     }
 }
 
@@ -1491,12 +1491,30 @@ if (!function_exists('rx_cron_job_work_available')) {
             return null;
         }
         $now = time();
+        $paymentWindow = $jobKey === 'payment_expire' ? '1=1' : (function_exists('rx_pf_cron_window_sql') ? rx_pf_cron_window_sql() : '1=0');
         if ($jobKey === 'sendmessage') {
             return rx_broadcast_work_available();
         }
         if ($jobKey === 'gift') {
             $cronbot = dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'cronbot';
-            return is_file($cronbot . DIRECTORY_SEPARATOR . 'gift') && is_file($cronbot . DIRECTORY_SEPARATOR . 'username.json');
+            if (is_file($cronbot . DIRECTORY_SEPARATOR . 'gift') && is_file($cronbot . DIRECTORY_SEPARATOR . 'username.json')) {
+                return true;
+            }
+            $pendingFile = $cronbot . DIRECTORY_SEPARATOR . 'gift_notify_pending.json';
+            if (is_file($pendingFile)) {
+                $pending = json_decode((string) @file_get_contents($pendingFile), true);
+                if (is_array($pending)) {
+                    foreach ($pending as $entry) {
+                        if (is_array($entry) && ($entry['state'] ?? '') === 'pending'
+                            && (int) ($entry['next_attempt_at'] ?? 0) <= $now
+                            && (int) ($entry['created_at'] ?? 0) >= $now - 3600
+                            && (int) ($entry['created_at'] ?? 0) <= $now) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
         }
         switch ($jobKey) {
             case 'activeconfig':
@@ -1513,17 +1531,17 @@ if (!function_exists('rx_cron_job_work_available')) {
                     ['سرویس تست', (string) ($now - 3600)]
                 );
             case 'plisio':
-                return rx_cron_work_probe($pdo, "SELECT 1 FROM Payment_report WHERE payment_Status = 'Unpaid' AND Payment_Method = 'plisio' LIMIT 1");
+                return rx_cron_work_probe($pdo, "SELECT 1 FROM Payment_report WHERE $paymentWindow AND payment_Status = 'Unpaid' AND Payment_Method = 'plisio' LIMIT 1");
             case 'blupalcheck':
                 return rx_cron_work_probe(
                     $pdo,
-                    "SELECT 1 FROM Payment_report WHERE payment_Status = 'Unpaid' AND Payment_Method = 'blupal'"
+                    "SELECT 1 FROM Payment_report WHERE $paymentWindow AND payment_Status = 'Unpaid' AND Payment_Method = 'blupal'"
                     . " AND blupal_invoice_id IS NOT NULL AND blupal_invoice_id <> '' LIMIT 1"
                 );
             case 'nowpaymentcheck':
                 return rx_cron_work_probe(
                     $pdo,
-                    "SELECT 1 FROM Payment_report WHERE payment_Status = 'Unpaid' AND Payment_Method = 'nowpayment'"
+                    "SELECT 1 FROM Payment_report WHERE $paymentWindow AND payment_Status = 'Unpaid' AND Payment_Method = 'nowpayment'"
                     . " AND dec_not_confirmed IS NOT NULL AND dec_not_confirmed <> '' LIMIT 1"
                 );
             case 'tronadocheck':
@@ -1534,7 +1552,7 @@ if (!function_exists('rx_cron_job_work_available')) {
                 }
                 return rx_cron_work_probe(
                     $pdo,
-                    "SELECT 1 FROM Payment_report WHERE Payment_Method IN ('Currency Rial 2','iranpay2')"
+                    "SELECT 1 FROM Payment_report WHERE $paymentWindow AND Payment_Method IN ('Currency Rial 2','iranpay2')"
                     . " AND payment_processing_version >= " . (int) RX_PAYMENT_PROCESSING_VERSION
                     . " AND payment_Status IN ('Unpaid','pending','waiting','expire','reject')"
                     . " AND (tronado_local_state IS NULL OR tronado_local_state NOT IN ('manual_review','dispute_review','completed'))"
@@ -1557,7 +1575,7 @@ if (!function_exists('rx_cron_job_work_available')) {
                 }
                 return rx_cron_work_probe(
                     $pdo,
-                    "SELECT 1 FROM Payment_report WHERE Payment_Method = 'tonpay' AND ("
+                    "SELECT 1 FROM Payment_report WHERE $paymentWindow AND Payment_Method = 'tonpay' AND ("
                     . " (tonpay_invoice_id IS NOT NULL AND tonpay_invoice_id <> ''"
                     . " AND (payment_Status = 'Unpaid'"
                     . "   OR (tonpay_gateway_mode = 'custom' AND payment_Status IN ('expire','reject','cancelled')"
@@ -1573,13 +1591,13 @@ if (!function_exists('rx_cron_job_work_available')) {
                 return rx_cron_work_combine([
                     static fn() => rx_cron_work_probe(
                         $pdo,
-                        "SELECT 1 FROM rialit_webhook_event WHERE state IN ('pending','retry') AND next_attempt_at <= ? LIMIT 1",
+                        "SELECT 1 FROM rialit_webhook_event WHERE state IN ('pending','retry') AND next_attempt_at <= ? AND EXISTS (SELECT 1 FROM Payment_report WHERE Payment_report.id_order = rialit_webhook_event.order_id AND $paymentWindow) LIMIT 1",
                         [$now],
                         'rialit_webhook_event'
                     ),
                     static fn() => rx_cron_work_probe(
                         $pdo,
-                        "SELECT 1 FROM Payment_report WHERE Payment_Method = 'rialit'"
+                        "SELECT 1 FROM Payment_report WHERE $paymentWindow AND Payment_Method = 'rialit'"
                         . " AND payment_Status IN ('Unpaid','pending','waiting','expire','cancelled')"
                         . " AND rialit_created_at >= ?"
                         . " AND (rialit_last_checked_at IS NULL OR rialit_last_checked_at <= ?) LIMIT 1",
@@ -1587,7 +1605,7 @@ if (!function_exists('rx_cron_job_work_available')) {
                     ),
                     static fn() => rx_cron_work_probe(
                         $pdo,
-                        "SELECT 1 FROM Payment_report WHERE Payment_Method = 'rialit'"
+                        "SELECT 1 FROM Payment_report WHERE $paymentWindow AND Payment_Method = 'rialit'"
                         . " AND payment_Status = 'paid' AND COALESCE(direct_payment_done, 0) = 0 LIMIT 1"
                     ),
                 ]);
@@ -1599,7 +1617,7 @@ if (!function_exists('rx_cron_job_work_available')) {
                 $rxLate = (int) ($now - ATLASPAY_CUSTOM_LATE_RECONCILE_SECONDS);
                 return rx_cron_work_probe(
                     $pdo,
-                    "SELECT 1 FROM Payment_report WHERE Payment_Method = 'atlaspay' AND ("
+                    "SELECT 1 FROM Payment_report WHERE $paymentWindow AND Payment_Method = 'atlaspay' AND ("
                     . " (atlaspay_order_id IS NOT NULL AND atlaspay_order_id <> '' AND ("
                     . "   ((atlaspay_gateway_mode IS NULL OR atlaspay_gateway_mode <> 'custom') AND payment_Status = 'Unpaid')"
                     . "   OR ((atlaspay_gateway_mode IS NULL OR atlaspay_gateway_mode <> 'custom') AND payment_Status = 'expire'"
@@ -1620,7 +1638,9 @@ if (!function_exists('rx_cron_job_work_available')) {
                     $pending = json_decode((string) @file_get_contents($pendingFile), true);
                     if (is_array($pending)) {
                         foreach ($pending as $entry) {
-                            if (is_array($entry) && ($entry['state'] ?? '') === 'pending' && (int) ($entry['next_attempt_at'] ?? 0) <= $now) {
+                            if (is_array($entry) && ($entry['state'] ?? '') === 'pending' && (int) ($entry['next_attempt_at'] ?? 0) <= $now
+                                && (int) ($entry['created_at'] ?? 0) >= $now - 3600
+                                && (int) ($entry['created_at'] ?? 0) <= $now) {
                                 return true;
                             }
                         }
@@ -1652,7 +1672,7 @@ if (!function_exists('rx_cron_job_work_available')) {
                 return rx_cron_work_combine([
                     static fn() => rx_cron_work_probe(
                         $pdo,
-                        "SELECT 1 FROM Payment_report WHERE payment_Status = 'Unpaid'"
+                        "SELECT 1 FROM Payment_report WHERE $paymentWindow AND payment_Status = 'Unpaid'"
                         . " AND (crypto_currency IS NULL OR crypto_currency = '')"
                         . " AND Payment_Method != 'tonpay' AND Payment_Method != 'rialit' AND time < ? LIMIT 1",
                         [$rxCutoff]
@@ -1667,7 +1687,7 @@ if (!function_exists('rx_cron_job_work_available')) {
                     ),
                     static fn() => rx_cron_work_probe(
                         $pdo,
-                        "SELECT 1 FROM Payment_report WHERE payment_Status = 'Unpaid' AND Payment_Method = 'tonpay' AND time < ? LIMIT 1",
+                        "SELECT 1 FROM Payment_report WHERE $paymentWindow AND payment_Status = 'Unpaid' AND Payment_Method = 'tonpay' AND time < ? LIMIT 1",
                         [$rxTonpayCutoff]
                     ),
                     static fn() => rx_cron_work_probe(
@@ -1678,7 +1698,7 @@ if (!function_exists('rx_cron_job_work_available')) {
                     ),
                     static fn() => rx_cron_work_probe(
                         $pdo,
-                        "SELECT 1 FROM Payment_report WHERE payment_Status = 'pending'"
+                        "SELECT 1 FROM Payment_report WHERE $paymentWindow AND payment_Status = 'pending'"
                         . " AND dec_not_confirmed = 'receipt-uploading'"
                         . " AND COALESCE(NULLIF(at_updated, ''), time) < ? LIMIT 1",
                         [$rxReceiptCutoff]

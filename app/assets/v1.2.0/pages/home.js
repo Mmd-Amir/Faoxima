@@ -363,6 +363,8 @@ function renderPendingCard(p) {
     const expiresAt = Number(p.expires_at) || 0;
     const isTonpay = String(p.method || '').toLowerCase() === 'tonpay';
     const isRialit = String(p.method || '').toLowerCase() === 'rialit';
+    const cancelAllowed = p.cancel_eligible === true
+        || (p.cancel_eligible !== false && (!p.verify || p.cancellable));
     const fmtRemain = isTonpay ? fmtRemainHhMmSs : fmtRemainMmSs;
     const rialitAwaitingResult = isRialit && ((p.rialit && p.rialit.awaiting_result) || (expiresAt > 0 && expiresAt <= Math.floor(Date.now() / 1000)));
     const initialRemain = rialitAwaitingResult
@@ -392,7 +394,7 @@ function renderPendingCard(p) {
                     ${icon('arrowLeft', 'class="ico ico-leading"')}
                     <span>${p.verify && p.resumable ? 'ادامه پرداخت' : 'ادامه پیگیری'}</span>
                 </button>` : ''}
-                ${!p.verify || p.cancellable ? `<button type="button" class="btn btn-ghost btn-block" data-cancel="${escapeHtml(p.order_id)}" data-method="${escapeHtml(p.method || '')}" data-verify="${p.verify ? '1' : '0'}">
+                ${cancelAllowed ? `<button type="button" class="btn btn-ghost btn-block" data-cancel="${escapeHtml(p.order_id)}" data-method="${escapeHtml(p.method || '')}" data-verify="${p.verify ? '1' : '0'}">
                     ${icon('close', 'class="ico ico-leading"')}
                     <span>${isRialit ? 'انصراف و پرداخت جدید' : 'انصراف'}</span>
                 </button>` : ''}

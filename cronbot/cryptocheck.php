@@ -72,6 +72,8 @@ if (!($pdo instanceof PDO)) {
 }
 
 
+$rxCryptoWindow = rx_pf_cron_window_sql();
+$rxCryptoAliasedWindow = rx_pf_cron_window_sql('p');
 $ttlUnpaid = 14400;
 $expireBefore = date('Y/m/d H:i:s', time() - $ttlUnpaid);
 
@@ -79,7 +81,7 @@ try {
     $expireStmt = $pdo->prepare(
         "SELECT id_user, id_order, message_id, crypto_currency, time
            FROM Payment_report
-          WHERE payment_Status = 'Unpaid'
+          WHERE $rxCryptoWindow AND payment_Status = 'Unpaid'
             AND crypto_currency IS NOT NULL
             AND time < :cutoff
           LIMIT 50"
@@ -122,7 +124,7 @@ try {
     $expireHashStmt = $pdo->prepare(
         "SELECT id_user, id_order, message_id, crypto_currency
            FROM Payment_report
-          WHERE payment_Status = 'AwaitingHash'
+          WHERE $rxCryptoWindow AND payment_Status = 'AwaitingHash'
             AND crypto_currency IS NOT NULL
             AND crypto_currency IN ('TRX','TON','USDT_TRC20','USDT_TON')
             AND crypto_hash_at IS NOT NULL
@@ -194,6 +196,7 @@ try {
     $stuckStmt = $pdo->prepare("
         SELECT
             p.id_order,
+            p.time,
             p.id_user,
             p.price,
             p.crypto_currency,
@@ -205,7 +208,7 @@ try {
         FROM Payment_report p
         LEFT JOIN invoice i
             ON i.username = SUBSTRING_INDEX(p.id_invoice, '|', -1)
-        WHERE p.payment_Status = 'paid'
+        WHERE $rxCryptoAliasedWindow AND p.payment_Status = 'paid'
           AND p.Payment_Method = 'arze digital offline'
           AND p.id_invoice LIKE 'getconfigafterpay|%'
           AND (p.dec_not_confirmed IS NULL OR (p.dec_not_confirmed NOT LIKE '%auto-refund%' AND p.dec_not_confirmed NOT LIKE '%service-created%'))
@@ -220,6 +223,9 @@ try {
         $rxCryptoLog('INFO', 'found stuck paid invoices', ['count' => count($stuckList)]);
         foreach ($stuckList as $stuckRow) {
             if (function_exists('rx_cron_time_up') && rx_cron_time_up()) break;
+            if (!rx_pf_cron_payment_allowed($stuckRow)) {
+                continue;
+            }
             $stuckOrderId  = (string) $stuckRow['id_order'];
             $stuckUserId   = (string) $stuckRow['id_user'];
             $stuckPriceIrr = (int) ($stuckRow['price'] ?? 0);
@@ -239,6 +245,7 @@ try {
                             ELSE CONCAT(dec_not_confirmed, ' | ', :note2)
                         END
                     WHERE id_order = :o
+                      AND $rxCryptoWindow
                       AND payment_Status = 'paid'
                       AND (dec_not_confirmed IS NULL OR (dec_not_confirmed NOT LIKE '%auto-refund%' AND dec_not_confirmed NOT LIKE '%service-created%'))
                 ");
@@ -323,13 +330,13 @@ try {
 
 try {
     $retryStmt = $pdo->prepare("
-        SELECT p.id_order, p.id_user, p.id_invoice, p.crypto_currency, p.price,
+        SELECT p.id_order, p.time, p.id_user, p.id_invoice, p.crypto_currency, p.price,
                p.at_updated, p.crypto_check_count,
                i.username AS service_username,
                i.Status AS invoice_status, i.uuid AS invoice_uuid
         FROM Payment_report p
         LEFT JOIN invoice i ON i.username = SUBSTRING_INDEX(p.id_invoice, '|', -1)
-        WHERE p.payment_Status = 'paid'
+        WHERE $rxCryptoAliasedWindow AND p.payment_Status = 'paid'
           AND p.Payment_Method = 'arze digital offline'
           AND p.id_invoice LIKE 'getconfigafterpay|%'
           AND (p.dec_not_confirmed IS NULL OR (p.dec_not_confirmed NOT LIKE '%auto-refund%' AND p.dec_not_confirmed NOT LIKE '%service-created%'))
@@ -346,6 +353,9 @@ try {
         $rxCryptoLog('INFO', 'retry pass: found stuck service-creation invoices', ['count' => count($retryList)]);
         foreach ($retryList as $retryRow) {
             if (function_exists('rx_cron_time_up') && rx_cron_time_up()) break;
+            if (!rx_pf_cron_payment_allowed($retryRow)) {
+                continue;
+            }
             $rOrderId       = (string) $retryRow['id_order'];
             $rUserId        = (string) $retryRow['id_user'];
             $rServiceUser   = (string) ($retryRow['service_username'] ?? '');
@@ -423,7 +433,7 @@ try {
     $stmt = $pdo->prepare(
         "SELECT *
            FROM Payment_report
-          WHERE payment_Status = 'AwaitingHash'
+          WHERE $rxCryptoWindow AND payment_Status = 'AwaitingHash'
             AND crypto_currency IS NOT NULL
             AND crypto_currency IN ('TRX','TON','USDT_TRC20','USDT_TON')
             AND crypto_tx_hash IS NOT NULL
@@ -447,6 +457,9 @@ try {
 
 foreach ($rows as $row) {
     if (function_exists('rx_cron_time_up') && rx_cron_time_up()) break;
+    if (!rx_pf_cron_payment_allowed($row)) {
+        continue;
+    }
     $orderId = (string) $row['id_order'];
     $currency = (string) $row['crypto_currency'];
     $hashShort = substr((string) ($row['crypto_tx_hash'] ?? ''), 0, 16) . '…';

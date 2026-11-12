@@ -53,6 +53,22 @@ final class TonpayCustomHandler extends BaseHandler
                 FaoximaResponse::ok(['kind' => 'cancelled', 'order_id' => $orderId]);
                 return;
 
+            case 'refund':
+                $cardNumber = FaoximaInput::string($this->data, 'card_number');
+                $cardHolder = FaoximaInput::string($this->data, 'card_holder');
+                $result = tonpayCustomSubmitRefund($orderId, $userId, $cardNumber, $cardHolder);
+                if (empty($result['ok'])) {
+                    FaoximaResponse::fail(409, (string)($result['message'] ?? 'ثبت کارت عودت انجام نشد.'), [
+                        'code' => $result['code'] ?? 'error',
+                    ]);
+                }
+                FaoximaResponse::ok([
+                    'view'    => isset($result['report']) ? tonpayCustomPublicView($result['report']) : null,
+                    'message' => (string)($result['message'] ?? 'کارت عودت ثبت شد.'),
+                    'already_open' => !empty($result['already_open']),
+                ]);
+                return;
+
             case 'receipt':
                 $this->handleReceipt($orderId, $userId);
                 return;

@@ -3,6 +3,21 @@
 if (!defined('RX_CRON_TASK_STATE_LOADED')) {
     define('RX_CRON_TASK_STATE_LOADED', true);
 
+    if (!function_exists('rx_cron_catchup_seconds')) {
+        function rx_cron_catchup_seconds(): int
+        {
+            return 3600;
+        }
+    }
+
+    if (!function_exists('rx_cron_catchup_allowed')) {
+        function rx_cron_catchup_allowed(int $scheduledFor, ?int $now = null): bool
+        {
+            $now = $now ?? time();
+            return $scheduledFor > 0 && $scheduledFor <= $now && $scheduledFor >= $now - rx_cron_catchup_seconds();
+        }
+    }
+
     if (!function_exists('rx_cron_task_runtime_dir')) {
         function rx_cron_task_runtime_dir(): string
         {
@@ -134,7 +149,7 @@ if (!defined('RX_CRON_TASK_STATE_LOADED')) {
     }
 
     if (!function_exists('rx_cron_task_write_marker')) {
-        function rx_cron_task_write_marker(string $type, string $key, string $token, string $state = '', string $error = '', ?int $lease = null, string $outcome = '', int $nextAttemptAt = 0): void
+        function rx_cron_task_write_marker(string $type, string $key, string $token, string $state = '', string $error = '', ?int $lease = null, string $outcome = '', int $nextAttemptAt = 0, int $occurrence = 0): void
         {
             $dir = rx_cron_task_runtime_dir();
             if (!@is_dir($dir)) {
@@ -147,6 +162,7 @@ if (!defined('RX_CRON_TASK_STATE_LOADED')) {
                 'state' => $state,
                 'outcome' => $outcome,
                 'next_attempt_at' => $nextAttemptAt,
+                'occurrence' => $occurrence,
                 'error' => substr($error, 0, 200),
                 'lease' => $lease,
                 'ts' => time(),
@@ -201,6 +217,16 @@ if (!defined('RX_CRON_TASK_STATE_LOADED')) {
                 $attemptsSql = 'attempts = GREATEST(attempts - 1, 0)';
             }
             try {
+                if ($state === 'pending') {
+                    $occ = $pdo->prepare('SELECT scheduled_for FROM cron_task_state WHERE task_key = ? AND token = ?');
+                    $occ->execute([$taskKey, $token]);
+                    if (!rx_cron_catchup_allowed((int) $occ->fetchColumn(), $now)) {
+                        $state = 'cancelled';
+                        $outcome = 'failed';
+                        $message = 'catchup_window_elapsed';
+                        $nextAttemptAt = 0;
+                    }
+                }
                 $stmt = $pdo->prepare("UPDATE cron_task_state SET state = ?, outcome = ?, lease_expires = 0, next_attempt_at = ?, last_error = ?, " . $attemptsSql . ", updated_at = NOW() WHERE task_key = ? AND token = ? AND state IN ('claimed','running')");
                 $stmt->execute([$state, $outcome, (int) $nextAttemptAt, substr($message, 0, 250), $taskKey, $token]);
                 return $stmt->rowCount() === 1;
@@ -335,8 +361,8 @@ if (!defined('RX_CRON_TASK_STATE_LOADED')) {
             if ($pdo instanceof PDO && rx_cron_task_ensure_table($pdo)) {
                 try {
                     $now = time();
-                    $stmt = $pdo->prepare("UPDATE cron_task_state SET state = 'running', lease_expires = GREATEST(lease_expires, ?), updated_at = NOW() WHERE task_key = ? AND token = ? AND (state IN ('claimed','running') OR (state = 'uncertain' AND last_error = 'dispatch_lease_expired'))");
-                    $stmt->execute([$now + $lease, $meta['key'], $meta['token']]);
+                    $stmt = $pdo->prepare("UPDATE cron_task_state SET state = 'running', lease_expires = GREATEST(lease_expires, ?), updated_at = NOW() WHERE task_key = ? AND token = ? AND scheduled_for BETWEEN ? AND ? AND (state IN ('claimed','running') OR (state = 'uncertain' AND last_error = 'dispatch_lease_expired'))");
+                    $stmt->execute([$now + $lease, $meta['key'], $meta['token'], $now - rx_cron_catchup_seconds(), $now]);
                     if ($stmt->rowCount() !== 1) {
                         @flock($live, LOCK_UN);
                         @fclose($live);
@@ -352,6 +378,7 @@ if (!defined('RX_CRON_TASK_STATE_LOADED')) {
                 $claim = is_string($raw) ? json_decode($raw, true) : null;
                 if (!is_array($claim) || ($claim['key'] ?? '') !== $meta['key']
                     || !hash_equals($meta['token'], (string) ($claim['token'] ?? ''))
+                    || !rx_cron_catchup_allowed((int) ($claim['occurrence'] ?? $meta['occurrence'] ?? 0))
                     || (int) ($claim['ts'] ?? 0) + (int) ($claim['lease'] ?? 0) < time()) {
                     @flock($live, LOCK_UN);
                     @fclose($live);
@@ -559,7 +586,9 @@ if (!defined('RX_CRON_TASK_STATE_LOADED')) {
         function rx_cron_task_enqueue(PDO $pdo, string $jobKey, string $script, int $workers, int $worker, int $scheduledFor, bool $preserveOccurrence = false): int
         {
             $taskKey = rx_cron_task_key($jobKey, $workers, $worker);
-            $scheduledFor = max(1, $scheduledFor);
+            if (!rx_cron_catchup_allowed($scheduledFor)) {
+                return 0;
+            }
             $started = false;
             try {
                 $pdo->beginTransaction();
@@ -579,6 +608,11 @@ if (!defined('RX_CRON_TASK_STATE_LOADED')) {
                 if ($state === 'uncertain') {
                     $pdo->commit();
                     return 0;
+                }
+                if ($state === 'pending' && !rx_cron_catchup_allowed($existingFor, $now)) {
+                    $expire = $pdo->prepare("UPDATE cron_task_state SET state = 'cancelled', outcome = 'failed', token = NULL, lease_expires = 0, next_attempt_at = 0, last_error = 'catchup_window_elapsed' WHERE task_key = ? AND state = 'pending'");
+                    $expire->execute([$taskKey]);
+                    $state = 'cancelled';
                 }
                 if ($state === 'pending') {
                     if ($existingFor > 0) {
@@ -663,8 +697,8 @@ if (!defined('RX_CRON_TASK_STATE_LOADED')) {
             $limit = max(1, min(500, $limit));
             $excluded = $deferredJobs ? ' AND job_key NOT IN (' . implode(',', array_fill(0, count($deferredJobs), '?')) . ')' : '';
             $paymentOrder = "CASE WHEN job_key IN ('croncard','plisio','nowpaymentcheck','blupalcheck','atlaspaycheck','tronadocheck','tonpaycheck','rialitcheck','cryptocheck') THEN 0 ELSE 1 END";
-            $stmt = $pdo->prepare("SELECT task_key, job_key, script, worker, workers, token, attempts, scheduled_for, job_dispatched_at, next_attempt_at FROM cron_task_state WHERE state = 'pending' AND attempts < ? AND next_attempt_at <= ?" . $excluded . " ORDER BY " . $paymentOrder . " ASC, scheduled_for ASC, job_dispatched_at ASC, task_key ASC LIMIT " . $limit);
-            $stmt->execute(array_merge([max(1, $maxAttempts), time()], array_values($deferredJobs)));
+            $stmt = $pdo->prepare("SELECT task_key, job_key, script, worker, workers, token, attempts, scheduled_for, job_dispatched_at, next_attempt_at FROM cron_task_state WHERE state = 'pending' AND attempts < ? AND next_attempt_at <= ? AND scheduled_for BETWEEN ? AND ?" . $excluded . " ORDER BY " . $paymentOrder . " ASC, scheduled_for ASC, job_dispatched_at ASC, task_key ASC LIMIT " . $limit);
+            $stmt->execute(array_merge([max(1, $maxAttempts), time(), time() - rx_cron_catchup_seconds(), time()], array_values($deferredJobs)));
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
             return is_array($rows) ? $rows : [];
         }
@@ -723,6 +757,12 @@ if (!defined('RX_CRON_TASK_STATE_LOADED')) {
                     $pdo->rollBack();
                     return null;
                 }
+                if (!rx_cron_catchup_allowed((int) ($row['scheduled_for'] ?? 0), $now)) {
+                    $expire = $pdo->prepare("UPDATE cron_task_state SET state = 'cancelled', outcome = 'failed', token = NULL, lease_expires = 0, next_attempt_at = 0, last_error = 'catchup_window_elapsed' WHERE task_key = ? AND state = 'pending'");
+                    $expire->execute([$taskKey]);
+                    $pdo->commit();
+                    return null;
+                }
                 if ((int) ($row['attempts'] ?? 0) >= $maxAttempts) {
                     $fail = $pdo->prepare("UPDATE cron_task_state SET state = 'failed', outcome = 'failed', lease_expires = 0, next_attempt_at = 0, last_error = ?, updated_at = NOW() WHERE task_key = ?");
                     $fail->execute(['attempt_limit', $taskKey]);
@@ -733,7 +773,7 @@ if (!defined('RX_CRON_TASK_STATE_LOADED')) {
                 $update = $pdo->prepare("UPDATE cron_task_state SET state = 'claimed', outcome = '', token = ?, lease_expires = ?, attempts = attempts + 1, next_attempt_at = 0, job_dispatched_at = ?, updated_at = NOW() WHERE task_key = ?");
                 $update->execute([$token, $now + $leaseSeconds, $now, $taskKey]);
                 $pdo->commit();
-                rx_cron_task_write_marker('claim', $taskKey, $token, '', '', $leaseSeconds);
+                rx_cron_task_write_marker('claim', $taskKey, $token, '', '', $leaseSeconds, '', 0, (int) $row['scheduled_for']);
                 $row['token'] = $token;
                 $row['state'] = 'claimed';
                 $row['lease_expires'] = $now + $leaseSeconds;
@@ -786,6 +826,8 @@ if (!defined('RX_CRON_TASK_STATE_LOADED')) {
             if (!rx_cron_task_scan_markers($pdo, 120, $now)) {
                 throw new RuntimeException('Cron task completion markers could not be persisted');
             }
+            $window = $pdo->prepare("UPDATE cron_task_state SET state = 'cancelled', outcome = 'failed', token = NULL, lease_expires = 0, next_attempt_at = 0, last_error = 'catchup_window_elapsed', updated_at = NOW() WHERE state IN ('pending','claimed') AND scheduled_for < ?");
+            $window->execute([$now - rx_cron_catchup_seconds()]);
             $expired = $pdo->prepare("SELECT task_key, token FROM cron_task_state WHERE state IN ('claimed','running') AND lease_expires < ?");
             $expired->execute([$now]);
             foreach ($expired->fetchAll(PDO::FETCH_ASSOC) as $row) {

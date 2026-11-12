@@ -74,6 +74,9 @@ if (!function_exists('payment_confirm_paid')) {
             if (!is_array($report)) {
                 throw new RuntimeException('report_missing');
             }
+            if (defined('RX_CRON_INIT_LOADED') && (!function_exists('rx_pf_cron_payment_allowed') || !rx_pf_cron_payment_allowed($report))) {
+                throw new RuntimeException('cron_window_elapsed');
+            }
             $currentStatus = strtolower(trim((string)($report['payment_Status'] ?? '')));
             if ($currentStatus === 'cancelled') {
                 throw new RuntimeException('cancelled');
@@ -85,6 +88,13 @@ if (!function_exists('payment_confirm_paid')) {
                     ->execute([$orderId]);
             }
             if (!$wasDelivered) {
+                if (defined('RX_CRON_INIT_LOADED') && $currentStatus === 'paid') {
+                    $existing = $pdo->prepare('SELECT id FROM payment_fulfillment WHERE id_order = ? LIMIT 1 FOR UPDATE');
+                    $existing->execute([$orderId]);
+                    if ($existing->fetchColumn() === false) {
+                        throw new RuntimeException('legacy_payment_requires_review');
+                    }
+                }
                 $now = time();
                 $atomic = $pdo->prepare(
                     "UPDATE Payment_report SET payment_Status = 'paid' "
@@ -130,7 +140,7 @@ if (!function_exists('payment_confirm_paid')) {
                 }
             }
             $reason = $e->getMessage();
-            if ($reason === 'cancelled' || $reason === 'report_missing') {
+            if ($reason === 'cancelled' || $reason === 'report_missing' || $reason === 'cron_window_elapsed' || $reason === 'legacy_payment_requires_review') {
                 return ['ok' => false, 'reason' => $reason];
             }
             return ['ok' => false, 'reason' => 'db_error'];

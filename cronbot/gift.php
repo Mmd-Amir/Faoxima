@@ -68,6 +68,13 @@ $deliverGiftNotification = function ($key) use (&$pendingNotify, $savePendingNot
     if (!is_array($entry) || ($entry['state'] ?? 'uncertain') !== 'pending' || (int) ($entry['next_attempt_at'] ?? 0) > time()) {
         return false;
     }
+    if (!rx_cron_catchup_allowed((int) ($entry['created_at'] ?? 0))) {
+        $pendingNotify[$key]['state'] = 'expired';
+        $pendingNotify[$key]['next_attempt_at'] = 0;
+        $pendingNotify[$key]['last_error'] = 'catchup_window_elapsed';
+        $savePendingNotify();
+        return false;
+    }
     $pendingNotify[$key]['state'] = 'sending';
     $pendingNotify[$key]['attempts'] = (int) ($entry['attempts'] ?? 0) + 1;
     $savePendingNotify();
@@ -190,7 +197,7 @@ $notifyUserOnce = function ($id_user, $text) use (&$notifiedUsers, &$pendingNoti
     }
     $key = $rxGiftCampaign . ':' . $userKey;
     if (!isset($pendingNotify[$key])) {
-        $pendingNotify[$key] = ['id_user' => $userKey, 'text' => (string) $text, 'state' => 'pending', 'attempts' => 0, 'next_attempt_at' => 0];
+        $pendingNotify[$key] = ['id_user' => $userKey, 'text' => (string) $text, 'state' => 'pending', 'created_at' => time(), 'attempts' => 0, 'next_attempt_at' => 0];
         $savePendingNotify();
     }
     if (!$deliverGiftNotification($key)) {

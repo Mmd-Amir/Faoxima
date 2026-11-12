@@ -71,6 +71,13 @@ $rxQrDeliver = function (string $key) use (&$rxQrPending, $rxQrSavePending): boo
     if (!is_array($entry) || ($entry['state'] ?? 'uncertain') !== 'pending' || (int) ($entry['next_attempt_at'] ?? 0) > time() || rx_cron_time_up()) {
         return false;
     }
+    if (!rx_cron_catchup_allowed((int) ($entry['created_at'] ?? 0))) {
+        $rxQrPending[$key]['state'] = 'expired';
+        $rxQrPending[$key]['next_attempt_at'] = 0;
+        $rxQrPending[$key]['last_error'] = 'catchup_window_elapsed';
+        $rxQrSavePending();
+        return false;
+    }
     $rxQrPending[$key]['state'] = 'sending';
     $rxQrPending[$key]['attempts'] = (int) ($entry['attempts'] ?? 0) + 1;
     $rxQrSavePending();
@@ -112,6 +119,7 @@ $rxQrQueueDelivery = function (string $key, array $entry) use (&$rxQrPending, $r
     }
     if (!isset($rxQrPending[$key])) {
         $entry['state'] = 'pending';
+        $entry['created_at'] = time();
         $entry['attempts'] = 0;
         $entry['next_attempt_at'] = 0;
         $rxQrPending[$key] = $entry;

@@ -8,7 +8,9 @@ const POLL_INTERVAL_MS = 5000;
 const SERVICE_READY_POLL_MS = 3000;
 const SERVICE_READY_MAX_TRIES = 40;
 const MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
-const OPEN_PHASES = ['awaiting_payment', 'receipt_available', 'need_action'];
+const OPEN_PHASES = ['awaiting_payment', 'receipt_available'];
+const LESS_PHASES = ['action_required_less'];
+const MORE_PHASES = ['action_required_more'];
 const REVIEW_PHASES = ['receipt_submitted', 'receipt_rejected'];
 const FAIL_PHASES = ['rejected', 'canceled', 'expired', 'review_timeout'];
 const ACTION_BUTTON_STYLES = {
@@ -116,6 +118,25 @@ export function startTonpayCustom(view, orderId, opts = {}) {
     }
 
     function amountRows(v) {
+        const isLess = LESS_PHASES.includes(v.phase);
+        const isMore = MORE_PHASES.includes(v.phase);
+        if (isLess) {
+            return `
+            <div class="kv"><span class="kv-label">${icon('wallet')} مبلغ فاکتور اصلی</span><span class="kv-value mono">${fmtNum(v.request_amount)} تومان</span></div>
+            <div class="kv">
+                <span class="kv-label">${icon('creditCard')} مبلغ باقی‌مانده قابل پرداخت</span>
+                <span class="kv-value mono accent" style="font-size:18px;font-weight:700">${fmtNum(v.remaining_payable_rial)} ریال</span>
+            </div>
+            <p class="muted mt-sm" style="font-size:12px">معادل ${fmtNum(v.remaining_amount)} تومان</p>`;
+        }
+        if (isMore) {
+            return `
+            <div class="kv"><span class="kv-label">${icon('wallet')} مبلغ فاکتور اصلی</span><span class="kv-value mono">${fmtNum(v.request_amount)} تومان</span></div>
+            <div class="kv">
+                <span class="kv-label">${icon('creditCard')} مبلغ مازاد قابل عودت</span>
+                <span class="kv-value mono accent" style="font-size:18px;font-weight:700">${fmtNum(v.refund_amount)} تومان</span>
+            </div>`;
+        }
         return `
             <div class="kv"><span class="kv-label">${icon('wallet')} مبلغ شارژ / خرید</span><span class="kv-value mono">${fmtNum(v.request_amount)} تومان</span></div>
             <div class="kv">
@@ -127,28 +148,55 @@ export function startTonpayCustom(view, orderId, opts = {}) {
     }
 
     function cardBlock(v) {
-        if (!OPEN_PHASES.includes(v.phase)) return '';
-        const number = v.card_complete ? String(v.card_number_display || v.card_number) : String(v.card_number || '');
-        const copyBtn = v.card_complete
+        const isLess = LESS_PHASES.includes(v.phase);
+        if (!OPEN_PHASES.includes(v.phase) && !isLess) return '';
+        const cardNumber = isLess ? (v.remaining_card_number || '') : (v.card_number || '');
+        const cardComplete = isLess ? !!v.remaining_card_complete : !!v.card_complete;
+        const cardHolder = isLess ? (v.remaining_card_holder || '') : (v.card_name || '');
+        const number = cardComplete
+            ? String(isLess ? (v.remaining_card_number_display || cardNumber) : (v.card_number_display || cardNumber))
+            : String(cardNumber);
+        const copyBtn = cardComplete
             ? ''
             : `<p class="muted mt-sm" style="font-size:12px;color:var(--yellow)">شماره کارت به‌صورت کامل دریافت نشد؛ لطفاً با پشتیبانی تماس بگیرید.</p>`;
-        const holder = v.card_name
-            ? `<div class="kv"><span class="kv-label">${icon('user')} به نام</span><span class="kv-value">${escapeHtml(v.card_name)}</span></div>`
+        const holder = cardHolder
+            ? `<div class="kv"><span class="kv-label">${icon('user')} به نام</span><span class="kv-value">${escapeHtml(cardHolder)}</span></div>`
             : '';
         return `
             <div class="card-section mt-md">
-                <p class="section-title">${icon('creditCard')} کارت مقصد</p>
+                <p class="section-title">${icon('creditCard')} ${isLess ? 'کارت مقصد مبلغ باقی‌مانده' : 'کارت مقصد'}</p>
                 <div class="kv"><span class="kv-label">شماره کارت</span><span class="kv-value mono" dir="ltr" id="tpc-card-number">${escapeHtml(number)}</span></div>
                 ${holder}
                 ${copyBtn}
             </div>`;
     }
 
+    function refundBlock(v) {
+        if (!MORE_PHASES.includes(v.phase)) return '';
+        if (v.refund_card_submitted) {
+            return `
+            <div class="card-section mt-md">
+                <p class="section-title">${icon('creditCard')} کارت عودت مبلغ مازاد</p>
+                <p class="muted" style="font-size:12px;white-space:pre-line">کارت مقصد عودت قبلاً ثبت شده است و مبلغ مازاد پس از بررسی تون‌پی واریز می‌شود.</p>
+            </div>`;
+        }
+        if (!v.can_refund) return '';
+        return `
+            <div class="card-section mt-md">
+                <p class="section-title">${icon('creditCard')} ثبت کارت عودت مبلغ مازاد</p>
+                <p class="muted" style="font-size:12px;white-space:pre-line">مبلغ مازاد پس از بررسی تون‌پی به کارت زیر واریز می‌شود. ثبت کارت به‌معنی واریز فوری نیست.</p>
+                <input type="text" id="tpc-refund-card" inputmode="numeric" autocomplete="off" placeholder="شماره کارت ۱۶ رقمی" dir="ltr" class="mono" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:inherit">
+                <input type="text" id="tpc-refund-holder" autocomplete="off" placeholder="نام و نام خانوادگی صاحب کارت" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:inherit">
+                <button type="button" class="btn btn-primary mt-sm" id="tpc-refund-submit" style="width:100%">ثبت کارت عودت</button>
+            </div>`;
+    }
+
     function actionsBlock(v) {
         const open = OPEN_PHASES.includes(v.phase);
+        const less = LESS_PHASES.includes(v.phase);
         const changeLabel = v.change_card_exhausted
             ? 'کارت دیگری باقی نمانده'
-            : (v.can_change_card ? 'تعویض کارت' : `تعویض کارت (${v.change_card_wait} ثانیه)`);
+            : (v.show_change_card === 0 && !v.can_change_card ? 'تعویض کارت در دسترس نیست' : (v.can_change_card ? 'تعویض کارت' : `تعویض کارت (${v.change_card_wait} ثانیه)`));
         const rows = [];
         if (open) {
             rows.push(actionRow([
@@ -158,10 +206,15 @@ export function startTonpayCustom(view, orderId, opts = {}) {
             rows.push(actionRow([
                 actionButton('tpc-change-card', 'change_card', v, `${icon('refresh', 'class="ico ico-leading"')}<span id="tpc-change-label">${escapeHtml(changeLabel)}</span>`, v.can_change_card ? '' : 'disabled'),
             ]));
+        } else if (less) {
+            rows.push(actionRow([
+                v.remaining_card_complete ? actionButton('tpc-copy-card', 'copy_card', v, `${icon('copy', 'class="ico ico-leading"')}<span>کپی کارت مابقی</span>`) : '',
+                actionButton('tpc-copy-amount', 'copy_amount', v, `${icon('copy', 'class="ico ico-leading"')}<span>کپی مبلغ مابقی</span>`),
+            ]));
         }
         rows.push(actionRow([
             actionButton('tpc-refresh', 'check_status', v, `${icon('refresh', 'class="ico ico-leading"')}<span>بررسی</span>`),
-            open ? actionButton('tpc-receipt', 'send_receipt', v, `${icon('camera', 'class="ico ico-leading"')}<span id="tpc-receipt-label">ارسال رسید</span>`) : '',
+            v.can_submit_receipt ? actionButton('tpc-receipt', 'send_receipt', v, `${icon('camera', 'class="ico ico-leading"')}<span id="tpc-receipt-label">${less ? 'ارسال رسید مابقی' : 'ارسال رسید'}</span>`) : '',
         ]));
         if (v.can_cancel) {
             rows.push(actionRow([
@@ -196,17 +249,23 @@ export function startTonpayCustom(view, orderId, opts = {}) {
     }
 
     function receiptBlock(v) {
-        if (!OPEN_PHASES.includes(v.phase)) return '';
+        if (!OPEN_PHASES.includes(v.phase) && !LESS_PHASES.includes(v.phase)) return '';
+        if (LESS_PHASES.includes(v.phase) && v.remaining_receipt_received) {
+            return `
+            <div class="card-section mt-md">
+                <p class="muted mt-sm" style="font-size:12px;text-align:center">رسید مبلغ باقی‌مانده ارسال شده و در انتظار بررسی تون‌پی است.</p>
+            </div>`;
+        }
         return `
             <div class="card-section mt-md">
-                <input type="file" id="tpc-file" accept="image/jpeg,image/png,image/webp" style="display:none">
-                <p class="muted mt-sm" style="font-size:12px;text-align:center">تصویر رسید (JPG، PNG یا WEBP) تا ۱۰ مگابایت</p>
+                <input type="file" id="tpc-file" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none">
+                <p class="muted mt-sm" style="font-size:12px;text-align:center">تصویر رسید (JPG، PNG، WEBP یا GIF) تا ۱۰ مگابایت</p>
             </div>`;
     }
 
     function statusIcon(v) {
         if (v.phase === 'receipt_submitted' || v.phase === 'confirming') return icon('hourglass', 'class="ico ico-xxl ico-accent"');
-        if (v.phase === 'need_action' || v.phase === 'receipt_rejected') return icon('alert', 'class="ico ico-xxl ico-warn"');
+        if (v.phase === 'action_required_less' || v.phase === 'action_required_more' || v.phase === 'receipt_rejected' || v.phase === 'unknown') return icon('alert', 'class="ico ico-xxl ico-warn"');
         return icon('creditCard', 'class="ico ico-xxl ico-accent"');
     }
 
@@ -221,6 +280,7 @@ export function startTonpayCustom(view, orderId, opts = {}) {
             </div>
             <div class="mt-md">${amountRows(v)}</div>
             ${cardBlock(v)}
+            ${refundBlock(v)}
             ${timerBlock(v)}
             ${receiptBlock(v)}
             ${actionsBlock(v)}
@@ -235,14 +295,16 @@ export function startTonpayCustom(view, orderId, opts = {}) {
         const $copyAmount = $('#tpc-copy-amount');
         if ($copyAmount) $copyAmount.addEventListener('click', async () => {
             hapticImpact('light');
-            const ok = await copyToClipboard(String(data.amount_copy_value || ''));
+            const isLess = LESS_PHASES.includes(data.phase);
+            const ok = await copyToClipboard(String(isLess ? (data.remaining_amount_copy_value || '') : (data.amount_copy_value || '')));
             toast(ok ? 'مبلغ پرداخت کپی شد' : 'کپی انجام نشد', ok ? 'success' : 'error', 2000);
         });
 
         const $copyCard = $('#tpc-copy-card');
         if ($copyCard) $copyCard.addEventListener('click', async () => {
             hapticImpact('light');
-            const ok = await copyToClipboard(String(data.card_copy_value || ''));
+            const isLess = LESS_PHASES.includes(data.phase);
+            const ok = await copyToClipboard(String(isLess ? (data.remaining_card_copy_value || '') : (data.card_copy_value || '')));
             toast(ok ? 'شماره کارت کپی شد' : 'کپی انجام نشد', ok ? 'success' : 'error', 2000);
         });
 
@@ -289,8 +351,10 @@ export function startTonpayCustom(view, orderId, opts = {}) {
                 }
             } catch (err) {
                 toast(err.message || 'لغو فاکتور انجام نشد', 'error', 4000);
-                $cancel.disabled = false;
                 busy = false;
+                await poll();
+                const $againCancel = $('#tpc-cancel');
+                if ($againCancel) $againCancel.disabled = false;
             }
         });
 
@@ -310,8 +374,8 @@ export function startTonpayCustom(view, orderId, opts = {}) {
             $file.addEventListener('change', () => {
                 const f = $file.files && $file.files[0];
                 if (!f) return;
-                if (!/^image\/(jpeg|png|webp)$/.test(f.type)) {
-                    toast('فقط تصویر JPG، PNG یا WEBP مجاز است', 'error', 3500);
+                if (!/^image\/(jpeg|png|webp|gif)$/.test(f.type)) {
+                    toast('فقط تصویر JPG، PNG، WEBP یا GIF مجاز است', 'error', 3500);
                     return;
                 }
                 if (f.size > MAX_RECEIPT_BYTES) {
@@ -321,6 +385,37 @@ export function startTonpayCustom(view, orderId, opts = {}) {
                 submitReceipt(f);
             });
         }
+
+        const $refundSubmit = $('#tpc-refund-submit');
+        if ($refundSubmit) $refundSubmit.addEventListener('click', async () => {
+            if (busy) return;
+            const cardNumber = String(($('#tpc-refund-card') || {}).value || '').replace(/[\s-]/g, '');
+            const cardHolder = String(($('#tpc-refund-holder') || {}).value || '').trim();
+            if (!/^\d{16}$/.test(cardNumber)) {
+                toast('شماره کارت باید ۱۶ رقم باشد', 'error', 3500);
+                return;
+            }
+            if (cardHolder.length < 3) {
+                toast('نام صاحب کارت را کامل وارد کنید', 'error', 3500);
+                return;
+            }
+            busy = true;
+            hapticImpact('medium');
+            $refundSubmit.disabled = true;
+            try {
+                const res = await call('tonpay_custom_refund', { method: 'POST', body: { order_id: orderId, card_number: cardNumber, card_holder: cardHolder } });
+                toast((res && res.obj && res.obj.message) || 'کارت عودت ثبت شد', 'success', 5000);
+                if (res && res.obj && res.obj.view) applyView(res.obj.view, true);
+                else await poll();
+            } catch (err) {
+                toast(err.message || 'ثبت کارت عودت انجام نشد', 'error', 5000);
+                await poll();
+            } finally {
+                busy = false;
+                const $again = $('#tpc-refund-submit');
+                if ($again) $again.disabled = false;
+            }
+        });
     }
 
     async function submitReceipt(file) {
@@ -362,7 +457,7 @@ export function startTonpayCustom(view, orderId, opts = {}) {
     }
 
     function signatureOf(v) {
-        return [v.phase, v.card_number, v.payable_rial, v.can_change_card, v.change_card_exhausted, v.can_submit_receipt, v.can_cancel, v.card_complete, JSON.stringify(v.button_styles || {})].join('|');
+        return [v.phase, v.card_number, v.payable_rial, v.can_change_card, v.change_card_wait, v.change_card_exhausted, v.show_change_card, v.can_submit_receipt, v.can_cancel, v.card_complete, v.remaining_amount, v.remaining_card_number, v.remaining_card_holder, v.remaining_receipt_received, v.refund_amount, v.refund_pending, v.refund_card_submitted, v.can_refund, JSON.stringify(v.button_styles || {})].join('|');
     }
 
     function applyView(v, force) {
@@ -414,6 +509,21 @@ export function startTonpayCustom(view, orderId, opts = {}) {
             </div>`);
     }
 
+    function renderPendingFulfillment(statusObj) {
+        const credited = fmtNum((statusObj && statusObj.amount) || (data && data.request_amount) || 0);
+        view.innerHTML = frame(`
+            <div style="text-align:center;padding:10px 0">
+                <div style="font-size:42px;line-height:1;color:var(--yellow);margin:4px 0 10px">${icon('hourglass', 'class="ico ico-xxl ico-warn"')}</div>
+                <h2 style="margin:6px 0;font-size:18px">پرداخت تأیید شد</h2>
+                <p class="muted">${mode === 'direct_buy' ? 'سرویس شما در حال آماده‌سازی است و هنوز فعال‌شدن آن تأیید نشده است. نتیجه نهایی در بخش سفارش‌های شما نمایش داده می‌شود.' : `مبلغ ${credited} تومان به کیف پول شما اضافه شد.`}</p>
+                <div class="kv mt-md"><span class="kv-label">کد پیگیری</span><span class="kv-value mono gold">${escapeHtml(orderId)}</span></div>
+                <div class="row-spread mt-md stack-on-mobile" style="gap:10px">
+                    <a href="#/account" class="btn btn-primary btn-block" style="flex:1">حساب من</a>
+                    <a href="#/buy" class="btn btn-ghost btn-block" style="flex:1">خرید سرویس</a>
+                </div>
+            </div>`);
+    }
+
     async function finishPaid() {
         if (finishing) return;
         finishing = true;
@@ -423,7 +533,7 @@ export function startTonpayCustom(view, orderId, opts = {}) {
             <div style="text-align:center;padding:14px 0">
                 ${icon('hourglass', 'class="ico ico-xxl ico-accent"')}
                 <h2 style="margin:10px 0 4px;font-size:18px">پرداخت شما تأیید شد</h2>
-                <p class="muted" style="font-size:13px">${mode === 'direct_buy' ? 'در حال ساخت سرویس…' : 'در حال نهایی‌سازی…'}</p>
+                <p class="muted" style="font-size:13px">${mode === 'direct_buy' ? 'در حال بررسی آماده‌سازی سرویس…' : 'در حال نهایی‌سازی…'}</p>
             </div>`);
         let statusObj = {};
         for (let i = 0; i < SERVICE_READY_MAX_TRIES; i++) {
@@ -434,8 +544,13 @@ export function startTonpayCustom(view, orderId, opts = {}) {
             if (mode !== 'direct_buy' || statusObj.is_service_ready) break;
             await new Promise((r) => setTimeout(r, SERVICE_READY_POLL_MS));
         }
+        const serviceReady = mode !== 'direct_buy' || !!statusObj.is_service_ready;
         if (typeof onSuccess === 'function') {
-            onSuccess(statusObj);
+            onSuccess(statusObj, { serviceReady });
+            return;
+        }
+        if (mode === 'direct_buy' && (!statusObj.is_service_ready || !statusObj.service)) {
+            renderPendingFulfillment(statusObj);
             return;
         }
         if (statusObj.is_service_ready && statusObj.service) {
@@ -449,6 +564,10 @@ export function startTonpayCustom(view, orderId, opts = {}) {
                     return;
                 }
             } catch (_) {}
+        }
+        if (!serviceReady) {
+            renderPendingFulfillment(statusObj);
+            return;
         }
         renderDone(statusObj);
     }
@@ -499,7 +618,7 @@ export function startTonpayCustom(view, orderId, opts = {}) {
             }
         }
         const $label = view.querySelector('#tpc-change-label');
-        if ($label && data.change_card_wait > 0 && !data.can_change_card && !data.change_card_exhausted) {
+        if ($label && data.change_card_wait > 0 && !data.can_change_card && !data.change_card_exhausted && data.show_change_card !== 0) {
             const wait = Math.max(0, Number(data.change_card_wait) - (serverNow() - Number(data.now)));
             if (wait <= 0) {
                 data = Object.assign({}, data, { can_change_card: true, change_card_wait: 0 });

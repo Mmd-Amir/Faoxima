@@ -35,11 +35,12 @@ if (function_exists('atlaspayCustomRunCron')) {
 }
 
 try {
+    $rxPaymentWindow = rx_pf_cron_window_sql();
     $rxAtlasCursor = function_exists('rx_cron_invoice_cursor') ? rx_cron_invoice_cursor('atlaspay_poll') : '';
     $stmt = $pdo->prepare(
         "SELECT id, id_order, atlaspay_order_id, price, payment_Status, payment_processing_version, atlaspay_total_amount, atlaspay_local_state, id_user
            FROM Payment_report
-          WHERE payment_Status = 'Unpaid'
+          WHERE $rxPaymentWindow AND payment_Status = 'Unpaid'
             AND Payment_Method = 'atlaspay'
             AND (atlaspay_gateway_mode IS NULL OR atlaspay_gateway_mode <> 'custom')
             AND atlaspay_order_id IS NOT NULL
@@ -58,7 +59,7 @@ try {
     $lateStmt = $pdo->prepare(
         "SELECT id_order, atlaspay_order_id, price, payment_Status, payment_processing_version, atlaspay_total_amount, atlaspay_local_state, id_user
            FROM Payment_report
-          WHERE payment_Status = 'expire'
+          WHERE $rxPaymentWindow AND payment_Status = 'expire'
             AND Payment_Method = 'atlaspay'
             AND (atlaspay_gateway_mode IS NULL OR atlaspay_gateway_mode <> 'custom')
             AND payment_processing_version >= 2

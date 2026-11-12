@@ -149,6 +149,16 @@ function tonpay_process_webhook()
     if ($isCustomInvoice) {
         tonpayCustomApplyRemote($Payment_report, $check);
     }
+    $remoteStatusLower = strtolower((string) ($check['status'] ?? ''));
+    if ($isCustomInvoice && in_array($remoteStatusLower, ['action_required_less', 'action_required_more'], true)) {
+        tonpay_log_event('TONPAY_ACTION_REQUIRED', 'Invoice requires buyer action', [
+            'order_id' => $orderId,
+            'invoice_id' => $invoiceId,
+            'status' => $remoteStatusLower,
+            'need_action_kind' => $check['need_action_kind'] ?? null,
+        ]);
+        exit('Action required');
+    }
     if (empty($check['paid']) || (string) ($check['status'] ?? '') !== 'completed') {
         tonpay_log_event('TONPAY_NOT_PAID', 'Server-side check reports order not paid', [
             'order_id' => $orderId,

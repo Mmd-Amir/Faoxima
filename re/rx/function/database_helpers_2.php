@@ -2207,7 +2207,7 @@ function tonpaySyncTerminalStatus($orderId, $remoteStatus)
     }
 }
 
-function tonpayCurlJson($method, $endpoint, array $payload, $apiKey, $multipart = false)
+function tonpayCurlJson($method, $endpoint, array $payload, $apiKey, $multipart = false, $bodyless = false)
 {
     if (!tonpayRateLimitAcquire()) {
         error_log('TonPay request skipped by local rate limiter: ' . json_encode([
@@ -2224,7 +2224,7 @@ function tonpayCurlJson($method, $endpoint, array $payload, $apiKey, $multipart 
         ];
     }
 
-    $headers = $multipart ? [] : ['Content-Type: application/json'];
+    $headers = ($multipart || $bodyless) ? [] : ['Content-Type: application/json'];
     if ($apiKey !== null) {
         $headers[] = 'X-API-Key: ' . $apiKey;
     }
@@ -2250,7 +2250,9 @@ function tonpayCurlJson($method, $endpoint, array $payload, $apiKey, $multipart 
         },
     );
     if ($method === 'POST') {
-        if ($multipart) {
+        if ($bodyless) {
+            unset($opts[CURLOPT_POSTFIELDS]);
+        } elseif ($multipart) {
             $opts[CURLOPT_POSTFIELDS] = $payload;
         } else {
             $opts[CURLOPT_POSTFIELDS] = empty($payload) ? '{}' : json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
