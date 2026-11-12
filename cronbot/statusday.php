@@ -16,17 +16,24 @@ $reportnightRow = select('topicid', 'idreport', 'report', 'reportnight', 'select
 $reportnight    = $reportnightRow['idreport'] ?? null;
 
 if (empty($setting['Channel_Report'])) {
+    if (function_exists('rx_cron_task_complete')) {
+        rx_cron_task_complete('statusday_no_report_channel');
+    }
     return;
 }
 
 if (!isset($pdo) || !($pdo instanceof PDO)) {
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('pdo_unavailable', 180);
+    }
     return;
 }
 
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-// گزارش، روزی را پوشش می‌دهد که تازه تمام شده: اجرای قبل از ظهر = دیروز، بعدازظهر/شب = امروز.
-$rxReportTs = ((int) date('G') < 12) ? strtotime('-1 day') : time();
+$rxStatusOccurrence = function_exists('rx_cron_task_occurrence') ? rx_cron_task_occurrence(time()) : time();
+$rxStatusReference = $rxStatusOccurrence > 0 ? $rxStatusOccurrence : time();
+$rxReportTs = ((int) date('G', $rxStatusReference) < 12) ? strtotime('-1 day', $rxStatusReference) : $rxStatusReference;
 
 $datefirst        = date('Y-m-d', $rxReportTs) . ' 00:00:00';
 $dateend          = date('Y-m-d', $rxReportTs) . ' 23:59:59';
@@ -162,13 +169,26 @@ $report_data = [
     ['text' => $textreport],
     ['text' => $textpanel],
 ];
+$rxStatusAllSent = true;
 foreach ($report_data as $report) {
-    telegram('sendmessage', [
+    $rxStatusSend = telegram('sendmessage', [
         'chat_id'           => $chatId,
         'message_thread_id' => $reportnight,
         'text'              => $report['text'],
         'parse_mode'        => 'HTML',
     ]);
+    if (!(is_array($rxStatusSend) && ($rxStatusSend['ok'] ?? false) === true)) {
+        $rxStatusAllSent = false;
+    }
+}
+if ($rxStatusAllSent) {
+    if (function_exists('rx_cron_task_complete')) {
+        rx_cron_task_complete('statusday_report_sent');
+    }
+} else {
+    if (function_exists('rx_cron_task_uncertain')) {
+        rx_cron_task_uncertain('statusday_delivery_uncertain', 1800);
+    }
 }
 
 ?>

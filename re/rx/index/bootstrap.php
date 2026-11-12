@@ -1088,7 +1088,8 @@ if ($shouldCheckChannel && !in_array($from_id, $admin_ids)) {
                 $keyboardchannel['inline_keyboard'][] = [
                     [
                         'text' => "{$channelremark['remark']}",
-                        'url' => $channelremark['linkjoin']
+                        'url' => $channelremark['linkjoin'],
+                        '_rxcolor' => 'channel:' . $channelremark['id'],
                     ],
                 ];
             }
@@ -1126,7 +1127,8 @@ if ($shouldCheckChannel && !in_array($from_id, $admin_ids)) {
                 $keyboardchannel['inline_keyboard'][] = [
                     [
                         'text' => "{$channelremark['remark']}",
-                        'url' => $channelremark['linkjoin']
+                        'url' => $channelremark['linkjoin'],
+                        '_rxcolor' => 'channel:' . $channelremark['id'],
                     ],
                 ];
             }
@@ -1304,9 +1306,9 @@ if ($text == "version") {
     $pagination_buttons = [
         [
             'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page'
+            'callback_data' => 'next_page', '_rxcolor' => 'subscription_list:next'
         ],
-        ['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice']
+        ['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice', '_rxcolor' => 'subscription_list:search']
     ];
     $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
     $backuser = [
@@ -1368,18 +1370,18 @@ if ($text == "version") {
     $pagination_buttons = [
         [
             'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page'
+            'callback_data' => 'next_page', '_rxcolor' => 'subscription_list:next'
         ],
         [
             'text' => $textbotlang['users']['page']['previous'],
-            'callback_data' => 'previous_page'
+            'callback_data' => 'previous_page', '_rxcolor' => 'subscription_list:previous'
         ]
     ];
     $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
     $backuser = [
         rx_kb_style(['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'backuser'], 'backuser', $_rx_nav_s)
     ];
-    $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice']];
+    $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice', '_rxcolor' => 'subscription_list:search']];
     if ($setting['NotUser'] == "onnotuser") {
         $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['page']['notusernameme'], 'callback_data' => 'notusernameme']];
     }
@@ -1432,18 +1434,18 @@ if ($text == "version") {
     $pagination_buttons = [
         [
             'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page'
+            'callback_data' => 'next_page', '_rxcolor' => 'subscription_list:next'
         ],
         [
             'text' => $textbotlang['users']['page']['previous'],
-            'callback_data' => 'previous_page'
+            'callback_data' => 'previous_page', '_rxcolor' => 'subscription_list:previous'
         ]
     ];
     $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
     $backuser = [
         rx_kb_style(['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'backuser'], 'backuser', $_rx_nav_s)
     ];
-    $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice']];
+    $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice', '_rxcolor' => 'subscription_list:search']];
     if ($setting['NotUser'] == "onnotuser") {
         $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['page']['notusernameme'], 'callback_data' => 'notusernameme']];
     }
@@ -1543,33 +1545,33 @@ if ($text == "version") {
     $keyboardinfo = [
         'inline_keyboard' => [
             [
-                ['text' => $DataUserOut['username'], 'callback_data' => "username"],
-                ['text' => $textbotlang['users']['stateus']['username'], 'callback_data' => 'username'],
+                ['text' => $DataUserOut['username'], 'callback_data' => "username", '_rxcolor' => 'subscription_field:username:value'],
+                ['text' => $textbotlang['users']['stateus']['username'], 'callback_data' => 'username', '_rxcolor' => 'subscription_field:username:label'],
             ],
             [
-                ['text' => $status_var, 'callback_data' => 'status_var', '_rxsk' => 'Status'],
-                ['text' => $textbotlang['users']['stateus']['stateus'], 'callback_data' => 'status_var', '_rxsk' => 'Status'],
+                ['text' => $status_var, 'callback_data' => 'status_var', '_rxsk' => 'Status', '_rxcolor' => 'subscription_field:Status:value'],
+                ['text' => $textbotlang['users']['stateus']['stateus'], 'callback_data' => 'status_var', '_rxsk' => 'Status', '_rxcolor' => 'subscription_field:Status:label'],
             ],
             [
-                ['text' => $expirationDate, 'callback_data' => 'expirationDate'],
-                ['text' => $textbotlang['users']['stateus']['expirationDate'], 'callback_data' => 'expirationDate'],
+                ['text' => $expirationDate, 'callback_data' => 'expirationDate', '_rxcolor' => 'subscription_field:expirationDate:value'],
+                ['text' => $textbotlang['users']['stateus']['expirationDate'], 'callback_data' => 'expirationDate', '_rxcolor' => 'subscription_field:expirationDate:label'],
             ],
             [],
             [
-                ['text' => $day, 'callback_data' => 'روز', '_rxsk' => 'daysleft'],
-                ['text' => $textbotlang['users']['stateus']['daysleft'], 'callback_data' => 'day', '_rxsk' => 'daysleft'],
+                ['text' => $day, 'callback_data' => 'روز', '_rxsk' => 'daysleft', '_rxcolor' => 'subscription_field:daysleft:value'],
+                ['text' => $textbotlang['users']['stateus']['daysleft'], 'callback_data' => 'day', '_rxsk' => 'daysleft', '_rxcolor' => 'subscription_field:daysleft:label'],
             ],
             [
-                ['text' => $LastTraffic, 'callback_data' => 'LastTraffic'],
-                ['text' => $textbotlang['users']['stateus']['LastTraffic'], 'callback_data' => 'LastTraffic'],
+                ['text' => $LastTraffic, 'callback_data' => 'LastTraffic', '_rxcolor' => 'subscription_field:LastTraffic:value'],
+                ['text' => $textbotlang['users']['stateus']['LastTraffic'], 'callback_data' => 'LastTraffic', '_rxcolor' => 'subscription_field:LastTraffic:label'],
             ],
             [
-                ['text' => $usedTrafficGb, 'callback_data' => 'expirationDate', '_rxsk' => 'usedtraffic'],
-                ['text' => $textbotlang['users']['stateus']['usedTrafficGb'], 'callback_data' => 'expirationDate', '_rxsk' => 'usedtraffic'],
+                ['text' => $usedTrafficGb, 'callback_data' => 'expirationDate', '_rxsk' => 'usedtraffic', '_rxcolor' => 'subscription_field:usedtraffic:value'],
+                ['text' => $textbotlang['users']['stateus']['usedTrafficGb'], 'callback_data' => 'expirationDate', '_rxsk' => 'usedtraffic', '_rxcolor' => 'subscription_field:usedtraffic:label'],
             ],
             [
-                ['text' => $RemainingVolume, 'callback_data' => 'RemainingVolume'],
-                ['text' => $textbotlang['users']['stateus']['RemainingVolume'], 'callback_data' => 'RemainingVolume'],
+                ['text' => $RemainingVolume, 'callback_data' => 'RemainingVolume', '_rxcolor' => 'subscription_field:RemainingVolume:value'],
+                ['text' => $textbotlang['users']['stateus']['RemainingVolume'], 'callback_data' => 'RemainingVolume', '_rxcolor' => 'subscription_field:RemainingVolume:label'],
             ]
         ]
     ];
@@ -2166,7 +2168,7 @@ $nameconfig";
         $tempArray = [];
         $keyboardsetting = ['inline_keyboard' => []];
         foreach ($keyboarddate as $_rx_svc_key => $keyboardtext) {
-            $_rx_svc_btn = ['text' => $keyboardtext['text'], 'callback_data' => $keyboardtext['callback_data'] . $username];
+            $_rx_svc_btn = ['text' => $keyboardtext['text'], 'callback_data' => $keyboardtext['callback_data'] . $username, '_rxcolor' => 'service:' . $nameloc['id_invoice'] . ':' . $_rx_svc_key];
             if (!empty($_rx_svc_styles[$_rx_svc_key]) && $_rx_svc_styles[$_rx_svc_key] !== 'default') {
                 $_rx_svc_btn['style'] = $_rx_svc_styles[$_rx_svc_key];
             }
@@ -2422,7 +2424,7 @@ $nameconfig";
     $qrCode = createqrcode($subscriptionurl);
     if ($qrCode === null) {
         sendmessage($from_id, $datatextbot['dyn_errors_qr_too_long'] ?? "❌ ساخت QR کد برای این لینک ممکن نیست — محتوای آن طولانی‌تر از ظرفیت QR کد است. از دکمهٔ کپی/متن بالا استفاده کنید.", null, 'HTML');
-        sendmessage($from_id, "<code>{$subscriptionurl}</code>", rx_copy_button_keyboard($subscriptionurl, '📋 کپی لینک اشتراک'), 'HTML');
+        sendmessage($from_id, "<code>{$subscriptionurl}</code>", rx_copy_button_keyboard($subscriptionurl, '📋 کپی لینک اشتراک', null, 'service:' . $nameloc['id_invoice'] . ':copy_subscription'), 'HTML');
         return;
     }
     file_put_contents($urlimage, $qrCode->getString());
@@ -2433,7 +2435,7 @@ $nameconfig";
         'caption' => "<code>{$subscriptionurl}</code>",
         'parse_mode' => "HTML",
     ];
-    $subQrCopyKb = rx_copy_button_keyboard($subscriptionurl, '📋 کپی لینک اشتراک');
+    $subQrCopyKb = rx_copy_button_keyboard($subscriptionurl, '📋 کپی لینک اشتراک', null, 'service:' . $nameloc['id_invoice'] . ':copy_subscription');
     if ($subQrCopyKb !== null) {
         $subQrPayload['reply_markup'] = $subQrCopyKb;
     }
@@ -2477,7 +2479,7 @@ $nameconfig";
             'text' => $textbotlang['users']['stateus']['backinfo'],
             'callback_data' => "productcheckdata",
         ]];
-        $bakinfos = rx_copy_button_keyboard($manualDelivery['sub'], '📋 کپی لینک اشتراک', [$manualBackRow]);
+        $bakinfos = rx_copy_button_keyboard($manualDelivery['sub'], '📋 کپی لینک اشتراک', [$manualBackRow], 'service:' . $nameloc['id_invoice'] . ':copy_subscription');
         if ($bakinfos === null) {
             $bakinfos = json_encode(['inline_keyboard' => [$manualBackRow]]);
         }
@@ -2522,7 +2524,7 @@ $nameconfig";
         'text' => $textbotlang['users']['stateus']['backinfo'],
         'callback_data' => "productcheckdata",
     ]];
-    $subCopyKb = rx_copy_button_keyboard($subscriptionurl, '📋 کپی لینک اشتراک', [$subBackRow]);
+    $subCopyKb = rx_copy_button_keyboard($subscriptionurl, '📋 کپی لینک اشتراک', [$subBackRow], 'service:' . $nameloc['id_invoice'] . ':copy_subscription');
     if ($subCopyKb !== null) {
         $bakinfos = $subCopyKb;
     }
@@ -2748,7 +2750,7 @@ $nameconfig";
         }
         if ($dataget[2] == "1520") {
             for ($i = 0; $i < count($manualConfigs); ++$i) {
-                sendmessage($from_id, "<code>" . htmlspecialchars($manualConfigs[$i], ENT_QUOTES, 'UTF-8') . "</code>", rx_copy_button_keyboard($manualConfigs[$i], '📋 کپی کانفیگ'), 'HTML');
+                sendmessage($from_id, "<code>" . htmlspecialchars($manualConfigs[$i], ENT_QUOTES, 'UTF-8') . "</code>", rx_copy_button_keyboard($manualConfigs[$i], '📋 کپی کانفیگ', null, 'config_copy:' . substr(sha1($manualConfigs[$i]), 0, 16)), 'HTML');
             }
             return;
         }
@@ -2756,7 +2758,7 @@ $nameconfig";
             sendmessage($from_id, $datatextbot['dyn_errors_config_read_from_panel_error'] ?? "❌ خطا در خواندن کانفیگ از پنل.", null, 'html');
             return;
         }
-        sendmessage($from_id, "<code>" . htmlspecialchars($manualConfigs[$dataget[2]], ENT_QUOTES, 'UTF-8') . "</code>", rx_copy_button_keyboard($manualConfigs[$dataget[2]], '📋 کپی کانفیگ'), 'HTML');
+        sendmessage($from_id, "<code>" . htmlspecialchars($manualConfigs[$dataget[2]], ENT_QUOTES, 'UTF-8') . "</code>", rx_copy_button_keyboard($manualConfigs[$dataget[2]], '📋 کپی کانفیگ', null, 'config_copy:' . substr(sha1($manualConfigs[$dataget[2]]), 0, 16)), 'HTML');
         return;
     }
     $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
@@ -2880,7 +2882,7 @@ $nameconfig";
             if (preg_match('/^https?:\/\//i', $allConfigItem)) {
                 $allConfigItem = strtok($allConfigItem, '#');
             }
-            sendmessage($from_id, "<code>{$allConfigItem}</code>", rx_copy_button_keyboard($allConfigItem, '📋 کپی کانفیگ'), 'HTML');
+            sendmessage($from_id, "<code>{$allConfigItem}</code>", rx_copy_button_keyboard($allConfigItem, '📋 کپی کانفیگ', null, 'config_copy:' . substr(sha1($allConfigItem), 0, 16)), 'HTML');
         }
         return;
     }
@@ -2968,7 +2970,7 @@ $nameconfig";
         && !$isStructuredConnectionInfo
         && !preg_match('#^(tg|tg-proxy|proxy|wireguard|wg|vpn|awg|amneziawg)://#i', trim($selectedConfig))
         && trim($selectedConfig) !== '';
-    $selectedConfigCopyKb = rx_copy_button_keyboard($selectedConfig, '📋 کپی کانفیگ');
+    $selectedConfigCopyKb = rx_copy_button_keyboard($selectedConfig, '📋 کپی کانفیگ', null, 'config_copy:' . substr(sha1($selectedConfig), 0, 16));
     if ($qrWantedForConfig) {
         $qrCode = createqrcode($selectedConfig);
         if ($qrCode === null) {
@@ -3720,7 +3722,7 @@ $nameconfig";
             $bakinfos = json_encode([
                 'inline_keyboard' => [
                     [
-                        ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "account"],
+                        ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "account", '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true],
                     ]
                 ]
             ]);
@@ -4230,7 +4232,7 @@ $nameconfig";
             $bakinfos = json_encode([
                 'inline_keyboard' => [
                     [
-                        ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "account"],
+                        ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "account", '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true],
                     ]
                 ]
             ]);
@@ -4520,7 +4522,7 @@ $nameconfig";
             $bakinfos = json_encode([
                 'inline_keyboard' => [
                     [
-                        ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "account"],
+                        ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "account", '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true],
                     ]
                 ]
             ]);
@@ -5023,7 +5025,7 @@ $nameconfig";
             $bakinfos = json_encode([
                 'inline_keyboard' => [
                     [
-                        ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "account"],
+                        ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "account", '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true],
                     ]
                 ]
             ]);

@@ -310,8 +310,10 @@ if (!function_exists('tonpayButtonStyle')) {
 }
 
 if (!function_exists('tonpayStyledButton')) {
-    function tonpayStyledButton(array $button, $styleKey)
+    function tonpayStyledButton(array $button, $styleKey, string $gateway = 'tonpay')
     {
+        $button['_rxcolor'] = 'payment:' . $gateway . ':' . $styleKey;
+        $button['_rxkeep'] = true;
         $style = tonpayButtonStyle($styleKey);
         if ($style !== 'default') {
             $button['style'] = $style;

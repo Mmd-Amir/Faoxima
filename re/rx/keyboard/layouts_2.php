@@ -610,13 +610,13 @@ $payment = json_encode([
     'inline_keyboard' => [
         [rx_kb_style(['text' => "💰 پرداخت و دریافت سرویس", 'callback_data' => "confirmandgetservice"], 'confirm_pay', $_rx_nav_styles)],
         [rx_kb_style(['text' => "🎁 ثبت کد تخفیف", 'callback_data' => "aptdc"], 'confirm_discount', $_rx_nav_styles)],
-        [rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser"], 'backuser', $_rx_acc_styles)]
+        [rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser", '_rxcolor' => 'navigation:confirm_back'], 'confirm_back', $_rx_nav_styles)]
     ]
 ]);
 $paymentom = json_encode([
     'inline_keyboard' => [
         [rx_kb_style(['text' => "💰 پرداخت و دریافت سرویس", 'callback_data' => "confirmandgetservice"], 'confirm_pay', $_rx_nav_styles)],
-        [rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser"], 'backuser', $_rx_acc_styles)]
+        [rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser", '_rxcolor' => 'navigation:confirm_back'], 'confirm_back', $_rx_nav_styles)]
     ]
 ]);
 $change_product = json_encode([

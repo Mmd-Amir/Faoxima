@@ -208,6 +208,11 @@ if (!function_exists('rx_cron_boot')) {
         }
 
         if ($useDbSlot && function_exists('rx_cron_db_slot') && !rx_cron_db_slot()) {
+            if (function_exists('rx_cron_task_defer')) {
+                rx_cron_task_defer('db_slot_unavailable', 90);
+            } elseif (function_exists('rx_cron_task_defer_request')) {
+                rx_cron_task_defer_request('db_slot_unavailable', 90);
+            }
             exit;
         }
 
@@ -216,6 +221,11 @@ if (!function_exists('rx_cron_boot')) {
             $rxRedisLockToken = uniqid('', true);
             $rxRedisLockResult = rx_redis_set_nx($rxRedisLockKey, $rxRedisLockToken, $maxAgeSeconds * 1000);
             if ($rxRedisLockResult === false) {
+                if (function_exists('rx_cron_task_defer')) {
+                    rx_cron_task_defer('redis_lock_busy', 60);
+                } elseif (function_exists('rx_cron_task_defer_request')) {
+                    rx_cron_task_defer_request('redis_lock_busy', 60);
+                }
                 exit;
             }
             if ($rxRedisLockResult === true) {
@@ -256,6 +266,9 @@ if (!function_exists('rx_cron_require_or_skip')) {
                      . ' — skipping this run (upload the file to fix).';
                 @error_log($msg);
                 @file_put_contents(rx_cron_runtime_dir() . '/_missing_files.log', $msg . PHP_EOL, FILE_APPEND);
+                if (function_exists('rx_cron_task_defer')) {
+                    rx_cron_task_defer('missing_required_file', 300);
+                }
                 return false;
             }
         }
@@ -334,10 +347,16 @@ if (!function_exists('rx_cron_db_ready')) {
                 @file_put_contents(rx_cron_runtime_dir() . '/_db_unavailable.log', $msg . PHP_EOL, FILE_APPEND);
                 @touch($marker);
             }
+            if (function_exists('rx_cron_task_defer')) {
+                rx_cron_task_defer('db_unavailable', 120);
+            }
             return false;
         }
 
         if (!rx_cron_tables_ready($jobName)) {
+            if (function_exists('rx_cron_task_defer')) {
+                rx_cron_task_defer('db_tables_unavailable', 120);
+            }
             return false;
         }
 

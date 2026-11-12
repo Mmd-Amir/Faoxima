@@ -42,6 +42,9 @@ foreach ($__required_files as $__f) {
 unset($__required_files, $__f);
 
 if (!rx_cron_db_ready('sendmessage')) {
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('db_unavailable', 120);
+    }
     if (function_exists('rx_broadcast_info_update') && is_file($baseDir . '/info')) {
         rx_broadcast_info_update($baseDir . '/info', null, static function (array &$c) {
             $st = (string) ($c['status'] ?? '');
@@ -71,6 +74,11 @@ $rxBcLog = static function (string $line) use ($baseDir, $workerId): void {
         '[' . date('Y-m-d H:i:s') . "][w{$workerId}] " . $line . PHP_EOL,
         FILE_APPEND | LOCK_EX
     );
+};
+$rxBcComplete = static function (string $message): void {
+    if (function_exists('rx_cron_task_complete')) {
+        rx_cron_task_complete($message);
+    }
 };
 
 $lockFh = @fopen($lockFile, 'c');
@@ -114,6 +122,7 @@ register_shutdown_function(static function () use (&$rxBcActive): void {
     @error_log('[sendmessage.php] broadcast paused after worker fatal error: ' . basename((string) ($err['file'] ?? '')) . ':' . (int) ($err['line'] ?? 0));
 });
 
+$rxBcHadException = false;
 try {
 
     $datatxtbot  = select("textbot", "*", null, null, "fetchAll");
@@ -139,13 +148,14 @@ try {
     $usersFileJson= $baseDir . '/users.json';
 
     if (!is_file($infoFile)) {
+        $rxBcComplete('broadcast_no_queue');
         @unlink($lockFile);
         exit;
     }
     $infoContent = @file_get_contents($infoFile);
-    if ($infoContent === false) { $rxBcLog('ERROR — خواندن info ناموفق'); @unlink($lockFile); exit; }
+    if ($infoContent === false) { $rxBcLog('ERROR — خواندن info ناموفق'); $rxBcComplete('broadcast_info_unreadable'); @unlink($lockFile); exit; }
     $info = json_decode($infoContent, true);
-    if (!is_array($info)) { $rxBcLog('ERROR — info نامعتبر (JSON خراب)'); @unlink($lockFile); exit; }
+    if (!is_array($info)) { $rxBcLog('ERROR — info نامعتبر (JSON خراب)'); $rxBcComplete('broadcast_info_invalid'); @unlink($lockFile); exit; }
 
     $bcToken = rx_broadcast_token($info);
     $rxGate = 'run';
@@ -166,6 +176,7 @@ try {
         rx_broadcast_resume_now($c, false);
     });
     if ($rxGate !== 'run' || !is_array($rxGateInfo)) {
+        $rxBcComplete('broadcast_gate_' . $rxGate);
         @unlink($lockFile);
         exit;
     }
@@ -343,6 +354,7 @@ try {
         $batchSource = 'json-legacy';
     } else {
         $rxBcLog('SKIP — نه users.txt و نه users.json موجود است (صف خالی)');
+        $rxBcComplete('broadcast_queue_empty');
         @unlink($lockFile);
         exit;
     }
@@ -375,6 +387,7 @@ try {
         $rxTryFinish();
         @unlink($inflightFile);
         @unlink($sentFile);
+        $rxBcComplete('broadcast_batch_empty');
         @unlink($lockFile);
         exit;
     }
@@ -599,6 +612,7 @@ try {
         Editmessagetext($info['id_admin'], $info['id_message'], $textprocces, $cancelmessage);
     }
 } catch (Throwable $e) {
+    $rxBcHadException = true;
     error_log('[sendmessage.php] ' . $e->getMessage());
     $rxBcLog('EXCEPTION — ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
     if (function_exists('rx_broadcast_info_update')) {
@@ -613,6 +627,11 @@ try {
     }
 } finally {
     @unlink($lockFile);
+    if (function_exists('rx_cron_task_complete')) {
+        if (!$rxBcHadException) {
+            rx_cron_task_complete('broadcast_batch_finished');
+        }
+    }
 }
 
 

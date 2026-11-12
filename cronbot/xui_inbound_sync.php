@@ -14,6 +14,9 @@ if (!rx_cron_db_ready('xui_inbound_sync')) {
     return;
 }
 if (!function_exists('xsync_run_all')) {
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('xsync_functions_unavailable', 300);
+    }
     return;
 }
 
@@ -21,4 +24,10 @@ try {
     xsync_run_all();
 } catch (Throwable $e) {
     error_log('[xui_inbound_sync] ' . $e->getMessage());
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('xui_inbound_sync_failed', 120);
+    }
+}
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('xui_inbound_sync_finished');
 }

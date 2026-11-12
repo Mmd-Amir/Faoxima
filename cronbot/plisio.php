@@ -5,12 +5,22 @@ rx_cron_boot('plisio', 180);
 ini_set('error_log', 'error_log');
 
 $ctx = rx_cron_load_payment_context();
-if (empty($ctx['db_ready'])) { return; }
+if (empty($ctx['db_ready'])) {
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('payment_context_unavailable', 180);
+    }
+    return;
+}
 require_once __DIR__ . '/../lib/PaymentConfirm.php';
 
 global $connect, $pdo, $setting;
 $connect = function_exists('getMysqliConnection') ? getMysqliConnection() : null;
-if (!($connect instanceof mysqli)) { return; }
+if (!($connect instanceof mysqli)) {
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('mysqli_unavailable', 120);
+    }
+    return;
+}
 $setting = $ctx['setting'];
 $paymentreports = $ctx['paymentreports'];
 $ManagePanel = $ctx['managePanel'];
@@ -41,9 +51,43 @@ function statusplisio($tx_id){
 
 list($rxW, $rxN) = function_exists('rx_cron_shard') ? rx_cron_shard() : [0, 1];
 $rxShard = ($rxN > 1) ? " AND MOD(id, $rxN) = $rxW " : "";
-$list_service = mysqli_query($connect, "SELECT id_order FROM Payment_report WHERE payment_Status = 'Unpaid' AND Payment_Method = 'plisio'$rxShard ORDER BY id ASC LIMIT 15");
-while ($row = mysqli_fetch_assoc($list_service)) {
-
+$rxPlisioCursor = function_exists('rx_cron_invoice_cursor') ? rx_cron_invoice_cursor('plisio_poll:' . $rxN . ':' . $rxW) : '';
+$rxPlisioSql = "SELECT id, id_order FROM Payment_report WHERE payment_Status = 'Unpaid' AND Payment_Method = 'plisio'$rxShard AND id > ? ORDER BY id ASC LIMIT 15";
+$rxPlisioQuery = static function (string $cursor) use ($connect, $rxPlisioSql): array {
+    $rows = [];
+    try {
+        $stmt = $connect->prepare($rxPlisioSql);
+        if ($stmt === false) {
+            return $rows;
+        }
+        $stmt->bind_param('s', $cursor);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        while ($row = $result->fetch_assoc()) {
+            $rows[] = $row;
+        }
+        $stmt->close();
+    } catch (\Throwable $e) {
+        error_log('[plisio] poll selection failed: ' . $e->getMessage());
+    }
+    return $rows;
+};
+$rxPlisioRows = $rxPlisioQuery($rxPlisioCursor);
+if (!$rxPlisioRows && $rxPlisioCursor !== '') {
+    $rxPlisioRows = $rxPlisioQuery('');
+}
+$rxPlisioLastId = 0;
+$rxPlisioTimedOut = false;
+foreach ($rxPlisioRows as $rxPlisioRow) {
+    if (function_exists('rx_cron_time_up') && rx_cron_time_up()) {
+        $rxPlisioTimedOut = true;
+        if (function_exists('rx_cron_task_defer')) {
+            rx_cron_task_defer('time_budget', 60);
+        }
+        break;
+    }
+    $row = $rxPlisioRow;
+    try {
     $reportStmt = $connect->prepare("SELECT id_order, price, dec_not_confirmed, payment_Status FROM Payment_report WHERE id_order = ? LIMIT 1");
     $reportStmt->bind_param('s', $row['id_order']);
     $reportStmt->execute();
@@ -108,4 +152,14 @@ while ($row = mysqli_fetch_assoc($list_service)) {
             ]
         );
     }
+    } catch (\Throwable $e) {
+        error_log('[plisio] poll error for order ' . (string) ($row['id_order'] ?? '') . ': ' . $e->getMessage());
+    } finally {
+        if (function_exists('rx_cron_invoice_cursor')) {
+            rx_cron_invoice_cursor('plisio_poll:' . $rxN . ':' . $rxW, (string) $row['id']);
+        }
+    }
+}
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('plisio_poll_finished');
 }

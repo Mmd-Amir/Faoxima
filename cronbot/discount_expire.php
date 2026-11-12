@@ -29,6 +29,7 @@ try {
     }
 } catch (Throwable $e) {
     error_log('[discount_expire] sell: ' . $e->getMessage());
+    rx_cron_task_defer('discount_sell_update_failed', 120);
 }
 
 try {
@@ -45,4 +46,8 @@ try {
     }
 } catch (Throwable $e) {
     error_log('[discount_expire] gift: ' . $e->getMessage());
+    rx_cron_task_defer('discount_gift_update_failed', 120);
+}
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('discount_expire_finished');
 }

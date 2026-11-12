@@ -69,7 +69,7 @@ function nmStockExtendProductKeyboard(array $invoice, array $userRow, array $pan
         $days = trim((string)($product['Service_time'] ?? ''));
         $label = $name . " - {$price} تومان";
         if ($vol !== '' || $days !== '') $label .= " ({$volLabel} / {$days} روز)";
-        $rows[] = [rx_kb_style(['text' => $label, 'callback_data' => 'nmstocksel_' . $token . '_' . $invoiceId], 'nmstock_actions', $styles)];
+        $rows[] = [rx_kb_style(['text' => $label, 'callback_data' => 'nmstocksel_' . $token . '_' . $invoiceId, '_rxcolor' => 'stock_product:' . $product['id']], 'nmstock_actions', $styles)];
     }
     $rows[] = [rx_kb_style(['text' => '🏠 بازگشت به لیست سرویس ها', 'callback_data' => 'backorder'], 'backorder', $styles)];
     return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -848,10 +848,10 @@ function nmStockDeliveryKeyboard($content, $invoiceId = '', $subLink = '', array
             rx_kb_style(['text' => '🔗 لینک اشتراک', 'callback_data' => 'nmstocksub_' . $invoiceId], 'nmstock_actions', $styles),
         ];
     } else {
-        $buttons[] = [['text' => '📥 دریافت کانفیگ', 'callback_data' => 'none']];
+        $buttons[] = [['text' => '📥 دریافت کانفیگ', 'callback_data' => 'none', '_rxcolor' => 'service_template:stock_config']];
         $link = trim((string)$subLink) !== '' ? trim((string)$subLink) : trim((string)$content);
-        if (preg_match('/^https?:\/\//i', $link)) $buttons[] = [['text' => '🔗 لینک اشتراک', 'url' => $link]];
-        else $buttons[] = [['text' => '🔗 لینک اشتراک', 'callback_data' => 'none']];
+        if (preg_match('/^https?:\/\//i', $link)) $buttons[] = [['text' => '🔗 لینک اشتراک', 'url' => $link, '_rxcolor' => 'service_template:stock_subscription']];
+        else $buttons[] = [['text' => '🔗 لینک اشتراک', 'callback_data' => 'none', '_rxcolor' => 'service_template:stock_subscription']];
     }
     $buttons[] = [rx_kb_style(['text' => '🏠 بازگشت به لیست سرویس ها', 'callback_data' => 'backorder'], 'backorder', $styles)];
     return json_encode(['inline_keyboard' => $buttons], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

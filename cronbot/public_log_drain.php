@@ -54,3 +54,6 @@ try {
 } catch (Throwable $e) {
     error_log('[public_log_drain] cleanup failed: ' . $e->getMessage());
 }
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('public_log_drain_finished');
+}

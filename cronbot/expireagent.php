@@ -42,3 +42,6 @@ foreach ($rows as $user) {
         ]);
     }
 }
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('expireagent_finished');
+}

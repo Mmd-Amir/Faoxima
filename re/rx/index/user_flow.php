@@ -293,8 +293,8 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     }
     if ($rialitActionMatch[1] === 'cancel') {
         $rialitCancelKeyboard = json_encode(['inline_keyboard' => [
-            [['text' => '🚫 تأیید انصراف', 'callback_data' => 'rl_abandon_' . $rialitOrder]],
-            [['text' => '🔙 بازگشت', 'callback_data' => 'rl_view_' . $rialitOrder]],
+            [rx_payment_button('rialit', 'cancel_confirm_approve', ['text' => '🚫 تأیید انصراف', 'callback_data' => 'rl_abandon_' . $rialitOrder])],
+            [rx_payment_button('rialit', 'cancel_confirm_back', ['text' => '🔙 بازگشت', 'callback_data' => 'rl_view_' . $rialitOrder])],
         ]], JSON_UNESCAPED_UNICODE);
         Editmessagetext($from_id, $message_id, 'از این پرداخت انصراف می‌دهید؟ پس از انصراف می‌توانید پرداخت جدید بسازید. این کار لینک قبلی ریالیت را باطل نمی‌کند؛ اگر پرداخت قبلی بعداً تأیید شود، مبلغ سفارش به کیف پول اضافه می‌شود و سفارش قبلی اجرا نمی‌شود.', $rialitCancelKeyboard, 'HTML');
     } elseif ($rialitActionMatch[1] === 'abandon') {
@@ -304,8 +304,8 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
             return;
         }
         $rialitRetryKeyboard = json_encode(['inline_keyboard' => [
-            [['text' => '💳 انتخاب روش پرداخت جدید', 'callback_data' => 'rl_retry_' . $rialitOrder]],
-            [['text' => '🔙 حساب کاربری', 'callback_data' => 'account']],
+            [rx_payment_button('rialit', 'retry', ['text' => '💳 انتخاب روش پرداخت جدید', 'callback_data' => 'rl_retry_' . $rialitOrder])],
+            [rx_payment_button('rialit', 'back_account', ['text' => '🔙 حساب کاربری', 'callback_data' => 'account', '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true])],
         ]], JSON_UNESCAPED_UNICODE);
         Editmessagetext($from_id, $message_id, (string) $rialitCancelled['message'], $rialitRetryKeyboard, 'HTML');
     } else {
@@ -434,12 +434,12 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         step('tpc_receipt', $from_id);
         update("user", "Processing_value", $tpcOrder, "id", $from_id);
         tonpayCustomBotAnswer($callback_query_id);
-        sendmessage($from_id, tonpayCustomReceiptPromptText(), json_encode(['inline_keyboard' => [[['text' => '🔙 بازگشت به وضعیت پرداخت', 'callback_data' => 'tpc_chk_' . $tpcOrder]]]], JSON_UNESCAPED_UNICODE), 'HTML');
+        sendmessage($from_id, tonpayCustomReceiptPromptText(), json_encode(['inline_keyboard' => [[rx_payment_button('tonpay', 'receipt_back', ['text' => '🔙 بازگشت به وضعیت پرداخت', 'callback_data' => 'tpc_chk_' . $tpcOrder])]]], JSON_UNESCAPED_UNICODE), 'HTML');
     }
 } elseif ($user['step'] == "tpc_receipt" && $datain === '' && isset($update['message'])) {
     global $update;
     $tpcOrder = (string) $user['Processing_value'];
-    $tpcBackKb = json_encode(['inline_keyboard' => [[['text' => '🔙 بازگشت به وضعیت پرداخت', 'callback_data' => 'tpc_chk_' . $tpcOrder]]]], JSON_UNESCAPED_UNICODE);
+    $tpcBackKb = json_encode(['inline_keyboard' => [[rx_payment_button('tonpay', 'receipt_back', ['text' => '🔙 بازگشت به وضعیت پرداخت', 'callback_data' => 'tpc_chk_' . $tpcOrder])]]], JSON_UNESCAPED_UNICODE);
     $tpcResult = tonpayCustomBotHandleReceiptUpload($from_id, $tpcOrder, $update['message']);
     if (empty($tpcResult['ok'])) {
         sendmessage($from_id, '❌ ' . ($tpcResult['message'] ?? 'ارسال رسید ناموفق بود.'), $tpcBackKb, 'HTML');
@@ -491,7 +491,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         ];
     }
     $helpidos['inline_keyboard'][] = [
-        ['text' => $textbotlang['users']['backmenu'], 'callback_data' => "helpbtns"],
+        ['text' => $textbotlang['users']['backmenu'], 'callback_data' => "helpbtns", '_rxcolor' => 'navigation:help_back'],
     ];
     $json_list_help = json_encode($helpidos);
     Editmessagetext($from_id, $message_id, $textbotlang['users']['selectoption'], $json_list_help, 'HTML');
@@ -500,7 +500,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     $backinfoss = json_encode([
         'inline_keyboard' => [
             [
-                ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "helpbtns"],
+                ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "helpbtns", '_rxcolor' => 'navigation:help_back'],
             ]
         ]
     ]);
@@ -518,7 +518,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
                 $backinfoss = json_encode([
                     'inline_keyboard' => array_merge($helpAppLinkRow, [
                         [
-                            ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "helpbtn"],
+                            ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "helpbtn", '_rxcolor' => 'navigation:help_back'],
                         ]
                     ])
                 ]);
@@ -533,7 +533,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
                 $backinfoss = json_encode([
                     'inline_keyboard' => array_merge($helpAppLinkRow, [
                         [
-                            ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "helpbtn"],
+                            ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "helpbtn", '_rxcolor' => 'navigation:help_back'],
                         ]
                     ])
                 ]);
@@ -548,7 +548,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
                 $backinfoss = json_encode([
                     'inline_keyboard' => array_merge($helpAppLinkRow, [
                         [
-                            ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "helpbtn"],
+                            ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "helpbtn", '_rxcolor' => 'navigation:help_back'],
                         ]
                     ])
                 ]);
@@ -564,7 +564,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
             $backinfoss = json_encode([
                 'inline_keyboard' => array_merge($helpAppLinkRow, [
                     [
-                        ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "helpbtns"],
+                        ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "helpbtns", '_rxcolor' => 'navigation:help_back'],
                     ]
                 ])
             ]);
@@ -622,7 +622,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     $rxTkCanceledTxt = $datatextbot['dyn_tickets_operation_canceled'] ?? "❌ عملیات لغو شد.";
     if (intval($message_id) > 0) {
         $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
-        Editmessagetext($from_id, $message_id, $rxTkCanceledTxt, json_encode(['inline_keyboard' => [[rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'supporttickets'], 'supporttickets', $_rx_nav_s)]]], JSON_UNESCAPED_UNICODE));
+        Editmessagetext($from_id, $message_id, $rxTkCanceledTxt, json_encode(['inline_keyboard' => [[rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'supporttickets', '_rxcolor' => 'navigation:ticket_back'], 'supporttickets', $_rx_nav_s)]]], JSON_UNESCAPED_UNICODE));
     } else {
         sendmessage($from_id, $rxTkCanceledTxt, $keyboard, 'HTML');
     }
@@ -801,7 +801,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         $kbrows[] = [['text' => '🔒 بستن تیکت', 'callback_data' => 'ticketclose_' . $idtraking]];
     }
     $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
-    $kbrows[] = [rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'supporttickets'], 'supporttickets', $_rx_nav_s)];
+    $kbrows[] = [rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'supporttickets', '_rxcolor' => 'navigation:ticket_back'], 'supporttickets', $_rx_nav_s)];
     Editmessagetext($from_id, $message_id, $tickethead, json_encode(['inline_keyboard' => $kbrows], JSON_UNESCAPED_UNICODE));
 } elseif (preg_match('/^(?:ticketmsg|ticketreply)_(\w+)$/', $datain, $dataget)) {
     if (tk_miniapp_ticket_mode_active()) {
@@ -871,7 +871,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     }
     $rxTkClosedTpl = $datatextbot['dyn_tickets_closed_confirm'] ?? "🔒 تیکت <code>%s</code> بسته شد. برای ارسال پیام جدید باید پشتیبانی پاسخ دهد یا آن را باز کند.";
     $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
-    Editmessagetext($from_id, $message_id, sprintf($rxTkClosedTpl, $idtraking), json_encode(['inline_keyboard' => [[rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'supporttickets'], 'supporttickets', $_rx_nav_s)]]], JSON_UNESCAPED_UNICODE));
+    Editmessagetext($from_id, $message_id, sprintf($rxTkClosedTpl, $idtraking), json_encode(['inline_keyboard' => [[rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'supporttickets', '_rxcolor' => 'navigation:ticket_back'], 'supporttickets', $_rx_nav_s)]]], JSON_UNESCAPED_UNICODE));
 } elseif ($datain == "my_miniapp_pending") {
     $stmtMp = $pdo->prepare(
         "SELECT id_order, price FROM Payment_report
@@ -900,7 +900,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         $mpText .= "📌 وضعیت: در انتظار بررسی ادمین\n\n";
     }
     $_rx_acc_s = (isset($_rx_acc_styles) && is_array($_rx_acc_styles)) ? $_rx_acc_styles : [];
-    $mpKb = json_encode(['inline_keyboard' => [[rx_kb_style(['text' => '🔙 بازگشت', 'callback_data' => 'account'], 'backinfo', $_rx_acc_s)]]], JSON_UNESCAPED_UNICODE);
+    $mpKb = json_encode(['inline_keyboard' => [[rx_kb_style(['text' => '🔙 بازگشت', 'callback_data' => 'account', '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true], 'backinfo', $_rx_acc_s)]]], JSON_UNESCAPED_UNICODE);
     Editmessagetext($from_id, $message_id, $mpText, $mpKb);
 } elseif ($datain == "fqQuestions") {
     sendmessage($from_id, $datatextbot['text_dec_fq'], null, 'HTML');
@@ -1007,7 +1007,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
             rx_kb_style(['text' => '📆 ۳۰ روز گذشته', 'callback_data' => 'tx_30d'], 'tx_30d', $_rx_tx_s),
         ],
         [
-            rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'account'], 'tx_back', $_rx_tx_s),
+            rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'account', '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true], 'tx_back', $_rx_tx_s),
         ],
     ];
     $txKeyboard = json_encode(['inline_keyboard' => $txRows], JSON_UNESCAPED_UNICODE);
@@ -1120,7 +1120,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     update("user", "Processing_value_tow", "0", "id", $from_id);
     $_rx_acc_s = (isset($_rx_acc_styles) && is_array($_rx_acc_styles)) ? $_rx_acc_styles : [];
     $trBackKb = json_encode(['inline_keyboard' => [
-        [rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'account'], 'backuser', $_rx_acc_s)],
+        [rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'account', '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true], 'backuser', $_rx_acc_s)],
     ]], JSON_UNESCAPED_UNICODE);
     $trPromptText = "🔄 انتقال موجودی\n\nآیدی عددی تلگرام کاربر مقصد را ارسال کنید:";
     if ($message_id) {
@@ -2067,7 +2067,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
             $bakinfos = json_encode([
                 'inline_keyboard' => [
                     [
-                        ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "account"],
+                        ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "account", '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true],
                     ]
                 ]
             ]);
@@ -2840,7 +2840,7 @@ $textonebuy
             $bakinfos = json_encode([
                 'inline_keyboard' => [
                     [
-                        ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "account"],
+                        ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "account", '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true],
                     ]
                 ]
             ]);
@@ -3142,16 +3142,23 @@ $textonebuy
     if ($randomWalletStatusValue === '1') {
         $rwAmounts = rx_randomWalletAmounts();
         $_rx_acc_s = (isset($_rx_acc_styles) && is_array($_rx_acc_styles)) ? $_rx_acc_styles : [];
+        if (function_exists('rx_kb_use_defaults') && !rx_kb_use_defaults()) {
+            $_rx_acc_s['rw_pick'] = 'none';
+        }
+        $rxWalletAmountStyleKey = static function ($amount) use ($_rx_acc_s) {
+            $key = 'rw_pick_' . (int) $amount;
+            return (isset($_rx_acc_s[$key]) && $_rx_acc_s[$key] !== 'default') ? $key : 'rw_pick';
+        };
         $rwRows = [];
         for ($rwI = 0; $rwI < count($rwAmounts); $rwI += 2) {
-            $rwRow = [rx_kb_style(['text' => number_format((int)$rwAmounts[$rwI]) . " تومان", 'callback_data' => "rw_pick_" . (int)$rwAmounts[$rwI]], 'rw_pick', $_rx_acc_s)];
+            $rwRow = [rx_kb_style(['text' => number_format((int)$rwAmounts[$rwI]) . " تومان", 'callback_data' => "rw_pick_" . (int)$rwAmounts[$rwI]], $rxWalletAmountStyleKey((int) $rwAmounts[$rwI]), $_rx_acc_s)];
             if (isset($rwAmounts[$rwI + 1])) {
-                $rwRow[] = rx_kb_style(['text' => number_format((int)$rwAmounts[$rwI + 1]) . " تومان", 'callback_data' => "rw_pick_" . (int)$rwAmounts[$rwI + 1]], 'rw_pick', $_rx_acc_s);
+                $rwRow[] = rx_kb_style(['text' => number_format((int)$rwAmounts[$rwI + 1]) . " تومان", 'callback_data' => "rw_pick_" . (int)$rwAmounts[$rwI + 1]], $rxWalletAmountStyleKey((int) $rwAmounts[$rwI + 1]), $_rx_acc_s);
             }
             $rwRows[] = $rwRow;
         }
         $rwRows[] = [rx_kb_style(['text' => "✍️ رقم دلخواه", 'callback_data' => "rw_custom"], 'rw_custom', $_rx_acc_s)];
-        $rwRows[] = [rx_kb_style(['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "account"], 'backinfo', $_rx_acc_s)];
+        $rwRows[] = [rx_kb_style(['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "account", '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true], 'backinfo', $_rx_acc_s)];
         $rwKeyboard = json_encode(['inline_keyboard' => $rwRows], JSON_UNESCAPED_UNICODE);
         Editmessagetext($from_id, $message_id, $datatextbot['dyn_wallet_select_amount'] ?? "💰 مبلغ مورد نظر را برای شارژ کیف پول انتخاب کنید:", $rwKeyboard, 'HTML');
         return;
@@ -3218,9 +3225,10 @@ $textonebuy
         $rccLabel = '🪙 ' . (string) ($r['crypto_currency'] ?? '?')
             . ' | ' . number_format((int) ($r['price'] ?? 0)) . ' ت'
             . ' | ' . (string) ($r['id_order'] ?? '');
-        $rccKbRows[] = [
-            ['text' => $rccLabel, 'callback_data' => 'rcc_view_' . (string) ($r['id_order'] ?? '')],
-        ];
+        $rccViewBtn = ['text' => $rccLabel, 'callback_data' => 'rcc_view_' . (string) ($r['id_order'] ?? '')];
+        $rccViewStyle = function_exists('crypto_manual_action_style') ? crypto_manual_action_style('rcc_view') : null;
+        if ($rccViewStyle) $rccViewBtn['style'] = $rccViewStyle;
+        $rccKbRows[] = [$rccViewBtn];
     }
     $rccKb = json_encode(['inline_keyboard' => $rccKbRows], JSON_UNESCAPED_UNICODE);
     $rccListMsg = "🔁 <b>تراکنش‌های رد شده شما</b>\n\n"
@@ -3271,10 +3279,13 @@ $textonebuy
         . "📝 دلیل عدم تایید: " . htmlspecialchars($rccVReason)
         . ($rccVExpUrl !== '' ? "\n🔍 <a href=\"" . htmlspecialchars($rccVExpUrl, ENT_QUOTES) . "\">مشاهده در بلاکچین</a>" : '');
 
+    $rccResubmitBtn = ['text' => '📨 ارسال مجدد به ادمین', 'callback_data' => 'rcc_resubmit_' . $rccVOid];
+    $rccResubmitStyle = function_exists('crypto_manual_action_style') ? crypto_manual_action_style('rcc_resubmit') : null;
+    if ($rccResubmitStyle) $rccResubmitBtn['style'] = $rccResubmitStyle;
     $rccVKb = json_encode([
         'inline_keyboard' => [
-            [['text' => '📨 ارسال مجدد به ادمین', 'callback_data' => 'rcc_resubmit_' . $rccVOid]],
-            [['text' => '🔙 بازگشت به لیست', 'callback_data' => 'recheckcrypto']],
+            [$rccResubmitBtn],
+            [['text' => '🔙 بازگشت به لیست', 'callback_data' => 'recheckcrypto', '_rxcolor' => 'navigation:crypto_back', '_rxkeep' => true]],
         ],
     ], JSON_UNESCAPED_UNICODE);
     if ($message_id) {
@@ -3920,8 +3931,8 @@ $textonebuy
         $rxPgwText = "✅ فاکتور قبلی لغو شد.\n\nبرای دریافت فاکتور جدید، دکمه زیر را بزنید.";
         $rxPgwKb = json_encode([
             'inline_keyboard' => [
-                [['text' => "🔄 دریافت فاکتور جدید {$rxPgwLabel}", 'callback_data' => $rxPgwGatewayKey]],
-                [['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'backuser']],
+                [rx_payment_button($rxPgwGatewayKey, 'retry', ['text' => "🔄 دریافت فاکتور جدید {$rxPgwLabel}", 'callback_data' => $rxPgwGatewayKey])],
+                [rx_payment_button($rxPgwGatewayKey, 'back_main', ['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'backuser'])],
             ],
         ], JSON_UNESCAPED_UNICODE);
         Editmessagetext($from_id, $message_id, $rxPgwText, $rxPgwKb, 'HTML');
@@ -3976,7 +3987,7 @@ $textonebuy
         $paymentkeyboard = json_encode([
             'inline_keyboard' => [
                 [
-                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => "https://www.zarinpal.com/pg/StartPay/" . $pay['data']['authority']],
+                    rx_payment_button('zarinpal', 'pay_link', ['text' => $textbotlang['users']['Balance']['payments'], 'url' => "https://www.zarinpal.com/pg/StartPay/" . $pay['data']['authority']]),
                 ]
             ]
         ]);
@@ -4072,7 +4083,7 @@ $textonebuy
         $paymentkeyboard = json_encode([
             'inline_keyboard' => [
                 [
-                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $pay['invoice_url']],
+                    rx_payment_button('plisio', 'pay_link', ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $pay['invoice_url']]),
                 ]
             ]
         ]);
@@ -4174,7 +4185,7 @@ $textonebuy
         $paymentkeyboard = json_encode([
             'inline_keyboard' => [
                 [
-                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $pay['invoice_url']],
+                    rx_payment_button('nowpayment', 'pay_link', ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $pay['invoice_url']]),
                 ]
             ]
         ]);
@@ -4327,7 +4338,7 @@ $textonebuy
         $paymentkeyboard = json_encode([
             'inline_keyboard' => [
                 [
-                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $paymentFullUrl]
+                    rx_payment_button('iranpay2', 'pay_link', ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $paymentFullUrl])
                 ]
             ]
         ]);
@@ -4472,7 +4483,7 @@ $textonebuy
         $paymentkeyboard = json_encode([
             'inline_keyboard' => [
                 [
-                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $tonpayPaymentUrl]
+                    rx_payment_button('tonpay', 'pay_link', ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $tonpayPaymentUrl])
                 ]
             ]
         ]);
@@ -4604,10 +4615,10 @@ $textonebuy
         $paymentkeyboard = json_encode([
             'inline_keyboard' => [
                 [
-                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $rxRialitUrl]
+                    rx_payment_button('rialit', 'pay_link', ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $rxRialitUrl])
                 ],
-                [['text' => '🔄 بررسی وضعیت', 'callback_data' => 'rl_view_' . $randomString]],
-                [['text' => '🚫 انصراف و پرداخت جدید', 'callback_data' => 'rl_cancel_' . $randomString]]
+                [rx_payment_button('rialit', 'check_status', ['text' => '🔄 بررسی وضعیت', 'callback_data' => 'rl_view_' . $randomString])],
+                [rx_payment_button('rialit', 'cancel_transaction', ['text' => '🚫 انصراف و پرداخت جدید', 'callback_data' => 'rl_cancel_' . $randomString])]
             ]
         ]);
         $pricetoman = number_format($rxRialitAmount, 0);
@@ -4731,7 +4742,7 @@ $textonebuy
         $paymentkeyboard = json_encode([
             'inline_keyboard' => [
                 [
-                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $paymentLink]
+                    rx_payment_button('blupal', 'pay_link', ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $paymentLink])
                 ]
             ]
         ]);
@@ -4879,7 +4890,7 @@ $textonebuy
         $paymentkeyboard = json_encode([
             'inline_keyboard' => [
                 [
-                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $paymentUrl]
+                    rx_payment_button('atlaspay', 'pay_link', ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $paymentUrl])
                 ]
             ]
         ]);
@@ -5005,7 +5016,7 @@ $textonebuy
         $paymentkeyboard = json_encode([
             'inline_keyboard' => [
                 [
-                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $paymentLink]
+                    rx_payment_button('cubepay', 'pay_link', ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $paymentLink])
                 ]
             ]
         ]);
@@ -5146,7 +5157,7 @@ $textonebuy
         $paymentkeyboard = json_encode([
             'inline_keyboard' => [
                 [
-                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $paymentLink]
+                    rx_payment_button('variza', 'pay_link', ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $paymentLink])
                 ]
             ]
         ]);
@@ -5233,7 +5244,7 @@ $textonebuy
         $paymentkeyboard = json_encode([
             'inline_keyboard' => [
                 [
-                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $payment['pay_url']]
+                    rx_payment_button('abangateway', 'pay_link', ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $payment['pay_url']])
                 ]
             ]
         ]);
@@ -5293,7 +5304,6 @@ $textonebuy
             'USDT_TRC20' => '🟢 تتر روی ترون',
             'USDT_TON'   => '🟢 تتر روی تون',
         ];
-        $styleCurrency = function_exists('crypto_invoice_button_style') ? crypto_invoice_button_style('currency_pick') : null;
         $manualCurListPicker = function_exists('crypto_manual_currencies') ? crypto_manual_currencies() : [];
         $rows = [];
         $hasAutoInList = false;
@@ -5305,6 +5315,7 @@ $textonebuy
             $label = $faShort[$cur] ?? $cur;
             if ($isManualPick) { $label .= ' 🛠'; }
             $btn = ['text' => $label, 'callback_data' => 'digitaltron_pay_' . $cur];
+            $styleCurrency = function_exists('crypto_invoice_button_style') ? crypto_invoice_button_style('currency_pick_' . $cur) : null;
             if ($styleCurrency) $btn['style'] = $styleCurrency;
             $rows[] = [$btn];
         }
@@ -5415,10 +5426,10 @@ $textonebuy
         $stylePaid   = function_exists('crypto_invoice_button_style') ? crypto_invoice_button_style('paid_submit')  : null;
         $styleBack   = function_exists('crypto_invoice_button_style') ? crypto_invoice_button_style('invoice_back') : null;
 
-        $btnCopyWallet = ['text' => '🔗 کپی آدرس ولت', 'copy_text' => ['text' => (string) $result['wallet']]];
+        $btnCopyWallet = ['text' => '🔗 کپی آدرس ولت', 'copy_text' => ['text' => (string) $result['wallet']], '_rxcolor' => 'crypto_order:' . $result['order_id'] . ':copy_wallet'];
         if ($styleWallet) $btnCopyWallet['style'] = $styleWallet;
 
-        $btnCopyAmount = ['text' => '🪙 کپی مقدار', 'copy_text' => ['text' => $amountStr]];
+        $btnCopyAmount = ['text' => '🪙 کپی مقدار', 'copy_text' => ['text' => $amountStr], '_rxcolor' => 'crypto_order:' . $result['order_id'] . ':copy_amount'];
         if ($styleAmount) $btnCopyAmount['style'] = $styleAmount;
 
         $btnPaid = ['text' => '✅ پرداخت کردم | ارسال هش (TXID) 🧾', 'callback_data' => 'digitaltron_submit_' . $result['order_id']];
@@ -5428,7 +5439,7 @@ $textonebuy
             [$btnCopyWallet, $btnCopyAmount],
         ];
         if ($isTonNetwork && $walletMemo !== '') {
-            $btnCopyMemo = ['text' => '🏷 کپی ممو', 'copy_text' => ['text' => $walletMemo]];
+            $btnCopyMemo = ['text' => '🏷 کپی ممو', 'copy_text' => ['text' => $walletMemo], '_rxcolor' => 'crypto_order:' . $result['order_id'] . ':copy_memo'];
             if ($styleMemo) $btnCopyMemo['style'] = $styleMemo;
             $invoiceKbRows[] = [$btnCopyMemo];
         }
@@ -5631,7 +5642,7 @@ $textonebuy
         $paymentkeyboard = json_encode([
             'inline_keyboard' => [
                 [
-                    ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $straCreateLink['result']]
+                    rx_payment_button('startelegrams', 'pay_link', ['text' => $textbotlang['users']['Balance']['payments'], 'url' => $straCreateLink['result']])
                 ]
             ]
         ]);

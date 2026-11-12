@@ -1711,9 +1711,50 @@ if (!function_exists('crypto_invoice_button_style')) {
                 } catch (Throwable $e) {  }
             }
         }
+        $defaultsEnabled = !function_exists('rx_kb_use_defaults') || rx_kb_use_defaults();
         $style = $cache[$key] ?? null;
-        if ($style === null || $style === '' || $style === 'default') return null;
+        if (($style === null || $style === '' || $style === 'default')
+            && $defaultsEnabled
+            && strpos($key, 'currency_pick_') === 0
+            && isset($cache['currency_pick'])) {
+            $style = $cache['currency_pick'];
+        }
+        if ($style === null || $style === '' || $style === 'default') return $defaultsEnabled ? null : 'none';
         return (string) $style;
+    }
+}
+
+if (!function_exists('crypto_manual_action_style')) {
+    function crypto_manual_action_style(string $key): ?string
+    {
+        static $cache = null;
+        if ($cache === null) {
+            $cache = [];
+            $pdo = function_exists('getDatabaseConnection') ? getDatabaseConnection() : null;
+            if ($pdo instanceof PDO) {
+                try {
+                    $stmt = $pdo->query("SELECT keyboard_styles_all FROM setting LIMIT 1");
+                    $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : null;
+                    if (is_array($row) && !empty($row['keyboard_styles_all'])) {
+                        $all = json_decode((string) $row['keyboard_styles_all'], true);
+                        if (is_array($all) && !empty($all['user_dynamic_lists']) && is_array($all['user_dynamic_lists'])) {
+                            $cache = array_filter($all['user_dynamic_lists'], static function ($v) {
+                                return $v !== 'default';
+                            });
+                        }
+                    }
+                } catch (Throwable $e) {  }
+            }
+            if (function_exists('rx_getKeyboardDefaultStyles') && (!function_exists('rx_kb_use_defaults') || rx_kb_use_defaults())) {
+                $cache = $cache + rx_getKeyboardDefaultStyles('user_dynamic_lists');
+            }
+        }
+        foreach ([$key, 'crypto_manual_actions'] as $candidate) {
+            if (!empty($cache[$candidate]) && $cache[$candidate] !== 'default') {
+                return (string) $cache[$candidate];
+            }
+        }
+        return null;
     }
 }
 

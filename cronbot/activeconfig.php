@@ -27,10 +27,20 @@ foreach ($rxFinishedUsers as $rxUserId) {
     if (rx_cron_time_up()) break;
     $rxClear->execute([$rxUserId]);
 }
-if (rx_cron_time_up()) return;
+if (rx_cron_time_up()) {
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('time_budget', 60);
+    }
+    return;
+}
 $rxInvoices = rx_cron_bulk_invoices($pdo, 'activeconfig', $rxEligible . " AND id_user IN (SELECT id FROM user WHERE checkstatus = '1')", [], $rxLimit);
 foreach ($rxInvoices as $invoice) {
-    if (rx_cron_time_up()) break;
+    if (rx_cron_time_up()) {
+        if (function_exists('rx_cron_task_defer')) {
+            rx_cron_task_defer('time_budget', 60);
+        }
+        break;
+    }
     try {
         $rxRequested = $pdo->prepare("SELECT checkstatus FROM user WHERE id = ?");
         $rxRequested->execute([$invoice['id_user']]);
@@ -50,4 +60,7 @@ foreach ($rxInvoices as $invoice) {
     } finally {
         rx_cron_invoice_cursor('activeconfig', (string) $invoice['id_invoice']);
     }
+}
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('activeconfig_finished');
 }

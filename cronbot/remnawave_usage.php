@@ -103,3 +103,6 @@ if ($rxLastScannedId > 0 && function_exists('rx_cron_bulk_cursor')) {
         error_log("[REMNAMWAVE-CRON-DISCONNECT] cursor persist failed | " . $e->getMessage());
     }
 }
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('remnawave_usage_finished');
+}

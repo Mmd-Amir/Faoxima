@@ -29,6 +29,7 @@ try {
 }
 
 if (!$enabled) {
+    rx_cron_task_complete('logs_cleanup_disabled');
     return;
 }
 
@@ -41,6 +42,7 @@ try {
     $del = $pdo->prepare("DELETE FROM logs_api WHERE time < :cutoff ORDER BY id ASC LIMIT {$batch}");
     while ($removed < $runCap) {
         if (function_exists('rx_cron_time_up') && rx_cron_time_up()) {
+            rx_cron_task_defer('time_budget', 60);
             break;
         }
         $del->execute([':cutoff' => $cutoff]);
@@ -53,4 +55,13 @@ try {
     }
 } catch (Throwable $e) {
     error_log('[logs_cleanup] ' . $e->getMessage());
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('logs_cleanup_failed', 120);
+    }
+}
+if ($removed >= $runCap) {
+    rx_cron_task_defer('cleanup_batch_limit', 60);
+}
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('logs_cleanup_finished');
 }

@@ -1076,6 +1076,119 @@ if (!function_exists('removeReplyKeyboardIfNeeded')) {
     }
 }
 
+function rx_payment_color_fallback(string $role): string {
+    $roles = [
+        'pay_link' => 'pay_done', 'continue_link' => 'pay_resume', 'retry' => 'pay_resume',
+        'check_status' => 'pay_check', 'view_details' => 'pay_check', 'list_view' => 'pay_check',
+        'cancel_transaction' => 'pay_cancel', 'pending_cancel' => 'pay_cancel', 'list_cancel' => 'pay_cancel',
+        'cancel_confirm_approve' => 'pay_cancel', 'cancel_confirm_back' => 'pay_back',
+        'back_main' => 'pay_back', 'back_account' => 'pay_back', 'pending_list' => 'pay_back',
+        'list_receipt' => 'pay_sendreceipt', 'send_receipt' => 'pay_sendreceipt', 'receipt_back' => 'pay_back',
+    ];
+    return $roles[$role] ?? 'pay_check';
+}
+
+function rx_payment_button(string $gateway, string $role, array $button): array {
+    if ($gateway === 'Currency Rial 2') $gateway = 'iranpay2';
+    if ($role === 'back_account') $gateway = 'pending';
+    $button['_rxcolor'] = 'payment:' . $gateway . ':' . $role;
+    $button['_rxsk'] = rx_payment_color_fallback($role);
+    $button['_rxkeep'] = true;
+    return $button;
+}
+
+function rx_button_color_key(array $button, ?bool &$inheritsDefaults = null): ?string {
+    $inheritsDefaults = false;
+    if (!empty($button['_rxcron'])) return hash('sha256', 'cron:' . $button['_rxcron']);
+    if (isset($button['_rxcolor']) && is_string($button['_rxcolor']) && $button['_rxcolor'] !== '') {
+        $inheritsDefaults = true;
+        $identity = $button['_rxcolor'];
+        if (strpos($identity, 'service:') === 0) {
+            $identity = 'service_template:' . substr($identity, strrpos($identity, ':') + 1);
+        }
+        if (strpos($identity, 'channel:') === 0) $identity = 'catalog_template:channels:channel';
+        if (strpos($identity, 'crypto_order:') === 0) $identity = 'catalog_template:crypto:' . substr($identity, strrpos($identity, ':') + 1);
+        return hash('sha256', $identity);
+    }
+    if (!empty($button['_rxck'])) {
+        $inheritsDefaults = true;
+        return hash('sha256', 'copy:' . $button['_rxck']);
+    }
+    $callback = $button['callback_data'] ?? null;
+    if (!is_string($callback) || $callback === '') {
+        $url = $button['url'] ?? ($button['web_app']['url'] ?? null);
+        return is_string($url) && $url !== '' ? hash('sha256', 'url:' . $url) : null;
+    }
+    if (in_array($callback, ['none', 'noop'], true)) return null;
+    if (strpos($callback, 'extends_') === 0) {
+        $inheritsDefaults = true;
+        return hash('sha256', 'subscription_action:extend');
+    }
+    if (strpos($callback, 'Extra_volumes_') === 0) {
+        $inheritsDefaults = true;
+        return hash('sha256', 'subscription_action:volume');
+    }
+    if ($callback === 'backuser') {
+        $inheritsDefaults = true;
+        return hash('sha256', 'navigation:back');
+    }
+    $catalogActions = [
+        'categorynames_' => ['categories', 'category'],
+        'producttime_' => ['durations', 'time'], 'productmonth_' => ['durations', 'category_time'], 'cdpick_' => ['durations', 'custom_time'],
+        'productvolume_' => ['volumes', 'volume'],
+        'locationnotuser_' => ['panels', 'panel'], 'locationom_' => ['panels', 'panel'], 'location_' => ['panels', 'panel'],
+        'paneluserbuy_' => ['panels', 'panel'], 'locationbuy_' => ['panels', 'panel'],
+        'locationtest_' => ['panels', 'panel'], 'changelocselectlo-' => ['panels', 'panel'],
+        'helpctgoryـ' => ['help_categories', 'category'], 'helpos_' => ['help', 'guide'], 'helpsection_' => ['help', 'guide'],
+        'departman_' => ['departments', 'department'], 'ticketopen_' => ['tickets', 'open'], 'ticketmsg_' => ['tickets', 'message'],
+        'ticketclose_' => ['tickets', 'close'], 'tk_album_' => ['tickets', 'media'],
+        'digitaltron_submit_' => ['crypto', 'paid_submit'], 'crypto_cancel_' => ['crypto', 'invoice_back'],
+        'rcc_view_' => ['crypto', 'rcc_view'], 'rcc_resubmit_' => ['crypto', 'rcc_resubmit'],
+    ];
+    foreach ($catalogActions as $prefix => [$group, $role]) {
+        if (strpos($callback, $prefix) === 0) {
+            $inheritsDefaults = true;
+            return hash('sha256', 'catalog_template:' . $group . ':' . $role);
+        }
+    }
+    $serviceActions = [
+        'product_' => 'service_manage', 'config_' => 'config', 'extend_' => 'extend',
+        'changelink_' => 'changelink', 'changenote_' => 'changenameconfig',
+        'Extra_volume_' => 'Extra_volume', 'Extra_time_' => 'Extra_time',
+        'changestatus_' => 'changestatus', 'transfer_' => 'transfor', 'changeloc_' => 'change-location',
+        'disorder-' => 'ekhtelal', 'remnausage_' => 'remna_usage', 'remnapicker_' => 'remna_picker',
+        'remnasetsquad_' => 'squad_select', 'confrimtransfers_' => 'confirm_transfer',
+        'confirmremoveservices-' => 'confirm_remove', 'confirmremovefulls-' => 'confirm_remove',
+        'confirmdisorders-' => 'confirm_report', 'confirmchangeloccha_' => 'confirm_location',
+        'confirmaextra-' => 'confirm_volume', 'confirmaextradiscount-' => 'confirm_volume_discount',
+        'confirmaextras_' => 'confirm_external_volume',
+        'confirmaextratime-' => 'confirm_time', 'confirmaextratimediscount-' => 'confirm_time_discount',
+        'discountvolume-' => 'discount_volume', 'discounttime-' => 'discount_time',
+        'serviceextendselect_' => 'renewal_product', 'nmstockok_' => 'stock_confirm',
+        'quickview_' => 'service_open', 'updateproduct_' => 'updateinfo',
+        'subscriptionurl_' => 'linksub', 'infocard_qr_' => 'infocard_qr',
+        'discountextend' => 'discountextend', 'productcheckdata' => 'productcheckdata',
+        'removeserviceuser_' => 'removeservice', 'confirmaccountdisable_' => 'confirm_status',
+        'confirmchange_' => 'confirm_link', 'nmstockextend_' => 'stock_extend',
+        'nmstockrefund_' => 'stock_refund', 'nmstockcfg_' => 'stock_config',
+        'nmstocksub_' => 'stock_subscription', 'backorder' => 'backorder',
+    ];
+    foreach ($serviceActions as $prefix => $role) {
+        if (($prefix === 'backorder' && $callback === $prefix) || ($prefix !== 'backorder' && strpos($callback, $prefix) === 0)) {
+            $inheritsDefaults = true;
+            return hash('sha256', 'service_template:' . $role);
+        }
+    }
+    if ($callback === 'exntedagei') {
+        $inheritsDefaults = true;
+        return hash('sha256', 'service_template:extend_current');
+    }
+    if (!empty($button['_rxsk']) && in_array($button['_rxsk'], ['product_back', 'category_back', 'panel_back'], true)) {
+        return hash('sha256', 'role:' . $button['_rxsk']);
+    }
+    return hash('sha256', 'callback:' . $callback);
+}
+
 function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = null) {
     $styleMap = unserialize(REPLY_STYLE_EMOJI_MAP);
     $wasString = is_string($keyboard);
@@ -1096,7 +1209,7 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
 
     static $_rx_kb_list_styles = null;
     if ($_rx_kb_list_styles === null) {
-        $_rx_kb_list_styles = ['lists' => [], 'misc' => [], 'features' => []];
+        $_rx_kb_list_styles = ['lists' => [], 'misc' => [], 'features' => [], 'items' => []];
         $rxKbNoDefault = static function ($arr) {
             if (!is_array($arr)) { return []; }
             return array_filter($arr, static function ($v) { return $v !== 'default'; });
@@ -1109,6 +1222,9 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
                 if (is_array($row) && !empty($row['keyboard_styles_all'])) {
                     $all = json_decode($row['keyboard_styles_all'], true);
                     if (is_array($all)) {
+                        if (isset($all['button_items']) && is_array($all['button_items'])) {
+                            $_rx_kb_list_styles['items'] = $rxKbNoDefault($all['button_items']);
+                        }
                         if (!empty($all['admin_lists']))  $_rx_kb_list_styles['lists'] = $rxKbNoDefault($all['admin_lists']);
                         if (!empty($all['user_dynamic_lists']) && is_array($all['user_dynamic_lists'])) {
 
@@ -1548,9 +1664,33 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
                 $rxAp = !empty($btn['_rxap']);
                 $rxCk = isset($btn['_rxck']) ? (string) $btn['_rxck'] : '';
                 $rxSk = isset($btn['_rxsk']) ? (string) $btn['_rxsk'] : '';
-                unset($btn['_rxkeep'], $btn['_rxap'], $btn['_rxck'], $btn['_rxsk']);
+                $rxColorDefaults = false;
+                $rxColorKey = rx_button_color_key($btn, $rxColorDefaults);
+                unset($btn['_rxkeep'], $btn['_rxap'], $btn['_rxck'], $btn['_rxsk'], $btn['_rxcolor'], $btn['_rxcron']);
                 if ($rxAp) { unset($btn['style']); continue; }
                 if ($rxPlainAdmin && !$rxKeep && !$rxIsUserKb) { unset($btn['style']); continue; }
+                $rxItemStyle = $rxColorKey !== null ? ($_rx_kb_list_styles['items'][$rxColorKey] ?? null) : null;
+                if (in_array($rxItemStyle, ['none', 'primary', 'success', 'danger'], true)) {
+                    $btn['style'] = $rxItemStyle;
+                    continue;
+                }
+                if ($rxColorDefaults && function_exists('rx_kb_use_defaults') && !rx_kb_use_defaults()) {
+                    $btn['style'] = 'none';
+                    continue;
+                }
+                if ($rxSk !== '') {
+                    if (!isset($btn['style'])) {
+                        $rxSkSt = $_rx_kb_list_styles['features'][$rxSk] ?? $_rx_kb_list_styles['lists'][$rxSk] ?? null;
+                        if (!empty($rxSkSt) && $rxSkSt !== 'default') {
+                            $btn['style'] = $rxSkSt;
+                        } elseif (isset($btn['text']) && function_exists('rx_kb_guess_style_from_text')
+                            && (!function_exists('rx_kb_use_defaults') || rx_kb_use_defaults())) {
+                            $rxSkG = rx_kb_guess_style_from_text((string)$btn['text']);
+                            $btn['style'] = ($rxSkG !== null) ? $rxSkG : 'primary';
+                        }
+                    }
+                    continue;
+                }
                 if (!isset($btn['callback_data'])) {
                     if ($rxIsUserKb && !isset($btn['style'])) {
                         $rxCopyStyle = ($rxCk !== '' ? ($_rx_kb_list_styles['lists']['copy_' . $rxCk] ?? null) : null)
@@ -1566,19 +1706,6 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
                     continue;
                 }
                 $cb = (string)$btn['callback_data'];
-                if ($rxSk !== '') {
-                    if (!isset($btn['style'])) {
-                        $rxSkSt = $_rx_kb_list_styles['features'][$rxSk] ?? $_rx_kb_list_styles['lists'][$rxSk] ?? null;
-                        if (!empty($rxSkSt) && $rxSkSt !== 'default') {
-                            $btn['style'] = $rxSkSt;
-                        } elseif (isset($btn['text']) && function_exists('rx_kb_guess_style_from_text')
-                            && (!function_exists('rx_kb_use_defaults') || rx_kb_use_defaults())) {
-                            $rxSkG = rx_kb_guess_style_from_text((string)$btn['text']);
-                            $btn['style'] = ($rxSkG !== null) ? $rxSkG : 'primary';
-                        }
-                    }
-                    continue;
-                }
                 if (isset($_rx_admin_plain_cb[$cb]) && !$rxIsUserKb && !$rxKeep) {
                     unset($btn['style']);
                     continue;
@@ -1634,7 +1761,7 @@ function processKeyboardStyles($keyboard, $rxPlainAdmin = false, $rxChatId = nul
             foreach ($rxCleanRow as &$rxCleanBtn) {
                 if (!is_array($rxCleanBtn)) { continue; }
                 if (($rxCleanBtn['style'] ?? null) === 'none') { unset($rxCleanBtn['style']); }
-                unset($rxCleanBtn['_rxsk'], $rxCleanBtn['_rxck'], $rxCleanBtn['_rxap'], $rxCleanBtn['_rxkeep']);
+                unset($rxCleanBtn['_rxsk'], $rxCleanBtn['_rxck'], $rxCleanBtn['_rxap'], $rxCleanBtn['_rxkeep'], $rxCleanBtn['_rxcolor'], $rxCleanBtn['_rxcron']);
             }
             unset($rxCleanBtn);
         }
@@ -2836,9 +2963,11 @@ if (!function_exists('rx_cron_btn')) {
      */
     function rx_cron_btn(string $cronKey, array $btn): array {
         $btn['_rxkeep'] = 1;
+        $btn['_rxcron'] = $cronKey;
         if (isset($btn['style'])) return $btn;
         $st = rx_cron_style($cronKey);
         if ($st !== null) $btn['style'] = $st;
+        elseif (function_exists('rx_kb_use_defaults') && !rx_kb_use_defaults()) $btn['style'] = 'none';
         return $btn;
     }
 }

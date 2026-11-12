@@ -1032,12 +1032,12 @@ function tonpayCustomSupportUrl()
 
 function tonpayCustomFollowUpKeyboard(array $state)
 {
-    $rows = [[['text' => '🔍 مشاهده جزئیات و وضعیت', 'callback_data' => 'tpc_view_' . $state['order_id']]]];
+    $rows = [[rx_payment_button('tonpay', 'view_details', ['text' => '🔍 مشاهده جزئیات و وضعیت', 'callback_data' => 'tpc_view_' . $state['order_id']])]];
     $supportUrl = tonpayCustomSupportUrl();
     if ($supportUrl !== '') {
-        $rows[] = [['text' => '📞 پشتیبانی', 'url' => $supportUrl]];
+        $rows[] = [rx_payment_button('tonpay', 'support', ['text' => '📞 پشتیبانی', 'url' => $supportUrl])];
     }
-    $rows[] = [['text' => '⏳ تراکنش‌های در انتظار', 'callback_data' => 'tpc_list']];
+    $rows[] = [rx_payment_button('tonpay', 'pending_list', ['text' => '⏳ تراکنش‌های در انتظار', 'callback_data' => 'tpc_list'])];
     return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
 }
 
@@ -1133,15 +1133,15 @@ function tonpayCustomBotListView($userId)
                 $lines[] = '⏱ زمان باقی‌مانده تا امکان ارسال رسید: <b>' . tonpayCustomFormatClock($state['receipt_wait_remaining']) . '</b>';
             }
             $lines[] = '';
-            $buttons = [['text' => '🔍 مشاهده جزئیات و وضعیت', 'callback_data' => 'tpc_view_' . $state['order_id']]];
+            $buttons = [rx_payment_button('tonpay', 'list_view', ['text' => '🔍 مشاهده جزئیات و وضعیت', 'callback_data' => 'tpc_view_' . $state['order_id']])];
             if ($state['can_cancel']) {
-                $buttons[] = ['text' => '❌ لغو تراکنش', 'callback_data' => 'tpc_can_' . $state['order_id']];
+                $buttons[] = rx_payment_button('tonpay', 'list_cancel', ['text' => '❌ لغو تراکنش', 'callback_data' => 'tpc_can_' . $state['order_id']]);
             }
             $rows[] = $buttons;
         }
         $text = implode("\n", $lines);
     }
-    $rows[] = [['text' => '🔙 بازگشت', 'callback_data' => 'account']];
+    $rows[] = [rx_payment_button('tonpay', 'back_account', ['text' => '🔙 بازگشت', 'callback_data' => 'account'])];
     return ['text' => $text, 'keyboard' => json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE)];
 }
 

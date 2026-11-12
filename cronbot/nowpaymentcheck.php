@@ -6,6 +6,9 @@ ini_set('error_log', 'error_log');
 
 $ctx = rx_cron_load_payment_context();
 if (empty($ctx['db_ready'])) {
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('payment_context_unavailable', 180);
+    }
     return;
 }
 require_once __DIR__ . '/../lib/PaymentConfirm.php';
@@ -32,24 +35,44 @@ $log = static function (string $level, string $msg, array $ctx = []) use ($logFi
 };
 
 try {
-    $stmt = $pdo->prepare(
-        "SELECT id_order, dec_not_confirmed, price, id_user, time
+    $rxNowPayCursor = function_exists('rx_cron_invoice_cursor') ? rx_cron_invoice_cursor('nowpayment_poll') : '';
+    $rxNowPaySql = "SELECT id, id_order, dec_not_confirmed, price, id_user, time
            FROM Payment_report
           WHERE payment_Status = 'Unpaid'
             AND Payment_Method = 'nowpayment'
             AND dec_not_confirmed IS NOT NULL
             AND dec_not_confirmed <> ''
-          ORDER BY id DESC
-          LIMIT 30"
-    );
-    $stmt->execute();
+            AND id > ?
+          ORDER BY id ASC
+          LIMIT 30";
+    $stmt = $pdo->prepare($rxNowPaySql);
+    $stmt->execute([$rxNowPayCursor]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if (!$rows && $rxNowPayCursor !== '') {
+        $stmt->execute(['']);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    if (!empty($rows) && function_exists('rx_cron_invoice_cursor')) {
+        $rxNowPayLast = 0;
+        foreach ($rows as $rxNowPayRow) {
+            $rxNowPayLast = max($rxNowPayLast, (int) ($rxNowPayRow['id'] ?? 0));
+        }
+        if ($rxNowPayLast > 0) {
+            rx_cron_invoice_cursor('nowpayment_poll', (string) $rxNowPayLast);
+        }
+    }
 } catch (Throwable $e) {
     $log('ERROR', 'select pending failed', ['err' => $e->getMessage()]);
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('select_failed', 120);
+    }
     return;
 }
 
 if (empty($rows)) {
+    if (function_exists('rx_cron_task_complete')) {
+        rx_cron_task_complete('no_pending_payments');
+    }
     return;
 }
 
@@ -62,6 +85,9 @@ if ($apiKey === '') {
 }
 if ($apiKey === '') {
     $log('WARN', 'no NowPayments api key configured');
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('api_key_missing', 3600);
+    }
     return;
 }
 
@@ -72,6 +98,9 @@ if ($noticeAge > 86400) {
         . 'Polling DISABLED — relying on IPN only. Make sure IPN URL is set in NowPayments dashboard: '
         . 'https://' . ($GLOBALS['domainhosts'] ?? '?') . '/payment/nowpayment.php');
     @touch($noticeMarker);
+}
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('polling_disabled_by_provider');
 }
 return;
 $fetchInvoicePayments = static function (string $invoiceId) use ($apiKey, $log): ?array {
@@ -134,4 +163,7 @@ foreach ($rows as $row) {
 
     $result = payment_confirm_paid($orderId, 'cashbacknowpayment', $extra);
     $log($result['ok'] ? 'OK' : 'WARN', 'payment_confirm_paid result', $result);
+}
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('nowpayment_poll_finished');
 }

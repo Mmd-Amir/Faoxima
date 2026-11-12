@@ -183,9 +183,9 @@ function KeyboardProduct($location,$query,$pricediscount,$datakeyboard,$statuscu
     }
     if ($statusshowprice == "onshowprice") {
         $product['inline_keyboard'][] = [
-            ['text' => $textbotlang['users']['sell']['grid_header_name'] ?? '📦 نام سرویس', 'callback_data' => 'noop'],
-            ['text' => $textbotlang['users']['sell']['grid_header_time'] ?? '⏳ زمان', 'callback_data' => 'noop'],
-            ['text' => $textbotlang['users']['sell']['grid_header_price'] ?? '💵 قیمت', 'callback_data' => 'noop'],
+            ['text' => $textbotlang['users']['sell']['grid_header_name'] ?? '📦 نام سرویس', 'callback_data' => 'noop', '_rxcolor' => 'product_header:name'],
+            ['text' => $textbotlang['users']['sell']['grid_header_time'] ?? '⏳ زمان', 'callback_data' => 'noop', '_rxcolor' => 'product_header:duration'],
+            ['text' => $textbotlang['users']['sell']['grid_header_price'] ?? '💵 قیمت', 'callback_data' => 'noop', '_rxcolor' => 'product_header:price'],
         ];
     }
     foreach ($productRows as $result) {
@@ -224,13 +224,13 @@ function KeyboardProduct($location,$query,$pricediscount,$datakeyboard,$statuscu
             $duration = $days !== '' ? "{$days} روزه" : '-';
             $price = number_format((float)$result['price_product']) . ' تومان';
             $product['inline_keyboard'][] = [
-                ['text' => $result['name_product'], 'callback_data' => $callbackData],
-                ['text' => $duration, 'callback_data' => $callbackData],
-                ['text' => $price, 'callback_data' => $callbackData],
+                ['text' => $result['name_product'], 'callback_data' => $callbackData, '_rxcolor' => 'product:' . $result['id'] . ':name'],
+                ['text' => $duration, 'callback_data' => $callbackData, '_rxcolor' => 'product:' . $result['id'] . ':duration'],
+                ['text' => $price, 'callback_data' => $callbackData, '_rxcolor' => 'product:' . $result['id'] . ':price'],
             ];
         } else {
             $product['inline_keyboard'][] = [
-                ['text' => $result['name_product'], 'callback_data' => $callbackData],
+                ['text' => $result['name_product'], 'callback_data' => $callbackData, '_rxcolor' => 'product:' . $result['id'] . ':name'],
             ];
         }
     }
@@ -521,11 +521,12 @@ function keyboard_config($config_split,$id_invoice,$back_active = true,$page = 0
         } catch (Throwable $e) {}
     }
     $rxCfgExactStyle = function (string $hash, string $role) use ($rxCfgItemStyles, $rxCfgDecoded): ?string {
+        $style = $rxCfgItemStyles[$hash . ':' . $role] ?? null;
+        if (is_string($style) && in_array($style, ['none', 'primary', 'success', 'danger'], true)) { return $style; }
         $headerKey = ['download' => 'cfg_header_action', 'protocol' => 'cfg_header_protocol', 'name' => 'cfg_header_name'][$role] ?? '';
         $columnStyle = $rxCfgDecoded['config_list'][$headerKey] ?? null;
         if (is_string($columnStyle) && in_array($columnStyle, ['none', 'primary', 'success', 'danger'], true)) { return $columnStyle; }
-        $style = $rxCfgItemStyles[$hash . ':' . $role] ?? null;
-        return (is_string($style) && in_array($style, ['primary', 'success', 'danger'], true)) ? $style : null;
+        return null;
     };
 
     $rows = [];
@@ -550,17 +551,17 @@ function keyboard_config($config_split,$id_invoice,$back_active = true,$page = 0
 
         $cfgHash = substr(sha1($config), 0, 16);
         $protocolLabel = rebeccaKeyboardProtocolLabel($config);
-        $protocolButton = ['text' => $protocolLabel !== null ? $protocolLabel : '—', 'callback_data' => "none", '_rxsk' => 'cfg_protocol_cell'];
+        $protocolButton = ['text' => $protocolLabel !== null ? $protocolLabel : '—', 'callback_data' => "none", '_rxsk' => 'cfg_protocol_cell', '_rxcolor' => 'config_cell:protocol'];
         $protocolExact = $rxCfgExactStyle($cfgHash, 'protocol');
         if ($protocolExact !== null) { $protocolButton['style'] = $protocolExact; }
 
-        $downloadBtn = ['text' => "دریافت کانفیگ", 'callback_data' => "configget_{$id_invoice}_$i", '_rxsk' => 'cfg_download_one'];
+        $downloadBtn = ['text' => "دریافت کانفیگ", 'callback_data' => "configget_{$id_invoice}_$i", '_rxsk' => 'cfg_download_one', '_rxcolor' => 'config_cell:download'];
         $downloadExact = $rxCfgExactStyle($cfgHash, 'download');
         if ($downloadExact !== null) { $downloadBtn['style'] = $downloadExact; }
 
         if(strpos($config, "\n") !== false && !preg_match('/^[a-zA-Z][a-zA-Z0-9+.\-]*:\/\//', $config)){
             $firstLine = trim(explode("\n", $config, 2)[0]);
-            $nameBtn = ['text' => $customDisplayNames[$i] ?? ($firstLine !== '' ? $firstLine : sprintf('Config %d', $i + 1)), 'callback_data' => "none", '_rxsk' => 'cfg_name_cell'];
+            $nameBtn = ['text' => $customDisplayNames[$i] ?? ($firstLine !== '' ? $firstLine : sprintf('Config %d', $i + 1)), 'callback_data' => "none", '_rxsk' => 'cfg_name_cell', '_rxcolor' => 'config_cell:name'];
             $nameExact = $rxCfgExactStyle($cfgHash, 'name');
             if ($nameExact !== null) { $nameBtn['style'] = $nameExact; }
             $rows[] = [$downloadBtn, $protocolButton, $nameBtn];
@@ -572,7 +573,7 @@ function keyboard_config($config_split,$id_invoice,$back_active = true,$page = 0
             $structuredConfig = json_decode($config, true);
             if (is_array($structuredConfig)) {
                 $structuredName = $structuredConfig['name'] ?? ($structuredConfig['server'] ?? sprintf('Config %d', $i + 1));
-                $nameBtn = ['text' => $customDisplayNames[$i] ?? urldecode((string) $structuredName), 'callback_data' => "none", '_rxsk' => 'cfg_name_cell'];
+                $nameBtn = ['text' => $customDisplayNames[$i] ?? urldecode((string) $structuredName), 'callback_data' => "none", '_rxsk' => 'cfg_name_cell', '_rxcolor' => 'config_cell:name'];
                 $nameExact = $rxCfgExactStyle($cfgHash, 'name');
                 if ($nameExact !== null) { $nameBtn['style'] = $nameExact; }
                 $rows[] = [$downloadBtn, $protocolButton, $nameBtn];
@@ -615,7 +616,7 @@ function keyboard_config($config_split,$id_invoice,$back_active = true,$page = 0
             $displayName = sprintf('Config %d', $i + 1);
         }
 
-        $nameBtn = ['text' => $customDisplayNames[$i] ?? urldecode($displayName), 'callback_data' => "none", '_rxsk' => 'cfg_name_cell'];
+        $nameBtn = ['text' => $customDisplayNames[$i] ?? urldecode($displayName), 'callback_data' => "none", '_rxsk' => 'cfg_name_cell', '_rxcolor' => 'config_cell:name'];
         $nameExact = $rxCfgExactStyle($cfgHash, 'name');
         if ($nameExact !== null) { $nameBtn['style'] = $nameExact; }
         $rows[] = [$downloadBtn, $protocolButton, $nameBtn];
@@ -628,9 +629,9 @@ function keyboard_config($config_split,$id_invoice,$back_active = true,$page = 0
 
     $keyboard_config = ['inline_keyboard' => []];
     $keyboard_config['inline_keyboard'][] = [
-        ['text' => "⚙️ کانفیگ", 'callback_data' => "none", '_rxsk' => 'cfg_header_action'],
-        ['text' => "🔌 پروتکل", 'callback_data' => "none", '_rxsk' => 'cfg_header_protocol'],
-        ['text' => "✏️نام کانفیگ", 'callback_data' => "none", '_rxsk' => 'cfg_header_name'],
+        ['text' => "⚙️ کانفیگ", 'callback_data' => "none", '_rxsk' => 'cfg_header_action', '_rxcolor' => 'config_header:cfg_header_action'],
+        ['text' => "🔌 پروتکل", 'callback_data' => "none", '_rxsk' => 'cfg_header_protocol', '_rxcolor' => 'config_header:cfg_header_protocol'],
+        ['text' => "✏️نام کانفیگ", 'callback_data' => "none", '_rxsk' => 'cfg_header_name', '_rxcolor' => 'config_header:cfg_header_name'],
         ];
     foreach ($pageRows as $row) {
         $keyboard_config['inline_keyboard'][] = $row;

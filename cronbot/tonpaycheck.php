@@ -9,6 +9,9 @@ ini_set('error_log', 'error_log');
 
 $ctx = rx_cron_load_payment_context();
 if (empty($ctx['db_ready'])) {
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('payment_context_unavailable', 180);
+    }
     return;
 }
 require_once __DIR__ . '/../lib/PaymentConfirm.php';
@@ -24,6 +27,9 @@ if (!($pdo instanceof PDO)) {
 
 if (!function_exists('tonpayCheckInvoice')) {
     error_log('[tonpaycheck] tonpay functions not available');
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('tonpay_functions_unavailable', 300);
+    }
     return;
 }
 
@@ -71,6 +77,9 @@ try {
 }
 
 if (empty($rows)) {
+    if (function_exists('rx_cron_task_complete')) {
+        rx_cron_task_complete('no_pending_payments');
+    }
     return;
 }
 
@@ -79,7 +88,12 @@ $markChecked = $fairPolling
     : null;
 
 foreach ($rows as $row) {
-    if (function_exists('rx_cron_time_up') && rx_cron_time_up()) break;
+    if (function_exists('rx_cron_time_up') && rx_cron_time_up()) {
+        if (function_exists('rx_cron_task_defer')) {
+            rx_cron_task_defer('time_budget', 60);
+        }
+        break;
+    }
 
     $orderId = (string) $row['id_order'];
     $invoiceId = trim((string) $row['tonpay_invoice_id']);
@@ -153,4 +167,7 @@ foreach ($rows as $row) {
     ];
 
     payment_confirm_paid($orderId, 'chashbacktonpay', $extra);
+}
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('tonpay_poll_finished');
 }

@@ -1179,7 +1179,7 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     $bakinfos = json_encode([
         'inline_keyboard' => [
             [
-                ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "account"],
+                ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "account", '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true],
             ]
         ]
     ]);
@@ -1281,8 +1281,8 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     $keyboard_share = json_encode([
         'inline_keyboard' => [
             [
-                ['text' => "🎁 هدیه عضویت", 'callback_data' => "get_gift_start"],
-                ['text' => "🔗 اشتراک لینک", 'url' => "https://t.me/share/url?url=https://t.me/$usernamebot?start=$from_id"],
+                ['text' => "🎁 هدیه عضویت", 'callback_data' => "get_gift_start", '_rxcolor' => 'affiliate:gift', '_rxsk' => 'affiliatesbtn', '_rxkeep' => true],
+                ['text' => "🔗 اشتراک لینک", 'url' => "https://t.me/share/url?url=https://t.me/$usernamebot?start=$from_id", '_rxcolor' => 'affiliate:share', '_rxsk' => 'affiliatesbtn', '_rxkeep' => true],
             ],
         ]
     ]);
@@ -1433,7 +1433,7 @@ $text_porsant
             $bakinfos = json_encode([
                 'inline_keyboard' => [
                     [
-                        ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "account"],
+                        ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "account", '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true],
                     ]
                 ]
             ]);
@@ -1889,7 +1889,7 @@ $text_porsant
     $pagination_buttons = [
         [
             'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page_extends'
+            'callback_data' => 'next_page_extends', '_rxcolor' => 'subscription_list:renewal_next'
         ]
     ];
     $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
@@ -1950,11 +1950,11 @@ $text_porsant
     $pagination_buttons = [
         [
             'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page_extends'
+            'callback_data' => 'next_page_extends', '_rxcolor' => 'subscription_list:renewal_next'
         ],
         [
             'text' => $textbotlang['users']['page']['previous'],
-            'callback_data' => 'previous_page_extends'
+            'callback_data' => 'previous_page_extends', '_rxcolor' => 'subscription_list:renewal_previous'
         ]
     ];
     $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
@@ -2012,11 +2012,11 @@ $text_porsant
     $pagination_buttons = [
         [
             'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page_extends'
+            'callback_data' => 'next_page_extends', '_rxcolor' => 'subscription_list:renewal_next'
         ],
         [
             'text' => $textbotlang['users']['page']['previous'],
-            'callback_data' => 'previous_page_extends'
+            'callback_data' => 'previous_page_extends', '_rxcolor' => 'subscription_list:renewal_previous'
         ]
     ];
     $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];

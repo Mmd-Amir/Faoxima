@@ -78,3 +78,6 @@ foreach ($datatxtbot as $item) {
             rx_cron_invoice_cursor('configtest', (string) $result['id_invoice']);
         }
 }
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('configtest_finished');
+}

@@ -50,7 +50,12 @@ $rxOnHoldNotify = function ($username, $status) use ($pdo, $setting) {
 $stmt = $pdo->prepare("SELECT * FROM marzban_panel WHERE type = 'marzban'  ORDER BY RAND() LIMIT 25");
 $stmt->execute();
 while ($panel = $stmt->fetch(PDO::FETCH_ASSOC)) {
-    if (function_exists('rx_cron_time_up') && rx_cron_time_up()) break;
+    if (function_exists('rx_cron_time_up') && rx_cron_time_up()) {
+        if (function_exists('rx_cron_task_defer')) {
+            rx_cron_task_defer('time_budget', 60);
+        }
+        break;
+    }
     $users = getusers($panel['name_panel'], "on_hold")['users'] ?? null;
     if (!is_array($users)) continue;
     foreach ($users as $user) {
@@ -86,4 +91,11 @@ if (function_exists('rebeccaGetOnHoldUsers')) {
             $rxOnHoldNotify($user['username'] ?? '', $user['status'] ?? '');
         }
     }
+}
+if (function_exists('rx_cron_time_up') && rx_cron_time_up()) {
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('time_budget', 60);
+    }
+} elseif (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('on_hold_finished');
 }

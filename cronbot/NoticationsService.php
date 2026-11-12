@@ -48,7 +48,12 @@ class ServiceMonitor
         if ($invoices == false) return;
         $this->deletionAttempts = 0;
         foreach ($invoices as $invoice) {
-            if (function_exists('rx_cron_time_up') && rx_cron_time_up()) break;
+            if (function_exists('rx_cron_time_up') && rx_cron_time_up()) {
+                if (function_exists('rx_cron_task_defer')) {
+                    rx_cron_task_defer('time_budget', 60);
+                }
+                break;
+            }
             if ($invoice['time_cron'] != null) {
                 $time_cron = time() - $invoice['time_cron'];
                 if ($time_cron < 1600) continue;
@@ -178,9 +183,11 @@ class ServiceMonitor
                 'volume' => $formattedVolume,
             ]);
             $shouldNotify = !empty($user['status_cron'] ?? null);
-            $this->send_notifactions($invoice, $shouldNotify, $message, true, $invoice['bottype']);
+            $sent = $this->send_notifactions($invoice, $shouldNotify, $message, true, $invoice['bottype']);
             $this->sendReportNotification($reportMessage);
-            $this->updateInvoiceStatus("volume", $invoice);
+            if ($sent) {
+                $this->updateInvoiceStatus("volume", $invoice);
+            }
             return true;
         }
     }
@@ -340,9 +347,11 @@ class ServiceMonitor
                 'days' => $daysRemaining,
             ]);
             $shouldNotify = !empty($user['status_cron'] ?? null);
-            $this->send_notifactions($invoice, $shouldNotify, $message, true, $invoice['bottype']);
+            $sent = $this->send_notifactions($invoice, $shouldNotify, $message, true, $invoice['bottype']);
             $this->sendReportNotification($reportMessage);
-            $this->updateInvoiceStatus("time", $invoice);
+            if ($sent) {
+                $this->updateInvoiceStatus("time", $invoice);
+            }
             return true;
         }
     }
@@ -350,11 +359,12 @@ class ServiceMonitor
     private function send_notifactions($invoice, bool $shouldNotify, $message, $keyboard_active, $bot_token)
     {
         if (!$shouldNotify) {
-            return;
+            return true;
         }
         $keyboard = $this->createExtendServiceKeyboard($invoice['id_invoice']);
         $keyboard = $keyboard_active ? $keyboard : null;
-        sendmessage($invoice['id_user'], $message, $keyboard, 'HTML', $bot_token);
+        $result = sendmessage($invoice['id_user'], $message, $keyboard, 'HTML', $bot_token);
+        return is_array($result) && ($result['ok'] ?? false) === true;
     }
 
     private function createExtendServiceKeyboard($invoiceId)
@@ -370,15 +380,16 @@ class ServiceMonitor
 
     private function sendReportNotification($reportMessage)
     {
-        if (empty($this->setting['Channel_Report'])) return;
+        if (empty($this->setting['Channel_Report'])) return true;
 
 
-        telegram('sendmessage', [
+        $result = telegram('sendmessage', [
             'chat_id' => $this->setting['Channel_Report'],
             'message_thread_id' => $this->reportCron,
             'text' => $reportMessage,
             'parse_mode' => "HTML"
         ]);
+        return is_array($result) && ($result['ok'] ?? false) === true;
     }
 
     private function updateInvoiceStatus($type, $invoice)
@@ -393,4 +404,7 @@ class ServiceMonitor
 
 $volumeMonitor = new ServiceMonitor();
 $volumeMonitor->RunNotifactions();
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('notifications_finished');
+}
 

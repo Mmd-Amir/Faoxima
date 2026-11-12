@@ -17,4 +17,10 @@ try {
     $stmt->execute([':now' => time()]);
 } catch (Throwable $e) {
     error_log('[notification_expire] ' . $e->getMessage());
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('notification_expire_failed', 120);
+    }
+}
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('notification_expire_finished');
 }

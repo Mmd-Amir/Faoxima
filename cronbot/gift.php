@@ -44,8 +44,83 @@ foreach ($datatxtbot as $item) {
         $datatextbot[$item['id_text']] = $item['text'];
     }
 }
-if(!is_file($giftFile))return;
-if(!is_file($queueFile))return;
+$pendingNotifyFile = __DIR__ . '/gift_notify_pending.json';
+$pendingNotify = [];
+if (is_file($pendingNotifyFile)) {
+    $pendingNotify = json_decode((string) file_get_contents($pendingNotifyFile), true);
+    if (!is_array($pendingNotify)) {
+        rx_cron_task_defer('gift_notification_queue_invalid', 300);
+        return;
+    }
+}
+$savePendingNotify = function () use (&$pendingNotify, $pendingNotifyFile): void {
+    $encoded = json_encode($pendingNotify, JSON_UNESCAPED_UNICODE);
+    $tmp = $pendingNotifyFile . '.tmp';
+    if ($encoded === false || file_put_contents($tmp, $encoded, LOCK_EX) === false || !rename($tmp, $pendingNotifyFile)) {
+        throw new RuntimeException('gift_notification_persist_failed');
+    }
+};
+$deliverGiftNotification = function ($key) use (&$pendingNotify, $savePendingNotify): bool {
+    $entry = $pendingNotify[$key] ?? null;
+    if (is_array($entry) && ($entry['state'] ?? '') === 'sent') {
+        return true;
+    }
+    if (!is_array($entry) || ($entry['state'] ?? 'uncertain') !== 'pending' || (int) ($entry['next_attempt_at'] ?? 0) > time()) {
+        return false;
+    }
+    $pendingNotify[$key]['state'] = 'sending';
+    $pendingNotify[$key]['attempts'] = (int) ($entry['attempts'] ?? 0) + 1;
+    $savePendingNotify();
+    try {
+        $result = telegram('sendmessage', [
+            'chat_id' => $entry['id_user'],
+            'text' => (string) $entry['text'],
+            'parse_mode' => 'HTML',
+            '_rx_no_network_retry' => true,
+        ]);
+    } catch (Throwable $e) {
+        $result = ['ok' => false, 'description' => $e->getMessage()];
+    }
+    if (is_array($result) && ($result['ok'] ?? false) === true) {
+        $pendingNotify[$key]['state'] = 'sent';
+        $pendingNotify[$key]['sent_at'] = time();
+        $savePendingNotify();
+        return true;
+    }
+    $code = (int) ($result['error_code'] ?? 0);
+    $pendingNotify[$key]['state'] = $code === 429 && $pendingNotify[$key]['attempts'] < 5 ? 'pending' : ($code >= 400 && $code < 500 ? 'failed' : 'uncertain');
+    $pendingNotify[$key]['next_attempt_at'] = time() + max(60, (int) ($result['parameters']['retry_after'] ?? 300));
+    $pendingNotify[$key]['last_error'] = substr((string) ($result['description'] ?? 'no_response'), 0, 200);
+    $savePendingNotify();
+    return false;
+};
+$rxGiftNotificationCount = 0;
+foreach (array_keys($pendingNotify) as $key) {
+    if (rx_cron_time_up() || $rxGiftNotificationCount >= 5) {
+        break;
+    }
+    if (($pendingNotify[$key]['state'] ?? 'uncertain') === 'pending' && (int) ($pendingNotify[$key]['next_attempt_at'] ?? 0) <= time()) {
+        $rxGiftNotificationCount++;
+        $deliverGiftNotification($key);
+    }
+}
+$rxGiftHasPending = static function () use (&$pendingNotify): bool {
+    foreach ($pendingNotify as $entry) {
+        if (is_array($entry) && ($entry['state'] ?? '') === 'pending') {
+            return true;
+        }
+    }
+    return false;
+};
+if(!is_file($giftFile) || !is_file($queueFile)) {
+    if ($rxGiftHasPending()) {
+        rx_cron_task_defer('gift_notifications_pending', 60);
+    }
+    if (function_exists('rx_cron_task_complete')) {
+        rx_cron_task_complete('gift_queue_absent');
+    }
+    return;
+}
 
 
 $userid = json_decode(file_get_contents($queueFile));
@@ -61,11 +136,22 @@ if(count($userid) == 0){
     unlink($queueFile);
     @unlink($notifiedFile);
     }
+    if ($rxGiftHasPending()) {
+        rx_cron_task_defer('gift_notifications_pending', 60);
+    }
+    if (function_exists('rx_cron_task_complete')) {
+        rx_cron_task_complete('gift_nothing_to_do');
+    }
     return;
 
 }
 
-if(!isset($info['typegift']))return;
+if(!isset($info['typegift'])) {
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('gift_metadata_invalid', 600);
+    }
+    return;
+}
 
 $failedFile = __DIR__ . '/gift_failed.json';
 $failedUsers = [];
@@ -84,23 +170,62 @@ if (is_file($notifiedFile)) {
     $notifiedUsers = json_decode(file_get_contents($notifiedFile), true) ?: [];
 }
 
-$notifyUserOnce = function ($id_user, $text) use (&$notifiedUsers, $notifiedFile) {
+if (empty($info['cron_campaign_id'])) {
+    $info['cron_campaign_id'] = bin2hex(random_bytes(16));
+    $tmp = $giftFile . '.tmp';
+    $encoded = json_encode($info, JSON_UNESCAPED_UNICODE);
+    if ($encoded === false || file_put_contents($tmp, $encoded, LOCK_EX) === false || !rename($tmp, $giftFile)) {
+        rx_cron_task_defer('gift_campaign_persist_failed', 120);
+        return;
+    }
+}
+$rxGiftCampaign = (string) $info['cron_campaign_id'];
+$notifyUserOnce = function ($id_user, $text) use (&$notifiedUsers, &$pendingNotify, $notifiedFile, $savePendingNotify, $deliverGiftNotification, $rxGiftCampaign) {
     if ($id_user === null || $id_user === '') {
+        return false;
+    }
+    $userKey = (string) $id_user;
+    if (in_array($userKey, $notifiedUsers, true)) {
+        return true;
+    }
+    $key = $rxGiftCampaign . ':' . $userKey;
+    if (!isset($pendingNotify[$key])) {
+        $pendingNotify[$key] = ['id_user' => $userKey, 'text' => (string) $text, 'state' => 'pending', 'attempts' => 0, 'next_attempt_at' => 0];
+        $savePendingNotify();
+    }
+    if (!$deliverGiftNotification($key)) {
+        return false;
+    }
+    $notifiedUsers[] = $userKey;
+    file_put_contents($notifiedFile, json_encode(array_values(array_unique($notifiedUsers)), JSON_UNESCAPED_UNICODE), LOCK_EX);
+    return true;
+};
+
+$applyingFile = __DIR__ . '/gift_applying.json';
+$applying = [];
+if (is_file($applyingFile)) {
+    $applying = json_decode(file_get_contents($applyingFile), true);
+    if (!is_array($applying)) {
+        rx_cron_task_defer('gift_operation_guards_invalid', 300);
         return;
     }
-    $key = (string) $id_user;
-    if (in_array($key, $notifiedUsers, true)) {
-        return;
+}
+$saveApplying = function () use (&$applying, $applyingFile) {
+    $encoded = json_encode($applying, JSON_UNESCAPED_UNICODE);
+    $tmp = $applyingFile . '.tmp';
+    if ($encoded === false || file_put_contents($tmp, $encoded, LOCK_EX) === false || !rename($tmp, $applyingFile)) {
+        throw new RuntimeException('gift_operation_guard_persist_failed');
     }
-    sendmessage($id_user, $text, null, "html");
-    $notifiedUsers[] = $key;
-    file_put_contents($notifiedFile, json_encode($notifiedUsers, JSON_UNESCAPED_UNICODE));
 };
 
 $batchSize = 5;
 $processed = 0;
 
 while (!empty($userid) && $processed < $batchSize) {
+    if (rx_cron_time_up()) {
+        rx_cron_task_defer('time_budget', 60);
+        break;
+    }
     $iduser = array_shift($userid);
     try {
     if (!isset($iduser->username)) {
@@ -109,6 +234,15 @@ while (!empty($userid) && $processed < $batchSize) {
 
     $processed++;
     $get_username_info = $ManagePanel->DataUser($info['name_panel'], $iduser->username);
+
+    $rxGiftOperation = $rxGiftCampaign . ':' . (string) $iduser->username;
+    if (in_array('done:' . $rxGiftOperation, array_map('strval', $applying), true)) {
+        continue;
+    }
+    if (in_array($rxGiftOperation, array_map('strval', $applying), true) || in_array((string) $iduser->username, array_map('strval', $applying), true)) {
+        $logFailedUser($iduser->username);
+        continue;
+    }
 
     if (!is_array($get_username_info)) {
         $logFailedUser($iduser->username);
@@ -140,6 +274,10 @@ while (!empty($userid) && $processed < $batchSize) {
         continue;
     }
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $info['name_panel'], "select");
+
+    $applying[] = $rxGiftOperation;
+    $applying = array_values(array_unique($applying));
+    $saveApplying();
 
     if ($info['typegift'] == "volume") {
         $extra_volume = $ManagePanel->extra_volume($invoce['username'], $marzban_list_get['code_panel'], $info['value']);
@@ -225,11 +363,21 @@ while (!empty($userid) && $processed < $batchSize) {
         ]);
     }
 
+    if (!$hadPersistentError) {
+        $applying = array_values(array_diff($applying, [$rxGiftOperation]));
+        $applying[] = 'done:' . $rxGiftOperation;
+        $saveApplying();
+    }
+
     if ($hadPersistentError) {
         $logFailedUser($iduser->username);
     }
     } finally {
-        file_put_contents($queueFile, json_encode(array_values($userid), JSON_UNESCAPED_UNICODE));
+        $encoded = json_encode(array_values($userid), JSON_UNESCAPED_UNICODE);
+        $tmp = $queueFile . '.tmp';
+        if ($encoded === false || file_put_contents($tmp, $encoded, LOCK_EX) === false || !rename($tmp, $queueFile)) {
+            throw new RuntimeException('gift_queue_persist_failed');
+        }
     }
 }
 
@@ -245,9 +393,21 @@ if (empty($userid)) {
     unlink($giftFile);
     unlink($queueFile);
     @unlink($notifiedFile);
+    if (!$pendingNotify) {
+        @unlink($pendingNotifyFile);
+    }
+    if (!$applying) {
+        @unlink($applyingFile);
+    }
     if (empty($failedUsers) && is_file($failedFile)) {
         unlink($failedFile);
     }
     }
+}
+if ($rxGiftHasPending()) {
+    rx_cron_task_defer('gift_notifications_pending', 60);
+}
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('gift_batch_finished');
 }
 

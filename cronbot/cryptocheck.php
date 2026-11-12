@@ -25,6 +25,9 @@ if (!rx_cron_db_ready('cryptocheck')) {
 
 if (!function_exists('crypto_check_payment')) {
     error_log('[cryptocheck] crypto_helpers.php is not loaded — aborting.');
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('crypto_helpers_unavailable', 300);
+    }
     return;
 }
 
@@ -62,6 +65,9 @@ if (!isset($message_id)) $message_id = null;
 $pdo = function_exists('getDatabaseConnection') ? getDatabaseConnection() : null;
 if (!($pdo instanceof PDO)) {
     error_log('[cryptocheck] no PDO connection');
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('pdo_unavailable', 180);
+    }
     return;
 }
 
@@ -786,5 +792,12 @@ foreach ($rows as $row) {
 
 if (!empty($rows)) {
     $rxCryptoLog('INFO', 'cron run complete', ['processed' => count($rows)]);
+}
+if (function_exists('rx_cron_time_up') && rx_cron_time_up()) {
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('time_budget', 60);
+    }
+} elseif (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('cryptocheck_finished');
 }
 

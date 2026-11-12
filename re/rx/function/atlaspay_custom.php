@@ -620,12 +620,12 @@ function atlaspayCustomSupportUrl()
 
 function atlaspayCustomFollowUpKeyboard(array $state)
 {
-    $rows = [[['text' => '🔍 مشاهده جزئیات و وضعیت', 'callback_data' => 'apc_view_' . $state['order_id']]]];
+    $rows = [[rx_payment_button('atlaspay', 'view_details', ['text' => '🔍 مشاهده جزئیات و وضعیت', 'callback_data' => 'apc_view_' . $state['order_id']])]];
     $supportUrl = atlaspayCustomSupportUrl();
     if ($supportUrl !== '') {
-        $rows[] = [['text' => '📞 پشتیبانی', 'url' => $supportUrl]];
+        $rows[] = [rx_payment_button('atlaspay', 'support', ['text' => '📞 پشتیبانی', 'url' => $supportUrl])];
     }
-    $rows[] = [['text' => '⏳ تراکنش‌های در انتظار', 'callback_data' => 'tpc_list']];
+    $rows[] = [rx_payment_button('atlaspay', 'pending_list', ['text' => '⏳ تراکنش‌های در انتظار', 'callback_data' => 'tpc_list'])];
     return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
 }
 
@@ -636,25 +636,25 @@ function atlaspayCustomBotKeyboard(array $state)
     if ($state['phase'] === 'awaiting_payment') {
         $copyRow = [];
         if ($state['card_complete']) {
-            $copyRow[] = tonpayStyledButton(['text' => '📋 کپی شماره کارت', 'copy_text' => ['text' => preg_replace('/\D/', '', $state['card_number'])], '_rxck' => 'card_num'], 'copy_card');
+            $copyRow[] = tonpayStyledButton(['text' => '📋 کپی شماره کارت', 'copy_text' => ['text' => preg_replace('/\D/', '', $state['card_number'])], '_rxck' => 'card_num'], 'copy_card', 'atlaspay');
         }
-        $copyRow[] = tonpayStyledButton(['text' => '📋 کپی مبلغ پرداخت', 'copy_text' => ['text' => (string) $state['payable_rial']], '_rxck' => 'card_amount'], 'copy_amount');
+        $copyRow[] = tonpayStyledButton(['text' => '📋 کپی مبلغ پرداخت', 'copy_text' => ['text' => (string) $state['payable_rial']], '_rxck' => 'card_amount'], 'copy_amount', 'atlaspay');
         $rows[] = $copyRow;
     }
     $actionRow = [];
     if (!$state['terminal'] && $state['phase'] !== 'confirming') {
-        $actionRow[] = tonpayStyledButton(['text' => '🔄 بررسی وضعیت پرداخت', 'callback_data' => 'apc_chk_' . $orderId], 'check_status');
+        $actionRow[] = tonpayStyledButton(['text' => '🔄 بررسی وضعیت پرداخت', 'callback_data' => 'apc_chk_' . $orderId], 'check_status', 'atlaspay');
     }
     if ($state['receipt_url'] !== '') {
-        $actionRow[] = tonpayStyledButton(['text' => '📤 ارسال رسید پرداخت', 'url' => $state['receipt_url']], 'send_receipt');
+        $actionRow[] = tonpayStyledButton(['text' => '📤 ارسال رسید پرداخت', 'url' => $state['receipt_url']], 'send_receipt', 'atlaspay');
     }
     if (!empty($actionRow)) {
         $rows[] = $actionRow;
     }
     if ($state['can_cancel']) {
-        $rows[] = [tonpayStyledButton(['text' => '❌ لغو تراکنش', 'callback_data' => 'apc_can_' . $orderId], 'cancel_transaction')];
+        $rows[] = [tonpayStyledButton(['text' => '❌ لغو تراکنش', 'callback_data' => 'apc_can_' . $orderId], 'cancel_transaction', 'atlaspay')];
     }
-    $rows[] = [tonpayStyledButton(['text' => '🔙 بازگشت به منوی اصلی', 'callback_data' => 'backuser'], 'back_main')];
+    $rows[] = [tonpayStyledButton(['text' => '🔙 بازگشت به منوی اصلی', 'callback_data' => 'backuser'], 'back_main', 'atlaspay')];
     return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
 }
 
@@ -662,8 +662,8 @@ function atlaspayCustomBotCancelConfirmView($orderId, $backData)
 {
     $text = "آیا از لغو این تراکنش اطمینان دارید؟\n\n⚠️ لغو فاکتور به‌معنی بازگشت وجه واریزشده نیست. اطلس‌پی فقط تا زمانی که هیچ پرداخت یا رسیدی برای این سفارش ثبت نشده باشد اجازه لغو می‌دهد.";
     $keyboard = json_encode(['inline_keyboard' => [
-        [tonpayStyledButton(['text' => '✅ بله، لغو تراکنش', 'callback_data' => 'apc_cny_' . $orderId], 'cancel_confirm_approve')],
-        [tonpayStyledButton(['text' => '🔙 بازگشت', 'callback_data' => $backData], 'cancel_confirm_back')],
+        [tonpayStyledButton(['text' => '✅ بله، لغو تراکنش', 'callback_data' => 'apc_cny_' . $orderId], 'cancel_confirm_approve', 'atlaspay')],
+        [tonpayStyledButton(['text' => '🔙 بازگشت', 'callback_data' => $backData], 'cancel_confirm_back', 'atlaspay')],
     ]], JSON_UNESCAPED_UNICODE);
     return ['text' => $text, 'keyboard' => $keyboard];
 }
@@ -1100,13 +1100,13 @@ function atlaspayCustomBotListEntries($userId)
             $lines[] = '⏱ زمان باقی‌مانده تا پایان مهلت پرداخت: <b>' . atlaspayCustomFormatClock($state['remaining']) . '</b>';
         }
         $lines[] = '';
-        $buttons = [['text' => '🔍 مشاهده جزئیات و وضعیت', 'callback_data' => 'apc_view_' . $state['order_id']]];
+        $buttons = [rx_payment_button('atlaspay', 'list_view', ['text' => '🔍 مشاهده جزئیات و وضعیت', 'callback_data' => 'apc_view_' . $state['order_id']])];
         if ($state['receipt_url'] !== '') {
-            $buttons[] = ['text' => '📤 ارسال رسید پرداخت', 'url' => $state['receipt_url']];
+            $buttons[] = rx_payment_button('atlaspay', 'list_receipt', ['text' => '📤 ارسال رسید پرداخت', 'url' => $state['receipt_url']]);
         }
         $rows[] = $buttons;
         if ($state['can_cancel']) {
-            $rows[] = [['text' => '❌ لغو تراکنش', 'callback_data' => 'apc_can_' . $state['order_id']]];
+            $rows[] = [rx_payment_button('atlaspay', 'list_cancel', ['text' => '❌ لغو تراکنش', 'callback_data' => 'apc_can_' . $state['order_id']])];
         }
     }
     return ['lines' => $lines, 'rows' => $rows];
@@ -1120,7 +1120,7 @@ function atlaspayCustomBotListMerge($userId, array $view)
     }
     $keyboard = json_decode((string) $view['keyboard'], true);
     $rows = is_array($keyboard) && isset($keyboard['inline_keyboard']) ? $keyboard['inline_keyboard'] : [];
-    $back = empty($rows) ? [['text' => '🔙 بازگشت', 'callback_data' => 'account']] : array_pop($rows);
+    $back = empty($rows) ? [rx_payment_button('pending', 'back_account', ['text' => '🔙 بازگشت', 'callback_data' => 'account'])] : array_pop($rows);
     if (function_exists('tonpayCustomUserPending') && !empty(tonpayCustomUserPending($userId, 1))) {
         $text = rtrim((string) $view['text']) . "\n\n" . implode("\n", $entries['lines']);
     } else {

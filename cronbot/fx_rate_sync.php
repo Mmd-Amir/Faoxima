@@ -19,8 +19,17 @@ if (!function_exists('fx_rate_sync')) {
 try {
     $fxSyncResult = fx_rate_sync(FX_DEFAULT_PAIR);
     if (empty($fxSyncResult['ok'])) {
+        if (function_exists('rx_cron_task_defer')) {
+            rx_cron_task_defer('fx_rate_sync_failed', 120);
+        }
         error_log('[fx_rate_sync] ' . (string) ($fxSyncResult['action'] ?? 'failed') . ' ' . (string) ($fxSyncResult['error'] ?? ''));
     }
 } catch (Throwable $e) {
     error_log('[fx_rate_sync] ' . $e->getMessage());
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('fx_rate_sync_failed', 120);
+    }
+}
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('fx_rate_sync_finished');
 }

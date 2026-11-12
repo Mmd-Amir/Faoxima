@@ -9,6 +9,9 @@ ini_set('error_log', 'error_log');
 
 $ctx = rx_cron_load_payment_context();
 if (empty($ctx['db_ready'])) {
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('payment_context_unavailable', 180);
+    }
     return;
 }
 require_once __DIR__ . '/../lib/PaymentConfirm.php';
@@ -23,6 +26,9 @@ if (!($pdo instanceof PDO)) {
 
 if (!function_exists('rialitVerifyPayment') || !function_exists('rialitProcessPendingOrders')) {
     error_log('[rialitcheck] rialit functions not available');
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('rialit_functions_unavailable', 300);
+    }
     return;
 }
 
@@ -31,6 +37,9 @@ rialit_cron_pending_orders($pdo);
 rialit_cron_paid_recovery($pdo);
 if (function_exists('rialitPruneWebhookEvents')) {
     rialitPruneWebhookEvents();
+}
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('rialit_poll_finished');
 }
 
 function rialit_cron_webhook_events(PDO $pdo): void

@@ -2016,7 +2016,7 @@ if (!function_exists('rx_copy_button_keyboard')) {
         return $units <= 256;
     }
 
-    function rx_copy_button_keyboard($value, $label = null, $extraRows = null)
+    function rx_copy_button_keyboard($value, $label = null, $extraRows = null, ?string $colorIdentity = null)
     {
         $value = (string) $value;
         $rows = array();
@@ -2025,6 +2025,10 @@ if (!function_exists('rx_copy_button_keyboard')) {
                 'text' => $label !== null ? $label : '📋 کپی',
                 'copy_text' => array('text' => $value),
             ));
+            if ($colorIdentity !== null && $colorIdentity !== '') {
+                $rows[0][0]['_rxcolor'] = $colorIdentity;
+                $rows[0][0]['_rxkeep'] = true;
+            }
         }
         if (is_array($extraRows)) {
             foreach ($extraRows as $extraRow) {

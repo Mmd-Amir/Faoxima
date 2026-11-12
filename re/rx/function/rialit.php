@@ -1047,13 +1047,13 @@ if (!function_exists('rialitBotPaymentView')) {
         }
         $rows = [];
         if (rialitLinkAvailable($report)) {
-            $rows[] = [['text' => '💳 ادامه پرداخت', 'url' => rialitPaymentUrl($report['rialit_token'])]];
+            $rows[] = [rx_payment_button('rialit', 'continue_link', ['text' => '💳 ادامه پرداخت', 'url' => rialitPaymentUrl($report['rialit_token'])])];
         }
-        $rows[] = [['text' => '🔄 بررسی وضعیت', 'callback_data' => 'rl_view_' . $orderId]];
+        $rows[] = [rx_payment_button('rialit', 'check_status', ['text' => '🔄 بررسی وضعیت', 'callback_data' => 'rl_view_' . $orderId])];
         if ((int) ($report['rialit_abandoned_at'] ?? 0) === 0 && in_array($localStatus, ['unpaid','pending','waiting','expire','cancelled'], true) && $remoteStatus !== 'paid') {
-            $rows[] = [['text' => '🚫 انصراف و پرداخت جدید', 'callback_data' => 'rl_cancel_' . $orderId]];
+            $rows[] = [rx_payment_button('rialit', 'cancel_transaction', ['text' => '🚫 انصراف و پرداخت جدید', 'callback_data' => 'rl_cancel_' . $orderId])];
         }
-        $rows[] = [['text' => '🔙 تراکنش‌های در انتظار', 'callback_data' => 'tpc_list']];
+        $rows[] = [rx_payment_button('rialit', 'pending_list', ['text' => '🔙 تراکنش‌های در انتظار', 'callback_data' => 'tpc_list'])];
         return ['text' => $text, 'keyboard' => json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE)];
     }
 }
@@ -1144,9 +1144,9 @@ if (!function_exists('rialitBotListMerge')) {
             foreach ($reports as $report) {
                 $paymentView = rialitBotPaymentView($report);
                 $text .= "\n\n" . $paymentView['text'];
-                $rows[] = [['text' => '💚 پیگیری ریالیت · ' . (string) $report['id_order'], 'callback_data' => 'rl_view_' . (string) $report['id_order']]];
+                $rows[] = [rx_payment_button('rialit', 'list_view', ['text' => '💚 پیگیری ریالیت · ' . (string) $report['id_order'], 'callback_data' => 'rl_view_' . (string) $report['id_order']])];
             }
-            $rows[] = [['text' => '🔙 بازگشت', 'callback_data' => 'account']];
+            $rows[] = [rx_payment_button('rialit', 'back_account', ['text' => '🔙 بازگشت', 'callback_data' => 'account'])];
             return ['text' => $text, 'keyboard' => json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE)];
         } catch (Throwable $e) {
             rialitLogEvent('RIALIT_BOT_LIST_FAILED', $e->getMessage());

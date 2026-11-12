@@ -87,3 +87,6 @@ foreach($marzbanlist as $location){
     }
     }
 }
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('uptime_panel_finished');
+}

@@ -112,3 +112,6 @@ if (!empty($rxInvoices)) {
         }
     }
 }
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('ip_block_notify_finished');
+}

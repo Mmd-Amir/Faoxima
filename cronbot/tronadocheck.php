@@ -6,6 +6,9 @@ ini_set('error_log', 'error_log');
 
 $ctx = rx_cron_load_payment_context();
 if (empty($ctx['db_ready'])) {
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('payment_context_unavailable', 180);
+    }
     return;
 }
 require_once __DIR__ . '/../lib/PaymentConfirm.php';
@@ -21,7 +24,13 @@ if (!($pdo instanceof PDO)) {
 
 if (!function_exists('tronadoV2RunCron')) {
     error_log('[tronadocheck] tronado v2 functions not available');
+    if (function_exists('rx_cron_task_defer')) {
+        rx_cron_task_defer('tronado_functions_unavailable', 300);
+    }
     return;
 }
 
 tronadoV2RunCron();
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('tronado_poll_finished');
+}

@@ -39,3 +39,6 @@ try {
 } catch (Throwable $e) {
     error_log('[pin_expire] ' . $e->getMessage());
 }
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('pin_expire_finished');
+}

@@ -96,4 +96,7 @@ $pasarguardlist = is_array($pasarguardlist) ? $pasarguardlist : [];
 if (function_exists('pasarguardGetNodes')) {
     rxUptimeCheckPanels($pasarguardlist, $errorreport, $setting, 'pasarguardGetNodes');
 }
+if (function_exists('rx_cron_task_complete')) {
+    rx_cron_task_complete('uptime_node_finished');
+}
 

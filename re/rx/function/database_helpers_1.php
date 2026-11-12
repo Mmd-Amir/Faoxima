@@ -430,6 +430,90 @@ if (!function_exists('normalizeCronScheduleConfig')) {
     }
 }
 
+if (!function_exists('rx_cron_schedule_interval_seconds')) {
+    function rx_cron_schedule_interval_seconds(array $config): int
+    {
+        $unit = strtolower((string) ($config['unit'] ?? 'minute'));
+        $value = max(1, (int) ($config['value'] ?? 1));
+        if ($unit === 'day') return $value * 86400;
+        if ($unit === 'hour') return $value * 3600;
+        return $value * 60;
+    }
+}
+
+if (!function_exists('rx_cron_schedule_occurrence')) {
+    function rx_cron_schedule_occurrence(array $config, int $now, int $targetHour = 0): int
+    {
+        $unit = strtolower((string) ($config['unit'] ?? 'minute'));
+        $value = max(1, (int) ($config['value'] ?? 1));
+        if ($unit === 'disabled' || $now <= 0) {
+            return 0;
+        }
+        if ($unit !== 'day') {
+            $interval = rx_cron_schedule_interval_seconds($config);
+            $start = (int) strtotime(date('Y-m-d', $now) . ' 00:00:00');
+            return $start + (int) (floor(($now - $start) / $interval) * $interval);
+        }
+        $targetHour = max(0, min(23, $targetHour));
+        $candidate = strtotime(date('Y-m-d', $now) . ' 00:00:00') + ($targetHour * 3600);
+        if ($candidate > $now) {
+            $candidate = strtotime('-1 day', $candidate);
+        }
+        for ($i = 0; $i < 370; $i++) {
+            if (((int) date('z', $candidate) % $value) === 0) {
+                break;
+            }
+            $candidate = strtotime('-1 day', $candidate);
+        }
+        return (int) $candidate;
+    }
+}
+
+if (!function_exists('rx_cron_job_due')) {
+    function rx_cron_job_due(string $jobKey, array $config, int $now, array $runtimeState, int $targetHour = 0): ?int
+    {
+        $unit = strtolower((string) ($config['unit'] ?? 'minute'));
+        if ($unit === 'disabled' || $jobKey === '') {
+            return null;
+        }
+        $lastRun = isset($runtimeState[$jobKey]) ? (int) $runtimeState[$jobKey] : 0;
+        if ($lastRun > $now + 300) {
+            $lastRun = 0;
+        }
+        if ($unit === 'day') {
+            $occurrence = rx_cron_schedule_occurrence($config, $now, $targetHour);
+            if ($occurrence <= 0 || $lastRun >= $occurrence) {
+                return null;
+            }
+            return $occurrence;
+        }
+        $occurrence = rx_cron_schedule_occurrence($config, $now, $targetHour);
+        return $occurrence > 0 && $lastRun < $occurrence ? $occurrence : null;
+    }
+}
+
+if (!function_exists('rx_cron_claim_job_occurrence')) {
+    function rx_cron_claim_job_occurrence(PDO $pdo, string $jobKey, int $occurrence): bool
+    {
+        if (trim($jobKey) === '' || $occurrence <= 0) {
+            return false;
+        }
+        $definition = getCronJobDefinitions()[$jobKey] ?? [];
+        $default = $definition['default'] ?? ['unit' => 'minute', 'value' => 1];
+        $unit = (string) ($default['unit'] ?? 'minute');
+        $value = max(1, (int) ($default['value'] ?? 1));
+        $enabled = $unit === 'disabled' ? 0 : 1;
+        try {
+            ensureCronRuntimeStateTable($pdo);
+            $stmt = $pdo->prepare('INSERT INTO cron_runtime_state (job_key, last_run, unit, value, enabled) VALUES (:job_key, :last_run, :unit, :value, :enabled) ON DUPLICATE KEY UPDATE last_run = IF(last_run < VALUES(last_run), VALUES(last_run), last_run)');
+            $stmt->execute([':job_key' => $jobKey, ':last_run' => $occurrence, ':unit' => $unit, ':value' => $value, ':enabled' => $enabled]);
+            return $stmt->rowCount() > 0;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+}
+
 if (!function_exists('ensureCronRuntimeStateTable')) {
     function ensureCronRuntimeStateTable(PDO $pdo): void
     {
@@ -545,16 +629,7 @@ if (!function_exists('shouldRunCronJob')) {
             }
             $lastRun = isset($state[$jobKey]) ? (int) $state[$jobKey] : 0;
             $now = time();
-
-            $intervalSeconds = match ($unit) {
-                'minute' => $value * 60,
-                'hour'   => $value * 3600,
-                'day'    => $value * 86400,
-                default  => $value * 60,
-            };
-
-
-            return ($now - $lastRun) >= ($intervalSeconds - 5);
+            return rx_cron_job_due($jobKey, $config, $now, [$jobKey => $lastRun]) !== null;
         }
 
 
@@ -588,26 +663,16 @@ if (!function_exists('shouldRunCronJobNow')) {
 
         $lastRun = isset($state[$jobKey]) ? (int) $state[$jobKey] : 0;
         $now = time();
-        $intervalSeconds = match ($unit) {
-            'minute' => $value * 60,
-            'hour'   => $value * 3600,
-            'day'    => $value * 86400,
-            default  => $value * 60,
-        };
-
-        if (($now - $lastRun) < ($intervalSeconds - 5)) {
+        $occurrence = rx_cron_job_due($jobKey, $config, $now, [$jobKey => $lastRun]);
+        if ($occurrence === null) {
             return false;
         }
 
-
         try {
-            if (function_exists('setCronJobLastRun')) {
-                setCronJobLastRun($pdo, $jobKey, $now);
-            }
+            return rx_cron_claim_job_occurrence($pdo, $jobKey, $occurrence);
         } catch (\Throwable $e) {
-
+            return false;
         }
-        return true;
     }
 }
 
@@ -1098,8 +1163,8 @@ if (!function_exists('rx_send_pending_gateway_invoice_notice')) {
         );
         $kb = json_encode([
             'inline_keyboard' => [
-                [['text' => '♻️ لغو و دریافت فاکتور جدید', 'callback_data' => 'rxpgw_cancel_' . $gatewayKey . '_' . $orderId]],
-                [['text' => '🔙 بازگشت به منوی اصلی', 'callback_data' => 'backuser']],
+                [rx_payment_button((string) $gatewayKey, 'pending_cancel', ['text' => '♻️ لغو و دریافت فاکتور جدید', 'callback_data' => 'rxpgw_cancel_' . $gatewayKey . '_' . $orderId])],
+                [rx_payment_button((string) $gatewayKey, 'back_main', ['text' => '🔙 بازگشت به منوی اصلی', 'callback_data' => 'backuser'])],
             ],
         ], JSON_UNESCAPED_UNICODE);
 
@@ -1550,6 +1615,17 @@ if (!function_exists('rx_cron_job_work_available')) {
                     [$rxLate, $rxLate, (int) ($now - ATLASPAY_CUSTOM_CARD_RETENTION_SECONDS)]
                 );
             case 'queued_renewal':
+                $pendingFile = REFACTORED_LEGACY_ROOT . '/cronbot/.runtime/renewal_notify_pending.json';
+                if (is_file($pendingFile)) {
+                    $pending = json_decode((string) @file_get_contents($pendingFile), true);
+                    if (is_array($pending)) {
+                        foreach ($pending as $entry) {
+                            if (is_array($entry) && ($entry['state'] ?? '') === 'pending' && (int) ($entry['next_attempt_at'] ?? 0) <= $now) {
+                                return true;
+                            }
+                        }
+                    }
+                }
                 return rx_cron_work_combine([
                     static fn() => rx_cron_work_probe(
                         $pdo,

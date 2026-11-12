@@ -75,6 +75,9 @@ $MENUS = [
             'backuser'    => '◀️ بازگشت',
             'backinfo'    => '↩️ بازگشت به اطلاعات',
             'rw_pick'     => '💵 دکمه‌های مبلغ شارژ کیف پول',
+            'rw_pick_50000' => '💵 مبلغ شارژ کیف پول ۵۰,۰۰۰ تومان',
+            'rw_pick_100000' => '💵 مبلغ شارژ کیف پول ۱۰۰,۰۰۰ تومان',
+            'rw_pick_200000' => '💵 مبلغ شارژ کیف پول ۲۰۰,۰۰۰ تومان',
             'rw_custom'   => '✍️ رقم دلخواه شارژ کیف پول',
             'my_miniapp_pending' => '⏳ رسید تایید نشده از مینی‌اپ',
             'tpc_list'        => '⏳ تراکنش‌های در انتظار',
@@ -163,6 +166,7 @@ $MENUS = [
         'title' => 'منوی کاربر — اشتراک', 'icon' => 'cart-check', 'type' => 'inline',
         'desc'  => 'دکمه‌های نمایش جزئیات اشتراک کاربر.',
         'buttons' => [
+            'ticketnew'       => '➕ تیکت جدید',
             'buy_service'      => '🛒 خرید سرویس',
             'helpbtn'          => '📚 آموزش',
             'support'          => '📞 پشتیبانی',
@@ -201,6 +205,8 @@ $MENUS = [
             'paneluser_list'       => '🖥 انتخاب لوکیشن/پنل کاربر',
             'crypto_actions'       => '🪙 اقدامات پرداخت کریپتو',
             'crypto_manual_actions'=> '🔁 اقدامات بررسی دستی هش',
+            'rcc_resubmit'         => '📨 ارسال مجدد به ادمین',
+            'rcc_view'             => '👁 مشاهده وضعیت',
             'user_confirms'        => '✅ تاییدهای کاربر',
             'extra_purchase'       => '➕ خرید حجم/زمان اضافه',
             'ticket_list'          => '🎫 لیست تیکت‌ها',
@@ -229,6 +235,10 @@ $MENUS = [
         'desc'  => 'رنگ دکمه‌های مسیر پرداخت ارز دیجیتال.',
         'buttons' => [
             'currency_pick' => '💎 انتخاب ارز',
+            'currency_pick_TRX' => '🟥 ترون (TRX)',
+            'currency_pick_TON' => '🟦 تون (TON)',
+            'currency_pick_USDT_TRC20' => '🟢 تتر روی ترون',
+            'currency_pick_USDT_TON' => '🟢 تتر روی تون',
             'mode_external' => '🌍 کیف پول خارجی',
             'copy_wallet'   => '🔗 کپی آدرس کیف پول',
             'copy_amount'   => '🪙 کپی مبلغ',
@@ -317,6 +327,7 @@ $MENUS = [
 ];
 
 $ALL_DB_KEYS = array_keys($MENUS);
+$ALL_DB_KEYS[] = 'button_items';
 $CONFIG_ITEM_SECTION = 'config_items';
 $CONFIG_ITEM_KEY_RE = '/^[a-f0-9]{16}:(download|name|protocol)$/';
 $CONFIG_COLUMNS = [
@@ -394,14 +405,22 @@ $rxAutoStyleFor = function (string $btnLabel) use ($ALLOWED_STYLES): string {
     return is_string($guessed) && in_array($guessed, $ALLOWED_STYLES, true) ? $guessed : 'primary';
 };
 
-$rxFamilyStyle = function (string $menuKey, string $btnKey, string $btnLabel) use ($userStylesRaw, $factoryDefaultsMap, $useBuiltinDefaults, $EXPLICIT_STYLES, $rxAutoStyleFor): string {
-    $saved = $userStylesRaw[$menuKey][$btnKey] ?? null;
-    if (is_string($saved) && in_array($saved, $EXPLICIT_STYLES, true)) {
-        return $saved;
+$rxFamilyStyle = function (string $menuKey, string $btnKey, string $btnLabel, ?string $fallbackKey = null) use ($userStylesRaw, $factoryDefaultsMap, $useBuiltinDefaults, $EXPLICIT_STYLES, $rxAutoStyleFor): string {
+    $candidates = [$btnKey];
+    if ($useBuiltinDefaults && is_string($fallbackKey) && $fallbackKey !== '' && $fallbackKey !== $btnKey) {
+        $candidates[] = $fallbackKey;
+    }
+    foreach ($candidates as $candidate) {
+        $saved = $userStylesRaw[$menuKey][$candidate] ?? null;
+        if (is_string($saved) && in_array($saved, $EXPLICIT_STYLES, true)) {
+            return $saved;
+        }
     }
     if (!$useBuiltinDefaults) { return 'default'; }
-    $factory = $factoryDefaultsMap[$menuKey][$btnKey] ?? null;
-    if (is_string($factory) && in_array($factory, $EXPLICIT_STYLES, true)) { return $factory; }
+    foreach ($candidates as $candidate) {
+        $factory = $factoryDefaultsMap[$menuKey][$candidate] ?? null;
+        if (is_string($factory) && in_array($factory, $EXPLICIT_STYLES, true)) { return $factory; }
+    }
     return $rxAutoStyleFor($btnLabel);
 };
 
@@ -435,11 +454,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         && is_int($revision) && $revision > 0;
     if ($valid) {
         foreach ($changes as $menu => $pairs) {
-            if (!is_array($pairs) || (!isset($MENUS[$menu]) && $menu !== $CONFIG_ITEM_SECTION)) { $valid = false; break; }
+            if (!is_array($pairs) || (!isset($MENUS[$menu]) && !in_array($menu, [$CONFIG_ITEM_SECTION, 'button_items'], true))) { $valid = false; break; }
             foreach ($pairs as $key => $style) {
                 $keyAllowed = $menu === $CONFIG_ITEM_SECTION
-                    ? preg_match($CONFIG_ITEM_KEY_RE, (string) $key) === 1 && $style === null
-                    : isset($MENUS[$menu]['buttons'][$key]) && !($menu === 'misc_buttons' && $key === 'confirmpaid');
+                    ? preg_match($CONFIG_ITEM_KEY_RE, (string) $key) === 1
+                    : ($menu === 'button_items' ? preg_match('/^[a-f0-9]{64}$/', (string) $key) === 1 : (isset($MENUS[$menu]['buttons'][$key]) || ($menu === 'account' && preg_match('/^rw_pick_[0-9]+$/', (string) $key) === 1)))
+                        && !($menu === 'misc_buttons' && $key === 'confirmpaid');
                 if (!$keyAllowed || ($style !== null && (!is_string($style) || !in_array($style, $EXPLICIT_STYLES, true)))) { $valid = false; break 2; }
             }
         }
@@ -476,18 +496,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($pairs as $key => $style) {
                 if ($style === null) { unset($clean[$menu][$key]); }
                 else { $clean[$menu][$key] = $style; }
-            }
-        }
-        foreach ($CONFIG_COLUMNS as $headerKey => $column) {
-            if (!array_key_exists($headerKey, $changes['config_list'] ?? [])) { continue; }
-            $columnStyle = $changes['config_list'][$headerKey];
-            if ($columnStyle === null) { unset($clean['config_list'][$column['key']]); }
-            else { $clean['config_list'][$column['key']] = $columnStyle; }
-            if (isset($clean[$CONFIG_ITEM_SECTION]) && !is_array($clean[$CONFIG_ITEM_SECTION])) { throw new RuntimeException('invalid_saved_section'); }
-            foreach (array_keys($clean[$CONFIG_ITEM_SECTION] ?? []) as $itemKey) {
-                if (preg_match($CONFIG_ITEM_KEY_RE, (string) $itemKey) === 1 && substr($itemKey, strrpos($itemKey, ':') + 1) === $column['role']) {
-                    unset($clean[$CONFIG_ITEM_SECTION][$itemKey]);
-                }
             }
         }
         if (array_key_exists('_use_defaults', $payload)) { $clean['_use_defaults'] = $payload['_use_defaults']; }
@@ -628,7 +636,8 @@ $accountLabelFor = function (string $id) use ($accountRegistry, $textbotMap): st
 $mkBtn = function (string $menu, string $key, array $opt = []) use ($MENUS, $rxAutoStyleFor, $rxFamilyStyle): array {
     $label = $opt['label'] ?? (string) ($MENUS[$menu]['buttons'][$key] ?? $key);
     $auto = $rxAutoStyleFor($label);
-    $style = $rxFamilyStyle($menu, $key, $label);
+    $fallbackKey = isset($opt['fallback_key']) && is_string($opt['fallback_key']) ? $opt['fallback_key'] : null;
+    $style = $rxFamilyStyle($menu, $key, $label, $fallbackKey);
     return array_merge([
         'kind' => 'family',
         'menu' => $menu,
@@ -636,7 +645,8 @@ $mkBtn = function (string $menu, string $key, array $opt = []) use ($MENUS, $rxA
         'label' => $label,
         'auto' => $auto,
         'style' => $style,
-        'scopes' => ['family'],
+        'fallback_key' => $fallbackKey,
+        'scopes' => ['button'],
     ], $opt);
 };
 
@@ -651,25 +661,117 @@ $mkMain = function (string $token, string $familyKey, string $label) use ($rxAut
         'label' => $label,
         'auto' => $auto,
         'style' => $exact !== null ? $exact : $rxFamilyStyle('home_menu', $familyKey, $label),
-        'scopes' => ['exact', 'family'],
+        'scopes' => ['exact'],
         'family_label' => 'رنگ پیش‌فرض نقش این دکمه',
     ];
 };
 
-$mkCfgHead = function (string $key, string $label) use ($rxAutoStyleFor, $rxFamilyStyle): array {
-    $auto = $rxAutoStyleFor($label);
+$mkIndividual = function (array $button, string $label, string $fallbackMenu, string $fallbackKey) use ($userStylesRaw, $EXPLICIT_STYLES, $rxAutoStyleFor, $rxFamilyStyle, $useBuiltinDefaults): array {
+    $key = rx_button_color_key($button);
+    $saved = $userStylesRaw['button_items'][$key] ?? null;
+    $fallbackSecondary = $fallbackMenu === 'user_dynamic_lists' && in_array($fallbackKey, ['rcc_view', 'rcc_resubmit'], true) ? 'crypto_manual_actions' : null;
     return [
-        'kind' => 'config_header',
-        'menu' => 'config_list',
+        'kind' => 'individual',
+        'menu' => 'button_items',
         'key' => $key,
         'label' => $label,
-        'auto' => $auto,
-        'style' => $rxFamilyStyle('config_list', $key, $label),
-        'scopes' => [],
-        'header' => true,
+        'auto' => $rxAutoStyleFor($label),
+        'style' => in_array($saved, $EXPLICIT_STYLES, true) ? $saved : ($useBuiltinDefaults ? $rxFamilyStyle($fallbackMenu, $fallbackKey, $label, $fallbackSecondary) : 'none'),
+        'fallback_menu' => $fallbackMenu,
+        'fallback_key' => $fallbackKey,
+        'fallback_secondary' => $fallbackSecondary,
+        'scopes' => ['button'],
     ];
 };
+$mkCfgHead = function (string $key, string $label) use ($mkIndividual): array {
+    return $mkIndividual(['_rxcolor' => 'config_header:' . $key], $label, 'config_list', $key) + ['header' => true];
+};
 
+$colorCatalogGroups = [
+    'products' => 'محصولات', 'categories' => 'دسته‌بندی‌ها', 'durations' => 'مدت سرویس',
+    'volumes' => 'حجم سرویس', 'panels' => 'پنل و لوکیشن', 'channels' => 'کانال‌های الزامی',
+    'help' => 'آموزش‌ها', 'help_categories' => 'دسته‌بندی آموزش',
+    'departments' => 'دپارتمان پشتیبانی', 'tickets' => 'تیکت‌ها', 'crypto' => 'تراکنش‌های کریپتو',
+    'affiliate' => 'دعوت دوستان و هدیه',
+];
+$mkCatalogSample = function (string $group, string $role, string $label, string $fallbackKey, string $fallbackMenu = 'user_dynamic_lists') use ($mkIndividual): array {
+    return $mkIndividual(['_rxcolor' => 'catalog_template:' . $group . ':' . $role], $label, $fallbackMenu, $fallbackKey) + ['sample' => true];
+};
+$catalogSamples = [
+    'affiliate' => [
+        $mkIndividual(['_rxcolor' => 'affiliate:gift'], '🎁 هدیه عضویت', 'home_menu', 'affiliatesbtn') + ['sample' => true],
+        $mkIndividual(['_rxcolor' => 'affiliate:share'], '🔗 اشتراک لینک دعوت', 'home_menu', 'affiliatesbtn') + ['sample' => true],
+    ],
+    'categories' => [$mkCatalogSample('categories', 'category', '📁 نمونه دسته‌بندی — پیش‌فرض دسته‌بندی‌های جدید', 'category_buy')],
+    'durations' => [
+        $mkCatalogSample('durations', 'time', '⏳ نمونه مدت سرویس', 'time_buy'),
+        $mkCatalogSample('durations', 'category_time', '⏳ نمونه مدت در دسته‌بندی', 'time_buy'),
+        $mkCatalogSample('durations', 'custom_time', '✍️ نمونه مدت دلخواه', 'time_buy'),
+    ],
+    'volumes' => [$mkCatalogSample('volumes', 'volume', '📦 نمونه حجم سرویس', 'volume_buy')],
+    'panels' => [$mkCatalogSample('panels', 'panel', '🌍 نمونه پنل و لوکیشن', 'paneluser_list')],
+    'channels' => [$mkCatalogSample('channels', 'channel', '📢 نمونه کانال الزامی', 'channel_join')],
+    'help' => [$mkCatalogSample('help', 'guide', '📚 نمونه آموزش', 'helpsection')],
+    'help_categories' => [$mkCatalogSample('help_categories', 'category', '📂 نمونه دسته‌بندی آموزش', 'helpsection')],
+    'departments' => [$mkCatalogSample('departments', 'department', '💬 نمونه دپارتمان پشتیبانی', 'ticket_list')],
+    'tickets' => [
+        $mkCatalogSample('tickets', 'open', '🎫 باز کردن تیکت', 'ticket_list'),
+        $mkCatalogSample('tickets', 'message', '✍️ ارسال پیام تیکت', 'ticket_list'),
+        $mkCatalogSample('tickets', 'close', '🔒 بستن تیکت', 'ticket_list'),
+        $mkCatalogSample('tickets', 'media', '📎 مشاهده رسانه‌های تیکت', 'ticket_list'),
+    ],
+    'crypto' => [
+        $mkCatalogSample('crypto', 'copy_wallet', '🔗 کپی آدرس کیف پول', 'copy_wallet', 'invoice_copy_buttons'),
+        $mkCatalogSample('crypto', 'copy_amount', '🪙 کپی مبلغ', 'copy_amount', 'invoice_copy_buttons'),
+        $mkCatalogSample('crypto', 'copy_memo', '🏷 کپی ممو', 'copy_memo', 'invoice_copy_buttons'),
+        $mkCatalogSample('crypto', 'paid_submit', '✅ ارسال هش پرداخت', 'paid_submit', 'invoice_copy_buttons'),
+        $mkCatalogSample('crypto', 'invoice_back', '🔙 لغو فاکتور', 'invoice_back', 'invoice_copy_buttons'),
+        $mkCatalogSample('crypto', 'rcc_view', '👁 مشاهده وضعیت', 'rcc_view'),
+        $mkCatalogSample('crypto', 'rcc_resubmit', '📨 ارسال مجدد به ادمین', 'rcc_resubmit'),
+    ],
+];
+$serviceSampleActions = [
+    'service_manage' => ['🔧 مدیریت سرویس / بازگشت به اطلاعات', 'user_dynamic_lists', 'service_actions'],
+    'copy_subscription' => ['📋 کپی لینک اشتراک', 'user_dynamic_lists', 'copy_text_btn'],
+    'service_open' => ['📂 مشاهده سرویس', 'user_dynamic_lists', 'user_services_list'],
+    'infocard_qr' => ['📷 دریافت QR Code', 'user_dynamic_lists', 'service_actions'],
+    'confirm_status' => ['✅ تایید تغییر وضعیت', 'user_dynamic_lists', 'user_confirms'],
+    'confirm_link' => ['✅ تایید تغییر لینک', 'user_dynamic_lists', 'user_confirms'],
+    'stock_extend' => ['🔄 تمدید سرویس دستی', 'user_dynamic_lists', 'nmstock_actions'],
+    'stock_refund' => ['💎 بازگشت وجه سرویس دستی', 'user_dynamic_lists', 'nmstock_actions'],
+    'stock_config' => ['📥 دریافت کانفیگ دستی', 'user_dynamic_lists', 'nmstock_actions'],
+    'stock_subscription' => ['🔗 لینک اشتراک دستی', 'user_dynamic_lists', 'nmstock_actions'],
+];
+if (filter_input(INPUT_GET, 'action') === 'button_catalog' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+    header('Content-Type: application/json; charset=utf-8');
+    if (($_GET['group'] ?? 'products') !== 'products') {
+        http_response_code(400);
+        echo json_encode(['ok' => false]);
+        exit;
+    }
+    $page = max(0, min(100000, (int) ($_GET['page'] ?? 0)));
+    $pageSize = 1;
+    $offset = $page * $pageSize;
+    try {
+        $statement = $pdo->query("SELECT id, name_product, Service_time, price_product FROM product ORDER BY (position = 0) ASC, position ASC, id ASC LIMIT 2 OFFSET $offset");
+        $records = $statement->fetchAll(PDO::FETCH_ASSOC);
+        $more = count($records) > $pageSize;
+        $buttons = [];
+        foreach (array_slice($records, 0, $pageSize) as $record) {
+            $id = (string) $record['id'];
+            $name = (string) $record['name_product'];
+            foreach (['name' => '📦 نام: ' . $name, 'duration' => '⏳ ' . $record['Service_time'] . ' روز · ' . $name, 'price' => '💵 ' . number_format((float) $record['price_product']) . ' تومان · ' . $name] as $role => $label) {
+                $buttons[] = $mkIndividual(['_rxcolor' => 'product:' . $id . ':' . $role], $label, 'user_dynamic_lists', 'product_buy');
+            }
+            $buttons[] = $mkIndividual(['_rxcolor' => 'stock_product:' . $id], '🔄 تمدید دستی · ' . $name, 'user_dynamic_lists', 'nmstock_actions');
+        }
+        echo json_encode(['ok' => true, 'buttons' => $buttons, 'more' => $more, 'page' => $page], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => 'catalog_unavailable']);
+    }
+    exit;
+}
 $SCREENS = [];
 $addScreen = function (string $id, string $title, string $icon, string $desc, array $rows, array $opt = []) use (&$SCREENS): void {
     $SCREENS[$id] = array_merge([
@@ -685,8 +787,8 @@ $addScreen = function (string $id, string $title, string $icon, string $desc, ar
     ], $opt);
 };
 
-$svc = function (string $key, array $opt = []) use ($mkBtn): array {
-    return $mkBtn('service', $key, $opt);
+$svc = function (string $key, array $opt = []) use ($mkIndividual, $MENUS): array {
+    return array_merge($mkIndividual(['_rxcolor' => 'service_template:' . $key], $opt['label'] ?? $MENUS['service']['buttons'][$key], 'service', $key), $opt);
 };
 $serviceRows = [
     [$svc('updateinfo', ['cond' => 'همیشه در ابتدای منوی سرویس نمایش داده می‌شود.'])],
@@ -700,15 +802,46 @@ $serviceRows = [
     [$svc('remna_usage', ['cond' => 'فقط برای پنل‌های رمنـاوِیو.']), $svc('remna_picker', ['cond' => 'فقط برای پنل‌های رمنـاوِیو با انتخاب سرور فعال.'])],
     [$svc('discountextend', ['cond' => 'در صفحه تأیید تمدید با کد تخفیف.']), $svc('productcheckdata', ['cond' => 'در دکمه‌های بازگشت به اطلاعات سرویس.'])],
 ];
-$addScreen('service', 'مدیریت سرویس', 'gear', 'کیبورد مدیریت یک سرویس، همان‌طور که کاربر می‌بیند.', $serviceRows, [
-    'note' => 'بعضی دکمه‌ها بسته به نوع پنل و تنظیمات آن نمایش داده می‌شوند؛ رنگ انتخابی برای زمانی است که دکمه ظاهر شود.',
+foreach ($serviceSampleActions as $serviceKey => [$serviceLabel, $fallbackMenu, $fallbackKey]) {
+    $serviceRows[] = [$mkIndividual(['_rxcolor' => 'service_template:' . $serviceKey], $serviceLabel, $fallbackMenu, $fallbackKey)];
+}
+$addScreen('service', 'مدیریت سرویس', 'gear', 'یک نمونه از دکمه‌های مدیریت سرویس برای همه کاربران.', $serviceRows, [
+    'note' => 'رنگ هر دکمه مستقل است و برای همان دکمه در سرویس‌های همه کاربران اعمال می‌شود. این نمونه به آیدی ادمین یا سرویس واقعی وابسته نیست.',
 ]);
+$serviceOperationLabels = [
+    'confirm_transfer' => '✅ تایید انتقال سرویس', 'confirm_remove' => '✅ تایید حذف سرویس',
+    'confirm_report' => '✅ تایید ارسال گزارش اختلال', 'confirm_location' => '✅ تایید تغییر لوکیشن',
+    'confirm_volume' => '✅ تایید خرید حجم', 'confirm_volume_discount' => '✅ تایید حجم با تخفیف',
+    'confirm_external_volume' => '✅ تایید خرید حجم برای سرویس دیگران',
+    'confirm_time' => '✅ تایید خرید زمان', 'confirm_time_discount' => '✅ تایید زمان با تخفیف',
+    'discount_volume' => '🎁 تخفیف خرید حجم', 'discount_time' => '🎁 تخفیف خرید زمان',
+    'renewal_product' => '📦 نمونه محصول تمدید', 'extend_current' => '♻️ تمدید پلن فعلی',
+    'stock_confirm' => '✅ تایید تمدید کالای دستی', 'squad_select' => '🌍 نمونه سرور رمنـاوِیو',
+];
+$serviceOperationRows = [];
+foreach (array_chunk($serviceOperationLabels, 2, true) as $operationPair) {
+    $operationRow = [];
+    foreach ($operationPair as $role => $label) {
+        $fallback = in_array($role, ['discount_volume', 'discount_time'], true) ? 'extra_purchase' : 'user_confirms';
+        if ($role === 'renewal_product') $fallback = 'product_buy';
+        if ($role === 'squad_select') $fallback = 'service_actions';
+        if ($role === 'stock_confirm') $fallback = 'nmstock_actions';
+        $operationRow[] = $mkIndividual(['_rxcolor' => 'service_template:' . $role], $label, 'user_dynamic_lists', $fallback) + ['sample' => true];
+    }
+    $serviceOperationRows[] = $operationRow;
+}
+$addScreen('service_operations', 'تأیید عملیات سرویس', 'circle-check', 'نمونه دکمه‌های تایید، تمدید و انتخاب سرور؛ رنگ هر نمونه برای همان عملیات اعمال می‌شود.', $serviceOperationRows);
 
 $cfgRows = [];
 $cfgRows[] = [
     $mkCfgHead('cfg_header_action', '⚙️ کانفیگ'),
     $mkCfgHead('cfg_header_protocol', '🔌 پروتکل'),
     $mkCfgHead('cfg_header_name', '✏️ نام کانفیگ'),
+];
+$cfgRows[] = [
+    $mkIndividual(['_rxcolor' => 'config_cell:download'], '📥 نمونه دکمه دریافت کانفیگ', 'config_list', 'cfg_download_one'),
+    $mkIndividual(['_rxcolor' => 'config_cell:protocol'], '🔌 نمونه خانه پروتکل', 'config_list', 'cfg_protocol_cell'),
+    $mkIndividual(['_rxcolor' => 'config_cell:name'], '✏️ نمونه خانه نام کانفیگ', 'config_list', 'cfg_name_cell'),
 ];
 $cfgRows[] = [
     $mkBtn('config_list', 'cfg_page_prev', ['label' => '◀️ قبلی']),
@@ -718,36 +851,8 @@ $cfgRows[] = [
 $cfgRows[] = [$mkBtn('config_list', 'cfg_download_all', ['label' => '⚙️ دریافت همه کانفیگ‌ها'])];
 $cfgRows[] = [$mkBtn('config_list', 'cfg_back_service', ['label' => '↩️ بازگشت'])];
 $addScreen('config', 'لیست کانفیگ', 'key-round', 'جدول انتخاب کانفیگ در صفحه اطلاعات سرویس.', $cfgRows, [
-    'note' => 'رنگ «نام کانفیگ»، «پروتکل» و «کانفیگ» روی سرستون و تمام دکمه‌های همان ستون اعمال می‌شود. با ذخیرهٔ رنگ ستون، رنگ‌های اختصاصی قبلی همان ستون پاک می‌شوند.',
+    'note' => 'رنگ هر سرستون و هر دکمه مستقل است.',
     'table' => true,
-]);
-
-$accRows = [];
-foreach ($accountLayout as $accRowIds) {
-    if (!is_array($accRowIds)) { continue; }
-    $outRow = [];
-    foreach ($accRowIds as $accId) {
-        if (!is_string($accId) || !isset($accountRegistry[$accId])) { continue; }
-        $cond = (string) ($accountRegistry[$accId]['note'] ?? '');
-        $outRow[] = $mkBtn('account', $accId, ['label' => $accountLabelFor($accId), 'cond' => $cond]);
-    }
-    if (!empty($outRow)) { $accRows[] = $outRow; }
-}
-if (empty($accRows)) {
-    $accRows = [
-        [$mkBtn('account', 'Discount'), $mkBtn('account', 'Add_Balance')],
-        [$mkBtn('account', 'TransferBalance'), $mkBtn('account', 'MyTransactions')],
-        [$mkBtn('account', 'supporttickets')],
-        [$mkBtn('account', 'backuser')],
-    ];
-}
-$accRows[] = [
-    $mkBtn('user_nav', 'gen_random_uname', ['cond' => 'در فرم انتخاب نام کاربری سرویس.']),
-];
-$addScreen('account', 'کیف پول و حساب', 'user', 'همان چیدمان کیبورد کیف پول/حساب کاربر.', $accRows, [
-    'note' => 'دکمه‌های شرطی فقط در شرایط مشخص‌شده نمایش داده می‌شوند. چیدمان این صفحه در «چیدمان حساب» تنظیم می‌شود.',
-    'link' => 'account_layout.php',
-    'link_label' => 'ویرایش چیدمان حساب',
 ]);
 
 $txRows = [
@@ -760,20 +865,34 @@ $addScreen('transactions', 'تراکنش‌های من', 'clock', 'فیلتر ب
     'note' => 'این ردیف‌ها فقط وقتی کاربر تراکنش ثبت‌شده دارد نمایش داده می‌شوند.',
 ]);
 
-$walletRows = [
-    [
-        $mkBtn('account', 'rw_pick', ['label' => '۵۰,۰۰۰ تومان', 'family_label' => 'همه دکمه‌های مبلغ شارژ کیف پول']),
-        $mkBtn('account', 'rw_pick', ['label' => '۱۰۰,۰۰۰ تومان', 'family_label' => 'همه دکمه‌های مبلغ شارژ کیف پول']),
-    ],
-    [
-        $mkBtn('account', 'rw_pick', ['label' => '۲۰۰,۰۰۰ تومان', 'family_label' => 'همه دکمه‌های مبلغ شارژ کیف پول']),
-    ],
-    [$mkBtn('account', 'rw_custom')],
-    [$mkBtn('account', 'transferbal_confirm'), $mkBtn('account', 'transferbal_cancel')],
-    [$mkBtn('account', 'backinfo', ['cond' => 'در دکمه‌های بازگشت به اطلاعات سرویس و بازگشت از شارژ کیف پول.'])],
-];
+$rwAmounts = function_exists('rx_randomWalletAmounts') ? rx_randomWalletAmounts() : [];
+if (!is_array($rwAmounts) || empty($rwAmounts)) {
+    $rwAmounts = [50000, 100000, 200000];
+}
+$rwAmounts = array_values($rwAmounts);
+$walletRows = [];
+for ($rwI = 0; $rwI < count($rwAmounts); $rwI += 2) {
+    $rwRow = [
+        $mkBtn('account', 'rw_pick_' . (int) $rwAmounts[$rwI], [
+            'label' => number_format((int) $rwAmounts[$rwI]) . ' تومان',
+            'fallback_key' => 'rw_pick',
+            'scopes' => ['button'],
+        ]),
+    ];
+    if (isset($rwAmounts[$rwI + 1])) {
+        $rwRow[] = $mkBtn('account', 'rw_pick_' . (int) $rwAmounts[$rwI + 1], [
+            'label' => number_format((int) $rwAmounts[$rwI + 1]) . ' تومان',
+            'fallback_key' => 'rw_pick',
+            'scopes' => ['button'],
+        ]);
+    }
+    $walletRows[] = $rwRow;
+}
+$walletRows[] = [$mkBtn('account', 'rw_custom')];
+$walletRows[] = [$mkBtn('account', 'transferbal_confirm'), $mkBtn('account', 'transferbal_cancel')];
+$walletRows[] = [$mkBtn('account', 'backinfo', ['cond' => 'در دکمه‌های بازگشت به اطلاعات سرویس و بازگشت از شارژ کیف پول.'])];
 $addScreen('wallet', 'انتقال و شارژ کیف پول', 'wallet', 'مبالغ پیشنهادی شارژ، رقم دلخواه و تأیید انتقال موجودی.', $walletRows, [
-    'note' => 'دکمه‌های مبلغ، یک خانواده هستند؛ تغییر رنگ هر کدام روی همه مبالغ پیشنهادی اعمال می‌شود.',
+    'note' => 'هر دکمه مبلغ شارژ رنگ مستقل خود را دارد و تغییر رنگ هر کدام روی بقیه مبالغ اثری ندارد.',
 ]);
 
 $checkoutRows = [
@@ -787,6 +906,10 @@ $addScreen('checkout', 'چک‌اوت خرید', 'cart', 'انتخاب روش پ
 ]);
 
 $confirmRows = [
+    [$mkIndividual(['_rxcolor' => 'navigation:confirm_back'], '↩️ بازگشت از تایید خرید', 'user_nav', 'confirm_back')],
+    [$mkIndividual(['_rxcolor' => 'navigation:back'], '◀️ بازگشت عمومی', 'user_nav', 'nav_back'), $mkIndividual(['_rxcolor' => 'navigation:help_back'], '📚 بازگشت به آموزش‌ها', 'user_nav', 'nav_back')],
+    [$mkIndividual(['_rxcolor' => 'navigation:account_back'], '↩️ بازگشت به حساب کاربری', 'account', 'backinfo')],
+    [$mkBtn('user_nav', 'gen_random_uname')],
     [$mkBtn('user_nav', 'confirm_pay')],
     [$mkBtn('user_nav', 'confirm_discount')],
     [$mkBtn('payment', 'chargehasdiscount'), $mkBtn('payment', 'chargenodiscount')],
@@ -856,82 +979,77 @@ $addScreen('receipt', 'رسید و پرداخت کارت', 'receipt', 'ارسا�
 
 $cryptoRows = [
     [
-        $mkBtn('invoice_copy_buttons', 'currency_pick', ['label' => '🟥 ترون (TRX)', 'family_label' => 'همه دکمه‌های انتخاب ارز']),
-        $mkBtn('invoice_copy_buttons', 'currency_pick', ['label' => '🟦 تون (TON)', 'family_label' => 'همه دکمه‌های انتخاب ارز']),
+        $mkBtn('invoice_copy_buttons', 'currency_pick_TRX', ['label' => '🟥 ترون (TRX)', 'fallback_key' => 'currency_pick', 'scopes' => ['button']]),
+        $mkBtn('invoice_copy_buttons', 'currency_pick_TON', ['label' => '🟦 تون (TON)', 'fallback_key' => 'currency_pick', 'scopes' => ['button']]),
     ],
     [
-        $mkBtn('invoice_copy_buttons', 'currency_pick', ['label' => '🟢 تتر روی ترون', 'family_label' => 'همه دکمه‌های انتخاب ارز']),
-        $mkBtn('invoice_copy_buttons', 'currency_pick', ['label' => '🟢 تتر روی تون', 'family_label' => 'همه دکمه‌های انتخاب ارز']),
+        $mkBtn('invoice_copy_buttons', 'currency_pick_USDT_TRC20', ['label' => '🟢 تتر روی ترون', 'fallback_key' => 'currency_pick', 'scopes' => ['button']]),
+        $mkBtn('invoice_copy_buttons', 'currency_pick_USDT_TON', ['label' => '🟢 تتر روی تون', 'fallback_key' => 'currency_pick', 'scopes' => ['button']]),
     ],
-    [$mkBtn('invoice_copy_buttons', 'copy_wallet'), $mkBtn('invoice_copy_buttons', 'copy_amount')],
-    [$mkBtn('invoice_copy_buttons', 'copy_memo')],
-    [$mkBtn('invoice_copy_buttons', 'paid_submit')],
-    [$mkBtn('invoice_copy_buttons', 'invoice_back')],
+    [$catalogSamples['crypto'][0], $catalogSamples['crypto'][1]],
+    [$catalogSamples['crypto'][2]],
+    [$catalogSamples['crypto'][3]],
+    [$catalogSamples['crypto'][4]],
     [$mkBtn('invoice_copy_buttons', 'cancel_hash_input')],
     [$mkBtn('payment', 'colselist')],
 ];
 $addScreen('crypto', 'پرداخت کریپتو', 'coins', 'انتخاب ارز، کپی آدرس/مبلغ/ممو و ارسال هش پرداخت.', $cryptoRows, [
-    'note' => 'دکمه‌های انتخاب ارز یک خانواده‌اند. دکمه «کپی ممو» فقط در شبکه تون نمایش داده می‌شود.',
+    'note' => 'هر دکمه انتخاب ارز رنگ مستقل خود را دارد و تغییر رنگ هر کدام روی بقیه ارزها اثری ندارد. دکمه «کپی ممو» فقط در شبکه تون نمایش داده می‌شود.',
 ]);
 
 $manualRows = [
-    [
-        $mkBtn('user_dynamic_lists', 'crypto_manual_actions', ['label' => '📨 ارسال مجدد به ادمین', 'family_label' => 'همه اقدامات بررسی دستی هش']),
-        $mkBtn('user_dynamic_lists', 'crypto_manual_actions', ['label' => '👁 مشاهده وضعیت', 'family_label' => 'همه اقدامات بررسی دستی هش']),
-    ],
+    [$mkIndividual(['_rxcolor' => 'navigation:crypto_back'], '↩️ بازگشت به فهرست هش‌ها', 'recheckcrypto_buttons', 'recheckcrypto')],
+    [$catalogSamples['crypto'][5], $catalogSamples['crypto'][6]],
     [$mkBtn('recheckcrypto_buttons', 'rcc_skip_photo'), $mkBtn('recheckcrypto_buttons', 'rcc_cancel')],
 ];
 $addScreen('crypto_manual', 'بررسی دستی هش', 'rotate-cw', 'دکمه‌های بررسی مجدد هش و اقدامات دستی.', $manualRows, [
-    'note' => 'اقدامات بررسی دستی یک خانواده هستند و رنگ آن‌ها از تنظیم خانواده خوانده می‌شود. دکمه ورود به این بخش در صفحه «کیف پول و حساب» قابل ویرایش است.',
+    'note' => 'از هر اقدام یک نمونه نمایش داده شده است؛ رنگ همان اقدام برای همه تراکنش‌ها اعمال می‌شود.',
 ]);
 
-$subRows = [
-    [$mkBtn('user_subscription', 'username')],
-    [$mkBtn('user_subscription', 'Status')],
-    [$mkBtn('user_subscription', 'expirationDate')],
-    [$mkBtn('user_subscription', 'daysleft')],
-    [$mkBtn('user_subscription', 'LastTraffic')],
-    [$mkBtn('user_subscription', 'usedtraffic')],
-    [$mkBtn('user_subscription', 'RemainingVolume')],
-    [$mkBtn('user_subscription', 'exntedagei'), $mkBtn('user_subscription', 'extravolunme')],
+$subRows = [];
+foreach (['username', 'Status', 'expirationDate', 'daysleft', 'LastTraffic', 'usedtraffic', 'RemainingVolume'] as $field) {
+    $fieldLabel = $MENUS['user_subscription']['buttons'][$field];
+    $subRows[] = [
+        $mkIndividual(['_rxcolor' => 'subscription_field:' . $field . ':label'], 'عنوان · ' . $fieldLabel, 'user_subscription', $field),
+        $mkIndividual(['_rxcolor' => 'subscription_field:' . $field . ':value'], 'مقدار · ' . $fieldLabel, 'user_subscription', $field),
+    ];
+}
+$subRows = array_merge($subRows, [
+    [$mkIndividual(['_rxcolor' => 'subscription_list:previous'], '◀️ صفحه قبلی سرویس‌ها', 'user_dynamic_lists', 'user_services_list'), $mkIndividual(['_rxcolor' => 'subscription_list:next'], '▶️ صفحه بعدی سرویس‌ها', 'user_dynamic_lists', 'user_services_list')],
+    [$mkIndividual(['_rxcolor' => 'subscription_list:search'], '🔎 جستجوی سرویس', 'user_dynamic_lists', 'user_services_list')],
+    [$mkIndividual(['_rxcolor' => 'subscription_list:renewal_previous'], '◀️ صفحه قبلی لیست تمدید', 'user_dynamic_lists', 'user_services_list'), $mkIndividual(['_rxcolor' => 'subscription_list:renewal_next'], '▶️ صفحه بعدی لیست تمدید', 'user_dynamic_lists', 'user_services_list')],
+    [$mkIndividual(['_rxcolor' => 'subscription_action:extend'], '🔄 تمدید اشتراک', 'user_subscription', 'exntedagei'), $mkIndividual(['_rxcolor' => 'subscription_action:volume'], '➕ خرید حجم اشتراک', 'user_subscription', 'extravolunme')],
     [$mkBtn('user_subscription', 'buy_service')],
     [$mkBtn('user_subscription', 'helpbtn'), $mkBtn('user_subscription', 'notusernameme')],
-];
+]);
 $addScreen('subscription', 'اشتراک و سرویس‌های من', 'cart-check', 'جزئیات سرویس و دکمه‌های سرویس‌های من.', $subRows, [
-    'note' => 'دکمه‌های «تمدید» و «خرید حجم» در لیست سرویس‌ها از خانواده «اقدامات مدیریت سرویس» رنگ می‌گیرند که در صفحه «لیست‌های داینامیک» قابل تنظیم است. مقادیر داخل دکمه‌ها برای هر کاربر متفاوت است.',
+    'note' => 'عنوان و مقدار هر فیلد، تمدید و خرید حجم رنگ مستقل دارند. مقادیر برای هر کاربر متفاوت است؛ رنگ انتخابی برای همان خانه اعمال می‌شود.',
 ]);
 
 $ticketRows = [
+    [$mkIndividual(['_rxcolor' => 'navigation:ticket_back'], '↩️ بازگشت به تیکت‌ها', 'account', 'supporttickets')],
     [$mkBtn('user_subscription', 'ticketnew')],
     [$mkBtn('account', 'supporttickets')],
     [$mkBtn('user_nav', 'tk_media_yes'), $mkBtn('user_nav', 'tk_media_no')],
     [$mkBtn('user_nav', 'tk_cancel')],
-    [$mkBtn('user_dynamic_lists', 'ticket_list', ['label' => '🎫 لیست تیکت‌ها', 'family_label' => 'همه دکمه‌های لیست تیکت'])],
 ];
+foreach (range(1, 5) as $mediaCount) {
+    $ticketRows[] = [$mkIndividual(['callback_data' => 'tk_cnt_' . $mediaCount], 'تعداد رسانه: ' . $mediaCount, 'user_dynamic_lists', 'ticket_list')];
+}
 $addScreen('tickets', 'تیکت و پشتیبانی', 'headset', 'دکمه‌های تیکت جدید، لیست تیکت‌ها و انتخاب رسانه.', $ticketRows, [
     'note' => 'دکمه‌های بله/خیر رسانه فقط در مرحله ارسال تیکت نمایش داده می‌شوند.',
 ]);
 
 $listRows = [
-    [$mkBtn('user_dynamic_lists', 'product_buy')],
-    [$mkBtn('user_dynamic_lists', 'category_buy')],
-    [$mkBtn('user_dynamic_lists', 'time_buy'), $mkBtn('user_dynamic_lists', 'volume_buy')],
-    [$mkBtn('user_dynamic_lists', 'custom_volume')],
+    [$mkIndividual(['_rxcolor' => 'product_header:name'], 'سرتیتر نام محصول', 'user_dynamic_lists', 'product_buy'), $mkIndividual(['_rxcolor' => 'product_header:duration'], 'سرتیتر زمان محصول', 'user_dynamic_lists', 'product_buy'), $mkIndividual(['_rxcolor' => 'product_header:price'], 'سرتیتر قیمت محصول', 'user_dynamic_lists', 'product_buy')],
+    [$mkIndividual(['callback_data' => 'customsellvolume'], 'حجم دلخواه خرید', 'user_dynamic_lists', 'custom_volume'), $mkIndividual(['callback_data' => 'customsellvolumeom'], 'حجم دلخواه خرید دیگران', 'user_dynamic_lists', 'custom_volume')],
     [$mkBtn('user_dynamic_lists', 'product_back'), $mkBtn('user_dynamic_lists', 'category_back')],
     [$mkBtn('user_dynamic_lists', 'panel_back')],
-    [$mkBtn('user_dynamic_lists', 'panel_buy'), $mkBtn('user_dynamic_lists', 'paneluser_list')],
-    [$mkBtn('user_dynamic_lists', 'helpsection')],
-    [$mkBtn('user_dynamic_lists', 'user_services_list')],
-    [$mkBtn('user_dynamic_lists', 'service_actions')],
-    [$mkBtn('user_dynamic_lists', 'extra_purchase')],
-    [$mkBtn('user_dynamic_lists', 'crypto_actions')],
-    [$mkBtn('user_dynamic_lists', 'user_confirms')],
-    [$mkBtn('user_dynamic_lists', 'copy_card_num'), $mkBtn('user_dynamic_lists', 'copy_card_amount')],
-    [$mkBtn('user_dynamic_lists', 'copy_text_btn'), $mkBtn('user_dynamic_lists', 'auto_inline_btn')],
-    [$mkBtn('user_dynamic_lists', 'nmstock_actions')],
+    [$mkIndividual(['_rxck' => 'card_num'], 'کپی کارت اول', 'user_dynamic_lists', 'copy_card_num'), $mkIndividual(['_rxck' => 'card_num_2'], 'کپی کارت دوم', 'user_dynamic_lists', 'copy_text_btn')],
+    [$mkIndividual(['_rxck' => 'card_amount'], 'کپی مبلغ کارت', 'user_dynamic_lists', 'copy_card_amount')],
 ];
-$addScreen('lists', 'لیست‌های داینامیک', 'server-stack', 'رنگ خانواده دکمه‌های لیست‌هایی که به‌صورت پویا ساخته می‌شوند.', $listRows, [
-    'note' => 'هر کارت این صفحه یک خانواده است و رنگ همه دکمه‌های آن لیست را با هم تنظیم می‌کند؛ برای همین به‌جای آیتم‌های تکی نمایش داده شده است.',
+$addScreen('lists', 'لیست‌های داینامیک', 'server-stack', 'رنگ دکمه‌های محصولات و نمونه‌های پیش‌فرض هر بخش.', $listRows, [
+    'note' => 'محصولات خودکار نمایش داده می‌شوند. نمونه‌های هر بخش، رنگ پیش‌فرض همان نوع دکمه را برای آیتم‌های فعلی و جدید تعیین می‌کنند.',
 ]);
 
 $cronRows = [
@@ -945,18 +1063,60 @@ $addScreen('cron', 'اعلان‌های کرون', 'bell', 'دکمه‌های پ
     'note' => 'این رنگ‌ها در پیام‌های اعلان حجم/زمان، پیام‌های همگانی و یادآوری‌ها استفاده می‌شوند.',
 ]);
 
-$tonpayRows = [
-    [$mkBtn('tonpay_payment', 'copy_card'), $mkBtn('tonpay_payment', 'copy_amount')],
-    [$mkBtn('tonpay_payment', 'change_card')],
-    [$mkBtn('tonpay_payment', 'check_status')],
-    [$mkBtn('tonpay_payment', 'send_receipt')],
-    [$mkBtn('tonpay_payment', 'cancel_transaction')],
-    [$mkBtn('tonpay_payment', 'back_main')],
-    [$mkBtn('tonpay_payment', 'cancel_confirm_approve')],
-    [$mkBtn('tonpay_payment', 'cancel_confirm_back')],
+foreach (['tonpay' => 'تون‌پی', 'atlaspay' => 'اطلس‌پی'] as $gateway => $gatewayLabel) {
+    $gatewayRows = [];
+    foreach (tonpayButtonStyleLabels() as $key => $label) {
+        if ($gateway === 'atlaspay' && $key === 'change_card') { continue; }
+        $gatewayRows[] = [$mkIndividual(['_rxcolor' => 'payment:' . $gateway . ':' . $key], $label, 'tonpay_payment', $key)];
+    }
+    $addScreen($gateway, 'پرداخت ' . $gatewayLabel, 'credit-card', 'رنگ مستقل دکمه‌های پرداخت ' . $gatewayLabel, $gatewayRows);
+}
+
+$gatewayInternalLabels = [
+    'rialit' => 'ریالیت', 'zarinpal' => 'زرین‌پال', 'plisio' => 'Plisio', 'nowpayment' => 'NowPayments',
+    'iranpay2' => 'ترونادو', 'blupal' => 'بلوپال', 'cubepay' => 'کیوب‌پی',
+    'variza' => 'واریزا', 'abangateway' => 'آبان گیت‌وی',
+    'tonpay' => 'تون‌پی — لینک و پیگیری', 'atlaspay' => 'اطلس‌پی — لینک و پیگیری',
+    'startelegrams' => 'ستاره تلگرام', 'pending' => 'فهرست تراکنش‌های در انتظار',
 ];
-$addScreen('tonpay', 'پرداخت کارت‌به‌کارت', 'credit-card', 'دکمه‌های پرداخت کارت‌به‌کارت تون‌پی و اطلس‌پی.', $tonpayRows, [
-    'note' => 'این تنظیم‌ها روی صفحه پرداخت کارت‌به‌کارت تون‌پی و اطلس‌پی (درگاه‌های سفارشی) اعمال می‌شوند.',
+$gatewayCommonRoles = [
+    'pay_link' => '💳 پرداخت', 'pending_cancel' => '♻️ لغو و دریافت فاکتور جدید',
+    'retry' => '🔄 ساخت پرداخت جدید', 'back_main' => '🔙 بازگشت به منوی اصلی',
+];
+$gatewayInternalSamples = [];
+foreach ($gatewayInternalLabels as $gateway => $gatewayLabel) {
+    $roles = $gatewayCommonRoles;
+    if ($gateway === 'rialit') {
+        $roles = [
+            'pay_link' => '💳 پرداخت', 'continue_link' => '▶️ ادامه پرداخت', 'check_status' => '🔄 بررسی وضعیت',
+            'cancel_transaction' => '🚫 انصراف و پرداخت جدید', 'cancel_confirm_approve' => '✅ تایید انصراف',
+            'cancel_confirm_back' => '🔙 بازگشت از تایید انصراف', 'retry' => '💳 انتخاب روش پرداخت جدید',
+            'pending_list' => '⏳ تراکنش‌های در انتظار', 'list_view' => '💚 پیگیری ریالیت در فهرست تراکنش‌ها',
+        ];
+    } elseif (in_array($gateway, ['tonpay', 'atlaspay'], true)) {
+        unset($roles['back_main']);
+        $roles += [
+            'view_details' => '🔍 مشاهده جزئیات اعلان پرداخت', 'support' => '📞 پشتیبانی پرداخت',
+            'pending_list' => '⏳ تراکنش‌های در انتظار', 'list_view' => '🔍 جزئیات تراکنش در فهرست',
+            'list_cancel' => '❌ لغو تراکنش در فهرست',
+        ];
+        if ($gateway === 'tonpay') $roles['receipt_back'] = '🔙 بازگشت از ارسال رسید';
+        else $roles['list_receipt'] = '📤 ارسال رسید از فهرست تراکنش‌ها';
+    } elseif ($gateway === 'startelegrams') {
+        $roles = ['pay_link' => '⭐ پرداخت با ستاره تلگرام'];
+    } elseif ($gateway === 'pending') {
+        $roles = ['back_account' => '🔙 بازگشت به حساب از فهرست تراکنش‌ها'];
+    }
+    $gatewayInternalSamples[$gateway] = [];
+    foreach ($roles as $role => $label) {
+        $gatewayInternalSamples[$gateway][] = $mkIndividual(
+            ['_rxcolor' => 'payment:' . $gateway . ':' . $role], $label,
+            'pay_receipt', rx_payment_color_fallback($role)
+        ) + ['sample' => true];
+    }
+}
+$addScreen('gateway_internals', 'دکمه‌های داخلی درگاه‌ها', 'credit-card', 'رنگ مستقل دکمه‌های پرداخت، پیگیری و لغو برای هر درگاه.', [], [
+    'note' => 'با قبلی و بعدی درگاه را انتخاب کنید. از هر دکمه یک نمونه نمایش داده می‌شود و رنگ آن برای همان دکمه در همه فاکتورها اعمال می‌شود.',
 ]);
 
 $rxStylesForJs = [];
@@ -1057,6 +1217,27 @@ $firstScreenId = array_key_first($SCREENS);
         .skb-screen-desc { margin:4px 0 0; font-size:12.5px; color:var(--text-muted); line-height:1.8; }
         .skb-screen-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
         .skb-note { margin:12px 0; padding:10px 13px; border-radius:var(--radius-md); border:1px dashed var(--border-soft); background:var(--surface-2); color:var(--text-muted); font-size:11.5px; line-height:1.9; }
+        .skb-catalog-sections { display:grid; gap:18px; }
+        [data-list-panel][hidden], .skb-catalog-sections[hidden], .skb-catalog-pagination[hidden] { display:none; }
+        .skb-list-position { color:var(--text-muted); font-size:12px; text-align:center; }
+        .skb-catalog { padding:16px; min-width:0; border:1px solid var(--border-soft); border-radius:var(--radius-lg); background:var(--surface-2); scroll-margin-top:calc(var(--skb-top-h) + 18px); }
+        .skb-catalog-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
+        .skb-catalog-head h2 { margin:0; font-size:14px; font-weight:800; color:var(--text-main); }
+        .skb-catalog-pagination { display:flex; align-items:center; gap:8px; }
+        .skb-catalog-pagination .btn { min-height:38px; }
+        .skb-catalog-pagination [data-catalog-page] { min-width:72px; text-align:center; color:var(--text-muted); font-size:11.5px; font-variant-numeric:tabular-nums; }
+        .skb-catalog .btn:disabled { opacity:.4; cursor:default; }
+        .skb-catalog [data-catalog-status] { margin:0 0 12px; font-size:11.5px; line-height:1.9; color:var(--text-muted); }
+        .skb-catalog [data-catalog-buttons]:empty, .skb-catalog [data-catalog-retry][hidden] { display:none; }
+        .skb-catalog [data-catalog-retry] { margin-bottom:12px; }
+        .skb-screen { scroll-margin-top:calc(var(--skb-top-h) + 18px); }
+        @media (max-width:640px) {
+            .skb-catalog { padding:12px; }
+            .skb-catalog-head { align-items:flex-start; }
+            .skb-catalog-pagination { gap:5px; }
+            .skb-catalog-pagination [data-catalog-page] { min-width:55px; }
+            .skb-screen-actions .btn { min-height:40px; }
+        }
         .skb-kb { direction:ltr; background:var(--surface-1); border:1px solid var(--border-soft); border-radius:var(--radius-2xl); padding:14px; box-shadow:var(--shadow-1); }
         .skb-row { display:flex; gap:8px; margin-bottom:8px; direction:ltr; }
         .skb-row:last-child { margin-bottom:0; }
@@ -1140,6 +1321,9 @@ $firstScreenId = array_key_first($SCREENS);
 echo json_encode([
     'styles'          => $rxStylesForJs,
     'factoryDefaults' => $rxFactoryForJs,
+    'catalogSamples'  => $catalogSamples,
+    'gatewaySamples'  => $gatewayInternalSamples,
+    'gatewayLabels'   => $gatewayInternalLabels,
     'configColumns'   => $CONFIG_COLUMNS,
     'mainStyles'      => empty($keyboardMain) ? new stdClass() : $keyboardMain,
     'mainTokens'      => array_keys($MAIN_TOKEN_MAP),
@@ -1155,14 +1339,14 @@ echo json_encode([
     </div>
     <div class="skb-top-actions">
         <span class="skb-chip" id="skb-count" title="تعداد دکمه‌های قابل ویرایش در این صفحه">۰ دکمه</span>
-        <label class="skb-toggle" title="وقتی روشن باشد، رنگ‌های پیش‌فرض کارخانه‌ای و رنگ خودکار اعمال می‌شوند.">
+        <label class="skb-toggle" title="رنگ‌های پیش‌فرض و موروثی را فعال می‌کند. برای حذف رنگ دستی از «حذف رنگ این بخش» استفاده کنید.">
             <input type="checkbox" id="skb-use-defaults" <?php echo $useBuiltinDefaults ? 'checked' : ''; ?>>
             <span>پیش‌فرض‌ها</span>
         </label>
         <div class="skb-badge" id="skb-badge"><span class="dot"></span><span id="skb-badge-text">ذخیره خودکار</span></div>
-        <button type="button" class="btn btn-outline btn-sm" id="skb-reset-screen" title="پاک‌کردن رنگ‌های دستی همین صفحه">
+        <button type="button" class="btn btn-outline btn-sm" id="skb-reset-screen" title="حذف رنگ همه دکمه‌های بخش نمایش‌داده‌شده">
             <?php echo icon('rotate-left', 'svg-icon svg-sm'); ?>
-            <span>بازنشانی این صفحه</span>
+            <span>حذف رنگ این بخش</span>
         </button>
         <a class="btn btn-outline btn-sm" href="keyboard.php">
             <?php echo icon('keyboard', 'svg-icon svg-sm'); ?>
@@ -1224,6 +1408,18 @@ echo json_encode([
                         <p class="skb-screen-desc"><?php echo htmlspecialchars($screen['desc']); ?></p>
                     </div>
                     <div class="skb-screen-actions">
+                        <?php if ($sid === 'lists'): ?>
+                        <button type="button" class="btn btn-outline btn-sm" data-list-step="-1" disabled>بخش قبلی</button>
+                        <span class="skb-list-position" data-list-position aria-live="polite">دکمه‌های عمومی</span>
+                        <button type="button" class="btn btn-outline btn-sm" data-list-step="1">بخش بعدی</button>
+                        <?php elseif ($sid === 'gateway_internals'): ?>
+                        <button type="button" class="btn btn-outline btn-sm" data-gateway-step="-1" disabled>درگاه قبلی</button>
+                        <span class="skb-list-position" data-gateway-position aria-live="polite">ریالیت</span>
+                        <button type="button" class="btn btn-outline btn-sm" data-gateway-step="1">درگاه بعدی</button>
+                        <?php else: ?>
+                        <button type="button" class="btn btn-outline btn-sm" data-screen-step="-1" <?php echo $sid === array_key_first($SCREENS) ? 'disabled' : ''; ?>>بخش قبلی</button>
+                        <button type="button" class="btn btn-outline btn-sm" data-screen-step="1" <?php echo $sid === array_key_last($SCREENS) ? 'disabled' : ''; ?>>بخش بعدی</button>
+                        <?php endif; ?>
                         <?php if (!empty($screen['link'])): ?>
                         <a class="btn btn-outline btn-sm" href="<?php echo htmlspecialchars($screen['link']); ?>">
                             <?php echo icon('pen-to-square', 'svg-icon svg-sm'); ?>
@@ -1235,7 +1431,7 @@ echo json_encode([
                 <?php if (!empty($screen['note'])): ?>
                 <div class="skb-note"><?php echo htmlspecialchars($screen['note']); ?></div>
                 <?php endif; ?>
-                <div class="skb-kb<?php echo !empty($screen['table']) ? ' skb-kb--table' : ''; ?>" role="group" aria-label="<?php echo htmlspecialchars($screen['title']); ?>">
+                <div class="skb-kb<?php echo !empty($screen['table']) ? ' skb-kb--table' : ''; ?>" role="group" aria-label="<?php echo htmlspecialchars($screen['title']); ?>" <?php echo $sid === 'lists' ? 'data-list-panel="general" data-list-label="دکمه‌های عمومی"' : ''; ?> <?php echo $sid === 'gateway_internals' ? 'data-gateway-buttons' : ''; ?>>
                     <?php if (!empty($screen['table'])): ?><div class="skb-kb-scroll"><?php endif; ?>
                     <?php foreach ($screen['rows'] as $row): ?>
                     <div class="skb-row">
@@ -1252,9 +1448,13 @@ echo json_encode([
                             'data-kind' => $kind,
                             'data-menu' => (string) ($btn['menu'] ?? ''),
                             'data-key' => (string) ($btn['key'] ?? ''),
+                            'data-fallback-key' => (string) ($btn['fallback_key'] ?? ''),
+                            'data-fallback-menu' => (string) ($btn['fallback_menu'] ?? ''),
+                            'data-fallback-secondary' => (string) ($btn['fallback_secondary'] ?? ''),
                             'data-auto' => (string) ($btn['auto'] ?? ''),
                             'data-style' => (string) ($btn['style'] ?? 'default'),
                             'data-scopes' => implode(',', (array) ($btn['scopes'] ?? [])),
+                            'data-sample' => !empty($btn['sample']) ? '1' : '',
                         ];
                         if (!empty($btn['token'])) { $attrs['data-token'] = (string) $btn['token']; }
                         if (!empty($btn['item'])) { $attrs['data-item'] = (string) $btn['item']; }
@@ -1281,9 +1481,28 @@ echo json_encode([
                     <?php endforeach; ?>
                     <?php if (!empty($screen['table'])): ?></div><?php endif; ?>
                 </div>
+                <?php if ($sid === 'lists'): ?>
+                <div class="skb-catalog-sections" hidden>
+                    <?php foreach ($colorCatalogGroups as $catalogGroup => $catalogLabel): ?>
+                    <section class="skb-catalog" data-catalog="<?php echo htmlspecialchars($catalogGroup); ?>" data-list-panel="<?php echo htmlspecialchars($catalogGroup); ?>" data-list-label="<?php echo htmlspecialchars($catalogLabel); ?>" aria-labelledby="skb-catalog-title-<?php echo htmlspecialchars($catalogGroup); ?>" aria-busy="false" hidden>
+                        <div class="skb-catalog-head">
+                            <h2 id="skb-catalog-title-<?php echo htmlspecialchars($catalogGroup); ?>"><?php echo htmlspecialchars($catalogLabel); ?></h2>
+                            <nav class="skb-catalog-pagination" aria-label="صفحه‌بندی <?php echo htmlspecialchars($catalogLabel); ?>" <?php echo $catalogGroup !== 'products' ? 'hidden' : ''; ?>>
+                                <button type="button" class="btn btn-outline btn-sm" data-catalog-prev disabled>محصول قبلی</button>
+                                <span data-catalog-page aria-live="polite">صفحه ۱</span>
+                                <button type="button" class="btn btn-outline btn-sm" data-catalog-next disabled>محصول بعدی</button>
+                            </nav>
+                        </div>
+                        <p data-catalog-status role="status" aria-live="polite"></p>
+                        <button type="button" class="btn btn-outline btn-sm" data-catalog-retry hidden>تلاش دوباره</button>
+                        <div class="skb-kb" data-catalog-buttons></div>
+                    </section>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
                 <div class="skb-legend">
                     <span class="item"><span class="dot"></span> دکمه شرطی</span>
-                    <span class="item">برای ویرایش رنگ روی دکمه بزنید؛ دامنه اعمال در پنجره ویرایش انتخاب می‌شود.</span>
+                    <span class="item">برای ویرایش رنگ فقط همان دکمه روی آن بزنید.</span>
                 </div>
             </section>
             <?php endforeach; ?>
@@ -1325,9 +1544,10 @@ echo json_encode([
                     <div class="skb-scope-picker" id="skb-scopes"></div>
                 </div>
 
-                <p class="skb-modal-help">«بدون رنگ» رنگ دکمه را حذف می‌کند و جلوی رنگ خودکار را می‌گیرد. تغییر رنگ فقط روی دامنه انتخاب‌شده اثر دارد.</p>
+                <p class="skb-modal-help">«بدون رنگ» رنگ دکمه را حذف می‌کند و جلوی رنگ خودکار را می‌گیرد. تغییر رنگ فقط روی همین دکمه اثر دارد.</p>
             </div>
             <div class="kb-modal__foot">
+                <button type="button" class="btn btn-outline btn-sm" id="skb-reset-button">حذف رنگ همین دکمه</button>
                 <button type="button" class="btn btn-outline btn-sm" id="skb-cancel">
                     <?php echo icon('xmark', 'svg-icon svg-sm'); ?>
                     <span>انصراف</span>
@@ -1370,6 +1590,7 @@ echo json_encode([
     };
     var SOURCE_TEXT = {
         exact: 'رنگ دستی همین دکمه',
+        button: 'رنگ اختصاصی همین دکمه',
         family: 'تنظیم خانواده همین دکمه',
         factory: 'رنگ پیش‌فرض کارخانه‌ای',
         auto: 'رنگ خودکار متن دکمه',
@@ -1407,17 +1628,28 @@ echo json_encode([
         return typeof v === 'string' && COLORS.indexOf(v) !== -1;
     }
 
-    function familyStyle(menu, key, auto) {
+    function familyStyle(menu, key, auto, fallbackKey, fallbackMenu, fallbackSecondary) {
         var menuStyles = styles[menu];
+        if (fallbackMenu && fallbackMenu !== menu) {
+            if (menuStyles && validStyle(menuStyles[key])) return menuStyles[key];
+            if (!useDefaults) return 'none';
+            return familyStyle(fallbackMenu, fallbackKey, auto, fallbackSecondary);
+        }
+        var candidates = [key];
+        if (useDefaults && fallbackKey && fallbackKey !== key) candidates.push(fallbackKey);
         if (menuStyles && !Array.isArray(menuStyles)) {
-            var saved = menuStyles[key];
-            if (validStyle(saved)) return saved;
+            for (var i = 0; i < candidates.length; i++) {
+                var saved = menuStyles[candidates[i]];
+                if (validStyle(saved)) return saved;
+            }
         }
         if (!useDefaults) return 'default';
         var factory = factoryDefaults[menu];
         if (factory && !Array.isArray(factory)) {
-            var fv = factory[key];
-            if (validStyle(fv)) return fv;
+            for (var j = 0; j < candidates.length; j++) {
+                var fv = factory[candidates[j]];
+                if (validStyle(fv)) return fv;
+            }
         }
         return validStyle(auto) ? auto : 'default';
     }
@@ -1433,7 +1665,7 @@ echo json_encode([
             var exact = styles.config_items[itemKey];
             if (validStyle(exact)) return exact;
         }
-        return familyStyle(el.dataset.menu, el.dataset.key, el.dataset.auto);
+        return familyStyle(el.dataset.menu, el.dataset.key, el.dataset.auto, el.dataset.fallbackKey || '', el.dataset.fallbackMenu || '', el.dataset.fallbackSecondary || '');
     }
 
     function sourceFor(el) {
@@ -1441,10 +1673,24 @@ echo json_encode([
         if (kind === 'main' && validStyle(mainStyles[el.dataset.token || ''])) return 'exact';
         if (kind === 'config_item' && validStyle(styles.config_items[(el.dataset.item || '') + ':' + (el.dataset.role || '')])) return 'exact';
         var menuStyles = styles[el.dataset.menu];
-        if (menuStyles && !Array.isArray(menuStyles) && validStyle(menuStyles[el.dataset.key])) return 'family';
+        var key = el.dataset.key || '';
+        var fallbackKey = el.dataset.fallbackKey || '';
+        var fallbackMenu = el.dataset.fallbackMenu || '';
+        if (kind === 'individual') {
+            if (menuStyles && validStyle(menuStyles[key])) return 'button';
+            if (useDefaults && fallbackMenu && styles[fallbackMenu] && validStyle(styles[fallbackMenu][fallbackKey])) return 'family';
+            return useDefaults ? 'factory' : 'default';
+        }
+        if (menuStyles && !Array.isArray(menuStyles)) {
+            if (validStyle(menuStyles[key])) return 'button';
+            if (useDefaults && fallbackKey && fallbackKey !== key && validStyle(menuStyles[fallbackKey])) return 'family';
+        }
         if (useDefaults) {
             var factory = factoryDefaults[el.dataset.menu];
-            if (factory && !Array.isArray(factory) && validStyle(factory[el.dataset.key])) return 'factory';
+            if (factory && !Array.isArray(factory)) {
+                if (validStyle(factory[key])) return 'factory';
+                if (fallbackKey && fallbackKey !== key && validStyle(factory[fallbackKey])) return 'factory';
+            }
             if (validStyle(el.dataset.auto)) return 'auto';
         }
         return 'default';
@@ -1494,6 +1740,12 @@ echo json_encode([
                     title: kind === 'config_item' ? 'این دکمه (همین کانفیگ)' : 'این دکمه',
                     hint: kind === 'main' ? 'فقط همین دکمه در منوی اصلی' : 'فقط همین کانفیگ، بر اساس محتوای خود کانفیگ'
                 });
+            } else if (scope === 'button') {
+                options.push({
+                    id: 'button',
+                    title: kind === 'config_header' ? 'این سرستون' : 'این دکمه',
+                    hint: kind === 'config_header' ? 'فقط همین سرستون' : 'فقط همین دکمه'
+                });
             } else if (scope === 'family') {
                 var title = 'همه دکمه‌های مشابه';
                 var hint = el.dataset.familyLabel || 'کل خانواده این نقش';
@@ -1526,6 +1778,7 @@ echo json_encode([
         var options = scopeOptions(el);
         var defaultScope = 'family';
         if (options.some(function(o) { return o.id === 'exact'; })) defaultScope = 'exact';
+        else if (options.some(function(o) { return o.id === 'button'; })) defaultScope = 'button';
         else if (options.some(function(o) { return o.id === 'family'; })) defaultScope = 'family';
         else if (options.length) defaultScope = options[0].id;
 
@@ -1546,6 +1799,9 @@ echo json_encode([
         });
 
         currentEl.textContent = 'رنگ فعلی: ' + (SOURCE_TEXT[sourceFor(el)] || SOURCE_TEXT['default']) + '.';
+        modalEl.querySelector('.skb-modal-help').textContent = el.dataset.sample === '1'
+            ? 'رنگ این نمونه برای همین نوع دکمه در همه آیتم‌های فعلی و جدید اعمال می‌شود. رنگ دکمه‌های دیگر مستقل است.'
+            : '«بدون رنگ» رنگ دکمه را حذف می‌کند و جلوی رنگ خودکار را می‌گیرد. تغییر رنگ فقط روی همین دکمه اثر دارد.';
 
         modalEl.classList.add('open');
         document.body.classList.add('skb-lock');
@@ -1571,16 +1827,7 @@ echo json_encode([
         var kind = el.dataset.kind;
         var item = el.dataset.item || '';
 
-        var column = kind === 'config_header' ? (data.configColumns || {})[el.dataset.key] : null;
-        if (column) {
-            setFamily('config_list', el.dataset.key, color);
-            setFamily('config_list', column.key, color);
-            Object.keys(styles.config_items).forEach(function(key) {
-                if (!/^[a-f0-9]{16}:(download|name|protocol)$/.test(key)) return;
-                var parts = key.split(':');
-                if (parts[1] === column.role) setExact(parts[0], parts[1], 'default');
-            });
-        } else if (scope === 'family') {
+        if (scope === 'button' || scope === 'family') {
             setFamily(el.dataset.menu, el.dataset.key, color);
         } else if (scope === 'exact') {
             if (kind === 'main') setMain(el.dataset.token || '', color);
@@ -1689,9 +1936,43 @@ echo json_encode([
         toastTimer = setTimeout(function() { toastEl.classList.remove('show'); }, 1900);
     }
 
+    var listSectionIndex = 0;
+    var gatewaySectionIndex = 0;
+
+    function activateGatewaySection(index) {
+        var screen = document.getElementById('skb-screen-gateway_internals');
+        var samples = data.gatewaySamples || {};
+        var gateways = Object.keys(samples);
+        if (!screen || !gateways.length) return;
+        gatewaySectionIndex = Math.max(0, Math.min(index, gateways.length - 1));
+        var gateway = gateways[gatewaySectionIndex];
+        renderIndividualButtons(screen.querySelector('[data-gateway-buttons]'), samples[gateway], false);
+        screen.querySelector('[data-gateway-position]').textContent = (data.gatewayLabels || {})[gateway] + ' · ' + (gatewaySectionIndex + 1).toLocaleString('fa-IR') + ' از ' + gateways.length.toLocaleString('fa-IR');
+        screen.querySelector('[data-gateway-step="-1"]').disabled = gatewaySectionIndex === 0;
+        screen.querySelector('[data-gateway-step="1"]').disabled = gatewaySectionIndex === gateways.length - 1;
+    }
+
+    function activateListSection(index) {
+        var screen = document.getElementById('skb-screen-lists');
+        if (!screen) return;
+        var panels = Array.from(screen.querySelectorAll('[data-list-panel]'));
+        if (!panels.length) return;
+        listSectionIndex = Math.max(0, Math.min(index, panels.length - 1));
+        panels.forEach(function(panel, panelIndex) { panel.hidden = panelIndex !== listSectionIndex; });
+        screen.querySelector('.skb-catalog-sections').hidden = listSectionIndex === 0;
+        screen.querySelector('[data-list-step="-1"]').disabled = listSectionIndex === 0;
+        screen.querySelector('[data-list-step="1"]').disabled = listSectionIndex === panels.length - 1;
+        var panel = panels[listSectionIndex];
+        screen.querySelector('[data-list-position]').textContent = panel.dataset.listLabel + ' · ' + (listSectionIndex + 1).toLocaleString('fa-IR') + ' از ' + panels.length.toLocaleString('fa-IR');
+        if (panel.hasAttribute('data-catalog') && panel.dataset.loaded !== '1') loadColorCatalog(panel, 0);
+        updateCount();
+    }
+
     function updateCount() {
         var screen = document.querySelector('.skb-screen.active');
-        var count = screen ? screen.querySelectorAll('.skb-key[data-kind]').length : 0;
+        var count = screen ? Array.from(screen.querySelectorAll('.skb-key[data-kind]')).filter(function(button) {
+            return !button.closest('[data-list-panel][hidden]');
+        }).length : 0;
         countEl.textContent = count + ' دکمه';
     }
 
@@ -1763,42 +2044,121 @@ echo json_encode([
         });
         closeSectionMenu(false);
         updateCount();
+        if (id === 'lists') activateListSection(listSectionIndex);
+        if (id === 'gateway_internals') activateGatewaySection(gatewaySectionIndex);
         try { localStorage.setItem('faoxima_skb_screen', id); } catch (e) {}
+    }
+
+    function renderIndividualButtons(container, buttons, append) {
+        if (!append) container.replaceChildren();
+        buttons.forEach(function(button) {
+            var row = document.createElement('div');
+            row.className = 'skb-row';
+            var el = document.createElement('button');
+            el.type = 'button';
+            el.className = 'skb-key';
+            ['kind', 'menu', 'key', 'auto', 'item', 'role'].forEach(function(name) {
+                if (button[name] !== undefined) el.dataset[name] = button[name];
+            });
+            el.dataset.fallbackKey = button.fallback_key || '';
+            el.dataset.fallbackMenu = button.fallback_menu || '';
+            el.dataset.fallbackSecondary = button.fallback_secondary || '';
+            el.dataset.scopes = (button.scopes || ['button']).join(',');
+            el.dataset.sample = button.sample ? '1' : '';
+            el.setAttribute('aria-label', 'ویرایش رنگ «' + button.label + '»');
+            var label = document.createElement('span');
+            label.className = 'skb-key__label';
+            label.textContent = button.label;
+            el.appendChild(label);
+            row.appendChild(el);
+            container.appendChild(row);
+        });
+        refreshAll();
+        updateCount();
+    }
+
+    function loadColorCatalog(catalog, page) {
+        var group = catalog.dataset.catalog;
+        page = Math.max(0, Number(page) || 0);
+        var request = Number(catalog.dataset.request || 0) + 1;
+        catalog.dataset.request = String(request);
+        var status = catalog.querySelector('[data-catalog-status]');
+        var previous = catalog.querySelector('[data-catalog-prev]');
+        var next = catalog.querySelector('[data-catalog-next]');
+        var retry = catalog.querySelector('[data-catalog-retry]');
+        var pageLabel = catalog.querySelector('[data-catalog-page]');
+        var sampleButtons = (data.catalogSamples || {})[group];
+        var pageSize = 12;
+        function show(buttons, more, totalPages) {
+            if (Number(catalog.dataset.request) !== request) return;
+            renderIndividualButtons(catalog.querySelector('[data-catalog-buttons]'), buttons, false);
+            catalog.dataset.page = String(page);
+            catalog.dataset.loaded = '1';
+            catalog.setAttribute('aria-busy', 'false');
+            previous.disabled = page === 0;
+            next.disabled = !more;
+            retry.hidden = true;
+            pageLabel.textContent = 'صفحه ' + (page + 1).toLocaleString('fa-IR') + (totalPages ? ' از ' + totalPages.toLocaleString('fa-IR') : '');
+            status.textContent = buttons.length ? (group === 'products' ? 'رنگ هر خانه فقط برای همان محصول ذخیره می‌شود.' : 'رنگ هر نمونه برای همان نوع دکمه در آیتم‌های فعلی و جدید اعمال می‌شود.') : 'هنوز محصولی ثبت نشده است.';
+        }
+        if (Array.isArray(sampleButtons)) {
+            var totalPages = Math.max(1, Math.ceil(sampleButtons.length / pageSize));
+            page = Math.min(page, totalPages - 1);
+            show(sampleButtons.slice(page * pageSize, (page + 1) * pageSize), page + 1 < totalPages, totalPages);
+            return;
+        }
+        catalog.setAttribute('aria-busy', 'true');
+        catalog.dataset.retryPage = String(page);
+        previous.disabled = true;
+        next.disabled = true;
+        retry.hidden = true;
+        status.textContent = 'در حال دریافت محصولات…';
+        var params = new URLSearchParams({action: 'button_catalog', group: 'products', page: String(page)});
+        fetch('service_keyboard.php?' + params.toString(), {credentials: 'same-origin'})
+            .then(function(response) { if (!response.ok) throw new Error('catalog_failed'); return response.json(); })
+            .then(function(result) {
+                if (Number(catalog.dataset.request) !== request) return;
+                if (!result.ok || !Array.isArray(result.buttons)) throw new Error('catalog_failed');
+                show(result.buttons, !!result.more);
+            })
+            .catch(function() {
+                if (Number(catalog.dataset.request) !== request) return;
+                catalog.setAttribute('aria-busy', 'false');
+                previous.disabled = Number(catalog.dataset.page || 0) === 0;
+                status.textContent = 'دریافت محصولات انجام نشد.';
+                retry.hidden = false;
+            });
+    }
+    function clearButtonColor(el) {
+        if (el.dataset.kind === 'main') setMain(el.dataset.token, 'none');
+        else if (el.dataset.kind === 'config_item') setExact(el.dataset.item, el.dataset.role, 'none');
+        else setFamily(el.dataset.menu, el.dataset.key, 'none');
+    }
+
+    function resetEditingButton() {
+        if (!editingEl) return;
+        var el = editingEl;
+        clearButtonColor(el);
+        refreshAll();
+        closeEditor();
+        scheduleSave();
+        showToast('رنگ همین دکمه حذف شد', 'success');
     }
 
     function resetActiveScreen() {
         var screen = document.querySelector('.skb-screen.active');
         if (!screen) return;
-        var keys = screen.querySelectorAll('.skb-key[data-kind]');
-        if (!keys.length) return;
-        if (!confirm('رنگ‌های دستی دکمه‌های این صفحه پاک شود؟ اگر همین دکمه در صفحه دیگری هم نمایش داده شود، رنگ آنجا نیز تغییر می‌کند. تنظیمات مستقل سایر بخش‌ها و ادمین حفظ می‌شوند.')) return;
-
-        keys.forEach(function(el) {
-            var menu = el.dataset.menu;
-            var key = el.dataset.key;
-            if (menu && key && styles[menu] && !Array.isArray(styles[menu])) {
-                setFamily(menu, key, 'default');
-            }
-            if (el.dataset.kind === 'main' && el.dataset.token) {
-                setMain(el.dataset.token, 'default');
-            }
-            if (el.dataset.kind === 'config_item' && el.dataset.item) {
-                ['download', 'name', 'protocol'].forEach(function(role) {
-                    setExact(el.dataset.item, role, 'default');
-                });
-            }
+        var keys = Array.from(screen.querySelectorAll('.skb-key[data-kind]')).filter(function(button) {
+            return !button.closest('[data-list-panel][hidden]');
         });
-        if (screen.dataset.screen === 'config') {
-            Object.keys(styles.config_items).forEach(function(key) {
-                if (!/^[a-f0-9]{16}:(download|name|protocol)$/.test(key)) return;
-                var parts = key.split(':');
-                setExact(parts[0], parts[1], 'default');
-            });
-        }
+        if (!keys.length) return;
+        if (!confirm('رنگ همه دکمه‌های نمایش‌داده‌شده در این بخش حذف شود؟')) return;
+
+        keys.forEach(clearButtonColor);
 
         refreshAll();
         scheduleSave();
-        showToast('رنگ‌های این صفحه بازنشانی شد', 'success');
+        showToast('رنگ همه دکمه‌های این بخش حذف شد', 'success');
     }
 
     document.addEventListener('DOMContentLoaded', function() {
@@ -1806,7 +2166,40 @@ echo json_encode([
         currentEl.textContent = '';
         refreshAll();
         updateCount();
-
+        document.getElementById('skb-reset-button').addEventListener('click', resetEditingButton);
+        document.querySelectorAll('[data-gateway-step]').forEach(function(button) {
+            button.addEventListener('click', function() {
+                activateGatewaySection(gatewaySectionIndex + Number(button.dataset.gatewayStep));
+                document.getElementById('skb-screen-gateway_internals').scrollIntoView({block: 'start', behavior: 'auto'});
+            });
+        });
+        document.querySelectorAll('[data-list-step]').forEach(function(button) {
+            button.addEventListener('click', function() {
+                activateListSection(listSectionIndex + Number(button.dataset.listStep));
+                document.getElementById('skb-screen-lists').scrollIntoView({block: 'start', behavior: 'auto'});
+            });
+        });
+        document.querySelectorAll('[data-catalog]').forEach(function(catalog) {
+            catalog.querySelector('[data-catalog-prev]').addEventListener('click', function() {
+                loadColorCatalog(catalog, Number(catalog.dataset.page || 0) - 1);
+            });
+            catalog.querySelector('[data-catalog-next]').addEventListener('click', function() {
+                loadColorCatalog(catalog, Number(catalog.dataset.page || 0) + 1);
+            });
+            catalog.querySelector('[data-catalog-retry]').addEventListener('click', function() {
+                loadColorCatalog(catalog, Number(catalog.dataset.retryPage || 0));
+            });
+        });
+        document.querySelectorAll('[data-screen-step]').forEach(function(button) {
+            button.addEventListener('click', function() {
+                var ids = Array.from(document.querySelectorAll('.skb-screen')).map(function(screen) { return screen.dataset.screen; });
+                var target = ids.indexOf(currentScreen) + Number(button.dataset.screenStep);
+                if (ids[target]) {
+                    activateScreen(ids[target]);
+                    document.getElementById('skb-screen-' + ids[target]).scrollIntoView({block: 'start', behavior: 'smooth'});
+                }
+            });
+        });
         document.querySelectorAll('.skb-nav-item').forEach(function(item) {
             item.addEventListener('click', function() { activateScreen(this.dataset.screen); });
         });

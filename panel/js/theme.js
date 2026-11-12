@@ -530,13 +530,14 @@ document.addEventListener('click', function (ev) {
         if (!rect.width || !rect.height || !picker.trigger.getClientRects().length) { close(false); return; }
         var gap = 8;
         var margin = 12;
-        var width = Math.min(Math.max(rect.width, 220), window.innerWidth - margin * 2);
+        var compact = picker.select.hasAttribute('data-catalog-group');
+        var width = Math.min(Math.max(rect.width, 220), compact ? 360 : window.innerWidth, window.innerWidth - margin * 2);
         var below = window.innerHeight - rect.bottom - gap - margin;
         var above = rect.top - gap - margin;
-        var upwards = below < 280 && above > below;
+        var upwards = below < (compact ? 240 : 280) && above > below;
         var available = Math.max(80, upwards ? above : below);
         picker.popup.style.width = width + 'px';
-        picker.popup.style.maxHeight = Math.min(360, available) + 'px';
+        picker.popup.style.maxHeight = Math.min(compact ? 312 : 360, available) + 'px';
         picker.popup.style.left = Math.max(margin, Math.min(rect.right - width, window.innerWidth - width - margin)) + 'px';
         picker.popup.style.top = Math.max(margin, upwards ? rect.top - gap - picker.popup.offsetHeight : Math.min(rect.bottom + gap, window.innerHeight - picker.popup.offsetHeight - margin)) + 'px';
     }
@@ -563,6 +564,7 @@ document.addEventListener('click', function (ev) {
         trigger.appendChild(arrow);
         var popup = document.createElement('div');
         popup.className = 'fx-select-popup';
+        if (select.hasAttribute('data-catalog-group')) popup.classList.add('fx-select-popup--catalog');
         popup.dir = 'rtl';
         popup.hidden = true;
         var search = document.createElement('input');

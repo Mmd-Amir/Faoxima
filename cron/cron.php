@@ -292,36 +292,28 @@ $minute    = (int) date('i', $now);
 $hour      = (int) date('G', $now);
 $dayOfYear = (int) date('z', $now);
 
-if ($hour === 3 && $minute === 0) {
-    try {
-        $pdo->exec("DELETE FROM processed_updates WHERE processed_at < UNIX_TIMESTAMP(NOW() - INTERVAL 1 DAY)");
-    } catch (Throwable $e) {}
+if ($hour >= 3) {
+    $rxMaintenanceKey = '__processed_updates_cleanup';
+    $rxMaintenanceDue = function_exists('rx_cron_job_due')
+        ? rx_cron_job_due($rxMaintenanceKey, ['unit' => 'day', 'value' => 1], $now, $runtimeState, 3)
+        : null;
+    if ($rxMaintenanceDue !== null && function_exists('rx_cron_claim_job_occurrence')) {
+        try {
+            if (rx_cron_claim_job_occurrence($pdo, $rxMaintenanceKey, $rxMaintenanceDue)) {
+                $runtimeState[$rxMaintenanceKey] = $rxMaintenanceDue;
+                $pdo->exec("DELETE FROM processed_updates WHERE processed_at < UNIX_TIMESTAMP(NOW() - INTERVAL 1 DAY)");
+            }
+        } catch (Throwable $e) {
+        }
+    }
 }
 
 
-$shouldRun = static function (string $jobKey, array $schedule, int $minute, int $hour, int $dayOfYear, int $now, array $runtimeState, int $targetHour = 0): bool {
-    $unit  = strtolower((string) ($schedule['unit'] ?? 'minute'));
-    $value = max(1, (int) ($schedule['value'] ?? 1));
-    if ($unit === 'disabled') {
-        return false;
+$shouldRun = static function (string $jobKey, array $schedule, int $minute, int $hour, int $dayOfYear, int $now, array $runtimeState, int $targetHour = 0): ?int {
+    if (!function_exists('rx_cron_job_due')) {
+        return null;
     }
-    $aligned = false;
-    if ($unit === 'minute') {
-        $aligned = ($minute % $value === 0);
-    } elseif ($unit === 'hour') {
-        $aligned = ($minute === 0 && $hour % $value === 0);
-    } elseif ($unit === 'day') {
-        
-        $aligned = ($minute === 0 && $hour === $targetHour && $dayOfYear % $value === 0);
-    }
-    if (!$aligned) {
-        return false;
-    }
-    $lastRun = isset($runtimeState[$jobKey]) ? (int) $runtimeState[$jobKey] : 0;
-    if ($lastRun > 0 && ($now - $lastRun) < 25) {
-        return false;
-    }
-    return true;
+    return rx_cron_job_due($jobKey, $schedule, $now, $runtimeState, $targetHour);
 };
 
 
@@ -369,6 +361,7 @@ $dispatchAsync = static function (array $tasks, bool $useLoopback) use ($rxInter
                 'X-Cron-Token: ' . $rxInternalAuthToken,
                 'X-Cron-Task: ' . (string) ($task['task_key'] ?? ''),
                 'X-Cron-Task-Token: ' . (string) ($task['token'] ?? ''),
+                'X-Cron-Occurrence: ' . (int) ($task['occurrence'] ?? ($task['scheduled_for'] ?? 0)),
                 'Connection: close',
             ],
             CURLOPT_USERAGENT       => 'CronOrchestrator/2.0 (+internal)',
@@ -477,7 +470,7 @@ $rxResolveCliPhp = static function () use ($rxCanExec): ?string {
     return null;
 };
 
-$rxDispatchCli = static function (string $script, int $worker, int $workers, bool $background, string $taskKey = '', string $token = '') use ($rxResolveCliPhp, $rxCanExec): bool {
+$rxDispatchCli = static function (string $script, int $worker, int $workers, bool $background, string $taskKey = '', string $token = '', int $occurrence = 0) use ($rxResolveCliPhp, $rxCanExec): bool {
     if (!$rxCanExec()) {
         return false;
     }
@@ -507,6 +500,9 @@ $rxDispatchCli = static function (string $script, int $worker, int $workers, boo
             $envParts[] = 'set "RX_CRON_TASK=' . $taskKey . '"';
             $envParts[] = 'set "RX_CRON_TASK_TOKEN=' . $token . '"';
         }
+        if ($occurrence > 0) {
+            $envParts[] = 'set "RX_CRON_OCCURRENCE=' . (int) $occurrence . '"';
+        }
         $cmd = implode(' && ', $envParts) . ' && ' . escapeshellarg($phpBin) . ' ' . escapeshellarg($file);
         if ($background) {
             $handle = @popen('start /B cmd /C "' . $cmd . '"', 'r');
@@ -525,6 +521,9 @@ $rxDispatchCli = static function (string $script, int $worker, int $workers, boo
     $env = 'BROADCAST_WORKER_ID=' . $worker . ' BROADCAST_WORKERS=' . $workers;
     if ($taskKey !== '') {
         $env .= ' RX_CRON_TASK=' . escapeshellarg($taskKey) . ' RX_CRON_TASK_TOKEN=' . escapeshellarg($token);
+    }
+    if ($occurrence > 0) {
+        $env .= ' RX_CRON_OCCURRENCE=' . (int) $occurrence;
     }
     $cmd = $env . ' ' . escapeshellarg($phpBin) . ' ' . escapeshellarg($file);
 
@@ -570,14 +569,19 @@ $rxReportMissingCronScript = static function (string $key, string $script): void
     error_log(sprintf('[cron] skipped job "%s": script cronbot/%s does not exist', $key, $script));
 };
 
-$rxMarkJobRun = static function (PDO $pdo, string $key, int $now, array &$runtimeState) : void {
-    if (function_exists('setCronJobLastRun')) {
+$rxMarkJobRun = static function (PDO $pdo, string $key, int $occurrence, array &$runtimeState) : void {
+    if (function_exists('rx_cron_claim_job_occurrence')) {
         try {
-            setCronJobLastRun($pdo, $key, $now);
+            rx_cron_claim_job_occurrence($pdo, $key, $occurrence);
+        } catch (Throwable $e) {
+        }
+    } elseif (function_exists('setCronJobLastRun')) {
+        try {
+            setCronJobLastRun($pdo, $key, $occurrence);
         } catch (Throwable $e) {
         }
     }
-    $runtimeState[$key] = $now;
+    $runtimeState[$key] = max((int) ($runtimeState[$key] ?? 0), $occurrence);
 };
 
 $rxDispatchHttpTasks = static function (array $tasks, bool $useLoopback) use ($dispatchAsync, $rxDetectLoopback): array {
@@ -612,9 +616,10 @@ $rxTaskKeyFor = static function (string $jobKey, int $workers, int $worker): str
 if ($bootstrapLoaded && function_exists('getCronJobDefinitions')) {
     $definitions = getCronJobDefinitions();
     $schedules   = function_exists('loadCronSchedules') ? loadCronSchedules() : [];
-    $rxOccurrence = (int) (floor($now / 60) * 60);
+    $rxDueOccurrences = [];
     $rxQueuedWorkerCounts = [];
     $rxQueuedJobKeys = [];
+    $rxQueuedTaskKeys = [];
     $rxAvailability = [];
     $rxProbeWork = static function (string $jobKey) use (&$rxAvailability): ?bool {
         if (array_key_exists($jobKey, $rxAvailability)) {
@@ -633,7 +638,7 @@ if ($bootstrapLoaded && function_exists('getCronJobDefinitions')) {
     };
     if ($rxTaskStateEnabled) {
         try {
-            $rxWorkerRows = $pdo->query("SELECT job_key, workers FROM cron_task_state WHERE state IN ('pending','claimed','running') ORDER BY scheduled_for ASC, task_key ASC");
+            $rxWorkerRows = $pdo->query("SELECT task_key, job_key, script, worker, workers, state, scheduled_for FROM cron_task_state WHERE state IN ('pending','claimed','running','uncertain') ORDER BY scheduled_for ASC, task_key ASC");
             if ($rxWorkerRows === false) {
                 throw new RuntimeException('Cannot read queued worker counts');
             }
@@ -645,6 +650,7 @@ if ($bootstrapLoaded && function_exists('getCronJobDefinitions')) {
                 if (isset($jobWorkerCounts[$rxWorkerJob]) && !isset($rxQueuedWorkerCounts[$rxWorkerJob])) {
                     $rxQueuedWorkerCounts[$rxWorkerJob] = max(1, min(8, (int) $rxWorkerRow['workers']));
                 }
+                $rxQueuedTaskKeys[(string) ($rxWorkerRow['task_key'] ?? '')] = $rxWorkerRow;
             }
         } catch (Throwable $e) {
             error_log('[cron] queued worker counts unavailable');
@@ -653,6 +659,7 @@ if ($bootstrapLoaded && function_exists('getCronJobDefinitions')) {
         }
     }
 
+    $rxPreserveOccurrenceJobs = ['statusday' => true, 'lottery' => true, 'logs_cleanup' => true];
     foreach ($definitions as $key => $definition) {
         if (empty($definition['script'])) {
             continue;
@@ -670,16 +677,16 @@ if ($bootstrapLoaded && function_exists('getCronJobDefinitions')) {
             continue;
         }
 
-        $rxDue = $shouldRun($key, $schedule, $minute, $hour, $dayOfYear, $now, $runtimeState, $jobHours[$key] ?? 0);
+        $rxOccurrence = $shouldRun($key, $schedule, $minute, $hour, $dayOfYear, $now, $runtimeState, $jobHours[$key] ?? 0);
         $rxSkipNoWork = false;
-        if ($rxDue || isset($rxQueuedJobKeys[$key])) {
+        if ($rxOccurrence !== null || isset($rxQueuedJobKeys[$key])) {
             $rxSkipNoWork = ($rxProbeWork((string) $key) === false);
         }
         $rxRequestedN = max(1, (int) ($jobWorkerCounts[$key] ?? 1));
         $rxN = max(1, (int) ($rxQueuedWorkerCounts[$key] ?? $rxRequestedN));
-        $rxWorkerTransition = $rxN !== $rxRequestedN;
         $rxBase = $buildCronUrl($definition['script']);
         $rxSep = (strpos($rxBase, '?') === false) ? '?' : '&';
+        $rxTaskList = [];
 
         for ($rxI = 0; $rxI < $rxN; $rxI++) {
             $rxTask = [
@@ -687,25 +694,91 @@ if ($bootstrapLoaded && function_exists('getCronJobDefinitions')) {
                 'script' => $definition['script'],
                 'worker' => $rxI,
                 'workers' => $rxN,
+                'occurrence' => (int) ($rxOccurrence ?? 0),
                 'url' => $rxN > 1
                     ? $rxBase . $rxSep . 'worker=' . $rxI . '&workers=' . $rxN
                     : $rxBase,
             ];
+            $rxTaskList[] = $rxTask;
             $rxValidTasks[$rxTaskKeyFor($key, $rxN, $rxI)] = $rxTask;
-            if (!$rxDue || $rxWorkerTransition || $rxSkipNoWork) {
-                continue;
-            }
-            $dueTasks[] = $rxTask;
-            if ($rxTaskStateEnabled) {
-                try {
-                    rx_cron_task_enqueue($pdo, $key, (string) $definition['script'], $rxN, $rxI, $rxOccurrence);
-                } catch (Throwable $e) {
+        }
+
+        if ($rxOccurrence === null) {
+            continue;
+        }
+
+        if ($rxTaskStateEnabled) {
+            $rxEnqueuedAll = true;
+            $rxEffectiveOccurrence = $rxOccurrence;
+            if (!$rxSkipNoWork) {
+                $rxEffectiveOccurrence = null;
+                foreach ($rxTaskList as $rxTask) {
+                    try {
+                        $rxEnqueued = rx_cron_task_enqueue(
+                            $pdo,
+                            $key,
+                            (string) $definition['script'],
+                            (int) $rxTask['workers'],
+                            (int) $rxTask['worker'],
+                            $rxOccurrence,
+                            isset($rxPreserveOccurrenceJobs[$key])
+                        );
+                    } catch (Throwable $e) {
+                        $rxEnqueued = 0;
+                    }
+                    if ($rxEnqueued <= 0) {
+                        $rxEnqueuedAll = false;
+                        break;
+                    }
+                    $rxEffectiveOccurrence = $rxEffectiveOccurrence === null ? $rxEnqueued : min($rxEffectiveOccurrence, $rxEnqueued);
                 }
             }
+            if ($rxEnqueuedAll) {
+                $rxMarkJobRun($pdo, $key, max(1, (int) $rxEffectiveOccurrence), $runtimeState);
+                $rxDueOccurrences[$key] = $rxOccurrence;
+            }
+            continue;
         }
+
+        if ($rxSkipNoWork) {
+            $rxMarkJobRun($pdo, $key, $rxOccurrence, $runtimeState);
+            continue;
+        }
+        foreach ($rxTaskList as $rxTask) {
+            $dueTasks[] = $rxTask;
+        }
+        $rxDueOccurrences[$key] = $rxOccurrence;
     }
 
     if ($rxTaskStateEnabled) {
+        foreach ($rxQueuedTaskKeys as $rxQueuedKey => $rxQueuedRow) {
+            if ($rxQueuedKey === '' || isset($rxValidTasks[$rxQueuedKey])) {
+                continue;
+            }
+            $rxQueuedJob = (string) ($rxQueuedRow['job_key'] ?? '');
+            if (!isset($definitions[$rxQueuedJob]) || empty($definitions[$rxQueuedJob]['script'])) {
+                continue;
+            }
+            if (strtolower((string) ($schedules[$rxQueuedJob]['unit'] ?? $definitions[$rxQueuedJob]['default']['unit'] ?? 'minute')) === 'disabled') {
+                continue;
+            }
+            if (!$rxCronScriptExists((string) $definitions[$rxQueuedJob]['script'])) {
+                continue;
+            }
+            $rxQueuedWorkers = max(1, (int) ($rxQueuedRow['workers'] ?? 1));
+            $rxQueuedWorker = (int) ($rxQueuedRow['worker'] ?? 0);
+            if ($rxQueuedWorker < 0 || $rxQueuedWorker >= $rxQueuedWorkers) {
+                continue;
+            }
+            $rxValidTasks[$rxQueuedKey] = [
+                'key' => $rxQueuedJob,
+                'script' => (string) $definitions[$rxQueuedJob]['script'],
+                'worker' => $rxQueuedWorker,
+                'workers' => $rxQueuedWorkers,
+                'occurrence' => (int) ($rxQueuedRow['scheduled_for'] ?? 0),
+                'url' => '',
+            ];
+        }
         try {
             rx_cron_task_cancel_obsolete($pdo, $rxValidTasks);
         } catch (Throwable $e) {
@@ -786,7 +859,7 @@ $rxTaskStarted = static function (string $taskKey) use ($pdo, $rxTaskDispatchLea
     } catch (Throwable $e) {
         return false;
     }
-    return in_array($state, ['running', 'completed', 'failed'], true);
+    return in_array($state, ['running', 'completed', 'failed', 'uncertain'], true);
 };
 
 $rxDispatchTask = static function (array $task) use ($rxIsCli, $rxSharedProfile, $buildCronUrl, $rxDispatchHttpTasks, $rxDispatchCli, $rxTaskStarted): string {
@@ -796,11 +869,12 @@ $rxDispatchTask = static function (array $task) use ($rxIsCli, $rxSharedProfile,
     $workers = max(1, (int) ($task['workers'] ?? 1));
     $taskKey = (string) ($task['task_key'] ?? '');
     $token   = (string) ($task['token'] ?? '');
+    $occurrence = (int) ($task['occurrence'] ?? ($task['scheduled_for'] ?? 0));
     $httpAttempted = false;
 
     if ($rxIsCli) {
         $background = ($jobKey === 'backupbot') ? true : !$rxSharedProfile;
-        if ($rxDispatchCli($script, $worker, $workers, $background, $taskKey, $token)) {
+        if ($rxDispatchCli($script, $worker, $workers, $background, $taskKey, $token, $occurrence)) {
             return 'accepted';
         }
         if ($rxTaskStarted($taskKey)) {
@@ -820,6 +894,7 @@ $rxDispatchTask = static function (array $task) use ($rxIsCli, $rxSharedProfile,
             'url' => $workers > 1 ? $rxBase . $rxSep . 'worker=' . $worker . '&workers=' . $workers : $rxBase,
             'task_key' => $taskKey,
             'token' => $token,
+            'occurrence' => $occurrence,
         ]];
         $result = $rxDispatchHttpTasks($single, false);
         if (!empty($result['success'])) {
@@ -837,7 +912,7 @@ $rxDispatchTask = static function (array $task) use ($rxIsCli, $rxSharedProfile,
         }
     }
 
-    if (!$rxIsCli && $rxDispatchCli($script, $worker, $workers, true, $taskKey, $token)) {
+    if (!$rxIsCli && $rxDispatchCli($script, $worker, $workers, true, $taskKey, $token, $occurrence)) {
         return 'accepted';
     }
 
@@ -846,14 +921,15 @@ $rxDispatchTask = static function (array $task) use ($rxIsCli, $rxSharedProfile,
 
 if ($rxTaskStateEnabled) {
     $rxDispatchDeadline = microtime(true) + ($rxIsCli ? ($rxSharedProfile ? 240 : 45) : ($rxSharedProfile ? 8 : 15));
-    $rxJobMarked = [];
-    $rxOnDispatch = static function (array $claim) use ($pdo, $now, &$runtimeState, &$rxJobMarked, $rxMarkJobRun): void {
+    $rxOnDispatch = static function (array $claim) use (&$runtimeState): void {
         $jobKey = (string) ($claim['job_key'] ?? '');
-        if ($jobKey === '' || isset($rxJobMarked[$jobKey])) {
+        if ($jobKey === '') {
             return;
         }
-        $rxJobMarked[$jobKey] = true;
-        $rxMarkJobRun($pdo, $jobKey, $now, $runtimeState);
+        $scheduledFor = (int) ($claim['scheduled_for'] ?? 0);
+        if ($scheduledFor > (int) ($runtimeState[$jobKey] ?? 0)) {
+            $runtimeState[$jobKey] = $scheduledFor;
+        }
     };
     $rxValidateTask = static function (array $row) use ($rxValidTasks): bool {
         $taskKey = (string) ($row['task_key'] ?? '');
@@ -878,7 +954,7 @@ if ($rxTaskStateEnabled) {
                 'max_attempts' => $rxTaskMaxAttempts,
                 'lease_seconds' => $rxTaskDispatchLease,
                 'deadline' => $rxDispatchDeadline,
-                'poll_micros' => $rxSharedProfile ? 600000 : 400000,
+                'reserved_payment_slots' => max(0, min(2, $rxMaxConcurrency - 1)),
                 'deferred_jobs' => $rxDeferredJobs,
             ], $rxDispatchTask, $rxValidateTask, $rxOnDispatch);
         } catch (Throwable $e) {
@@ -891,7 +967,7 @@ if ($rxTaskStateEnabled) {
     foreach ($dueTasks as $task) {
         $jobKey = (string) $task['key'];
         $background = ($jobKey === 'backupbot') ? true : !$rxSharedProfile;
-        if ($rxDispatchCli($task['script'], (int) $task['worker'], (int) $task['workers'], $background)) {
+        if ($rxDispatchCli($task['script'], (int) $task['worker'], (int) $task['workers'], $background, '', '', (int) ($task['occurrence'] ?? 0))) {
             $rxCliDispatched++;
             $rxSuccessfulDispatches++;
             $successfulJobs[$jobKey] = true;
@@ -907,7 +983,7 @@ if ($rxTaskStateEnabled) {
         }
     }
     foreach (array_keys($successfulJobs) as $jobKey) {
-        $rxMarkJobRun($pdo, $jobKey, $now, $runtimeState);
+        $rxMarkJobRun($pdo, $jobKey, (int) ($rxDueOccurrences[$jobKey] ?? $now), $runtimeState);
     }
 } elseif (!empty($dueTasks)) {
     $primarySuccess = [];
@@ -937,7 +1013,10 @@ if ($rxTaskStateEnabled) {
                 $task['script'],
                 (int) $task['worker'],
                 (int) $task['workers'],
-                true
+                true,
+                '',
+                '',
+                (int) ($task['occurrence'] ?? 0)
             );
             if ($cliOk) {
                 $cliFallbackSuccess[] = $task;
@@ -955,7 +1034,7 @@ if ($rxTaskStateEnabled) {
     }
 
     foreach (array_keys($successfulJobs) as $jobKey) {
-        $rxMarkJobRun($pdo, $jobKey, $now, $runtimeState);
+        $rxMarkJobRun($pdo, $jobKey, (int) ($rxDueOccurrences[$jobKey] ?? $now), $runtimeState);
     }
 }
 
