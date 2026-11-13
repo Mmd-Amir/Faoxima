@@ -72,13 +72,13 @@ $query->execute();
 $listservices = $query->fetchAll();
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>خدمات انجام شده | ربات فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
-<script src="js/theme.js?v=flat50" defer>
+    <link rel="stylesheet" href="css/theme.css?v=filterdrawer111">
+<script src="js/theme.js?v=dark62" defer>
 
 </script>
 </head>
@@ -88,7 +88,7 @@ $listservices = $query->fetchAll();
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper fx-page-list">
+        <div class="wrapper fx-page-list fx-page-services">
 
             <div class="page-head">
                 <div>
@@ -104,14 +104,30 @@ $listservices = $query->fetchAll();
 
             <?php echo fx_filter_delete_flash_html(); ?>
 
+            <div class="invoice-overview">
+                <div class="invoice-overview__main"><span class="invoice-overview__icon" aria-hidden="true"><?php echo icon('arrow-right-arrow-left', 'svg-icon'); ?></span><div><span><?php echo $svcFilterActive ? 'خدمات مطابق فیلتر' : 'کل خدمات ثبت‌شده'; ?></span><strong><?php echo strtr(number_format((int)$pg['total']), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?><small>خدمت</small></strong></div></div>
+                <div class="invoice-overview__detail"><span>نوع خدمت انتخاب‌شده</span><b><?php echo htmlspecialchars($svcStatusActive ? $svcTypeOptions[$svcStatus] : 'همهٔ خدمات', ENT_QUOTES, 'UTF-8'); ?></b></div>
+                <div class="invoice-overview__detail"><span>بازهٔ نمایش</span><b><?php echo htmlspecialchars($df['active'] ? $df['label'] : 'تمام تاریخ‌ها', ENT_QUOTES, 'UTF-8'); ?></b></div>
+                <?php if ($svcFilterActive): ?><a href="service.php" class="btn btn-outline btn-sm invoice-reset">پاک‌کردن فیلترها</a><?php endif; ?>
+            </div>
+
+            <details class="wrapper fx-page-list fx-filter-drawer fx-page-services">
+                <summary class="fx-filter-drawer__summary">
+                    <span class="fx-filter-drawer__icon" aria-hidden="true"><?php echo icon('filter', 'svg-icon'); ?></span>
+                    <span class="fx-filter-drawer__text"><strong>جستجو و فیلترها</strong><small>جستجو، وضعیت و بازهٔ زمانی</small></span>
+                    <span class="fx-filter-drawer__action"><span class="fx-filter-drawer__show">نمایش فیلترها</span><span class="fx-filter-drawer__hide">بستن فیلترها</span></span>
+                    <span class="fx-filter-drawer__chevron" aria-hidden="true"><?php echo icon('chevron-down', 'svg-icon'); ?></span>
+                </summary>
             <?php echo fx_search_ui('service.php', $svcQ, array_merge(['status' => $svcStatus !== '' ? $svcStatus : null], $svcDateKeep), 'جستجو در شناسه، آیدی کاربر یا نام کانفیگ…'); ?>
 
             <?php echo fx_status_filter_ui('service.php', $svcTypeOptions, $svcStatus, array_merge(['q' => $svcQ !== '' ? $svcQ : null], $svcDateKeep), 'status', 'فیلتر بر اساس نوع خدمت'); ?>
 
             <?php $fxFd = fx_filter_delete_parts('service.php', $svcFilterParams, $svcFilterActive ? (int)$pg['total'] : 0, $svcFilterCriteria); ?>
-            <?php echo fx_date_filter_ui('service.php', '', ['q' => $svcQ !== '' ? $svcQ : null, 'status' => $svcStatus !== '' ? $svcStatus : null], '', $fxFd['button'], $fxFd['form']); ?>
+            <?php echo fx_date_filter_ui('service.php', '', ['q' => $svcQ !== '' ? $svcQ : null, 'status' => $svcStatus !== '' ? $svcStatus : null], '', $fxFd['button'], $fxFd['form'], true); ?>
+            </details>
 
-            <div class="card">
+            <div class="card invoice-results">
+                <div class="invoice-results__head"><div><h2>آرشیو خدمات</h2><p>جزئیات تمدید، انتقال، تغییر لوکیشن و سایر عملیات</p></div><span class="invoice-page-count"><?php echo strtr(number_format(count($listservices)), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?> خدمت در این صفحه</span></div>
                 <form method="POST" action="service.php" id="bulk-form">
                 <input type="hidden" name="action" value="bulk_delete">
                 <div class="table-wrap">
@@ -123,7 +139,7 @@ $listservices = $query->fetchAll();
                                 <th>آیدی کاربر</th>
                                 <th>نام کانفیگ</th>
                                 <th>تاریخ سفارش</th>
-                                <th>قیمت (T)</th>
+                                <th>قیمت (تومان)</th>
                                 <th>نوع خدمت</th>
                             </tr>
                         </thead>
@@ -146,15 +162,15 @@ $listservices = $query->fetchAll();
                         ?>
                             <tr data-detail-row data-detail-title="خدمت #<?php echo $list['id']; ?>">
                                 <td><label class="fx-check-row"><input type="checkbox" name="ids[]" value="<?php echo $list['id']; ?>"></label></td>
-                                <td data-label="شناسه" data-summary="1"><?php echo $list['id']; ?></td>
+                                <td data-label="شناسه" data-summary="1"><bdi class="invoice-reference">#<?php echo (int)$list['id']; ?></bdi></td>
                                 <td data-label="آیدی کاربر">
                                     <a href="user.php?id=<?php echo $list['id_user']; ?>" class="text-link">
                                         <?php echo $list['id_user']; ?>
                                     </a>
                                 </td>
-                                <td data-label="نام کانفیگ" style="direction:ltr; text-align:right;" data-summary="1"><?php echo htmlspecialchars($list['username'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td data-label="تاریخ سفارش" style="direction:ltr; text-align:right;"><?php echo $time; ?></td>
-                                <td data-label="قیمت (T)"><?php echo $price; ?></td>
+                                <td data-label="نام کانفیگ" style="direction:ltr; text-align:right;" data-summary="1"><bdi class="invoice-config"><?php echo htmlspecialchars($list['username'], ENT_QUOTES, 'UTF-8'); ?></bdi></td>
+                                <td data-label="تاریخ سفارش" style="direction:ltr; text-align:right;"><span class="invoice-date"><?php echo htmlspecialchars((string)$time, ENT_QUOTES, 'UTF-8'); ?></span></td>
+                                <td data-label="قیمت (تومان)"><span class="invoice-amount"><bdi><?php echo $price; ?></bdi><?php if ((float)$list['price'] !== 0.0): ?> <small class="currency-unit">تومان</small><?php endif; ?></span></td>
                                 <td data-label="نوع خدمت" data-summary="1"><span class="badge <?php echo $badgeClass; ?>"><?php echo $typeText; ?></span></td>
                             </tr>
                         <?php endforeach; ?>

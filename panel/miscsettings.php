@@ -76,15 +76,21 @@ function faoxima_misc_enabled($value): bool
 
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>تنظیمات متفرقه | پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
-    <link rel="stylesheet" href="css/admin-extra.css?v=flat35">
+    <link rel="stylesheet" href="css/theme.css?v=toman75">
+    <link rel="stylesheet" href="css/admin-extra.css?v=flat39">
     <link rel="stylesheet" href="css/logviewer.css?v=lv1">
-    <script src="js/theme.js?v=flat50" defer></script>
+    <script src="js/theme.js?v=dark62" defer></script>
+    <style>
+        #main-content .misc-settings-card {
+            background: radial-gradient(ellipse at 100% 0%, var(--accent-soft), transparent 65%), var(--surface-1);
+            border-color: var(--border-soft);
+        }
+    </style>
 </head>
 <body>
 <section id="container">

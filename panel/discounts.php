@@ -592,24 +592,24 @@ function faoxima_d_label_section($s) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>کدهای تخفیف | پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
+    <link rel="stylesheet" href="css/theme.css?v=tickets105">
     <script src="js/money-input.js?v=fx1" defer></script>
-    <script src="js/theme.js?v=flat50" defer>
+    <script src="js/theme.js?v=dark62" defer>
 
 </script>
 </head>
-<body>
+<body class="fx-discounts">
 
 <section id="container">
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper fx-page-list">
+        <div class="wrapper fx-page-list fx-page-discounts">
 
             <div class="page-head">
                 <div>
@@ -651,9 +651,10 @@ function faoxima_d_label_section($s) {
             <?php echo fx_search_ui('discounts.php', $discQ, array_merge(['p2' => $pg2['page'] > 1 ? $pg2['page'] : null, 'q2' => $giftQ !== '' ? $giftQ : null], $discDateKeep, $giftDateKeep), 'جستجو در کد تخفیف یا کاربر هدف…', 'q1'); ?>
 
             <?php $fxFd = fx_filter_delete_parts('discounts.php', array_merge(['q1' => $discQ !== '' ? $discQ : null, 'q2' => $giftQ !== '' ? $giftQ : null, 'p2' => $pg2['page'] > 1 ? $pg2['page'] : null], $discDateKeep, $giftDateKeep), $discFilterActive ? (int)$pg1['total'] : 0, $discFilterCriteria, '1'); ?>
-            <?php echo fx_date_filter_ui('discounts.php', '1', array_merge(['p2' => $pg2['page'] > 1 ? $pg2['page'] : null, 'q1' => $discQ !== '' ? $discQ : null, 'q2' => $giftQ !== '' ? $giftQ : null], $giftDateKeep), 'انقضا', $fxFd['button'], $fxFd['form']); ?>
+            <?php echo fx_date_filter_ui('discounts.php', '1', array_merge(['p2' => $pg2['page'] > 1 ? $pg2['page'] : null, 'q1' => $discQ !== '' ? $discQ : null, 'q2' => $giftQ !== '' ? $giftQ : null], $giftDateKeep), 'انقضا', $fxFd['button'], $fxFd['form'], true); ?>
 
-            <div class="card">
+            <div class="card invoice-results">
+                <div class="invoice-results__head"><div><h2>کدهای تخفیف</h2><p>مدیریت تخفیف خرید، تمدید و سایر خدمات</p></div><span class="invoice-page-count"><?php echo strtr(number_format((int)$pg1['total']), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?> کد<?php echo $discQ !== '' ? ' مطابق جستجو' : ''; ?></span></div>
                 <div id="bulk-scope-1">
                 <div class="table-wrap">
                     <table id="discountsTable" class="display app-table app-table--summary" style="width:100%">
@@ -672,7 +673,7 @@ function faoxima_d_label_section($s) {
                         </thead>
                         <tbody>
                         <?php if (empty($list)): ?>
-                            <tr><td colspan="8" style="text-align:center; padding:30px 0; color:var(--text-muted);">
+                            <tr><td colspan="9" style="text-align:center; padding:30px 0; color:var(--text-muted);">
                                 هنوز کدی ثبت نشده است.
                             </td></tr>
                         <?php else: foreach ($list as $d):
@@ -687,7 +688,7 @@ function faoxima_d_label_section($s) {
                             [$agentLabel, $agentBadge] = faoxima_d_label_agent($d['agent'] ?? '');
                             $valDisplay = htmlspecialchars((string)$d['price'], ENT_QUOTES);
                             if ($kind === 'percent') $valDisplay .= '%';
-                            elseif ($kind === 'amount') $valDisplay = number_format((int)$d['price']) . ' <small>T</small>';
+                            elseif ($kind === 'amount') $valDisplay = number_format((int)$d['price']) . ' <small>تومان</small>';
                             elseif ($kind === 'free') $valDisplay = 'رایگان';
                             $limit = (int)$d['limitDiscount'];
                             $used  = (int)$d['usedDiscount'];
@@ -797,12 +798,10 @@ function faoxima_d_label_section($s) {
             <?php echo fx_search_ui('discounts.php', $giftQ, array_merge(['p1' => $pg1['page'] > 1 ? $pg1['page'] : null, 'q1' => $discQ !== '' ? $discQ : null], $discDateKeep, $giftDateKeep), 'جستجو در کد هدیه یا کاربر هدف…', 'q2'); ?>
 
             <?php $fxFd2 = fx_filter_delete_parts('discounts.php', array_merge(['q1' => $discQ !== '' ? $discQ : null, 'q2' => $giftQ !== '' ? $giftQ : null, 'p1' => $pg1['page'] > 1 ? $pg1['page'] : null], $discDateKeep, $giftDateKeep), $giftFilterActive ? (int)$pg2['total'] : 0, $giftFilterCriteria, '2'); ?>
-            <?php echo fx_date_filter_ui('discounts.php', '2', array_merge(['p1' => $pg1['page'] > 1 ? $pg1['page'] : null, 'q2' => $giftQ !== '' ? $giftQ : null, 'q1' => $discQ !== '' ? $discQ : null], $discDateKeep), 'انقضا', $fxFd2['button'], $fxFd2['form']); ?>
+            <?php echo fx_date_filter_ui('discounts.php', '2', array_merge(['p1' => $pg1['page'] > 1 ? $pg1['page'] : null, 'q2' => $giftQ !== '' ? $giftQ : null, 'q1' => $discQ !== '' ? $discQ : null], $discDateKeep), 'انقضا', $fxFd2['button'], $fxFd2['form'], true); ?>
 
-            <div class="card" style="margin-top:18px">
-                <div style="padding:14px 16px; font-weight:700; display:flex; align-items:center; gap:8px;">
-                    <?php echo icon('gift', 'svg-icon'); ?> کدهای هدیه (شارژ کیف پول)
-                </div>
+            <div class="card invoice-results" style="margin-top:18px">
+                <div class="invoice-results__head"><div><h2>کدهای هدیه</h2><p>مدیریت اعتبار هدیه و شارژ کیف پول کاربران</p></div><span class="invoice-page-count"><?php echo strtr(number_format((int)$pg2['total']), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?> کد<?php echo $giftQ !== '' ? ' مطابق جستجو' : ''; ?></span></div>
                 <div id="bulk-scope-2">
                 <div class="table-wrap">
                     <table id="giftsTable" class="display app-table app-table--summary" style="width:100%">
@@ -830,7 +829,7 @@ function faoxima_d_label_section($s) {
                             <tr data-detail-row data-detail-title="کد هدیه <?php echo htmlspecialchars((string)$g['code'], ENT_QUOTES); ?>">
                                 <td><label class="fx-check-row"><input type="checkbox" name="ids[]" value="<?php echo (int)$g['id']; ?>"></label></td>
                                 <td data-label="کد" data-summary="1"><code style="direction:ltr; background:var(--accent-soft); color:var(--accent); padding:4px 8px; border-radius:var(--radius-xs); font-weight:700;"><?php echo htmlspecialchars((string)$g['code'], ENT_QUOTES); ?></code></td>
-                                <td data-label="مبلغ" data-summary="1"><?php echo number_format((int)($g['price'] ?? 0)); ?> <small>T</small></td>
+                                <td data-label="مبلغ" data-summary="1"><?php echo number_format((int)($g['price'] ?? 0)); ?> <small>تومان</small></td>
                                 <td data-label="سقف کل"><?php echo $glimit > 0 ? $glimit : '<span class="text-muted">نامحدود</span>'; ?></td>
                                 <td data-label="تعداد استفاده"><?php echo $gused; ?><?php if ($glimit > 0): ?> / <?php echo $glimit; ?><?php endif; ?></td>
                                 <td data-label="اختصاصی" data-summary="1"><?php echo $gtarget !== '' ? '<span class="badge badge-warning">کاربر ' . htmlspecialchars($gtarget, ENT_QUOTES) . '</span>' : '<span class="text-muted">عمومی</span>'; ?></td>
@@ -894,7 +893,7 @@ function faoxima_d_label_section($s) {
                     <label class="form-label">نوع تخفیف</label>
                     <select name="type" class="form-control" required onchange="updateValueHint(this.value)">
                         <option value="percent">درصدی (٪)</option>
-                        <option value="amount">مبلغی (T)</option>
+                        <option value="amount">مبلغی (تومان)</option>
                         <option value="free">رایگان (۱۰۰٪)</option>
                     </select>
                 </div>
@@ -1013,7 +1012,7 @@ function faoxima_d_label_section($s) {
                     <input type="text" name="code" class="form-control" style="direction:ltr;" placeholder="GIFT50" required>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">مبلغ (T)</label>
+                    <label class="form-label">مبلغ (تومان)</label>
                     <input type="text" name="gift_price" class="form-control" data-money placeholder="50000" required min="1">
                 </div>
             </div>
@@ -1058,7 +1057,7 @@ function faoxima_d_label_section($s) {
                     <label class="form-label">نوع تخفیف</label>
                     <select name="type" id="ed_type" class="form-control" required onchange="updateEditValueHint(this.value)">
                         <option value="percent">درصدی (٪)</option>
-                        <option value="amount">مبلغی (T)</option>
+                        <option value="amount">مبلغی (تومان)</option>
                         <option value="free">رایگان (۱۰۰٪)</option>
                     </select>
                 </div>
@@ -1170,7 +1169,7 @@ function faoxima_d_label_section($s) {
                     <input type="text" name="code" id="ed_g_code" class="form-control" style="direction:ltr;" required>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">مبلغ (T)</label>
+                    <label class="form-label">مبلغ (تومان)</label>
                     <input type="text" name="gift_price" id="ed_g_price" class="form-control" data-money required min="1">
                 </div>
             </div>
@@ -1274,7 +1273,7 @@ function closeModal(id) { var m = document.getElementById(id); if (m) m.classLis
 function updateValueHint(type) {
     var lbl = document.getElementById('valueLabel');
     if (type === 'percent') lbl.textContent = 'مقدار تخفیف (٪)';
-    else if (type === 'amount') lbl.textContent = 'مقدار تخفیف (T)';
+    else if (type === 'amount') lbl.textContent = 'مقدار تخفیف (تومان)';
     else lbl.textContent = 'مقدار (استفاده‌نمی‌شود)';
     if (window.FaoximaMoneyInput) {
         window.FaoximaMoneyInput.setMode(document.getElementById('add_price'), type === 'amount');
@@ -1285,7 +1284,7 @@ function updateEditValueHint(type) {
     var lbl = document.getElementById('ed_valueLabel');
     if (!lbl) return;
     if (type === 'percent') lbl.textContent = 'مقدار تخفیف (٪)';
-    else if (type === 'amount') lbl.textContent = 'مقدار تخفیف (T)';
+    else if (type === 'amount') lbl.textContent = 'مقدار تخفیف (تومان)';
     else lbl.textContent = 'مقدار (استفاده‌نمی‌شود)';
     if (window.FaoximaMoneyInput) {
         window.FaoximaMoneyInput.setMode(document.getElementById('ed_price'), type === 'amount');

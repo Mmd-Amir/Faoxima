@@ -154,14 +154,14 @@ if ($product == false) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>ویرایش محصول | ربات فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
+    <link rel="stylesheet" href="css/theme.css?v=left94">
 <script src="js/money-input.js?v=fx1" defer></script>
-<script src="js/theme.js?v=flat50" defer>
+<script src="js/theme.js?v=dark62" defer>
 
 </script>
 </head>
@@ -187,7 +187,8 @@ if ($product == false) {
                 </div>
             </div>
 
-            <div class="card">
+            <div class="card product-editor">
+                <div class="product-editor__head"><span class="product-editor__icon" aria-hidden="true"><?php echo icon('pen-to-square', 'svg-icon'); ?></span><div><h2>تنظیمات محصول</h2><p>مشخصات سرویس، پنل‌ها و محدودیت‌های دسترسی</p></div></div>
 
                 <?php if ($statusmessage): ?>
                     <div class="alert alert-error">
@@ -199,6 +200,7 @@ if ($product == false) {
                 <?php if ($product): ?>
                 <form action="productedit.php?action=save&id=<?php echo $id_product; ?>" method="POST">
 
+                    <div class="product-section-title"><span>۰۱</span><div><h3>مشخصات و قیمت</h3><p>نام محصول، هزینه و ویژگی‌های اصلی سرویس</p></div></div>
                     <div class="form-group">
                         <label class="form-label">نام محصول</label>
                         <input type="text" name="name_product" class="form-control" value="<?php echo htmlspecialchars($product['name_product'], ENT_QUOTES, 'UTF-8'); ?>" required>
@@ -206,7 +208,7 @@ if ($product == false) {
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label class="form-label">قیمت (T)</label>
+                            <label class="form-label">قیمت (تومان)</label>
                             <input type="text" name="price_product" class="form-control" data-money value="<?php echo htmlspecialchars($product['price_product'], ENT_QUOTES, 'UTF-8'); ?>" required>
                         </div>
                         <div class="form-group">
@@ -230,6 +232,7 @@ if ($product == false) {
                         </div>
                     </div>
 
+                    <div class="product-section-title"><span>۰۲</span><div><h3>پنل‌های ارائه‌دهنده</h3><p>یک یا چند لوکیشن برای ارائهٔ این محصول انتخاب کنید</p></div></div>
                     <div class="form-group">
                         <label class="form-label">پنل (لوکیشن) <small style="color:var(--text-muted)">(می‌توانید چند مورد انتخاب کنید)</small></label>
                         <?php
@@ -261,6 +264,7 @@ if ($product == false) {
                         <input type="hidden" name="Location_csv" id="edit_product_panel_hidden" data-panel-hidden value="<?php echo htmlspecialchars((string)($product['Location'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>">
                     </div>
 
+                    <div class="product-section-title"><span>۰۳</span><div><h3>محدودیت‌ها و دسترسی</h3><p>محدودیت اتصال و تعداد دستگاه‌ها</p></div></div>
                     <div class="form-group">
                         <label class="form-label">محدودیت IP</label>
                         <input type="number" name="ip_limit" id="edit_product_ip_limit" class="form-control" min="0" max="50" step="1" value="<?php echo htmlspecialchars((string)($product['ip_limit'] ?? '0'), ENT_QUOTES, 'UTF-8'); ?>">
@@ -282,6 +286,7 @@ if ($product == false) {
                         <small style="color:var(--text-muted)">این گزینه کاملاً نمایشی و مستقل از محدودیت واقعی IP (fail2ban) است و برای هر نوع پنل قابل استفاده است. در صورت فعال بودن، فقط تعداد کاربر تعیین‌شده به کاربر نمایش داده می‌شود و هیچ اطلاعات IP/دستگاه متصل نشان داده نمی‌شود.</small>
                     </div>
 
+                    <div class="product-section-title"><span>۰۴</span><div><h3>دسته‌بندی و یادداشت</h3><p>گروه‌بندی محصول و توضیحات تکمیلی</p></div></div>
                     <div class="form-group">
                         <label class="form-label">دسته‌بندی <small style="color:var(--text-muted)">(می‌توانید چند مورد انتخاب کنید)</small></label>
                         <?php
@@ -312,9 +317,9 @@ if ($product == false) {
                         <textarea name="note" class="form-control" rows="3"><?php echo htmlspecialchars($product['note'], ENT_QUOTES, 'UTF-8'); ?></textarea>
                     </div>
 
-                    <button type="submit" class="btn btn-primary btn-block">
+                    <div class="product-editor__footer"><a href="product.php" class="btn btn-outline">بازگشت به محصولات</a><button type="submit" class="btn btn-primary">
                         <?php echo icon('check', 'svg-icon'); ?> ذخیره تغییرات
-                    </button>
+                    </button></div>
 
                 </form>
                 <?php endif; ?>

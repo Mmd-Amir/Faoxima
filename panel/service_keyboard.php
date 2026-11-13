@@ -1133,20 +1133,18 @@ foreach ($ALL_DB_KEYS as $_k) {
 $firstScreenId = array_key_first($SCREENS);
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl" data-color="blue">
+<html lang="fa" dir="rtl" data-theme="dark" data-color="blue">
 <head>
     <script>
-    (function(){try{var t=localStorage.getItem('faoxima_theme');
-    if(t!=='light'&&t!=='dark')t='dark';
-    document.documentElement.setAttribute('data-theme',t);
+    (function(){try{document.documentElement.setAttribute('data-theme','dark'); localStorage.setItem('faoxima_theme','dark');
     var c=localStorage.getItem('faoxima_color');
     if(c)document.documentElement.setAttribute('data-color',c);}catch(e){}})();
     </script>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>رنگ‌بندی دکمه‌ها — پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
-    <script src="js/theme.js?v=flat50" defer></script>
+    <link rel="stylesheet" href="css/theme.css?v=toman75">
+    <script src="js/theme.js?v=dark62" defer></script>
     <style>
         body { padding-top:0 !important; --skb-top-h:58px; }
         .skb-top {
@@ -1311,6 +1309,20 @@ $firstScreenId = array_key_first($SCREENS);
         }
         @media (prefers-reduced-motion: reduce) {
             .skb-key { transition:none; }
+        }
+        .skb-shell .skb-nav,
+        .skb-shell .skb-mobile-nav {
+            background: radial-gradient(ellipse at 100% 0%, var(--accent-soft), transparent 65%), var(--surface-1);
+            border-color: var(--border-soft);
+        }
+        body.fx-service-keyboard {
+            background: radial-gradient(ellipse at 0% 35%, var(--accent-soft), transparent 65%), var(--bg-body);
+            background-attachment: fixed;
+        }
+        .skb-shell .skb-kb,
+        .skb-shell .skb-catalog {
+            background: var(--surface-1);
+            border-color: var(--border-soft);
         }
     </style>
 </head>

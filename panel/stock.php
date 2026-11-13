@@ -669,17 +669,17 @@ function faoxima_stock_status_label(string $s): array
 }
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>انبار شبکه ملی | پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
-    <link rel="stylesheet" href="css/admin-extra.css?v=flat33">
+    <link rel="stylesheet" href="css/theme.css?v=stock110">
+    <link rel="stylesheet" href="css/admin-extra.css?v=flat39">
     <link rel="stylesheet" href="css/components.css?v=flat33">
     <script src="js/money-input.js?v=fx1" defer></script>
-    <script src="js/theme.js?v=flat50" defer></script>
+    <script src="js/theme.js?v=dark62" defer></script>
     <style>
         .stock-grid {
             display: grid;
@@ -930,6 +930,86 @@ function faoxima_stock_status_label(string $s): array
                 justify-content: center;
             }
         }
+        .fx-page-stock .stock-grid { gap: 18px; align-items: start; }
+        .fx-page-stock .shelf-card {
+            background: radial-gradient(ellipse at 0% 0%, var(--accent-soft), transparent 65%), var(--surface-1);
+            border-radius: 20px;
+            border-color: var(--border-soft);
+        }
+        .fx-page-stock .shelf-card__head { padding: 18px 20px; background: transparent; gap: 12px; }
+        .fx-page-stock .shelf-card__title { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+        .fx-page-stock .shelf-card__symbol { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex-shrink: 0; border-radius: 12px; background: var(--accent-soft); color: var(--accent-ink); }
+        .fx-page-stock .shelf-card__symbol .svg-icon { width: 22px; height: 22px; }
+        .fx-page-stock .shelf-card__body { padding: 18px 20px 20px; gap: 14px; font-size: 12px; }
+        .fx-page-stock .shelf-card__body > div:not(.stat-row):not(.shelf-card__foot) { justify-content: space-between; align-items: baseline; }
+        .fx-page-stock .shelf-card__body > div > :last-child { min-width: 0; overflow-wrap: anywhere; }
+        .fx-page-stock .shelf-card__key { flex-shrink: 0; font-size: 11px; }
+        .fx-page-stock .shelf-card__price { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .fx-page-stock .shelf-card__price .currency-unit { font-size: 10px; }
+        .fx-page-stock .shelf-card__stats { padding: 12px 0; margin: 0; gap: 8px; }
+        .fx-page-stock .shelf-card__stats .stat-chip { padding: 6px 10px; min-height: 30px; font-size: 11px; }
+        .fx-page-stock .shelf-card__foot { padding-top: 14px; border-top-style: solid; gap: 8px; }
+        .fx-page-stock .shelf-card__foot .btn { min-height: 38px; border-radius: 11px; font-size: 11px; }
+        .fx-page-stock > .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 0 0 18px; }
+        .fx-page-stock > .stat-row .stat-chip { display: flex; align-items: center; gap: 8px; min-height: 68px; padding: 14px 18px; border-radius: 16px; background: radial-gradient(ellipse at 0% 0%, var(--accent-soft), transparent 72%), var(--surface-1); border-color: var(--border-soft); color: var(--text-muted); font-size: 12px; }
+        .fx-page-stock > .stat-row .stat-chip strong { margin-inline-start: auto; color: var(--text-main); font-size: 24px; font-variant-numeric: tabular-nums; }
+        .fx-page-stock > .stat-row .stat-chip .svg-icon { color: var(--accent-ink); width: 20px; height: 20px; }
+        .fx-page-stock .cfg-filterbar { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; padding: 0 20px; margin-bottom: 20px; border-radius: 20px; background: radial-gradient(ellipse at 100% 0%, var(--accent-soft), transparent 65%), var(--surface-1); border: 1px solid var(--border-soft); }
+        .fx-page-stock .cfg-filterbar > .cfg-filterbar__row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; width: auto; min-width: 0; margin: 0; padding: 16px 0; border: 0; }
+        .fx-page-stock .cfg-filterbar > form.cfg-filterbar__row { grid-column: 1 / -1; border-bottom: 1px solid var(--border-soft); }
+        .fx-page-stock .cfg-filterbar__label { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; font-size: 11px; }
+        .fx-page-stock .cfg-filterbar .form-control { background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: 12px; font-size: 12px; min-height: 40px; }
+        .fx-page-stock .cfg-filterbar .btn { min-height: 36px; padding: 7px 12px; border-radius: 10px; font-size: 11px; }
+        .fx-page-stock .cfg-seg { background: var(--surface-2); padding: 4px; gap: 4px; border-radius: 12px; }
+        .fx-page-stock .cfg-seg .btn-primary { color: var(--accent-ink); background: var(--accent-soft); border-color: transparent; }
+        .fx-page-stock .cfg-daysfilter { display: flex; flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px; width: 100%; margin: 0; }
+        .fx-page-stock .cfg-daysfilter select.form-control { width: 112px; flex: 0 1 112px; min-width: 100px; }
+        .fx-page-stock .cfg-daysfilter input.form-control { width: 76px; flex: 0 1 76px; min-width: 60px; text-align: center; }
+        .fx-page-stock .cfg-filterbar > .cfg-filterbar__row--split { grid-column: 1 / -1; border-top: 1px solid var(--border-soft); }
+        .fx-page-stock .config-row { background: var(--surface-1); border-radius: 16px; padding: 18px; margin-bottom: 12px; }
+        .fx-page-stock .config-content-wrap { background: var(--surface-2); border-color: var(--border-soft); padding: 12px 14px; }
+        .fx-page-stock .config-content { max-height: 72px; line-height: 1.9; }
+        .fx-page-stock .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; min-height: 220px; padding: 32px 20px; background: radial-gradient(ellipse at 0% 0%, var(--accent-soft), transparent 65%), var(--surface-1); border-radius: 20px; border: 1px solid var(--border-soft); }
+        .fx-page-stock .empty-state > .svg-icon { width: 52px; height: 52px; padding: 12px; box-sizing: content-box; color: var(--accent-ink); background: var(--accent-soft); border-radius: 22px; }
+        .fx-page-stock .empty-state__text { margin: 0; color: var(--text-muted); font-size: 13px; }
+        .fx-page-stock .empty-state__action { margin: 0; font-size: 12px; }
+        .fx-page-stock .modal-box { border-radius: 22px; border: 1px solid var(--border-soft); background: var(--surface-1); }
+        .fx-page-stock .modal-head { padding: 20px 24px; background: radial-gradient(ellipse at 100% 0%, var(--accent-soft), transparent 70%), var(--surface-1); border-bottom: 1px solid var(--border-soft); }
+        .fx-page-stock .modal-head__title { font-size: 16px; line-height: 1.7; }
+        .fx-page-stock .modal-box > form { padding: 22px 24px; }
+        .fx-page-stock .modal-box .form-group { margin-bottom: 20px; }
+        .fx-page-stock .modal-box .form-label { font-size: 12px; margin-bottom: 9px; }
+        .fx-page-stock .modal-box .form-control { background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: 12px; font-size: 12px; }
+        .fx-page-stock .modal-box .form-control:focus { border-color: var(--accent); outline: 2px solid var(--accent-soft); outline-offset: 2px; }
+        .fx-page-stock .entry-mode-group { background: transparent; border: 0; padding: 0; }
+        .fx-page-stock .entry-mode-group__title { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+        .fx-page-stock .entry-mode-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .fx-page-stock .mode-pill { border-width: 1px; border-color: var(--border-soft); background: var(--surface-2); border-radius: 14px; padding: 16px; min-width: 0; margin: 0; }
+        .fx-page-stock .mode-pill:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); }
+        .fx-page-stock .mode-pill:focus-within { outline: 2px solid var(--accent-soft); outline-offset: 3px; }
+        .fx-page-stock .mode-pill__title { font-size: 13px; }
+        .fx-page-stock .mode-pill__hint { font-size: 11px; }
+        .fx-page-stock .modal-foot { padding: 18px 0 0; margin-top: 20px; border-top: 1px solid var(--border-soft); gap: 8px; }
+        @media (max-width: 1000px) {
+            .fx-page-stock .cfg-filterbar { grid-template-columns: 1fr; }
+            .fx-page-stock .cfg-filterbar > .cfg-filterbar__row:nth-child(2) { border-bottom: 1px solid var(--border-soft); }
+        }
+        @media (max-width: 600px) {
+            .fx-page-stock > .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+            .fx-page-stock > .stat-row .stat-chip { padding: 12px; min-height: 60px; gap: 5px; font-size: 10px; }
+            .fx-page-stock > .stat-row .stat-chip strong { font-size: 20px; }
+            .fx-page-stock .cfg-filterbar { padding: 0 14px; }
+            .fx-page-stock .cfg-filterbar .cfg-actions { width: 100%; margin: 0; }
+            .fx-page-stock .cfg-filterbar .cfg-actions form { flex: 1 1 auto; }
+            .fx-page-stock .cfg-filterbar .cfg-actions .btn { width: 100%; }
+            .fx-page-stock .cfg-daysfilter .cfg-filterbar__label { width: 100%; }
+            .fx-page-stock .entry-mode-options { gap: 8px; }
+            .fx-page-stock .mode-pill { padding: 12px; gap: 7px; }
+            .fx-page-stock .modal-head { padding: 16px; }
+            .fx-page-stock .modal-head__title { font-size: 14px; }
+            .fx-page-stock .modal-box > form { padding: 18px 16px; }
+            .fx-page-stock .shelf-card__head, .fx-page-stock .shelf-card__body { padding: 16px; }
+        }
     </style>
 </head>
 
@@ -939,7 +1019,7 @@ function faoxima_stock_status_label(string $s): array
         <?php include("header.php"); ?>
 
         <section id="main-content">
-            <div class="wrapper">
+            <div class="wrapper fx-page-stock">
 
                 <?php if ($selectedShelf):  ?>
 
@@ -954,7 +1034,7 @@ function faoxima_stock_status_label(string $s): array
                                 محصول: <b><?php echo htmlspecialchars($selectedShelf['product_name'] ?? '—', ENT_QUOTES); ?></b>
                                 · حجم: <?php echo ((float)$selectedShelf['volume_gb'] === 0.0) ? 'نامحدود' : (float)$selectedShelf['volume_gb'] . ' گیگ'; ?>
                                 · مدت: <?php echo (int)$selectedShelf['service_days']; ?> روز
-                                · قیمت: <?php echo number_format((int)$selectedShelf['price']); ?> T
+                                · قیمت: <?php echo number_format((int)$selectedShelf['price']); ?> <small class="currency-unit">تومان</small>
                             </div>
                         </div>
                         <div>
@@ -1366,15 +1446,15 @@ function faoxima_stock_status_label(string $s): array
                             ?>
                                 <div class="shelf-card">
                                     <div class="shelf-card__head">
-                                        <div class="shelf-card__title"><?php echo htmlspecialchars($sh['name'], ENT_QUOTES, 'UTF-8'); ?></div>
+                                        <div class="shelf-card__title"><span class="shelf-card__symbol"><?php echo icon('package', 'svg-icon'); ?></span><?php echo htmlspecialchars($sh['name'], ENT_QUOTES, 'UTF-8'); ?></div>
                                         <?php if ($isActive): ?><span class="badge badge-active">فعال</span>
                                         <?php else: ?><span class="badge badge-block">غیرفعال</span><?php endif; ?>
                                     </div>
                                     <div class="shelf-card__body">
                                         <div><span class="shelf-card__key">محصول:</span> <b><?php echo htmlspecialchars($sh['product_name'] ?? '—', ENT_QUOTES); ?></b></div>
-                                        <div><span class="shelf-card__key">پنل مبدأ:</span> <?php echo htmlspecialchars($sourceTxt, ENT_QUOTES); ?></div>
-                                        <div><span class="shelf-card__key">حجم / مدت:</span> <?php echo ((float)$sh['volume_gb'] === 0.0) ? 'نامحدود' : (float)$sh['volume_gb'] . ' گیگ'; ?> / <?php echo (int)$sh['service_days']; ?> روز</div>
-                                        <div><span class="shelf-card__key">قیمت:</span> <?php echo number_format((int)$sh['price']); ?> T</div>
+                                        <div><span class="shelf-card__key">پنل مبدأ:</span><span><?php echo htmlspecialchars($sourceTxt, ENT_QUOTES); ?></span></div>
+                                        <div><span class="shelf-card__key">حجم / مدت:</span><span><?php echo ((float)$sh['volume_gb'] === 0.0) ? 'نامحدود' : (float)$sh['volume_gb'] . ' گیگ'; ?> / <?php echo (int)$sh['service_days']; ?> روز</span></div>
+                                        <div><span class="shelf-card__key">قیمت:</span><span class="shelf-card__price"><?php echo number_format((int)$sh['price']); ?> <small class="currency-unit">تومان</small></span></div>
 
                                         <div class="stat-row shelf-card__stats">
                                             <div class="stat-chip stat-chip--success"><?php echo icon('circle-check', 'svg-icon svg-sm'); ?> موجود <strong><?php echo $cnt['active']; ?></strong></div>
@@ -1464,7 +1544,7 @@ function faoxima_stock_status_label(string $s): array
                                         <input type="number" name="service_days" id="f-days" min="0" class="form-control" value="0">
                                     </div>
                                     <div class="form-group">
-                                        <label class="form-label">قیمت (T)</label>
+                                        <label class="form-label">قیمت (تومان)</label>
                                         <input type="text" name="price" id="f-price" data-money class="form-control" value="0">
                                     </div>
                                 </div>
@@ -1552,8 +1632,8 @@ function faoxima_stock_status_label(string $s): array
                 bulkBlock.style.display = isSingle ? 'none' : '';
                 modePills.forEach(function(p) {
                     var active = p.getAttribute('data-mode') === mode;
-                    p.style.borderColor = active ? 'var(--accent)' : 'var(--border-color)';
-                    p.style.background = active ? 'var(--surface-2)' : '';
+                    p.style.borderColor = active ? 'var(--accent)' : 'var(--border-soft)';
+                    p.style.background = active ? 'var(--accent-soft)' : '';
                 });
                 if (modeError) modeError.style.display = 'none';
             }

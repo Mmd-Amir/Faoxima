@@ -571,13 +571,13 @@ if ($viewT === '') {
 }
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>تیکت‌ها | ربات فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
-    <script src="js/theme.js?v=flat50" defer></script>
+    <link rel="stylesheet" href="css/theme.css?v=filterdrawer111">
+    <script src="js/theme.js?v=dark62" defer></script>
     <style>
         .tk-chat { display:flex; flex-direction:column; gap:12px; max-height:60vh; overflow-y:auto; padding:6px 2px; }
         .tk-row { display:flex; }
@@ -680,13 +680,13 @@ if ($viewT === '') {
         .tk-bulk-bar { display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-bottom:12px; }
     </style>
 </head>
-<body>
+<body class="fx-tickets">
 
 <section id="container">
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper fx-page-tickets<?php echo $viewT === '' ? ' fx-page-list' : ''; ?>">
+        <div class="wrapper fx-page-tickets<?php echo $viewT === '' ? ' fx-page-list fx-ticket-inbox' : ' fx-ticket-thread'; ?>">
 
             <?php if ($viewT === ''): ?>
 
@@ -709,14 +709,30 @@ if ($viewT === '') {
 
             <?php echo fx_filter_delete_flash_html(); ?>
 
+            <div class="invoice-overview">
+                <div class="invoice-overview__main"><span class="invoice-overview__icon" aria-hidden="true"><?php echo icon('message', 'svg-icon'); ?></span><div><span><?php echo $tkFilterActive ? 'تیکت‌های مطابق فیلتر' : 'کل تیکت‌های ثبت‌شده'; ?></span><strong><?php echo strtr(number_format((int)$tkPg['total']), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?><small>تیکت</small></strong></div></div>
+                <div class="invoice-overview__detail"><span>وضعیت انتخاب‌شده</span><b><?php echo htmlspecialchars($tkStatusActive ? $tkStatusOptions[$tkStatus] : 'همهٔ وضعیت‌ها', ENT_QUOTES, 'UTF-8'); ?></b></div>
+                <div class="invoice-overview__detail"><span>بازهٔ نمایش</span><b><?php echo htmlspecialchars($tkDf['active'] ? $tkDf['label'] : 'تمام تاریخ‌ها', ENT_QUOTES, 'UTF-8'); ?></b></div>
+                <?php if ($tkFilterActive): ?><a href="tickets.php" class="btn btn-outline btn-sm invoice-reset">پاک‌کردن فیلترها</a><?php endif; ?>
+            </div>
+
+            <details class="wrapper fx-page-list fx-filter-drawer fx-page-tickets fx-ticket-inbox">
+                <summary class="fx-filter-drawer__summary">
+                    <span class="fx-filter-drawer__icon" aria-hidden="true"><?php echo icon('filter', 'svg-icon'); ?></span>
+                    <span class="fx-filter-drawer__text"><strong>جستجو و فیلترها</strong><small>جستجو، وضعیت و بازهٔ زمانی</small></span>
+                    <span class="fx-filter-drawer__action"><span class="fx-filter-drawer__show">نمایش فیلترها</span><span class="fx-filter-drawer__hide">بستن فیلترها</span></span>
+                    <span class="fx-filter-drawer__chevron" aria-hidden="true"><?php echo icon('chevron-down', 'svg-icon'); ?></span>
+                </summary>
             <?php echo fx_search_ui('tickets.php', $tkQ, array_merge(['status' => $tkStatus !== '' ? $tkStatus : null], $tkDateKeep), 'جستجو در کد پیگیری، آیدی کاربر یا متن پیام…'); ?>
 
             <?php echo fx_status_filter_ui('tickets.php', $tkStatusOptions, $tkStatus, array_merge(['q' => $tkQ !== '' ? $tkQ : null], $tkDateKeep)); ?>
 
             <?php $fxFd = fx_filter_delete_parts('tickets.php', $tkFilterParams, $tkFilterActive ? (int)$tkPg['total'] : 0, $tkFilterCriteria); ?>
-            <?php echo fx_date_filter_ui('tickets.php', '', ['q' => $tkQ !== '' ? $tkQ : null, 'status' => $tkStatus !== '' ? $tkStatus : null], '', $fxFd['button'], $fxFd['form']); ?>
+            <?php echo fx_date_filter_ui('tickets.php', '', ['q' => $tkQ !== '' ? $tkQ : null, 'status' => $tkStatus !== '' ? $tkStatus : null], '', $fxFd['button'], $fxFd['form'], true); ?>
+            </details>
 
-            <div class="card">
+            <div class="card invoice-results">
+                <div class="invoice-results__head"><div><h2>صندوق تیکت‌ها</h2><p>پیگیری پیام‌ها و درخواست‌های پشتیبانی کاربران</p></div><span class="invoice-page-count"><?php echo strtr(number_format(count($tickets)), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?> تیکت در این صفحه</span></div>
                 <div class="tk-bulk-bar" id="tk-bulk-bar">
                     <button type="button" class="btn btn-sm btn-soft-danger js-bulk-delete-btn" style="display:none;" id="tk-bulk-delete-btn"><?php echo icon('trash', 'svg-icon'); ?> حذف انتخاب‌شده‌ها</button>
                 </div>
@@ -740,7 +756,7 @@ if ($viewT === '') {
                             [$slabel, $sclass] = tk_status_badge((string)$tt['status']); ?>
                             <tr data-detail-row data-detail-title="تیکت <?php echo htmlspecialchars((string)$tt['Tracking'], ENT_QUOTES, 'UTF-8'); ?>">
                                 <td><input type="checkbox" class="tk-row-check" value="<?php echo htmlspecialchars((string)$tt['Tracking'], ENT_QUOTES, 'UTF-8'); ?>"></td>
-                                <td data-label="کد پیگیری" style="direction:ltr; text-align:right;" data-summary="1"><?php echo htmlspecialchars((string)$tt['Tracking'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td data-label="کد پیگیری" style="direction:ltr; text-align:right;" data-summary="1"><bdi class="invoice-reference"><?php echo htmlspecialchars((string)$tt['Tracking'], ENT_QUOTES, 'UTF-8'); ?></bdi></td>
                                 <td data-label="کاربر">
                                     <a href="user.php?id=<?php echo urlencode((string)$tt['iduser']); ?>" class="text-link" style="direction:ltr; display:inline-block;"><?php echo htmlspecialchars((string)$tt['iduser'], ENT_QUOTES, 'UTF-8'); ?></a>
                                 </td>
@@ -854,7 +870,8 @@ if ($viewT === '') {
                 </div>
             </div>
 
-            <div class="card">
+            <div class="card ticket-conversation">
+                <div class="ticket-conversation__head"><div><span class="ticket-conversation__mark" aria-hidden="true"><?php echo icon('message', 'svg-icon svg-sm'); ?></span><strong>گفت‌وگوی تیکت</strong></div><span class="badge <?php echo $sclass; ?>"><?php echo $slabel; ?></span></div>
                 <div class="tk-chat">
                     <?php foreach ($thread as $mrow):
                         $m = tk_media((string)$mrow['text']);

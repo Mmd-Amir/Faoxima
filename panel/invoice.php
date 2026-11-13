@@ -140,13 +140,13 @@ $query->execute();
 $listinvoice = $query->fetchAll();
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>مدیریت سفارشات | ربات فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
-<script src="js/theme.js?v=flat50" defer>
+    <link rel="stylesheet" href="css/theme.css?v=filterdrawer111">
+<script src="js/theme.js?v=dark62" defer>
 
 </script>
 </head>
@@ -156,7 +156,7 @@ $listinvoice = $query->fetchAll();
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper fx-page-list">
+        <div class="wrapper fx-page-list fx-page-invoices">
 
             <div class="page-head">
                 <div>
@@ -172,6 +172,20 @@ $listinvoice = $query->fetchAll();
 
             <?php echo fx_filter_delete_flash_html(); ?>
 
+            <div class="invoice-overview">
+                <div class="invoice-overview__main"><span class="invoice-overview__icon" aria-hidden="true"><?php echo icon('cart-check-round', 'svg-icon'); ?></span><div><span><?php echo $invFilterActive ? 'سفارش‌های مطابق فیلتر' : 'کل سفارش‌های ثبت‌شده'; ?></span><strong><?php echo strtr(number_format((int)$pg['total']), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?><small>سفارش</small></strong></div></div>
+                <div class="invoice-overview__detail"><span>وضعیت انتخاب‌شده</span><b><?php echo htmlspecialchars($invStatusActive ? $invStatusOptions[$invStatus] : 'همهٔ وضعیت‌ها', ENT_QUOTES, 'UTF-8'); ?></b></div>
+                <div class="invoice-overview__detail"><span>بازهٔ نمایش</span><b><?php echo htmlspecialchars($df['active'] ? $df['label'] : 'تمام تاریخ‌ها', ENT_QUOTES, 'UTF-8'); ?></b></div>
+                <?php if ($invFilterActive): ?><a href="invoice.php" class="btn btn-outline btn-sm invoice-reset">پاک‌کردن فیلترها</a><?php endif; ?>
+            </div>
+
+            <details class="wrapper fx-page-list fx-filter-drawer fx-page-invoices">
+                <summary class="fx-filter-drawer__summary">
+                    <span class="fx-filter-drawer__icon" aria-hidden="true"><?php echo icon('filter', 'svg-icon'); ?></span>
+                    <span class="fx-filter-drawer__text"><strong>جستجو و فیلترها</strong><small>جستجو، وضعیت و بازهٔ زمانی</small></span>
+                    <span class="fx-filter-drawer__action"><span class="fx-filter-drawer__show">نمایش فیلترها</span><span class="fx-filter-drawer__hide">بستن فیلترها</span></span>
+                    <span class="fx-filter-drawer__chevron" aria-hidden="true"><?php echo icon('chevron-down', 'svg-icon'); ?></span>
+                </summary>
             <?php echo fx_search_ui('invoice.php', $invQ, array_merge(['status' => $invStatus !== '' ? $invStatus : null], $invDateKeep, $invExtraKeep), 'جستجو در شناسه سفارش، آیدی کاربر، نام کانفیگ یا محصول…'); ?>
 
             <?php echo fx_status_filter_ui('invoice.php', $invStatusOptions, $invStatus, array_merge(['q' => $invQ !== '' ? $invQ : null], $invDateKeep, $invExtraKeep)); ?>
@@ -182,9 +196,11 @@ $listinvoice = $query->fetchAll();
 
             <?php $fxFd = fx_filter_delete_parts('invoice.php', $invFilterParams, ($invFilterActive && !$invDeleteBlocked) ? (int)$pg['total'] : 0, $invFilterCriteria, '', $invDeleteNote); ?>
             <?php $fxFdExtra = $fxFd['button'] !== '' ? '<div class="fx-date-filter__active">' . htmlspecialchars($invDeleteNote, ENT_QUOTES, 'UTF-8') . '</div>' : ''; ?>
-            <?php echo fx_date_filter_ui('invoice.php', '', array_merge(['q' => $invQ !== '' ? $invQ : null, 'status' => $invStatus !== '' ? $invStatus : null], $invExtraKeep), '', $fxFd['button'], $fxFd['form'] . $fxFdExtra); ?>
+            <?php echo fx_date_filter_ui('invoice.php', '', array_merge(['q' => $invQ !== '' ? $invQ : null, 'status' => $invStatus !== '' ? $invStatus : null], $invExtraKeep), '', $fxFd['button'], $fxFd['form'] . $fxFdExtra, true); ?>
+            </details>
 
-            <div class="card">
+            <div class="card invoice-results">
+                <div class="invoice-results__head"><div><h2>آرشیو سفارش‌ها</h2><p>جزئیات خریدها، وضعیت سرویس و اطلاعات کاربران</p></div><span class="invoice-page-count"><?php echo strtr(number_format(count($listinvoice)), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?> سفارش در این صفحه</span></div>
 <?php $invBulkAction = fx_qs(array_merge($invFilterParams, ['p' => (isset($_GET['p']) && is_string($_GET['p']) && ctype_digit($_GET['p'])) ? $_GET['p'] : null])); ?>
                 <form method="POST" action="<?php echo htmlspecialchars('invoice.php' . ($invBulkAction !== '' ? '?' . $invBulkAction : ''), ENT_QUOTES, 'UTF-8'); ?>" id="bulk-form">
                 <?php echo fx_csrf_field(); ?>
@@ -200,7 +216,7 @@ $listinvoice = $query->fetchAll();
                                 <th>لوکیشن</th>
                                 <th>محصول</th>
                                 <th>تاریخ سفارش</th>
-                                <th>مبلغ (T)</th>
+                                <th>مبلغ (تومان)</th>
                                 <th>وضعیت</th>
                             </tr>
                         </thead>
@@ -227,19 +243,19 @@ $listinvoice = $query->fetchAll();
                         ?>
                             <tr data-detail-row data-detail-title="سفارش <?php echo htmlspecialchars((string)$list['id_invoice'], ENT_QUOTES, 'UTF-8'); ?>">
                                 <td><label class="fx-check-row"><input type="checkbox" name="ids[]" value="<?php echo htmlspecialchars($list['id_invoice'], ENT_QUOTES, 'UTF-8'); ?>"></label></td>
-                                <td data-label="شناسه سفارش" data-summary="1"><?php echo $list['id_invoice']; ?></td>
+                                <td data-label="شناسه سفارش" data-summary="1"><bdi class="invoice-reference">#<?php echo htmlspecialchars((string)$list['id_invoice'], ENT_QUOTES, 'UTF-8'); ?></bdi></td>
                                 <td data-label="آیدی کاربر">
                                     <a href="user.php?id=<?php echo $list['id_user']; ?>" class="text-link">
                                         <?php echo $list['id_user']; ?>
                                     </a>
                                 </td>
                                 <td data-label="نام کانفیگ" style="direction:ltr; text-align:right;">
-                                    <?php echo htmlspecialchars($list['username'], ENT_QUOTES, 'UTF-8'); ?>
+                                    <bdi class="invoice-config"><?php echo htmlspecialchars($list['username'], ENT_QUOTES, 'UTF-8'); ?></bdi>
                                 </td>
-                                <td data-label="لوکیشن"><?php echo htmlspecialchars($list['Service_location'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td data-label="محصول" data-summary="1"><?php echo htmlspecialchars($list['name_product'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td data-label="تاریخ سفارش" style="direction:ltr; text-align:right;"><?php echo $time_sell; ?></td>
-                                <td data-label="مبلغ (T)"><?php echo $price; ?></td>
+                                <td data-label="لوکیشن"><span class="invoice-location"><?php echo htmlspecialchars($list['Service_location'], ENT_QUOTES, 'UTF-8'); ?></span></td>
+                                <td data-label="محصول" data-summary="1"><span class="invoice-product"><?php echo htmlspecialchars($list['name_product'], ENT_QUOTES, 'UTF-8'); ?></span></td>
+                                <td data-label="تاریخ سفارش" style="direction:ltr; text-align:right;"><span class="invoice-date"><?php echo htmlspecialchars((string)$time_sell, ENT_QUOTES, 'UTF-8'); ?></span></td>
+                                <td data-label="مبلغ (تومان)"><span class="invoice-amount"><bdi><?php echo $price; ?></bdi><?php if ((float)$list['price_product'] !== 0.0): ?> <small class="currency-unit">تومان</small><?php endif; ?></span></td>
                                 <td data-label="وضعیت" data-summary="1"><span class="badge <?php echo $statusClass; ?>"><?php echo $statusText; ?></span></td>
                             </tr>
                         <?php endforeach; ?>

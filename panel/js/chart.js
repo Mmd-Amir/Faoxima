@@ -29,7 +29,7 @@
         }
 
         var accent     = getCssVar('--accent',      '#3b82f6');
-        var textMuted  = getCssVar('--chart-axis',  getCssVar('--text-muted', '#94a3b8'));
+        var textMuted  = getCssVar('--chart-axis',  getCssVar('--text-muted', '#A1A1AA'));
         var textMain   = getCssVar('--text-main',   '#f1f3f8');
         var gridColor  = getCssVar('--chart-grid',  'rgba(255,255,255,0.06)');
         var valueFmt   = options.valueFormatter || function (v) { return persianNum(v.toLocaleString('en-US')); };
@@ -108,7 +108,7 @@
 
         var dotBorder = getCssVar('--surface-1', '#ffffff');
 
-        var dotBorderSolid = getCssVar('--bg-grad-top', '#0d0d14');
+        var dotBorderSolid = getCssVar('--bg-grad-top', '#1B1B1D');
         var dots = [];
         for (var di = 0; di < n; di++) {
             dots.push('<circle cx="' + x(di).toFixed(2) + '" cy="' + y(data[di]).toFixed(2) + '" r="3.5" fill="' + accent + '" stroke="' + dotBorderSolid + '" stroke-width="2"/>');

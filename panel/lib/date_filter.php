@@ -97,7 +97,7 @@ if (!function_exists('fx_date_filter_matches_ts')) {
 
 if (!function_exists('fx_date_filter_ui')) {
 
-    function fx_date_filter_ui(string $baseUrl, string $suffix = '', array $keepParams = [], string $expiryLabel = '', string $actionsExtra = '', string $cardExtra = ''): string
+    function fx_date_filter_ui(string $baseUrl, string $suffix = '', array $keepParams = [], string $expiryLabel = '', string $actionsExtra = '', string $cardExtra = '', bool $daysOnly = false): string
     {
         $df = fx_date_filter_resolve($suffix);
         $title = $expiryLabel !== '' ? 'فیلتر بر اساس تاریخ ' . $expiryLabel : 'فیلتر بر اساس تاریخ';
@@ -116,7 +116,7 @@ if (!function_exists('fx_date_filter_ui')) {
         $idDfrom = 'fx-dfrom' . $suffix;
         $idDto   = 'fx-dto' . $suffix;
 
-        $html = '<div class="card fx-date-filter">';
+        $html = '<div class="card fx-date-filter' . ($daysOnly ? ' fx-date-filter--days-only' : '') . '">';
         $html .= '<div class="fx-date-filter__title">' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</div>';
         $html .= '<div class="fx-date-filter__presets">';
         $presets = ['24h' => '۲۴ ساعت اخیر', '1w' => '۱ هفته اخیر', '1m' => '۱ ماه اخیر', '3m' => '۳ ماه اخیر'];
@@ -133,10 +133,12 @@ if (!function_exists('fx_date_filter_ui')) {
         }
         $html .= '<div class="fx-date-filter__field"><label for="' . $idDdays . '">تعداد روز اخیر</label>';
         $html .= '<input type="number" id="' . $idDdays . '" name="ddays' . $suffix . '" min="1" value="' . htmlspecialchars($curDdays, ENT_QUOTES, 'UTF-8') . '"></div>';
+        if (!$daysOnly) {
         $html .= '<div class="fx-date-filter__field"><label for="' . $idDfrom . '">از تاریخ (مثال: ۱۴۰۴/۰۲/۱۰)</label>';
         $html .= '<input type="text" id="' . $idDfrom . '" name="dfrom' . $suffix . '" placeholder="1404/02/10" value="' . htmlspecialchars($curDfrom, ENT_QUOTES, 'UTF-8') . '" style="direction:ltr;"></div>';
         $html .= '<div class="fx-date-filter__field"><label for="' . $idDto . '">تا تاریخ</label>';
         $html .= '<input type="text" id="' . $idDto . '" name="dto' . $suffix . '" placeholder="1404/05/15" value="' . htmlspecialchars($curDto, ENT_QUOTES, 'UTF-8') . '" style="direction:ltr;"></div>';
+        }
         $html .= '<div class="fx-date-filter__actions">';
         $html .= '<button type="submit" class="btn btn-primary">اعمال فیلتر</button>';
         if ($df['active']) {

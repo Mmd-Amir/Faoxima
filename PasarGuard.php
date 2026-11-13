@@ -856,8 +856,19 @@ function pasarguardAddUser($location, $data_limit, $username_ac, $timestamp, $no
             $hwid_limit = (int) $product['hwid_limit'];
         }
     }
+    $proxySettings = json_decode($panel['proxies'] ?? 'null');
+    if (is_object($proxySettings)) {
+        foreach ($proxySettings as $options) {
+            if (!is_object($options)) {
+                continue;
+            }
+            foreach (['id', 'uuid', 'password', 'secret', 'auth', 'private_key', 'public_key', 'pre_shared_key', 'peer_ips'] as $field) {
+                unset($options->{$field});
+            }
+        }
+    }
     $data = array(
-        "proxy_settings" => json_decode($panel['proxies']),
+        "proxy_settings" => $proxySettings,
         "data_limit" => $data_limit,
         "username" => $username_ac,
         "note" => $note,

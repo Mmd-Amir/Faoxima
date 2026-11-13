@@ -18,9 +18,9 @@ register_shutdown_function(static function () {
     }
     @error_log('[panel/login] fatal: ' . $err['message'] . ' @ ' . (string)$err['file'] . ':' . (int)$err['line']);
     $msg = 'خطای داخلی رخ داد. جزئیات در لاگ سرور ثبت شد.';
-    echo '<!DOCTYPE html><html lang="fa" dir="rtl"><meta charset="utf-8">'
+    echo '<!DOCTYPE html><html lang="fa" dir="rtl" data-theme="dark"><meta charset="utf-8">'
        . '<title>خطای سرور</title>'
-       . '<body style="font-family:sans-serif;background:#0a0a0f;color:#f1f3f8;padding:32px;">'
+       . '<body style="font-family:sans-serif;background:#1B1B1D;color:#F4F4F5;padding:32px;">'
        . '<h2>خطای داخلی سرور</h2><pre style="white-space:pre-wrap">' . $msg . '</pre>'
        . '</body></html>';
 });
@@ -155,18 +155,21 @@ if (isset($_POST['login'])) {
 <html lang="fa" dir="rtl" data-theme="dark" data-color="blue">
 <head>
     <script>
-    (function(){try{var t=localStorage.getItem('faoxima_theme');
-    if(t!=='light'&&t!=='dark')t='dark';
-    document.documentElement.setAttribute('data-theme',t);
+    (function(){try{document.documentElement.setAttribute('data-theme','dark'); localStorage.setItem('faoxima_theme','dark');
     var c=localStorage.getItem('faoxima_color');
     if(c)document.documentElement.setAttribute('data-color',c);}catch(e){}})();
     </script>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>ورود به پنل مدیریت | فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
-    <link rel="stylesheet" href="css/ads.css?v=ad1">
-<script src="js/theme.js?v=flat50" defer>
+    <link rel="stylesheet" href="css/theme.css?v=toman75">
+    <link rel="stylesheet" href="css/ads.css?v=adtheme112">
+    <style>
+        [data-theme="dark"] .login-page .login-card {
+            background: radial-gradient(ellipse at 0% 0%, var(--accent-soft), transparent 65%), var(--surface-1);
+        }
+    </style>
+<script src="js/theme.js?v=dark62" defer>
 
 </script>
 </head>

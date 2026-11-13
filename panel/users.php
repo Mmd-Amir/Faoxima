@@ -68,13 +68,13 @@ $query->execute();
 $listusers = $query->fetchAll();
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>مدیریت کاربران | ربات فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
-<script src="js/theme.js?v=flat50" defer>
+    <link rel="stylesheet" href="css/theme.css?v=userstable102">
+<script src="js/theme.js?v=dark62" defer>
 
 </script>
 </head>
@@ -84,7 +84,7 @@ $listusers = $query->fetchAll();
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper fx-page-list">
+        <div class="wrapper fx-page-list fx-page-users">
 
             <div class="page-head">
                 <div>
@@ -101,43 +101,48 @@ $listusers = $query->fetchAll();
                     <div class="stat-card__top">
                         <div class="stat-card__info">
                             <span class="stat-card__label">کل کاربران</span>
-                            <span class="stat-card__value" data-count="<?php echo (int)$u_total; ?>"><?php echo number_format($u_total); ?></span>
+
                         </div>
                         <span class="stat-card__icon icon-blue"><?php echo icon('users', 'svg-icon'); ?></span>
                     </div>
+                <div class="user-stat-metric"><span class="stat-card__value" data-count="<?php echo (int)$u_total; ?>"><?php echo number_format($u_total); ?></span></div>
                 </a>
                 <a class="stat-card observe-in" <?php echo $userCardLink('active'); ?>>
                     <div class="stat-card__top">
                         <div class="stat-card__info">
                             <span class="stat-card__label">فعال</span>
-                            <span class="stat-card__value" data-count="<?php echo (int)$u_active; ?>"><?php echo number_format($u_active); ?></span>
+
                         </div>
                         <span class="stat-card__icon icon-green"><?php echo icon('users', 'svg-icon'); ?></span>
                     </div>
+                <div class="user-stat-metric"><span class="stat-card__value" data-count="<?php echo (int)$u_active; ?>"><?php echo number_format($u_active); ?></span></div>
                 </a>
                 <a class="stat-card observe-in" <?php echo $userCardLink('block'); ?>>
                     <div class="stat-card__top">
                         <div class="stat-card__info">
                             <span class="stat-card__label">مسدود</span>
-                            <span class="stat-card__value" data-count="<?php echo (int)$u_block; ?>"><?php echo number_format($u_block); ?></span>
+
                         </div>
                         <span class="stat-card__icon icon-rose"><?php echo icon('users', 'svg-icon'); ?></span>
                     </div>
+                <div class="user-stat-metric"><span class="stat-card__value" data-count="<?php echo (int)$u_block; ?>"><?php echo number_format($u_block); ?></span></div>
                 </a>
                 <a class="stat-card observe-in" <?php echo $userCardLink('balance'); ?>>
                     <div class="stat-card__top">
                         <div class="stat-card__info">
                             <span class="stat-card__label">مجموع موجودی</span>
-                            <span class="stat-card__value" data-count="<?php echo (int)$u_balance; ?>" data-suffix=" T"><?php echo number_format($u_balance); ?> T</span>
+
                         </div>
                         <span class="stat-card__icon icon-amber"><svg class="svg-icon" viewBox="-1.5 0 33 33" aria-hidden="true"><g transform="translate(-259,-776)" fill="currentColor"><path fill="currentColor" stroke="none" d="M283,799 L289,799 L289,797 L283,797 L283,799 Z M287,787 L259,787 L259,807 C259,808.104 259.896,809 261,809 L287,809 C288.104,809 289,808.104 289,807 L289,801 L282,801 C281.448,801 281,800.553 281,800 L281,796 C281,795.448 281.448,795 282,795 L289,795 L289,789 C289,787.896 288.104,787 287,787 L287,787 Z M287,778 C287,777.447 286.764,777.141 286.25,776.938 C285.854,776.781 285.469,776.875 285,777 L259,785 L287,785 L287,778 L287,778 Z"/></g></svg></span>
                     </div>
+                <div class="user-stat-metric"><span class="stat-card__value"><span data-count="<?php echo (int)$u_balance; ?>"><?php echo number_format($u_balance); ?></span> <small class="currency-unit">تومان</small></span></div>
                 </a>
             </div>
 
             <?php echo fx_search_ui('users.php', $userQ, ['ufilter' => $userFilter !== '' ? $userFilter : null], 'جستجو در شناسه، نام کاربری، شماره تلفن یا نام سفارشی…'); ?>
 
-            <div class="card">
+            <div class="card users-results">
+                <div class="users-results__head"><div><h2>فهرست کاربران</h2><p>اطلاعات حساب، موجودی و وضعیت دسترسی کاربران</p></div><span class="users-result-count"><?php echo strtr(number_format((int)$pg['total']), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?> کاربر در نتایج</span></div>
                 <div class="table-wrap">
                     <table id="usersTable" class="display app-table app-table--summary" style="width:100%">
                         <thead>
@@ -166,7 +171,7 @@ $listusers = $query->fetchAll();
                             $av = $u_i % 4; $u_i++;
                         ?>
                             <tr data-detail-row data-detail-title="<?php echo $uname; ?>">
-                                <td data-label="شناسه (ID)" data-summary="1"><?php echo $list['id']; ?></td>
+                                <td data-label="شناسه (ID)" data-summary="1"><bdi class="users-id"><?php echo htmlspecialchars((string)$list['id'], ENT_QUOTES, 'UTF-8'); ?></bdi></td>
                                 <td data-label="نام کاربری" data-summary="1">
                                     <span class="cell-user">
                                         <span class="user-avatar av<?php echo $av; ?>"><?php echo htmlspecialchars($uinit, ENT_QUOTES, 'UTF-8'); ?></span>
@@ -177,7 +182,7 @@ $listusers = $query->fetchAll();
                                     </span>
                                 </td>
                                 <td data-label="شماره تلفن"><?php echo $number; ?></td>
-                                <td data-label="موجودی"><?php echo number_format($list['Balance']); ?> <small class="text-muted">T</small></td>
+                                <td data-label="موجودی"><span class="users-balance"><bdi><?php echo number_format($list['Balance']); ?></bdi><small class="currency-unit">تومان</small></span></td>
                                 <td data-label="زیرمجموعه"><?php echo (int)$list['affiliatescount']; ?> <small class="text-muted">نفر</small></td>
                                 <td data-label="وضعیت" data-summary="1" data-filter-value="<?php echo $statusText; ?>"><span class="badge <?php echo $statusClass; ?>"><?php echo $statusText; ?></span></td>
                                 <td data-label="عملیات" class="cell-actions">
@@ -190,7 +195,6 @@ $listusers = $query->fetchAll();
                         </tbody>
                     </table>
                     <?php echo fx_pager_html($pg['page'], $pg['pages'], $pg['total'], count($listusers), 'users.php', ['q' => $userQ !== '' ? $userQ : null, 'ufilter' => $userFilter !== '' ? $userFilter : null]); ?>
-                </div>
                 </div>
             </div>
 

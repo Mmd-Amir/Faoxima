@@ -135,14 +135,14 @@ if (isset($pdo) && $pdo instanceof PDO) {
         function lin(v){ v/=255; return v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055,2.4); }
         function relLum(r,g,b){ return 0.2126*lin(r)+0.7152*lin(g)+0.0722*lin(b); }
         function ratioOn(r,g,b,bgL){ var L=relLum(r,g,b); var hi=L>bgL?L:bgL, lo=L>bgL?bgL:L; return (hi+0.05)/(lo+0.05); }
-        function surfaceLum(light){ var v=''; try { v=getComputedStyle(html).getPropertyValue('--surface-1')||''; } catch(e){ v=''; } var sm=/^#?([0-9a-f]{6})$/i.exec(String(v).trim()); if(sm){ var sn=parseInt(sm[1],16); return relLum((sn>>16)&255,(sn>>8)&255,sn&255); } return light?relLum(255,255,255):relLum(21,22,26); }
+        function surfaceLum(light){ var v=''; try { v=getComputedStyle(html).getPropertyValue('--surface-1')||''; } catch(e){ v=''; } var sm=/^#?([0-9a-f]{6})$/i.exec(String(v).trim()); if(sm){ var sn=parseInt(sm[1],16); return relLum((sn>>16)&255,(sn>>8)&255,sn&255); } return light?relLum(255,255,255):relLum(31,31,33); }
         function mixInk(r,g,b,k,light){ return light ? [Math.round(r*(1-k)),Math.round(g*(1-k)),Math.round(b*(1-k))] : [Math.round(r+(255-r)*k),Math.round(g+(255-g)*k),Math.round(b+(255-b)*k)]; }
         function hexOf(c){ function h(v){ var x=v.toString(16); return x.length<2?'0'+x:x; } return '#'+h(c[0])+h(c[1])+h(c[2]); }
         function inkFor(r,g,b,light){ var bgL=surfaceLum(light); if(ratioOn(r,g,b,bgL)>=4.5) return hexOf([r,g,b]); var lo=0,hi=1,i,mid,c; for(i=0;i<24;i++){ mid=(lo+hi)/2; c=mixInk(r,g,b,mid,light); if(ratioOn(c[0],c[1],c[2],bgL)>=4.5) hi=mid; else lo=mid; } c=mixInk(r,g,b,hi,light); var gd=0; while(ratioOn(c[0],c[1],c[2],bgL)<4.5 && gd++<255){ hi=Math.min(1,hi+0.004); c=mixInk(r,g,b,hi,light); } return hexOf(c); }
 
-        var t = localStorage.getItem('faoxima_theme');
-        var light = (t === 'light');
-        html.setAttribute('data-theme', light ? 'light' : 'dark');
+        var light = false;
+        html.setAttribute('data-theme', 'dark');
+        localStorage.setItem('faoxima_theme', 'dark');
 
         var hex;
         if (PRESET[color]) { hex = PRESET[color]; html.setAttribute('data-color', color); }
@@ -471,11 +471,6 @@ if (isset($pdo) && $pdo instanceof PDO) {
                     <span>تنظیمات ظاهر</span>
                 </a>
 
-                <button type="button" id="theme-toggle">
-                    <span id="theme-toggle-icon"></span>
-                    <span id="theme-toggle-label">حالت روز</span>
-                </button>
-
                 <hr>
 
                 <a href="login.php" class="menu-danger">
@@ -571,7 +566,7 @@ if (isset($pdo) && $pdo instanceof PDO) {
 <div class="sidebar-overlay"></div>
 
 <?php if (isset($_SESSION['user']) && $_SESSION['user'] !== ''): ?>
-<link rel="stylesheet" href="css/ads.css?v=ad1">
+<link rel="stylesheet" href="css/ads.css?v=adtheme112">
 <div id="fxAdModalHost" data-endpoint="ad_api.php" hidden></div>
 <script src="js/ads.js?v=ad1" defer></script>
 <?php endif; ?>

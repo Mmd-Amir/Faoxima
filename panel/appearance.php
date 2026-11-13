@@ -16,13 +16,13 @@ if (empty($_SESSION['user']) || !is_string($_SESSION['user']) || $_SESSION['user
 }
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>تنظیمات ظاهر — پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
-    <script src="js/theme.js?v=flat50" defer></script>
+    <link rel="stylesheet" href="css/theme.css?v=toman75">
+    <script src="js/theme.js?v=dark62" defer></script>
     <style>
         .ap-card { max-width: 720px; }
         .ap-lead { color: var(--text-muted, #8a8a9a); font-size: 13px; margin: 0 0 var(--space-4); }
@@ -52,6 +52,46 @@ if (empty($_SESSION['user']) || !is_string($_SESSION['user']) || $_SESSION['user
         .ap-preview { width: 48px; height: 48px; border-radius: var(--radius-md); background: var(--accent); border: 1px solid rgba(255,255,255,0.16); flex: 0 0 auto; }
         .ap-note { color: var(--text-muted, #8a8a9a); font-size: 12.5px; margin-top: 10px; }
         .ap-actions { margin-top: var(--space-4); display: flex; gap: var(--space-2); flex-wrap: wrap; }
+        .fx-page-appearance .ap-card { max-width: 920px; margin: 0 auto; padding: 28px; border-radius: 22px; border: 1px solid var(--border-soft); background: radial-gradient(ellipse at 0% 0%, var(--accent-soft), transparent 65%), var(--surface-1); }
+        .fx-page-appearance .ap-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; }
+        .fx-page-appearance .ap-section-title { font-size: 16px; font-weight: 700; margin: 0; gap: 10px; }
+        .fx-page-appearance .ap-section-title .svg-icon { width: 24px; height: 24px; color: var(--accent-ink); }
+        .fx-page-appearance .ap-live { padding: 6px 10px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border-soft); font-size: 10px; color: var(--text-muted); }
+        .fx-page-appearance .ap-lead { font-size: 12px; line-height: 1.9; margin-bottom: 20px; }
+        .fx-page-appearance .ap-demo { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; padding: 16px; background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: 16px; margin: 20px 0; }
+        .fx-page-appearance .ap-demo__label { font-size: 11px; color: var(--text-muted); }
+        .fx-page-appearance .ap-demo__items { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+        .fx-page-appearance .ap-demo__items > span { display: inline-flex; align-items: center; gap: 7px; padding: 9px 12px; font-size: 11px; font-weight: 700; border-radius: 10px; }
+        .fx-page-appearance .ap-demo__items .svg-icon { width: 16px; height: 16px; }
+        .fx-page-appearance .ap-demo__primary { background: var(--accent); color: var(--accent-fg, #fff); }
+        .fx-page-appearance .ap-demo__soft { background: var(--accent-soft); color: var(--accent-ink); }
+        .fx-page-appearance .ap-grid { gap: 12px; margin-top: 18px; }
+        .fx-page-appearance .ap-swatch { min-height: 76px; padding: 16px; gap: 12px; border-radius: 14px; background: var(--surface-2); font-size: 13px; font-family: inherit; }
+        .fx-page-appearance .ap-swatch:hover { transform: none; background: var(--surface-3); border-color: var(--border-mid); }
+        .fx-page-appearance .ap-swatch.active { background: var(--accent-soft); border-color: var(--accent); box-shadow: none; color: var(--text-main); }
+        .fx-page-appearance .ap-swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+        .fx-page-appearance .ap-dot { width: 34px; height: 34px; border-radius: 11px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); }
+        .fx-page-appearance .ap-custom { margin-top: 24px; padding-top: 24px; }
+        .fx-page-appearance .ap-custom .ap-section-title { margin-bottom: 10px; font-size: 14px; }
+        .fx-page-appearance .ap-hexrow { gap: 10px; padding: 12px; margin-top: 16px; background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: 14px; }
+        .fx-page-appearance .ap-hexrow input[type="text"] { min-width: 0; background: transparent; border-color: var(--border-soft); font-size: 15px; padding: 11px 12px; border-radius: 10px; }
+        .fx-page-appearance .ap-hexrow input[type="color"] { flex: 0 0 42px; width: 42px; height: 42px; padding: 3px; border: 1px solid var(--border-soft); background: var(--surface-1); border-radius: 10px; }
+        .fx-page-appearance .ap-hexrow input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        .fx-page-appearance .ap-hexrow input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 7px; }
+        .fx-page-appearance .ap-hexrow input[type="color"]::-moz-color-swatch { border: 0; border-radius: 7px; }
+        .fx-page-appearance .ap-preview { width: 42px; height: 42px; border-radius: 10px; }
+        .fx-page-appearance .ap-note { font-size: 11px; line-height: 1.8; margin-top: 12px; }
+        .fx-page-appearance .ap-actions { padding-top: 18px; margin-top: 20px; border-top: 1px solid var(--border-soft); }
+        .fx-page-appearance .ap-actions .btn { border-radius: 10px; font-size: 11px; min-height: 38px; }
+        @media (max-width: 600px) {
+            .fx-page-appearance .ap-card { padding: 18px; border-radius: 18px; }
+            .fx-page-appearance .ap-section-title { font-size: 14px; }
+            .fx-page-appearance .ap-swatch { min-height: 66px; padding: 12px; font-size: 12px; }
+            .fx-page-appearance .ap-demo { padding: 12px; }
+            .fx-page-appearance .ap-hexrow { gap: 7px; padding: 8px; }
+            .fx-page-appearance .ap-preview { width: 30px; height: 36px; }
+            .fx-page-appearance .ap-hexrow input[type="text"] { padding: 10px 8px; font-size: 13px; }
+        }
     </style>
 </head>
 <body>
@@ -76,15 +116,10 @@ if (empty($_SESSION['user']) || !is_string($_SESSION['user']) || $_SESSION['user
             </div>
 
             <div class="card ap-card">
-                <div class="ap-section-title">حالت نمایش</div>
-                <div class="ap-lead">حالت روشن یا تیره‌ی پنل را انتخاب کنید.</div>
-                <div class="ap-modes" id="ap-modes" role="group" aria-label="حالت نمایش">
-                    <button type="button" class="ap-mode" data-theme-mode="dark">حالت شب</button>
-                    <button type="button" class="ap-mode" data-theme-mode="light">حالت روز</button>
-                </div>
-
-                <div class="ap-section-title">رنگ پنل</div>
+                <div class="ap-heading"><div class="ap-section-title"><?php echo icon('palette', 'svg-icon'); ?> رنگ پنل</div><span class="ap-live">اعمال و ذخیرهٔ خودکار</span></div>
                 <div class="ap-lead">یک رنگ از پیش‌فرض‌ها انتخاب کنید یا کد رنگ دلخواه‌تان را وارد کنید. رنگ بلافاصله اعمال می‌شود.</div>
+
+                <div class="ap-demo" aria-hidden="true"><span class="ap-demo__label">پیش‌نمایش رنگ انتخابی</span><div class="ap-demo__items"><span class="ap-demo__primary"><?php echo icon('check', 'svg-icon'); ?> دکمهٔ اصلی</span><span class="ap-demo__soft"><?php echo icon('home', 'svg-icon'); ?> بخش انتخاب‌شده</span></div></div>
 
                 <div class="ap-grid" id="ap-grid">
                     <button type="button" class="ap-swatch" data-color="blue"><span>آبی</span><span class="ap-dot" style="background:#3b82f6"></span></button>
@@ -100,7 +135,7 @@ if (empty($_SESSION['user']) || !is_string($_SESSION['user']) || $_SESSION['user
                     <div class="ap-lead" style="margin-bottom:0">کد رنگ شش‌رقمی (مثلاً ‎#eaedf8). متن و آیکون‌ها بسته به روشن یا تیره‌بودن رنگ، خودکار سفید یا مشکی می‌شوند.</div>
                     <div class="ap-hexrow">
                         <span class="ap-preview" id="ap-preview"></span>
-                        <input type="text" id="ap-hex" placeholder="#eaedf8" maxlength="7" dir="ltr" spellcheck="false" autocomplete="off">
+                        <input type="text" id="ap-hex" placeholder="#eaedf8" maxlength="7" dir="ltr" spellcheck="false" autocomplete="off" aria-label="کد رنگ دلخواه">
                         <input type="color" id="ap-native" aria-label="انتخابگر رنگ">
                     </div>
                     <div class="ap-note">این رنگ فقط روی همین مرورگر ذخیره می‌شود (تنظیم شخصی).</div>
@@ -127,17 +162,10 @@ if (empty($_SESSION['user']) || !is_string($_SESSION['user']) || $_SESSION['user
         var nat  = document.getElementById('ap-native');
         var prev = document.getElementById('ap-preview');
         var reset = document.getElementById('ap-reset');
-        var modes = document.querySelectorAll('.ap-mode');
 
         function setPreview(h) { if (prev) prev.style.background = h; }
         function syncFields(h) { if (hexI) hexI.value = h; if (nat) { try { nat.value = h; } catch (e) {} } setPreview(h); }
         function apply(v) { if (T && T.setColor) T.setColor(v); }
-        function syncModes() {
-            var t = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-            for (var i = 0; i < modes.length; i++) {
-                modes[i].classList.toggle('active', modes[i].getAttribute('data-theme-mode') === t);
-            }
-        }
 
         var cur = DEFAULT_COLOR;
         try { cur = localStorage.getItem('faoxima_color') || DEFAULT_COLOR; } catch (e) {}
@@ -155,17 +183,6 @@ if (empty($_SESSION['user']) || !is_string($_SESSION['user']) || $_SESSION['user
             })(tiles[i]);
         }
 
-        for (var m = 0; m < modes.length; m++) {
-            (function (b) {
-                b.addEventListener('click', function () {
-                    var mode = b.getAttribute('data-theme-mode');
-                    if (T && T.setTheme) T.setTheme(mode);
-                    syncModes();
-                });
-            })(modes[m]);
-        }
-        document.addEventListener('faoxima:themechange', syncModes);
-        syncModes();
 
         if (hexI) hexI.addEventListener('input', function () {
             var h = norm(hexI.value); if (!h) return;

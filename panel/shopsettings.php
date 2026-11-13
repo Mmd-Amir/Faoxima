@@ -122,14 +122,14 @@ function faoxima_shop_is_on($cur, $on, $off) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>قابلیت‌های فروشگاه | پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
-    <link rel="stylesheet" href="css/admin-extra.css?v=flat34">
-    <script src="js/theme.js?v=flat50" defer>
+    <link rel="stylesheet" href="css/theme.css?v=toman75">
+    <link rel="stylesheet" href="css/admin-extra.css?v=flat39">
+    <script src="js/theme.js?v=dark62" defer>
 
 </script>
 </head>

@@ -101,20 +101,20 @@ $query->execute();
 $categories = $query->fetchAll();
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>مدیریت دسته‌بندی‌ها | ربات فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
+    <link rel="stylesheet" href="css/theme.css?v=left94">
     <link rel="stylesheet" href="css/order_modal.css?v=ord1">
-    <script src="js/theme.js?v=flat50" defer></script>
+    <script src="js/theme.js?v=dark62" defer></script>
 </head>
-<body>
+<body class="fx-categories">
 <section id="container">
     <?php include("header.php"); ?>
     <section id="main-content">
-        <div class="wrapper fx-page-list">
+        <div class="wrapper fx-page-list fx-page-categories">
             <div class="page-head">
                 <div>
                     <div class="page-head__title">
@@ -137,7 +137,11 @@ $categories = $query->fetchAll();
 
             <?php echo fx_search_ui('category.php', $catQ, [], 'جستجو در شناسه یا نام دسته‌بندی…'); ?>
 
-            <div class="card">
+            <div class="card category-catalog<?php echo empty($categories) ? ' category-catalog--empty' : ''; ?>">
+                <div class="category-catalog__head"><div><h2>دسته‌بندی محصولات</h2><p>گروه‌بندی محصولات برای دسترسی سریع‌تر کاربران</p></div><span class="category-count"><?php echo strtr(number_format((int)$pg['total']), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?> دسته‌بندی<?php echo $catQ !== '' ? ' مطابق جستجو' : ''; ?></span></div>
+                <?php if (empty($categories)): ?>
+                <div class="category-empty"><span class="category-empty__icon" aria-hidden="true"><?php echo icon('folder', 'svg-icon'); ?></span><h3><?php echo $catQ !== '' ? 'دسته‌بندی موردنظر پیدا نشد' : 'اولین دسته‌بندی را بسازید'; ?></h3><p><?php echo $catQ !== '' ? 'عبارت دیگری را جستجو کنید یا به فهرست کامل برگردید.' : 'محصولات خود را در گروه‌های مشخص قرار دهید تا انتخاب برای کاربران ساده‌تر شود.'; ?></p><?php if ($catQ !== ''): ?><a href="category.php" class="btn btn-outline btn-sm">نمایش همهٔ دسته‌بندی‌ها</a><?php else: ?><button type="button" class="btn btn-primary btn-sm" onclick="openModal('modal-add-category')"><?php echo icon('plus', 'svg-icon svg-sm'); ?> افزودن دسته‌بندی</button><?php endif; ?></div>
+                <?php endif; ?>
                 <form method="POST" action="category.php" id="bulk-form">
                     <?php echo fx_csrf_field(); ?>
                     <input type="hidden" name="action" value="bulk_delete">
@@ -155,8 +159,8 @@ $categories = $query->fetchAll();
                             <?php foreach ($categories as $cat): ?>
                                 <tr data-detail-row data-detail-title="<?php echo htmlspecialchars($cat['remark'], ENT_QUOTES, 'UTF-8'); ?>">
                                     <td><label class="fx-check-row"><input type="checkbox" name="ids[]" value="<?php echo $cat['id']; ?>"></label></td>
-                                    <td data-label="شناسه" data-summary="1"><?php echo $cat['id']; ?></td>
-                                    <td data-label="نام دسته‌بندی" data-summary="1"><?php echo htmlspecialchars($cat['remark'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                    <td data-label="شناسه" data-summary="1"><bdi class="category-id">#<?php echo (int)$cat['id']; ?></bdi></td>
+                                    <td data-label="نام دسته‌بندی" data-summary="1"><span class="category-name"><span class="category-name__icon" aria-hidden="true"><?php echo icon('folder', 'svg-icon svg-sm'); ?></span><b><?php echo htmlspecialchars($cat['remark'], ENT_QUOTES, 'UTF-8'); ?></b></span></td>
                                     <td data-label="عملیات" class="cell-actions">
                                         <div class="cell-actions__group">
                                             <button type="button"
@@ -207,6 +211,7 @@ $categories = $query->fetchAll();
         <form action="category.php" method="POST">
             <?php echo fx_csrf_field(); ?>
             <input type="hidden" name="action" value="add">
+            <p class="category-form-lead">یک نام کوتاه و مشخص برای گروه محصولات انتخاب کنید.</p>
             <div class="form-group">
                 <label class="form-label">نام دسته‌بندی</label>
                 <input type="text" name="remark" class="form-control" placeholder="نام دسته‌بندی را وارد کنید" required>
@@ -226,6 +231,7 @@ $categories = $query->fetchAll();
             <?php echo fx_csrf_field(); ?>
             <input type="hidden" name="action" value="edit">
             <input type="hidden" name="id" id="edit-cat-id" value="">
+            <p class="category-form-lead">نام دسته‌بندی را تغییر دهید و سپس ذخیره کنید.</p>
             <div class="form-group">
                 <label class="form-label">نام دسته‌بندی</label>
                 <input type="text" name="remark" id="edit-cat-remark" class="form-control" required>

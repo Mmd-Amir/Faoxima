@@ -39,8 +39,8 @@ $FIN_GROUPS = [
             ['type' => 'toggle', 'name' => 'statuscardautoconfirm','label' => 'تایید خودکار رسید کارت',     'on' => 'onautoconfirm', 'off' => 'offautoconfirm'],
             ['type' => 'toggle', 'name' => 'autoconfirmcart',     'label' => 'تایید خودکار سفارش (بدون تایید رسید)', 'on' => 'onauto', 'off' => 'offauto'],
             ['type' => 'toggle', 'name' => 'checkpaycartfirst',   'label' => 'بررسی پرداخت اولیه',          'on' => 'onpayverify',   'off' => 'offpayverify'],
-            ['type' => 'number', 'name' => 'minbalancecart',      'label' => 'حداقل مبلغ شارژ (T)',     'placeholder' => '20000', 'money' => true],
-            ['type' => 'number', 'name' => 'maxbalancecart',      'label' => 'حداکثر مبلغ شارژ (T)',    'placeholder' => '1000000', 'money' => true],
+            ['type' => 'number', 'name' => 'minbalancecart',      'label' => 'حداقل مبلغ شارژ (تومان)',     'placeholder' => '20000', 'money' => true],
+            ['type' => 'number', 'name' => 'maxbalancecart',      'label' => 'حداکثر مبلغ شارژ (تومان)',    'placeholder' => '1000000', 'money' => true],
             ['type' => 'number', 'name' => 'helpcart',            'label' => 'توضیحات راهنما (شناسه پیام)', 'placeholder' => '2'],
             ['type' => 'number', 'name' => 'chashbackcart',       'label' => 'درصد کش‌بک (٪)',              'placeholder' => '0'],
         ],
@@ -72,28 +72,28 @@ $FIN_GROUPS = [
             ['type' => 'secret', 'name' => 'nowpayment_ipn_secret','label' => 'IPN Secret NowPayment',        'placeholder' => 'IPN secret (اختیاری ولی توصیه‌شده)'],
             ['type' => 'number', 'name' => 'helpnowpayment',      'label' => 'راهنما (شناسه پیام)',          'placeholder' => '2'],
             ['type' => 'number', 'name' => 'cashbacknowpayment',  'label' => 'کش‌بک (٪)',                     'placeholder' => '0'],
-            ['type' => 'number', 'name' => 'minbalancenowpayment','label' => 'حداقل مبلغ (T)',           'placeholder' => '20000', 'money' => true],
-            ['type' => 'number', 'name' => 'maxbalancenowpayment','label' => 'حداکثر مبلغ (T)',          'placeholder' => '1000000', 'money' => true],
+            ['type' => 'number', 'name' => 'minbalancenowpayment','label' => 'حداقل مبلغ (تومان)',           'placeholder' => '20000', 'money' => true],
+            ['type' => 'number', 'name' => 'maxbalancenowpayment','label' => 'حداکثر مبلغ (تومان)',          'placeholder' => '1000000', 'money' => true],
 
 
             ['type' => 'secret', 'name' => 'api_plisio',          'label' => 'API Plisio',                    'placeholder' => 'Plisio secret key'],
             ['type' => 'number', 'name' => 'helpplisio',          'label' => 'راهنما Plisio',                 'placeholder' => '2'],
             ['type' => 'number', 'name' => 'chashbackplisio',     'label' => 'کش‌بک Plisio (٪)',              'placeholder' => '0'],
-            ['type' => 'number', 'name' => 'minbalanceplisio',    'label' => 'حداقل Plisio (T)',          'placeholder' => '20000', 'money' => true],
-            ['type' => 'number', 'name' => 'maxbalanceplisio',    'label' => 'حداکثر Plisio (T)',         'placeholder' => '1000000', 'money' => true],
+            ['type' => 'number', 'name' => 'minbalanceplisio',    'label' => 'حداقل Plisio (تومان)',          'placeholder' => '20000', 'money' => true],
+            ['type' => 'number', 'name' => 'maxbalanceplisio',    'label' => 'حداکثر Plisio (تومان)',         'placeholder' => '1000000', 'money' => true],
 
 
             ['type' => 'number', 'name' => 'helpperfectmony',     'label' => 'راهنما پرفکت مانی',            'placeholder' => '2'],
             ['type' => 'number', 'name' => 'chashbackperfect',    'label' => 'کش‌بک پرفکت (٪)',               'placeholder' => '0'],
-            ['type' => 'number', 'name' => 'minbalanceperfect',   'label' => 'حداقل پرفکت (T)',          'placeholder' => '20000', 'money' => true],
-            ['type' => 'number', 'name' => 'maxbalanceperfect',   'label' => 'حداکثر پرفکت (T)',         'placeholder' => '1000000', 'money' => true],
+            ['type' => 'number', 'name' => 'minbalanceperfect',   'label' => 'حداقل پرفکت (تومان)',          'placeholder' => '20000', 'money' => true],
+            ['type' => 'number', 'name' => 'maxbalanceperfect',   'label' => 'حداکثر پرفکت (تومان)',         'placeholder' => '1000000', 'money' => true],
 
 
             ['type' => 'toggle', 'name' => 'statusstar',          'label' => 'فعال‌سازی Star Telegram',       'on' => '1',             'off' => '0'],
             ['type' => 'number', 'name' => 'helpstar',            'label' => 'راهنما Star (شناسه پیام)',     'placeholder' => '2'],
             ['type' => 'number', 'name' => 'chashbackstar',       'label' => 'کش‌بک Star (٪)',                'placeholder' => '0'],
-            ['type' => 'number', 'name' => 'minbalancestar',      'label' => 'حداقل Star (T)',           'placeholder' => '20000', 'money' => true],
-            ['type' => 'number', 'name' => 'maxbalancestar',      'label' => 'حداکثر Star (T)',          'placeholder' => '1000000', 'money' => true],
+            ['type' => 'number', 'name' => 'minbalancestar',      'label' => 'حداقل Star (تومان)',           'placeholder' => '20000', 'money' => true],
+            ['type' => 'number', 'name' => 'maxbalancestar',      'label' => 'حداکثر Star (تومان)',          'placeholder' => '1000000', 'money' => true],
         ],
     ],
 
@@ -101,8 +101,8 @@ $FIN_GROUPS = [
         'title' => 'حدود کلی شارژ',
         'icon'  => 'sliders',
         'fields' => [
-            ['type' => 'number', 'name' => 'minbalance',          'label' => 'حداقل کلی شارژ کیف پول (T)','placeholder' => '20000', 'money' => true],
-            ['type' => 'number', 'name' => 'maxbalance',          'label' => 'حداکثر کلی شارژ کیف پول (T)','placeholder' => '1000000', 'money' => true],
+            ['type' => 'number', 'name' => 'minbalance',          'label' => 'حداقل کلی شارژ کیف پول (تومان)','placeholder' => '20000', 'money' => true],
+            ['type' => 'number', 'name' => 'maxbalance',          'label' => 'حداکثر کلی شارژ کیف پول (تومان)','placeholder' => '1000000', 'money' => true],
         ],
     ],
 ];
@@ -234,15 +234,15 @@ function faoxima_fin_mask_secret($v) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>تنظیمات مالی | پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
-    <link rel="stylesheet" href="css/admin-extra.css?v=flat34">
+    <link rel="stylesheet" href="css/theme.css?v=toman75">
+    <link rel="stylesheet" href="css/admin-extra.css?v=flat39">
     <script src="js/money-input.js?v=fx1" defer></script>
-    <script src="js/theme.js?v=flat50" defer>
+    <script src="js/theme.js?v=dark62" defer>
 
 </script>
 </head>

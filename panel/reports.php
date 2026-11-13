@@ -23,9 +23,9 @@ register_shutdown_function(static function () {
         $err['message'] . ' @ ' . basename((string)$err['file']) . ':' . (int)$err['line'],
         ENT_QUOTES, 'UTF-8'
     );
-    echo '<!DOCTYPE html><html lang="fa" dir="rtl"><meta charset="utf-8">'
+    echo '<!DOCTYPE html><html lang="fa" dir="rtl" data-theme="dark"><meta charset="utf-8">'
        . '<title>خطای سرور</title>'
-       . '<body style="font-family:sans-serif;background:#0a0a0f;color:#f1f3f8;padding:32px;">'
+       . '<body style="font-family:sans-serif;background:#1B1B1D;color:#F4F4F5;padding:32px;">'
        . '<h2>خطای داخلی سرور</h2><pre style="white-space:pre-wrap">' . $msg . '</pre>'
        . '<p><a style="color:#3b82f6" href="login.php">بازگشت به ورود</a></p>'
        . '</body></html>';
@@ -215,13 +215,13 @@ $json_group_labels = json_encode(array_column($groupRows, 'label'), JSON_UNESCAP
 $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'users')));
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>گزارش‌ها و تحلیل | ربات فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
-    <script src="js/theme.js?v=flat50" defer></script>
+    <link rel="stylesheet" href="css/theme.css?v=leaderboards109">
+    <script src="js/theme.js?v=dark62" defer></script>
 </head>
 <body>
 
@@ -246,88 +246,110 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
                     <div class="stat-card__top">
                         <div class="stat-card__info">
                             <span class="stat-card__label">فروش امروز</span>
-                            <span class="stat-card__value" data-count="<?php echo (int)$incomeToday; ?>" data-suffix=" T"><?php echo number_format($incomeToday); ?> T</span>
+
+
                         </div>
                         <span class="stat-card__icon icon-green"><svg class="svg-icon" viewBox="0 0 1024 1024" aria-hidden="true"><g fill="currentColor" stroke="none"><path d="M136.948 908.811c5.657 0 10.24-4.583 10.24-10.24V610.755c0-5.657-4.583-10.24-10.24-10.24h-81.92a10.238 10.238 0 00-10.24 10.24v287.816c0 5.657 4.583 10.24 10.24 10.24h81.92zm0 40.96h-81.92c-28.278 0-51.2-22.922-51.2-51.2V610.755c0-28.278 22.922-51.2 51.2-51.2h81.92c28.278 0 51.2 22.922 51.2 51.2v287.816c0 28.278-22.922 51.2-51.2 51.2zm278.414-40.96c5.657 0 10.24-4.583 10.24-10.24V551.322c0-5.657-4.583-10.24-10.24-10.24h-81.92a10.238 10.238 0 00-10.24 10.24v347.249c0 5.657 4.583 10.24 10.24 10.24h81.92zm0 40.96h-81.92c-28.278 0-51.2-22.922-51.2-51.2V551.322c0-28.278 22.922-51.2 51.2-51.2h81.92c28.278 0 51.2 22.922 51.2 51.2v347.249c0 28.278-22.922 51.2-51.2 51.2zm278.414-40.342c5.657 0 10.24-4.583 10.24-10.24V492.497c0-5.651-4.588-10.24-10.24-10.24h-81.92c-5.652 0-10.24 4.589-10.24 10.24v406.692c0 5.657 4.583 10.24 10.24 10.24h81.92zm0 40.96h-81.92c-28.278 0-51.2-22.922-51.2-51.2V492.497c0-28.271 22.924-51.2 51.2-51.2h81.92c28.276 0 51.2 22.929 51.2 51.2v406.692c0 28.278-22.922 51.2-51.2 51.2zm278.414-40.958c5.657 0 10.24-4.583 10.24-10.24V441.299c0-5.657-4.583-10.24-10.24-10.24h-81.92a10.238 10.238 0 00-10.24 10.24v457.892c0 5.657 4.583 10.24 10.24 10.24h81.92zm0 40.96h-81.92c-28.278 0-51.2-22.922-51.2-51.2V441.299c0-28.278 22.922-51.2 51.2-51.2h81.92c28.278 0 51.2 22.922 51.2 51.2v457.892c0 28.278-22.922 51.2-51.2 51.2zm-6.205-841.902C677.379 271.088 355.268 367.011 19.245 387.336c-11.29.683-19.889 10.389-19.206 21.679s10.389 19.889 21.679 19.206c342.256-20.702 670.39-118.419 964.372-284.046 9.854-5.552 13.342-18.041 7.79-27.896s-18.041-13.342-27.896-7.79z"/><path d="M901.21 112.64l102.39.154c11.311.017 20.494-9.138 20.511-20.449s-9.138-20.494-20.449-20.511l-102.39-.154c-11.311-.017-20.494 9.138-20.511 20.449s9.138 20.494 20.449 20.511z"/><path d="M983.151 92.251l-.307 101.827c-.034 11.311 9.107 20.508 20.418 20.542s20.508-9.107 20.542-20.418l.307-101.827c.034-11.311-9.107-20.508-20.418-20.542s-20.508 9.107-20.542 20.418z"/></g></svg></span>
                     </div>
+                    <div class="report-stat-metric"><span class="stat-card__value"><span data-count="<?php echo (int)$incomeToday; ?>"><?php echo number_format($incomeToday); ?></span> <small class="currency-unit">تومان</small></span></div>
                 </div>
 
                 <div class="stat-card observe-in">
                     <div class="stat-card__top">
                         <div class="stat-card__info">
                             <span class="stat-card__label">میانگین ارزش سفارش</span>
-                            <span class="stat-card__value" data-count="<?php echo (int)$avgOrder; ?>" data-suffix=" T"><?php echo number_format($avgOrder); ?> T</span>
+
                         </div>
                         <span class="stat-card__icon icon-cyan"><?php echo icon('receipt', 'svg-icon'); ?></span>
                     </div>
+                    <div class="report-stat-metric"><span class="stat-card__value"><span data-count="<?php echo (int)$avgOrder; ?>"><?php echo number_format($avgOrder); ?></span> <small class="currency-unit">تومان</small></span></div>
                 </div>
 
                 <div class="stat-card observe-in">
                     <div class="stat-card__top">
                         <div class="stat-card__info">
                             <span class="stat-card__label">کل سفارشات</span>
-                            <span class="stat-card__value" data-count="<?php echo (int)$totalOrders; ?>"><?php echo number_format($totalOrders); ?></span>
+
                         </div>
                         <span class="stat-card__icon icon-rose"><?php echo icon('cart-check-round', 'svg-icon'); ?></span>
                     </div>
+                    <div class="report-stat-metric"><span class="stat-card__value" data-count="<?php echo (int)$totalOrders; ?>"><?php echo number_format($totalOrders); ?></span></div>
                 </div>
 
                 <div class="stat-card observe-in">
                     <div class="stat-card__top">
                         <div class="stat-card__info">
                             <span class="stat-card__label">کل کاربران</span>
-                            <span class="stat-card__value" data-count="<?php echo (int)$totalUsers; ?>"><?php echo number_format($totalUsers); ?></span>
+
                         </div>
                         <span class="stat-card__icon icon-blue"><?php echo icon('users', 'svg-icon'); ?></span>
                     </div>
+                    <div class="report-stat-metric"><span class="stat-card__value" data-count="<?php echo (int)$totalUsers; ?>"><?php echo number_format($totalUsers); ?></span></div>
                 </div>
 
                 <div class="stat-card observe-in">
                     <div class="stat-card__top">
                         <div class="stat-card__info">
                             <span class="stat-card__label">مجموع مبلغ تخفیف</span>
-                            <span class="stat-card__value" data-count="<?php echo (int)$discountTotal; ?>" data-suffix=" T"><?php echo number_format($discountTotal); ?> T</span>
+
                         </div>
                         <span class="stat-card__icon icon-amber"><?php echo icon('percent-discount', 'svg-icon'); ?></span>
                     </div>
+                    <div class="report-stat-metric"><span class="stat-card__value"><span data-count="<?php echo (int)$discountTotal; ?>"><?php echo number_format($discountTotal); ?></span> <small class="currency-unit">تومان</small></span></div>
                 </div>
 
                 <div class="stat-card observe-in">
                     <div class="stat-card__top">
                         <div class="stat-card__info">
                             <span class="stat-card__label">تعداد استفاده از تخفیف</span>
-                            <span class="stat-card__value" data-count="<?php echo (int)$discountCount; ?>"><?php echo number_format($discountCount); ?></span>
+
                         </div>
                         <span class="stat-card__icon icon-purple"><?php echo icon('coupon', 'svg-icon'); ?></span>
                     </div>
+                    <div class="report-stat-metric"><span class="stat-card__value" data-count="<?php echo (int)$discountCount; ?>"><?php echo number_format($discountCount); ?></span></div>
                 </div>
-            </div>
+                </div>
 
-            <div class="panel observe-in">
+            <div class="panel observe-in report-product-panel">
                 <div class="panel__head">
                     <div>
                         <div class="panel__title">فروش به تفکیک محصول</div>
                         <div class="panel__sub">پرفروش‌ترین محصولات بر اساس تعداد فروش (۳۰ روز اخیر)</div>
                     </div>
+                    <span class="product-report-period">۳۰ روز اخیر</span>
                 </div>
                 <?php if (!empty($prodData)): ?>
-                    <div class="chart-box sm chart-box--auto"><div class="chart-scroll"><canvas id="productChart"></canvas></div></div>
+                    <?php $productReportTotal = array_sum(array_map('intval', $prodData)); $productReportShare = $productReportTotal > 0 ? (int)round(((int)$prodData[0] / $productReportTotal) * 100) : 0; ?>
+                    <div class="product-report-summary">
+                        <div class="product-report-total"><span>مجموع فروش این بازه</span><div><strong><?php echo strtr(number_format($productReportTotal), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?></strong><small>سفارش</small></div></div>
+                        <div class="product-report-best"><span>پرفروش‌ترین محصول</span><b><?php echo htmlspecialchars((string)$prodLabels[0], ENT_QUOTES, 'UTF-8'); ?></b></div>
+                        <div class="product-report-share"><span>سهم محصول برتر</span><b><?php echo strtr((string)$productReportShare, ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?>٪</b></div>
+                    </div>
+                    <div class="chart-box sm chart-box--auto"><div class="chart-scroll"><canvas id="productChart" role="img" aria-label="تعداد فروش محصولات در ۳۰ روز اخیر"></canvas></div></div>
+                    <div class="product-report-caption"><span><i></i>تعداد فروش هر محصول</span><span>برای مشاهدهٔ نام کامل و جزئیات، نوار را انتخاب کنید</span></div>
                 <?php else: ?>
                     <div class="mdt-empty">داده‌ای برای نمایش نیست</div>
                 <?php endif; ?>
             </div>
 
-            <div class="panel observe-in">
+            <div class="panel observe-in report-groups-panel">
                     <div class="panel__head">
                         <div>
                             <div class="panel__title">تحلیل گروه‌های کاربری</div>
                             <div class="panel__sub">تعداد کاربران و مجموع خرید هر گروه</div>
                         </div>
+                        <span class="group-report-tag"><?php echo strtr((string)count($groupRows), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?> گروه کاربری</span>
                     </div>
                     <?php if (!empty($groupRows)): ?>
-                        <div class="chart-box sm chart-box--hbar"><canvas id="groupChart"></canvas></div>
+                        <div class="group-report-summary">
+                            <div><span>مجموع کاربران گروه‌ها</span><strong><?php echo number_format(array_sum(array_column($groupRows, 'users'))); ?><small>کاربر</small></strong></div>
+                            <div><span>تعداد سفارش‌ها</span><strong><?php echo number_format(array_sum(array_column($groupRows, 'orders'))); ?><small>سفارش</small></strong></div>
+                            <div><span>مجموع خرید گروه‌ها</span><strong><?php echo number_format(array_sum(array_column($groupRows, 'revenue'))); ?><small>تومان</small></strong></div>
+                        </div>
+                        <div class="chart-box sm chart-box--hbar"><canvas id="groupChart" role="img" aria-label="مقایسهٔ تعداد کاربران گروه‌های کاربری"></canvas></div>
+                        <div class="group-report-caption"><span><i></i>تعداد کاربران هر گروه</span><span>برای مشاهدهٔ جزئیات، نوار را انتخاب کنید</span></div>
                         <div class="table-wrap table-wrap--compact">
-                            <table class="app-table" style="width:100%">
+                            <table id="groupReportTable" class="app-table" style="width:100%">
                                 <thead>
                                     <tr>
                                         <th>گروه</th>
@@ -339,10 +361,10 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
                                 <tbody>
                                 <?php foreach ($groupRows as $g): ?>
                                     <tr>
-                                        <td data-label="گروه"><?php echo htmlspecialchars($g['label'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                        <td data-label="گروه"><span class="group-report-name"><span aria-hidden="true"><?php echo icon('users', 'svg-icon svg-sm'); ?></span><?php echo htmlspecialchars($g['label'], ENT_QUOTES, 'UTF-8'); ?></span></td>
                                         <td data-label="تعداد کاربران"><?php echo number_format($g['users']); ?></td>
                                         <td data-label="تعداد سفارش"><?php echo number_format($g['orders']); ?></td>
-                                        <td data-label="مجموع خرید"><?php echo number_format($g['revenue']); ?> T</td>
+                                        <td data-label="مجموع خرید"><?php echo number_format($g['revenue']); ?> <small class="currency-unit">تومان</small></td>
                                     </tr>
                                 <?php endforeach; ?>
                                 </tbody>
@@ -375,7 +397,7 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
                             <tr>
                                 <td data-label="کد تخفیف" style="direction:ltr;"><?php echo htmlspecialchars((string)$d['code'], ENT_QUOTES, 'UTF-8'); ?></td>
                                 <td data-label="تعداد استفاده"><?php echo number_format((int)$d['uses']); ?></td>
-                                <td data-label="مجموع تخفیف"><?php echo number_format((float)$d['total']); ?> T</td>
+                                <td data-label="مجموع تخفیف"><?php echo number_format((float)$d['total']); ?> <small class="currency-unit">تومان</small></td>
                             </tr>
                         <?php endforeach; ?>
                         </tbody>
@@ -456,7 +478,7 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
             ];
             ?>
 
-            <div class="panel observe-in">
+            <div class="panel observe-in report-leaderboards">
                 <div class="panel__head">
                     <div>
                         <div class="panel__title">فهرست‌های برترین کاربران</div>
@@ -471,7 +493,8 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
                                 <span class="lb-btn__title"><?php echo $lb['title']; ?></span>
                                 <span class="lb-btn__sub"><?php echo empty($lb['rows']) ? 'داده‌ای برای نمایش نیست' : $lb['btn']; ?></span>
                             </span>
-                            <span class="lb-btn__count"><?php echo number_format($lb['count']); ?></span>
+                            <span class="lb-btn__count"><strong><?php echo number_format($lb['count']); ?></strong><small>کاربر</small></span>
+                            <span class="lb-btn__arrow" aria-hidden="true"><?php echo icon('arrow-left', 'svg-icon'); ?></span>
                         </button>
                     <?php endforeach; ?>
                 </div>
@@ -482,7 +505,7 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
 
 <?php foreach ($leaderboards as $lb): ?>
     <?php if (empty($lb['rows'])) { continue; } ?>
-    <div class="modal-overlay lb-modal" id="lbmodal-<?php echo $lb['id']; ?>" role="dialog" aria-modal="true" aria-labelledby="lbtitle-<?php echo $lb['id']; ?>">
+    <div class="modal-overlay lb-modal lb-ranking-modal" id="lbmodal-<?php echo $lb['id']; ?>" role="dialog" aria-modal="true" aria-labelledby="lbtitle-<?php echo $lb['id']; ?>">
         <div class="modal-box lb-modal__box">
             <div class="modal-head">
                 <div class="lb-modal__head">
@@ -495,6 +518,7 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
                 <button type="button" class="modal-close" data-lb-close aria-label="بستن">&times;</button>
             </div>
             <div class="modal-body">
+                <div class="lb-modal__summary"><span>رتبه‌بندی کاربران</span><span><strong><?php echo number_format($lb['count']); ?></strong> کاربر در این فهرست</span></div>
                 <div class="table-wrap">
                     <table class="app-table" style="width:100%">
                         <thead>
@@ -503,7 +527,7 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
                         <tbody>
                         <?php $i = 0; foreach ($lb['rows'] as $r): $i++; ?>
                             <tr>
-                                <td data-label="#"><?php echo number_format($i); ?></td>
+                                <td data-label="#"><span class="lb-rank<?php echo $i <= 3 ? ' lb-rank--top' : ''; ?>"><?php echo number_format($i); ?></span></td>
                                 <td data-label="کاربر">
                                     <span class="cell-user__text">
                                         <span class="cell-user__name" style="direction:ltr;"><?php echo htmlspecialchars((string)$r[$lb['name']], ENT_QUOTES, 'UTF-8'); ?></span>
@@ -511,7 +535,7 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
                                     </span>
                                 </td>
                                 <?php foreach ($lb['cells'] as $cell): ?>
-                                    <td data-label="<?php echo $cell['label']; ?>"><?php echo $cell['money'] ? number_format((float)$r[$cell['key']]) . ' T' : number_format((int)$r[$cell['key']]); ?></td>
+                                    <td class="lb-metric" data-label="<?php echo $cell['label']; ?>"><span><?php echo $cell['money'] ? number_format((float)$r[$cell['key']]) . ' <small class="currency-unit">تومان</small>' : number_format((int)$r[$cell['key']]); ?></span></td>
                                 <?php endforeach; ?>
                             </tr>
                         <?php endforeach; ?>
@@ -560,11 +584,11 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
     function colors(){
         var dark = document.documentElement.getAttribute('data-theme') !== 'light';
         return {
-            text: dark ? '#94a3b8' : '#475569',
-            grid: dark ? 'rgba(148,163,184,0.12)' : 'rgba(100,116,139,0.18)',
+            text: dark ? '#A1A1AA' : '#475569',
+            grid: dark ? 'rgba(255,255,255,0.06)' : 'rgba(100,116,139,0.18)',
             neutral: dark ? 'rgba(148,163,184,0.30)' : 'rgba(100,116,139,0.22)',
-            tipBg: dark ? '#1d1d1e' : '#ffffff',
-            tipBorder: dark ? '#2a2a2d' : '#e2e8f0'
+            tipBg: dark ? '#232326' : '#ffffff',
+            tipBorder: dark ? '#303033' : '#e2e8f0'
         };
     }
     Chart.defaults.font.family = "Vazirmatn, Tahoma, sans-serif";
@@ -584,13 +608,12 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
         var fs = tick();
         var ac = accent();
         var maxProd = 0;
-        for (var i = 1; i < PROD_DATA.length; i++){ if ((Number(PROD_DATA[i]) || 0) > (Number(PROD_DATA[maxProd]) || 0)) maxProd = i; }
         var barColors = PROD_DATA.map(function (v, i) { return i === maxProd ? ac : c.neutral; });
         var maxChars = vw() <= 420 ? 16 : vw() <= 640 ? 20 : 28;
         var labels = shortLabels(PROD_LABELS, maxChars);
         var axisNeed = Math.min(Math.round(vw() * 0.42), textPx(longest(labels), fs) + 20);
 
-        var rowH = 42;
+        var rowH = 48;
         var chrome = 50;
         var needH = Math.max(220, PROD_LABELS.length * rowH + chrome);
         var capH = Math.max(260, Math.round(window.innerHeight * 0.62));
@@ -607,15 +630,16 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
         if (product) product.destroy();
         product = new Chart(el, {
             type:'bar',
-            data:{ labels: labels, datasets:[{ label:'فروش', data: PROD_DATA, backgroundColor: barColors, borderRadius:8, borderSkipped:false, maxBarThickness:26, minBarLength:2, categoryPercentage:0.82, barPercentage:0.9 }]},
-            options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y',
-                layout:{ padding:{ left:4, right:12, top:4, bottom:4 } },
+            data:{ labels: labels, datasets:[{ label:'فروش', data: PROD_DATA, backgroundColor: barColors, hoverBackgroundColor:ac, borderRadius:7, borderSkipped:false, maxBarThickness:18, categoryPercentage:0.72, barPercentage:0.8 }]},
+            plugins:[{id:'productCounts',afterDatasetsDraw:function(chart){var ctx=chart.ctx; ctx.save(); ctx.font='600 12px Vazirmatn, Tahoma, sans-serif'; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--text-main').trim(); chart.getDatasetMeta(0).data.forEach(function(bar,index){ctx.fillText(fa(PROD_DATA[index]),bar.x+9,bar.y);}); ctx.restore();}}],
+            options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y', animation:{duration:window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 650}, interaction:{mode:'nearest',axis:'y',intersect:false},
+                layout:{ padding:{ left:4, right:44, top:10, bottom:4 } },
                 plugins:{ legend:{display:false},
-                    tooltip:{ rtl:true, textDirection:'rtl', backgroundColor:c.tipBg, titleColor:c.text, bodyColor:c.text, borderColor:c.tipBorder, borderWidth:1, padding:12, cornerRadius:8, displayColors:false, caretPadding:8, titleFont:{size:12.5}, bodyFont:{size:12.5}, titleMarginBottom:6, position:'nearest',
+                    tooltip:{ rtl:true, textDirection:'rtl', backgroundColor:c.tipBg, titleColor:c.text, bodyColor:c.text, borderColor:hexA(ac,0.35), borderWidth:1, padding:16, cornerRadius:12, displayColors:false, caretPadding:8, titleFont:{size:12.5}, bodyFont:{size:13,weight:'bold'}, titleMarginBottom:8, position:'nearest',
                         callbacks:{ title:function(items){ return items.length ? String(PROD_LABELS[items[0].dataIndex]) : ''; }, label:function(ctx){ return fa(ctx.parsed.x) + ' فروش'; } } } },
                 scales:{
-                    x:{ grid:{color:c.grid}, ticks:{ color:c.text, font:{size:fs}, precision:0, maxTicksLimit:narrow() ? 5 : 8, callback:function(v){ return fa(v); } } },
-                    y:{ grid:{display:false}, afterFit:function(scale){ if (scale.width < axisNeed) scale.width = axisNeed; }, ticks:{ color:c.text, font:{size:fs}, autoSkip:false, crossAlign:'far', padding:8, callback:function(val){ return this.getLabelForValue(val); } } }
+                    x:{ beginAtZero:true, grace:'10%', border:{display:false}, grid:{color:c.grid,drawTicks:false}, ticks:{ color:c.text, font:{size:fs}, precision:0, padding:10, maxTicksLimit:narrow() ? 4 : 6, callback:function(v){ return fa(v); } } },
+                    y:{ border:{display:false}, grid:{display:false}, afterFit:function(scale){ if (scale.width < axisNeed) scale.width = axisNeed; }, ticks:{ color:c.text, font:{size:fs}, autoSkip:false, crossAlign:'far', padding:12, callback:function(val){ return this.getLabelForValue(val); } } }
                 } }
         });
     }
@@ -631,11 +655,12 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
         if (groupc) groupc.destroy();
         groupc = new Chart(el, {
             type:'bar',
-            data:{ labels: GROUP_LABELS, datasets:[{ label:'کاربران', data: GROUP_DATA, backgroundColor: groupColors, borderRadius:8, borderSkipped:false }]},
-            options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y',
-                layout:{ padding:{ left:4, right:10, top:4, bottom:4 } },
+            data:{ labels: GROUP_LABELS, datasets:[{ label:'کاربران', data: GROUP_DATA, backgroundColor: groupColors, hoverBackgroundColor:ac, borderRadius:7, borderSkipped:false, maxBarThickness:20, categoryPercentage:0.65, barPercentage:0.8 }]},
+            plugins:[{id:'groupCounts',afterDatasetsDraw:function(chart){var ctx=chart.ctx;ctx.save();ctx.font='600 12px Vazirmatn, Tahoma, sans-serif';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--text-main').trim();chart.getDatasetMeta(0).data.forEach(function(bar,index){ctx.fillText(fa(GROUP_DATA[index]),bar.x+9,bar.y);});ctx.restore();}}],
+            options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y', animation:{duration:window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 650}, interaction:{mode:'nearest',axis:'y',intersect:false},
+                layout:{ padding:{ left:4, right:44, top:8, bottom:4 } },
                 plugins:{ legend:{display:false}, tooltip:{ rtl:true, textDirection:'rtl', backgroundColor:c.tipBg, titleColor:c.text, bodyColor:c.text, borderColor:c.tipBorder, borderWidth:1, padding:12, cornerRadius:8, displayColors:false, caretPadding:8, titleFont:{size:12.5}, bodyFont:{size:12.5}, titleMarginBottom:6, position:'nearest', callbacks:{ title:function(items){ return items.length ? String(items[0].label) : ''; }, label:function(ctx){ return fa(ctx.parsed.x) + ' کاربر'; } } } },
-                scales:{ x:{ grid:{color:c.grid}, ticks:{ color:c.text, font:{size:fs}, precision:0, maxTicksLimit:narrow() ? 5 : 8, callback:function(v){ return fa(v); } } }, y:{ grid:{display:false}, afterFit:function(scale){ var need = textPx(longest(GROUP_LABELS), fs) + 22; if (scale.width < need) scale.width = need; }, ticks:{ color:c.text, font:{size:fs}, autoSkip:false, crossAlign:'far', padding:8, callback:function(val){ return this.getLabelForValue(val); } } } } }
+                scales:{ x:{ beginAtZero:true, grace:'10%', border:{display:false}, grid:{color:c.grid,drawTicks:false}, ticks:{ color:c.text, font:{size:fs}, precision:0, padding:10, maxTicksLimit:narrow() ? 4 : 6, callback:function(v){ return fa(v); } } }, y:{ border:{display:false}, grid:{display:false}, afterFit:function(scale){ var need = textPx(longest(GROUP_LABELS), fs) + 22; if (scale.width < need) scale.width = need; }, ticks:{ color:c.text, font:{size:fs}, autoSkip:false, crossAlign:'far', padding:12, callback:function(val){ return this.getLabelForValue(val); } } } } }
         });
     }
 

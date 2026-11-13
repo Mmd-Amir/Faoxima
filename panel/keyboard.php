@@ -118,20 +118,18 @@ if (!isset($textbotMap['text_miniapp_button'])) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl" data-color="blue">
+<html lang="fa" dir="rtl" data-theme="dark" data-color="blue">
 <head>
     <script>
-    (function(){try{var t=localStorage.getItem('faoxima_theme');
-    if(t!=='light'&&t!=='dark')t='dark';
-    document.documentElement.setAttribute('data-theme',t);
+    (function(){try{document.documentElement.setAttribute('data-theme','dark'); localStorage.setItem('faoxima_theme','dark');
     var c=localStorage.getItem('faoxima_color');
     if(c)document.documentElement.setAttribute('data-color',c);}catch(e){}})();
     </script>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>چیدمان کیبورد — پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=colors51">
-    <script src="js/theme.js?v=flat50" defer>
+    <link rel="stylesheet" href="css/theme.css?v=toman75">
+    <script src="js/theme.js?v=dark62" defer>
 
 </script>
     <script src="js/keyboard_editor.js?v=colors3" defer>
@@ -185,6 +183,15 @@ if (!isset($textbotMap['text_miniapp_button'])) {
             .kb-actions { gap: 7px; flex-shrink: 0; }
             .kb-topbar .btn span { display: none; }
             .kb-topbar .btn { padding: 8px 10px; }
+        }
+        .fx-keyboard-editor .kb-page > .kb-hero,
+        .fx-keyboard-editor .kb-page > .card {
+            background: radial-gradient(ellipse at 0% 0%, var(--accent-soft), transparent 65%), var(--surface-1);
+            border-color: var(--border-soft);
+        }
+        .fx-keyboard-editor .kb-page > .kb-preview-wrap {
+            background: radial-gradient(ellipse at 100% 0%, var(--accent-soft), transparent 65%), var(--surface-1);
+            border-color: var(--border-soft);
         }
     </style>
 </head>

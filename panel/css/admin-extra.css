@@ -691,6 +691,9 @@
     flex-wrap: wrap;
     min-width: 0;
 }
+[data-theme="dark"] .receipt-page .receipt-summary-card__label {
+    color: var(--text-muted);
+}
 
 .receipt-page .receipt-summary-card__value {
     font-size: 20px;

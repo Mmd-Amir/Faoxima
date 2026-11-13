@@ -197,26 +197,26 @@ alert('محصول از قبل وجود دارد'); window.location.href='product
 
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>مدیریت محصولات | ربات فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
+    <link rel="stylesheet" href="css/theme.css?v=left94">
     <link rel="stylesheet" href="css/order_modal.css?v=ord1">
     <link rel="stylesheet" href="css/bulk_price.css?v=bp5">
 <script src="js/money-input.js?v=fx1" defer></script>
-<script src="js/theme.js?v=flat50" defer>
+<script src="js/theme.js?v=dark62" defer>
 
 </script>
 </head>
-<body>
+<body class="fx-products">
 
 <section id="container">
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper fx-page-list">
+        <div class="wrapper fx-page-list fx-page-products">
 
             <div class="page-head">
                 <div>
@@ -246,7 +246,8 @@ alert('محصول از قبل وجود دارد'); window.location.href='product
 
             <?php echo fx_search_ui('product.php', $prodQ, [], 'جستجو در شناسه، نام محصول، لوکیشن یا دسته‌بندی…'); ?>
 
-            <div class="card">
+            <div class="card product-catalog">
+                <div class="product-catalog__head"><div><h2>کاتالوگ محصولات</h2><p>قیمت، مشخصات سرویس و پنل‌های ارائه‌دهنده</p></div><span class="product-count"><?php echo strtr(number_format((int)$pg['total']), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?> محصول<?php echo $prodQ !== '' ? ' مطابق جستجو' : ''; ?></span></div>
                 <form method="POST" action="product.php" id="bulk-form">
                     <?php echo fx_csrf_field(); ?>
                     <input type="hidden" name="action" value="bulk_delete">
@@ -276,15 +277,15 @@ alert('محصول از قبل وجود دارد'); window.location.href='product
                         ?>
                             <tr data-detail-row data-detail-title="<?php echo htmlspecialchars($list['name_product'], ENT_QUOTES, 'UTF-8'); ?>">
                                 <td><label class="fx-check-row"><input type="checkbox" name="ids[]" value="<?php echo $list['id']; ?>"></label></td>
-                                <td data-label="شناسه" data-summary="1"><?php echo $list['id']; ?></td>
-                                <td data-label="نام محصول" data-summary="1"><?php echo htmlspecialchars($list['name_product'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td data-label="قیمت" data-summary="1"><span class="badge badge-success"><?php echo number_format($list['price_product']); ?></span></td>
-                                <td data-label="حجم (GB)"><span class="badge badge-info"><?php echo ((int)$list['Volume_constraint'] === 0) ? 'نامحدود' : (int)$list['Volume_constraint']; ?></span></td>
-                                <td data-label="زمان (روز)"><span class="badge badge-warning"><?php echo (int)$list['Service_time']; ?></span></td>
+                                <td data-label="شناسه" data-summary="1"><bdi class="product-id">#<?php echo (int)$list['id']; ?></bdi></td>
+                                <td data-label="نام محصول" data-summary="1"><span class="product-name"><?php echo htmlspecialchars($list['name_product'], ENT_QUOTES, 'UTF-8'); ?></span></td>
+                                <td data-label="قیمت" data-summary="1"><span class="product-price"><bdi><?php echo number_format($list['price_product']); ?></bdi><small class="currency-unit">تومان</small></span></td>
+                                <td data-label="حجم (GB)"><span class="product-spec"><?php echo ((int)$list['Volume_constraint'] === 0) ? 'نامحدود' : (int)$list['Volume_constraint'] . ' GB'; ?></span></td>
+                                <td data-label="زمان (روز)"><span class="product-spec"><?php echo (int)$list['Service_time']; ?> روز</span></td>
                                 <td data-label="لوکیشن">
                                     <?php
                                         $locationBadgesHtml = array_map(function ($locItem) {
-                                            return '<span class="badge badge-cyan">' . htmlspecialchars($locItem === '/all' ? 'تمامی پنل‌ها' : $locItem, ENT_QUOTES, 'UTF-8') . '</span>';
+                                            return '<span class="badge product-location-chip">' . htmlspecialchars($locItem === '/all' ? 'تمامی پنل‌ها' : $locItem, ENT_QUOTES, 'UTF-8') . '</span>';
                                         }, $locationItems);
                                         echo faoxima_render_compact_badges($locationBadgesHtml);
                                     ?>
@@ -299,7 +300,7 @@ alert('محصول از قبل وجود دارد'); window.location.href='product
                                     ?>
                                 </td>
                                 <td data-label="عملیات" class="cell-actions">
-                                    <div style="display:inline-flex; gap:6px;">
+                                    <div class="product-actions">
                                         <a href="productedit.php?id=<?php echo $list['id']; ?>" class="btn btn-sm btn-soft-info" title="ویرایش">
                                             <?php echo icon('pen', 'svg-icon'); ?>
                                         </a>
@@ -394,7 +395,7 @@ alert('محصول از قبل وجود دارد'); window.location.href='product
 
             <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label">قیمت (T)</label>
+                    <label class="form-label">قیمت (تومان)</label>
                     <input type="text" name="price_product" class="form-control" data-money required>
                 </div>
                 <div class="form-group">
@@ -493,7 +494,7 @@ alert('محصول از قبل وجود دارد'); window.location.href='product
 
             <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label">قیمت (T)</label>
+                    <label class="form-label">قیمت (تومان)</label>
                     <input type="text" name="price_product" id="clone_price" class="form-control" data-money required>
                 </div>
                 <div class="form-group">

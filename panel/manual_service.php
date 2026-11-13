@@ -688,16 +688,16 @@ function faoxima_ms_status_label(string $s): array
 }
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>فروش دستی | پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
-    <link rel="stylesheet" href="css/admin-extra.css?v=flat33">
+    <link rel="stylesheet" href="css/theme.css?v=toman75">
+    <link rel="stylesheet" href="css/admin-extra.css?v=flat39">
     <link rel="stylesheet" href="css/components.css?v=flat33">
-    <script src="js/theme.js?v=flat50" defer></script>
+    <script src="js/theme.js?v=dark62" defer></script>
     <style>
         .ms-row__title .badge {
             font-size: 10.5px;
@@ -809,6 +809,77 @@ function faoxima_ms_status_label(string $s): array
                 grid-column: span 2;
             }
         }
+        .fx-page-manual > .stat-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .fx-page-manual > .stat-row .stat-chip { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 76px; padding: 16px; border-radius: 16px; border-color: var(--border-soft); background: radial-gradient(ellipse at 0% 0%, var(--accent-soft), transparent 72%), var(--surface-1); color: var(--text-muted); font-size: 12px; white-space: normal; }
+        .fx-page-manual > .stat-row .stat-chip strong { margin-inline-start: auto; color: var(--text-main); font-size: 24px; font-variant-numeric: tabular-nums; }
+        .fx-page-manual > .stat-row .stat-chip .svg-icon { width: 20px; height: 20px; flex-shrink: 0; color: var(--accent-ink); }
+        .fx-page-manual > .stat-row .stat-chip--storage { flex-wrap: wrap; }
+        .fx-page-manual > .stat-row .stat-chip--storage strong { font-size: 13px; direction: ltr; unicode-bidi: isolate; }
+        .fx-page-manual .cfg-filterbar { display: grid; grid-template-columns: 1fr; gap: 0; padding: 0 20px; border-radius: 20px; border: 1px solid var(--border-soft); background: radial-gradient(ellipse at 100% 0%, var(--accent-soft), transparent 65%), var(--surface-1); margin-bottom: 20px; }
+        .fx-page-manual .cfg-filterbar > .cfg-filterbar__row { display: flex; align-items: center; flex-wrap: wrap; width: auto; min-width: 0; gap: 12px; padding: 16px 0; margin: 0; border: 0; }
+        .fx-page-manual .cfg-filterbar > .cfg-filterbar__row + .cfg-filterbar__row { border-top: 1px solid var(--border-soft); }
+        .fx-page-manual .cfg-filterbar__label { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; flex-shrink: 0; }
+        .fx-page-manual .cfg-filterbar .form-control { background: var(--surface-2); min-height: 40px; font-size: 12px; border-radius: 12px; border: 1px solid var(--border-soft); }
+        .fx-page-manual .cfg-filterbar .btn { min-height: 36px; padding: 7px 12px; border-radius: 10px; font-size: 11px; }
+        .fx-page-manual .cfg-seg { background: var(--surface-2); border-radius: 12px; padding: 4px; gap: 4px; }
+        .fx-page-manual .cfg-seg .btn-primary { background: var(--accent-soft); color: var(--accent-ink); border-color: transparent; }
+        .fx-page-manual .cfg-actions { margin-inline-start: auto; }
+        .fx-page-manual .cfg-actions select { width: auto; max-width: 100%; }
+        .fx-page-manual .cfg-daysfilter { display: flex; flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px; width: 100%; margin: 0; }
+        .fx-page-manual .cfg-daysfilter select.form-control { width: 112px; min-width: 100px; flex: 0 1 112px; }
+        .fx-page-manual .cfg-daysfilter input.form-control { width: 76px; min-width: 60px; flex: 0 1 76px; text-align: center; }
+        .fx-page-manual .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 220px; padding: 32px 20px; gap: 18px; border-radius: 20px; background: radial-gradient(ellipse at 0% 0%, var(--accent-soft), transparent 65%), var(--surface-1); border: 1px solid var(--border-soft); }
+        .fx-page-manual .empty-state > .svg-icon { width: 48px; height: 48px; padding: 14px; box-sizing: content-box; color: var(--accent-ink); background: var(--accent-soft); border-radius: 22px; }
+        .fx-page-manual .empty-state__text { margin: 0; font-size: 13px; color: var(--text-muted); }
+        .fx-page-manual .ms-row { background: var(--surface-1); border-radius: 16px; border-color: var(--border-soft); }
+        .fx-page-manual .ms-row--group { border-color: var(--border-mid); }
+        .fx-page-manual .ms-group-item { border-color: var(--border-soft); }
+        .fx-page-manual .modal-box { background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 22px; }
+        .fx-page-manual .modal-head { padding: 20px 24px; border-bottom: 1px solid var(--border-soft); background: radial-gradient(ellipse at 100% 0%, var(--accent-soft), transparent 70%), var(--surface-1); }
+        .fx-page-manual .modal-head__title { font-size: 16px; line-height: 1.7; }
+        .fx-page-manual #ms-add-form { padding: 22px 24px; }
+        .fx-page-manual .modal-box .form-group { margin-bottom: 20px; }
+        .fx-page-manual .modal-box .form-label { font-size: 12px; margin-bottom: 9px; }
+        .fx-page-manual .modal-box .form-control { background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: 12px; font-size: 12px; min-height: 42px; }
+        .fx-page-manual .modal-box .form-control:focus { border-color: var(--accent); outline: 2px solid var(--accent-soft); outline-offset: 2px; }
+        .fx-page-manual .modal-box input[type="file"] { padding: 12px; border-style: dashed; }
+        .fx-page-manual .modal-box input[type="file"]::file-selector-button { padding: 7px 12px; margin-inline-end: 12px; border: 0; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink); font-family: inherit; cursor: pointer; }
+        .fx-page-manual .entry-mode-group { background: transparent; padding: 0; border: 0; }
+        .fx-page-manual .entry-mode-group__title { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+        .fx-page-manual .entry-mode-options { display: flex; flex-wrap: wrap; gap: 10px; }
+        .fx-page-manual .mode-pill { flex: 1 1 140px; min-width: 0; margin: 0; padding: 14px; border: 1px solid var(--border-soft); border-radius: 14px; background: var(--surface-2); }
+        .fx-page-manual .mode-pill--wide { flex-basis: 100%; }
+        .fx-page-manual .mode-pill:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+        .fx-page-manual .mode-pill:focus-within { outline: 2px solid var(--accent-soft); outline-offset: 3px; }
+        .fx-page-manual .mode-pill__title { font-size: 12px; }
+        .fx-page-manual .mode-pill__hint { font-size: 11px; line-height: 1.8; }
+        .fx-page-manual .modal-foot { border-top: 1px solid var(--border-soft); padding: 18px 0 0; gap: 8px; margin-top: 20px; }
+        .fx-page-manual #modal-ms-storage-settings .modal-foot { margin: 0; padding: 16px 20px 20px; }
+        .fx-page-manual .ms-storage-summary { padding: 18px; margin-bottom: 22px; border: 1px solid var(--border-soft); border-radius: 16px; background: var(--surface-2); }
+        .fx-page-manual .ms-storage-summary__values { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; font-size: 11px; color: var(--text-muted); }
+        .fx-page-manual .ms-storage-summary__values strong { display: inline-block; color: var(--text-main); font-size: 17px; direction: ltr; unicode-bidi: isolate; }
+        .fx-page-manual .ms-storage-presets { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; }
+        .fx-page-manual .ms-storage-presets .btn { flex: 1 1 65px; min-height: 38px; font-size: 11px; border-radius: 10px; }
+        .fx-page-manual .form-hint { font-size: 11px; line-height: 1.8; }
+        @media (max-width: 1000px) {
+            .fx-page-manual > .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 600px) {
+            .fx-page-manual > .stat-row { gap: 8px; }
+            .fx-page-manual > .stat-row .stat-chip { padding: 12px; min-height: 64px; font-size: 10px; gap: 5px; }
+            .fx-page-manual > .stat-row .stat-chip strong { font-size: 20px; }
+            .fx-page-manual > .stat-row .stat-chip--storage { grid-column: auto; }
+            .fx-page-manual > .stat-row .stat-chip--storage strong { font-size: 11px; }
+            .fx-page-manual .cfg-filterbar { padding: 0 14px; }
+            .fx-page-manual .cfg-actions { width: 100%; margin: 0; }
+            .fx-page-manual .cfg-actions select { flex: 1 1 160px; min-width: 0 !important; }
+            .fx-page-manual .cfg-daysfilter .cfg-filterbar__label { width: 100%; }
+            .fx-page-manual .modal-head { padding: 16px; }
+            .fx-page-manual .modal-head__title { font-size: 14px; }
+            .fx-page-manual #ms-add-form { padding: 18px 16px; }
+            .fx-page-manual .mode-pill { padding: 12px; flex-basis: 120px; }
+            .fx-page-manual .mode-pill--wide { flex-basis: 100%; }
+        }
     </style>
 </head>
 
@@ -818,7 +889,7 @@ function faoxima_ms_status_label(string $s): array
         <?php include("header.php"); ?>
 
         <section id="main-content">
-            <div class="wrapper">
+            <div class="wrapper fx-page-manual">
 
                 <div class="page-head">
                     <div>
@@ -1135,8 +1206,8 @@ function faoxima_ms_status_label(string $s): array
                             <form method="POST" action="manual_service.php" autocomplete="off">
                                 <input type="hidden" name="_action" value="update_storage_limit">
                                 <div class="modal-body" style="padding: 1.25rem;">
-                                    <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius-md); padding: 12px; margin-bottom: 16px;">
-                                        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 6px;">
+                                    <div class="ms-storage-summary">
+                                        <div class="ms-storage-summary__values">
                                             <span>حجم اشغال‌شده: <strong><?php echo $usedGbVal; ?> GB</strong></span>
                                             <span>سقف مجاز: <strong><?php echo $maxStorageGb; ?> GB</strong></span>
                                         </div>
@@ -1154,7 +1225,7 @@ function faoxima_ms_status_label(string $s): array
                                         </small>
                                     </div>
 
-                                    <div style="display: flex; gap: 6px; margin-bottom: 12px;">
+                                    <div class="ms-storage-presets">
                                         <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('ms_max_storage_gb_input').value='1'">1 GB</button>
                                         <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('ms_max_storage_gb_input').value='5'">5 GB</button>
                                         <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('ms_max_storage_gb_input').value='10'">10 GB</button>
@@ -1641,8 +1712,8 @@ function faoxima_ms_status_label(string $s): array
                 modePills.forEach(function(p) {
                     if (p.hasAttribute('data-source')) {
                         var active = p.getAttribute('data-source') === source;
-                        p.style.borderColor = active ? 'var(--accent)' : 'var(--border-color)';
-                        p.style.background = active ? 'var(--surface-2)' : '';
+                        p.style.borderColor = active ? 'var(--accent)' : 'var(--border-soft)';
+                        p.style.background = active ? 'var(--accent-soft)' : '';
                     }
                 });
 
@@ -1663,8 +1734,8 @@ function faoxima_ms_status_label(string $s): array
                 modePills.forEach(function(p) {
                     if (p.hasAttribute('data-mode')) {
                         var active = p.getAttribute('data-mode') === mode;
-                        p.style.borderColor = active ? 'var(--accent)' : 'var(--border-color)';
-                        p.style.background = active ? 'var(--surface-2)' : '';
+                        p.style.borderColor = active ? 'var(--accent)' : 'var(--border-soft)';
+                        p.style.background = active ? 'var(--accent-soft)' : '';
                     }
                 });
 

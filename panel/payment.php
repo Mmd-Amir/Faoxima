@@ -114,13 +114,13 @@ $query->execute();
 $listpayment = $query->fetchAll();
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>تراکنش‌ها | ربات فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
-<script src="js/theme.js?v=flat50" defer>
+    <link rel="stylesheet" href="css/theme.css?v=filterdrawer111">
+<script src="js/theme.js?v=dark62" defer>
 
 </script>
 </head>
@@ -130,7 +130,7 @@ $listpayment = $query->fetchAll();
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper fx-page-list">
+        <div class="wrapper fx-page-list fx-page-payments">
 
             <div class="page-head">
                 <div>
@@ -146,14 +146,30 @@ $listpayment = $query->fetchAll();
 
             <?php echo fx_filter_delete_flash_html(); ?>
 
+            <div class="invoice-overview">
+                <div class="invoice-overview__main"><span class="invoice-overview__icon" aria-hidden="true"><?php echo icon('coins', 'svg-icon'); ?></span><div><span><?php echo $payFilterActive ? 'تراکنش‌های مطابق فیلتر' : 'کل تراکنش‌های ثبت‌شده'; ?></span><strong><?php echo strtr(number_format((int)$pg['total']), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?><small>تراکنش</small></strong></div></div>
+                <div class="invoice-overview__detail"><span>وضعیت انتخاب‌شده</span><b><?php echo htmlspecialchars($payStatusActive ? $payStatusOptions[$payStatus] : 'همهٔ وضعیت‌ها', ENT_QUOTES, 'UTF-8'); ?></b></div>
+                <div class="invoice-overview__detail"><span>بازهٔ نمایش</span><b><?php echo htmlspecialchars($df['active'] ? $df['label'] : 'تمام تاریخ‌ها', ENT_QUOTES, 'UTF-8'); ?></b></div>
+                <?php if ($payFilterActive): ?><a href="payment.php" class="btn btn-outline btn-sm invoice-reset">پاک‌کردن فیلترها</a><?php endif; ?>
+            </div>
+
+            <details class="wrapper fx-page-list fx-filter-drawer fx-page-payments">
+                <summary class="fx-filter-drawer__summary">
+                    <span class="fx-filter-drawer__icon" aria-hidden="true"><?php echo icon('filter', 'svg-icon'); ?></span>
+                    <span class="fx-filter-drawer__text"><strong>جستجو و فیلترها</strong><small>جستجو، وضعیت و بازهٔ زمانی</small></span>
+                    <span class="fx-filter-drawer__action"><span class="fx-filter-drawer__show">نمایش فیلترها</span><span class="fx-filter-drawer__hide">بستن فیلترها</span></span>
+                    <span class="fx-filter-drawer__chevron" aria-hidden="true"><?php echo icon('chevron-down', 'svg-icon'); ?></span>
+                </summary>
             <?php echo fx_search_ui('payment.php', $payQ, array_merge(['status' => $payStatus !== '' ? $payStatus : null], $payDateKeep, $payExtraKeep), 'جستجو در آیدی کاربر یا کد پیگیری…'); ?>
 
             <?php echo fx_status_filter_ui('payment.php', $payStatusOptions, $payStatus, array_merge(['q' => $payQ !== '' ? $payQ : null], $payDateKeep, $payExtraKeep)); ?>
 
             <?php $fxFd = fx_filter_delete_parts('payment.php', $payFilterParams, $payFilterActive ? (int)$pg['total'] : 0, $payFilterCriteria); ?>
-            <?php echo fx_date_filter_ui('payment.php', '', array_merge(['q' => $payQ !== '' ? $payQ : null, 'status' => $payStatus !== '' ? $payStatus : null], $payExtraKeep), '', $fxFd['button'], $fxFd['form']); ?>
+            <?php echo fx_date_filter_ui('payment.php', '', array_merge(['q' => $payQ !== '' ? $payQ : null, 'status' => $payStatus !== '' ? $payStatus : null], $payExtraKeep), '', $fxFd['button'], $fxFd['form'], true); ?>
+            </details>
 
-            <div class="card">
+            <div class="card invoice-results">
+                <div class="invoice-results__head"><div><h2>آرشیو تراکنش‌ها</h2><p>جزئیات مبلغ، روش پرداخت و وضعیت تراکنش</p></div><span class="invoice-page-count"><?php echo strtr(number_format(count($listpayment)), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?> تراکنش در این صفحه</span></div>
                 <form method="POST" action="payment.php" id="bulk-form">
                 <?php echo fx_csrf_field(); ?>
                 <input type="hidden" name="action" value="bulk_delete">
@@ -164,7 +180,7 @@ $listpayment = $query->fetchAll();
                                 <th><input type="checkbox" id="check-all" onclick="faoximaToggleAll(this)"></th>
                                 <th>آیدی کاربر</th>
                                 <th>کد پیگیری</th>
-                                <th>مبلغ (T)</th>
+                                <th>مبلغ (تومان)</th>
                                 <th>زمان</th>
                                 <th>روش پرداخت</th>
                                 <th>وضعیت</th>
@@ -192,13 +208,13 @@ $listpayment = $query->fetchAll();
                                     </a>
                                 </td>
                                 <td data-label="کد پیگیری" data-summary="1">
-                                    <span class="track-id" onclick="copyToClipboard('<?php echo addslashes($list['id_order']); ?>')" title="کپی کردن">
+                                    <span class="track-id invoice-reference" onclick="copyToClipboard('<?php echo addslashes($list['id_order']); ?>')" title="کپی کردن">
                                         <?php echo htmlspecialchars($list['id_order'], ENT_QUOTES, 'UTF-8'); ?>
                                     </span>
                                 </td>
-                                <td data-label="مبلغ (T)"><?php echo number_format($list['price']); ?></td>
-                                <td data-label="زمان" style="direction:ltr; text-align:right;"><?php echo htmlspecialchars($list['time'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td data-label="روش پرداخت"><?php echo htmlspecialchars($method, ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td data-label="مبلغ (تومان)"><span class="invoice-amount"><bdi><?php echo number_format($list['price']); ?></bdi><small class="currency-unit">تومان</small></span></td>
+                                <td data-label="زمان" style="direction:ltr; text-align:right;"><span class="invoice-date"><?php echo htmlspecialchars($list['time'], ENT_QUOTES, 'UTF-8'); ?></span></td>
+                                <td data-label="روش پرداخت"><span class="payment-method"><?php echo htmlspecialchars($method, ENT_QUOTES, 'UTF-8'); ?></span></td>
                                 <td data-label="وضعیت" data-summary="1"><span class="badge <?php echo $badgeClass; ?>"><?php echo $statusText; ?></span></td>
                             </tr>
                         <?php endforeach; ?>

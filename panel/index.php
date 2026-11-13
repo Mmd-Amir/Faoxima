@@ -28,9 +28,9 @@ register_shutdown_function(static function () {
         $err['message'] . ' @ ' . basename((string)$err['file']) . ':' . (int)$err['line'],
         ENT_QUOTES, 'UTF-8'
     );
-    echo '<!DOCTYPE html><html lang="fa" dir="rtl"><meta charset="utf-8">'
+    echo '<!DOCTYPE html><html lang="fa" dir="rtl" data-theme="dark"><meta charset="utf-8">'
        . '<title>خطای سرور</title>'
-       . '<body style="font-family:sans-serif;background:#0a0a0f;color:#f1f3f8;padding:32px;">'
+       . '<body style="font-family:sans-serif;background:#1B1B1D;color:#F4F4F5;padding:32px;">'
        . '<h2>خطای داخلی سرور</h2><pre style="white-space:pre-wrap">' . $msg . '</pre>'
        . '<p><a style="color:#3b82f6" href="login.php">بازگشت به ورود</a></p>'
        . '</body></html>';
@@ -202,7 +202,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'search') {
             $title = (string)$r['name_product'];
             $cfg = (string)($r['username'] ?? '');
             if ($cfg !== '') $title .= ' — ' . $cfg;
-            $sub = 'سفارش: ' . (string)$r['id_invoice'] . ' — ' . number_format((float)$r['price_product']) . ' T';
+            $sub = 'سفارش: ' . (string)$r['id_invoice'] . ' — ' . number_format((float)$r['price_product']) . ' تومان';
             $items[] = ['title' => $title, 'sub' => $sub, 'url' => 'invoice.php?q=' . urlencode($q)];
         }
         if ($items) $groups[] = ['type' => 'invoices', 'label' => 'سفارشات', 'icon' => icon('receipt', 'svg-icon'), 'items' => $items];
@@ -213,7 +213,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'search') {
         $items = [];
         foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
             $title = (string)$r['name_product'];
-            $sub = number_format((float)$r['price_product']) . ' T';
+            $sub = number_format((float)$r['price_product']) . ' تومان';
             $cat = (string)($r['category'] ?? '');
             if ($cat !== '') $sub .= ' — ' . $cat;
             $items[] = ['title' => $title, 'sub' => $sub, 'url' => 'productedit.php?id=' . urlencode((string)$r['id'])];
@@ -226,7 +226,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'search') {
         $items = [];
         foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
             $title = 'پیگیری: ' . (string)$r['id_order'];
-            $sub = 'کاربر ' . (string)$r['id_user'] . ' — ' . number_format((float)$r['price']) . ' T';
+            $sub = 'کاربر ' . (string)$r['id_user'] . ' — ' . number_format((float)$r['price']) . ' تومان';
             $items[] = ['title' => $title, 'sub' => $sub, 'url' => 'payment.php?q=' . urlencode($q)];
         }
         if ($items) $groups[] = ['type' => 'payments', 'label' => 'تراکنش‌ها', 'icon' => icon('money-bill', 'svg-icon'), 'items' => $items];
@@ -249,7 +249,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'search') {
         $items = [];
         foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
             $title = 'درخواست #' . (string)$r['id'] . ' — کاربر ' . (string)$r['id_user'];
-            $sub = number_format((float)$r['price']) . ' T';
+            $sub = number_format((float)$r['price']) . ' تومان';
             $items[] = ['title' => $title, 'sub' => $sub, 'url' => 'cancelService.php?q=' . urlencode($q)];
         }
         if ($items) $groups[] = ['type' => 'requests', 'label' => 'درخواست‌ها', 'icon' => icon('list', 'svg-icon'), 'items' => $items];
@@ -445,7 +445,7 @@ try {
     foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $ts = strtotime(str_replace('/', '-', (string)$r['t']));
         if ($ts === false) continue;
-        $sub = number_format((float)$r['price']) . ' T';
+        $sub = number_format((float)$r['price']) . ' تومان';
         if (!empty($r['Payment_Method'])) $sub .= ' — ' . (string)$r['Payment_Method'];
         $activity[] = ['t' => (int)$ts, 'ico' => 'amber', 'icon' => 'money-bill', 'title' => 'پرداخت', 'sub' => $sub];
     }
@@ -464,13 +464,13 @@ $json_week_labels = json_encode($weekLabels, JSON_UNESCAPED_UNICODE);
 $json_week_data   = json_encode($weekData);
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>پنل مدیریت ربات فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
-    <script src="js/theme.js?v=flat50" defer>
+    <link rel="stylesheet" href="css/theme.css?v=labels98">
+    <script src="js/theme.js?v=dark62" defer>
 
 </script>
 </head>
@@ -501,49 +501,49 @@ $json_week_data   = json_encode($weekData);
                     <div class="stat-card__top">
                         <div class="stat-card__info">
                             <span class="stat-card__label">تعداد کل کاربران</span>
-                            <span class="stat-card__value" data-count="<?php echo (int)$resultcount; ?>"><?php echo number_format($resultcount); ?></span>
+                            
                         </div>
                         <span class="stat-card__icon icon-blue"><?php echo icon('users', 'svg-icon'); ?></span>
                     </div>
-                    <?php echo faoxima_trend_pill($newUsersWeek > 0 ? 1 : 0, '+' . number_format($newUsersWeek) . ' این هفته'); ?>
+                    <div class="stat-card__metric"><span class="stat-card__value" data-count="<?php echo (int)$resultcount; ?>"><?php echo number_format($resultcount); ?></span><?php echo faoxima_trend_pill($newUsersWeek > 0 ? 1 : 0, '+' . number_format($newUsersWeek) . ' این هفته'); ?></div>
                 </div>
 
                 <div class="stat-card observe-in">
                     <div class="stat-card__top">
                         <div class="stat-card__info">
                             <span class="stat-card__label">تعداد کل سفارشات</span>
-                            <span class="stat-card__value" data-count="<?php echo (int)$resultcontsell; ?>"><?php echo number_format($resultcontsell); ?></span>
+                            
                         </div>
                         <span class="stat-card__icon icon-rose"><?php echo icon('cart-check-round', 'svg-icon'); ?></span>
                     </div>
-                    <?php echo faoxima_trend_pill($ordTrend); ?>
+                    <div class="stat-card__metric"><span class="stat-card__value" data-count="<?php echo (int)$resultcontsell; ?>"><?php echo number_format($resultcontsell); ?></span><?php echo faoxima_trend_pill($ordTrend); ?></div>
                 </div>
 
                 <div class="stat-card observe-in">
                     <div class="stat-card__top">
                         <div class="stat-card__info">
                             <span class="stat-card__label">جمع کل فروش</span>
-                            <span class="stat-card__value" data-count="<?php echo (int)$total_income; ?>" data-suffix=" T"><?php echo number_format($total_income); ?> T</span>
+                            
                         </div>
                         <span class="stat-card__icon icon-green"><svg class="svg-icon" viewBox="0 0 1024 1024" aria-hidden="true"><g fill="currentColor" stroke="none"><path d="M136.948 908.811c5.657 0 10.24-4.583 10.24-10.24V610.755c0-5.657-4.583-10.24-10.24-10.24h-81.92a10.238 10.238 0 00-10.24 10.24v287.816c0 5.657 4.583 10.24 10.24 10.24h81.92zm0 40.96h-81.92c-28.278 0-51.2-22.922-51.2-51.2V610.755c0-28.278 22.922-51.2 51.2-51.2h81.92c28.278 0 51.2 22.922 51.2 51.2v287.816c0 28.278-22.922 51.2-51.2 51.2zm278.414-40.96c5.657 0 10.24-4.583 10.24-10.24V551.322c0-5.657-4.583-10.24-10.24-10.24h-81.92a10.238 10.238 0 00-10.24 10.24v347.249c0 5.657 4.583 10.24 10.24 10.24h81.92zm0 40.96h-81.92c-28.278 0-51.2-22.922-51.2-51.2V551.322c0-28.278 22.922-51.2 51.2-51.2h81.92c28.278 0 51.2 22.922 51.2 51.2v347.249c0 28.278-22.922 51.2-51.2 51.2zm278.414-40.342c5.657 0 10.24-4.583 10.24-10.24V492.497c0-5.651-4.588-10.24-10.24-10.24h-81.92c-5.652 0-10.24 4.589-10.24 10.24v406.692c0 5.657 4.583 10.24 10.24 10.24h81.92zm0 40.96h-81.92c-28.278 0-51.2-22.922-51.2-51.2V492.497c0-28.271 22.924-51.2 51.2-51.2h81.92c28.276 0 51.2 22.929 51.2 51.2v406.692c0 28.278-22.922 51.2-51.2 51.2zm278.414-40.958c5.657 0 10.24-4.583 10.24-10.24V441.299c0-5.657-4.583-10.24-10.24-10.24h-81.92a10.238 10.238 0 00-10.24 10.24v457.892c0 5.657 4.583 10.24 10.24 10.24h81.92zm0 40.96h-81.92c-28.278 0-51.2-22.922-51.2-51.2V441.299c0-28.278 22.922-51.2 51.2-51.2h81.92c28.278 0 51.2 22.922 51.2 51.2v457.892c0 28.278-22.922 51.2-51.2 51.2zm-6.205-841.902C677.379 271.088 355.268 367.011 19.245 387.336c-11.29.683-19.889 10.389-19.206 21.679s10.389 19.889 21.679 19.206c342.256-20.702 670.39-118.419 964.372-284.046 9.854-5.552 13.342-18.041 7.79-27.896s-18.041-13.342-27.896-7.79z"/><path d="M901.21 112.64l102.39.154c11.311.017 20.494-9.138 20.511-20.449s-9.138-20.494-20.449-20.511l-102.39-.154c-11.311-.017-20.494 9.138-20.511 20.449s9.138 20.494 20.449 20.511z"/><path d="M983.151 92.251l-.307 101.827c-.034 11.311 9.107 20.508 20.418 20.542s20.508-9.107 20.542-20.418l.307-101.827c.034-11.311-9.107-20.508-20.418-20.542s-20.508 9.107-20.542 20.418z"/></g></svg></span>
                     </div>
-                    <?php echo faoxima_trend_pill($incTrend); ?>
+                    <div class="stat-card__metric"><span class="stat-card__value" data-count="<?php echo (int)$total_income; ?>" ><?php echo number_format($total_income); ?></span><small class="stat-card__currency">تومان</small><?php echo faoxima_trend_pill($incTrend); ?></div>
                 </div>
 
                 <div class="stat-card observe-in">
                     <div class="stat-card__top">
                         <div class="stat-card__info">
                             <span class="stat-card__label">کاربران جدید (۲۴ ساعت)</span>
-                            <span class="stat-card__value" data-count="<?php echo (int)$resultcountday; ?>"><?php echo number_format($resultcountday); ?></span>
+                            
                         </div>
                         <span class="stat-card__icon icon-purple"><?php echo icon('user-plus', 'svg-icon'); ?></span>
                     </div>
-                    <?php echo faoxima_trend_pill($u24Trend); ?>
+                    <div class="stat-card__metric"><span class="stat-card__value" data-count="<?php echo (int)$resultcountday; ?>"><?php echo number_format($resultcountday); ?></span><?php echo faoxima_trend_pill($u24Trend); ?></div>
                 </div>
             </div>
 
-            <div class="dash-row">
-                <div class="panel observe-in">
+            <div class="dash-row dash-analytics">
+                <div class="panel observe-in revenue-panel">
                     <div class="panel__head">
                         <div>
                             <div class="panel__title">روند درآمد</div>
@@ -560,10 +560,18 @@ $json_week_data   = json_encode($weekData);
                             </span>
                         </div>
                     </div>
-                    <div class="chart-box"><canvas id="revenueChart"></canvas></div>
+                    <div class="revenue-summary">
+                        <div class="revenue-summary__total"><span>درآمد این بازه</span><strong id="revenueTotal">—</strong><small>تومان</small></div>
+                        <div class="revenue-summary__details">
+                            <div><span>میانگین هر بازه</span><b id="revenueAverage">—</b></div>
+                            <div><span>بیشترین درآمد</span><b id="revenuePeak">—</b></div>
+                        </div>
+                    </div>
+                    <div class="chart-box revenue-chart"><canvas id="revenueChart" role="img" aria-label="نمودار روند درآمد در بازه انتخاب‌شده"></canvas></div>
+                    <div class="revenue-caption"><span><i></i>درآمد ثبت‌شده</span><span>برای مشاهده جزئیات، یک نقطه را انتخاب کنید</span></div>
                 </div>
 
-                <div class="panel observe-in">
+                <div class="panel observe-in category-panel">
                     <div class="panel__head">
                         <div>
                             <div class="panel__title">دسته‌بندی فروش</div>
@@ -576,25 +584,14 @@ $json_week_data   = json_encode($weekData);
                         <div class="mdt-empty">داده‌ای برای نمایش نیست</div>
                     <?php endif; ?>
                 </div>
-            </div>
 
-            <div class="dash-row">
-                <div class="panel observe-in">
-                    <div class="panel__head">
-                        <div>
-                            <div class="panel__title">فروش هفتگی</div>
-                            <div class="panel__sub">تعداد فروش در هر روز هفتهٔ جاری (شنبه تا جمعه)</div>
-                        </div>
-                    </div>
-                    <div class="chart-box sm"><canvas id="trafficChart"></canvas></div>
-                </div>
-
-                <div class="panel observe-in">
+                <div class="panel observe-in activity-panel">
                     <div class="panel__head">
                         <div>
                             <div class="panel__title">فعالیت اخیر</div>
                             <div class="panel__sub">۲۴ ساعت اخیر</div>
                         </div>
+                        <span class="activity-count"><?php echo strtr(number_format(count($activity)), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?> رویداد</span>
                     </div>
                     <?php if (!empty($activity)): ?>
                         <div class="activity-list" id="dashActivity">
@@ -602,7 +599,7 @@ $json_week_data   = json_encode($weekData);
                                 <div class="activity-item">
                                     <span class="activity-ico <?php echo $act['ico']; ?>"><?php echo icon($act['icon'], 'svg-icon'); ?></span>
                                     <div class="activity-body">
-                                        <b><?php echo htmlspecialchars($act['title'], ENT_QUOTES, 'UTF-8'); ?></b>
+                                        <div class="activity-event-head"><b><?php echo htmlspecialchars($act['title'], ENT_QUOTES, 'UTF-8'); ?></b><time datetime="<?php echo htmlspecialchars(date('c', (int)$act['t']), ENT_QUOTES, 'UTF-8'); ?>"><?php echo strtr(date('H:i', (int)$act['t']), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?></time></div>
                                         <small><?php echo htmlspecialchars($act['sub'], ENT_QUOTES, 'UTF-8'); ?></small>
                                     </div>
                                 </div>
@@ -612,17 +609,36 @@ $json_week_data   = json_encode($weekData);
                     <?php else: ?>
                         <div class="mdt-empty">فعالیتی در ۲۴ ساعت گذشته ثبت نشده است</div>
                     <?php endif; ?>
-                    <div class="activity-foot"><a href="reports.php">مشاهدهٔ گزارش‌ها</a></div>
+                    <div class="activity-foot"><a href="reports.php"><span>مشاهدهٔ همهٔ گزارش‌ها</span><?php echo icon('arrow-left', 'svg-icon svg-sm'); ?></a></div>
                 </div>
             </div>
 
-            <div class="panel observe-in">
-                <div class="panel__head">
-                    <div>
-                        <div class="panel__title">آخرین سفارشات</div>
-                        <div class="panel__sub">۲۴ ساعت اخیر</div>
+            <div class="dash-row dash-weekly">
+                <div class="panel observe-in weekly-panel">
+                    <div class="panel__head">
+                        <div>
+                            <div class="panel__title">فروش هفتگی</div>
+                            <div class="panel__sub">تعداد فروش در هر روز هفتهٔ جاری (شنبه تا جمعه)</div>
+                        </div>
+                        <span class="weekly-period">هفتهٔ جاری</span>
                     </div>
-                    <a href="invoice.php" class="btn btn-primary btn-sm"><?php echo icon('plus', 'svg-icon svg-xs'); ?> سفارشات</a>
+                    <div class="weekly-summary">
+                        <div class="weekly-total"><span>مجموع فروش هفته</span><div><strong id="weeklyTotal">—</strong><small>سفارش</small></div></div>
+                        <div class="weekly-detail"><span>روز پرفروش</span><b id="weeklyBest">—</b></div>
+                        <div class="weekly-detail"><span>روزهای دارای فروش</span><b id="weeklyActive">—</b></div>
+                    </div>
+                    <div class="chart-box sm"><canvas id="trafficChart" role="img" aria-label="تعداد فروش روزانه در هفتهٔ جاری"></canvas></div>
+                    <div class="weekly-caption"><span><i></i>تعداد سفارش‌ها</span><span>جزئیات هر روز با انتخاب ستون</span></div>
+                </div>
+            </div>
+
+            <div class="panel observe-in orders-panel">
+                <div class="panel__head">
+                    <div class="orders-heading">
+                        <span class="orders-heading__icon" aria-hidden="true"><?php echo icon('cart-check-round', 'svg-icon'); ?></span>
+                        <div><div class="panel__title">آخرین سفارشات</div><div class="panel__sub">سفارش‌های ثبت‌شده در ۲۴ ساعت اخیر</div></div>
+                    </div>
+                    <a href="invoice.php" class="btn btn-sm orders-all"><span>همهٔ سفارش‌ها</span><?php echo icon('arrow-left', 'svg-icon svg-sm'); ?></a>
                 </div>
                 <?php if (!empty($latestOrders)): ?>
                 <div class="table-wrap" style="overflow-x:auto;">
@@ -642,11 +658,11 @@ $json_week_data   = json_encode($weekData);
                                 $oTime = (int)($od['time_sell'] ?? 0);
                             ?>
                             <tr data-detail-row data-detail-title="<?php echo htmlspecialchars((string)(!empty($od['username']) ? $od['username'] : ($od['id_user'] ?? '')), ENT_QUOTES, 'UTF-8'); ?>">
-                                <td data-label="کاربر" data-summary="1"><?php echo htmlspecialchars((string)(!empty($od['username']) ? $od['username'] : ($od['id_user'] ?? '')), ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td data-label="محصول" data-summary="1"><?php echo htmlspecialchars((string)($od['name_product'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td data-label="مبلغ"><?php echo number_format((float)($od['price_product'] ?? 0)); ?> T</td>
-                                <td data-label="وضعیت" data-summary="1"><span class="badge <?php echo $stClass; ?>"><?php echo htmlspecialchars($stLabel, ENT_QUOTES, 'UTF-8'); ?></span></td>
-                                <td data-label="تاریخ" style="color:var(--text-muted); font-size:12px; direction:ltr; text-align:center;"><?php echo $oTime > 0 ? (function_exists('jdate') ? jdate('Y/m/d', $oTime) : date('Y/m/d', $oTime)) : '—'; ?></td>
+                                <td data-label="کاربر" data-summary="1"><div class="order-person"><span class="order-person__icon" aria-hidden="true"><?php echo icon('users', 'svg-icon svg-sm'); ?></span><span class="order-cell"><b dir="auto"><?php echo htmlspecialchars((string)(!empty($od['username']) ? $od['username'] : ($od['id_user'] ?? '')), ENT_QUOTES, 'UTF-8'); ?></b><small>شناسه: <bdi><?php echo htmlspecialchars((string)($od['id_user'] ?? '—'), ENT_QUOTES, 'UTF-8'); ?></bdi></small></span></div></td>
+                                <td data-label="محصول" data-summary="1"><div class="order-cell"><b><?php echo htmlspecialchars((string)($od['name_product'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></b><small>سفارش <bdi>#<?php echo htmlspecialchars((string)($od['id_invoice'] ?? '—'), ENT_QUOTES, 'UTF-8'); ?></bdi></small></div></td>
+                                <td data-label="مبلغ"><span class="order-amount"><bdi><?php echo strtr(number_format((float)($od['price_product'] ?? 0)), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?></bdi> <small class="currency-unit">تومان</small></span></td>
+                                <td data-label="وضعیت" data-summary="1"><span class="badge order-status <?php echo $stClass; ?>"><?php echo htmlspecialchars($stLabel, ENT_QUOTES, 'UTF-8'); ?></span></td>
+                                <td data-label="تاریخ"><div class="order-cell order-date"><span dir="ltr"><?php echo $oTime > 0 ? (function_exists('jdate') ? jdate('Y/m/d', $oTime) : date('Y/m/d', $oTime)) : '—'; ?></span><?php if ($oTime > 0): ?><small><?php echo icon('clock', 'svg-icon svg-xs'); ?><span dir="ltr"><?php echo strtr(date('H:i', $oTime), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?></span></small><?php endif; ?></div></td>
                             </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -675,14 +691,14 @@ $json_week_data   = json_encode($weekData);
         var n = parseInt(m[1],16);
         return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';
     }
-    function accent(){ return (getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#a855f7').trim(); }
+    function accent(){ var style=getComputedStyle(document.documentElement); return (style.getPropertyValue(document.documentElement.getAttribute('data-theme') === 'light' ? '--accent-ink' : '--accent')||'#a855f7').trim(); }
     function colors(){
         var dark = document.documentElement.getAttribute('data-theme') !== 'light';
         return {
-            text: dark ? '#94a3b8' : '#475569',
-            grid: dark ? 'rgba(148,163,184,0.12)' : 'rgba(100,116,139,0.18)',
-            tipBg: dark ? '#1d1d1e' : '#ffffff',
-            tipBorder: dark ? '#2a2a2d' : '#e2e8f0'
+            text: dark ? '#A1A1AA' : '#344054',
+            grid: dark ? 'rgba(255,255,255,0.06)' : 'rgba(100,116,139,0.18)',
+            tipBg: dark ? '#232326' : '#ffffff',
+            tipBorder: dark ? '#303033' : '#e2e8f0'
         };
     }
     Chart.defaults.font.family = "Vazirmatn, Tahoma, sans-serif";
@@ -694,18 +710,29 @@ $json_week_data   = json_encode($weekData);
     var revData   = <?php echo $json_data; ?>;
     var currentRange = '7d';
 
+    function updateRevenueSummary(){
+        var values = revData.map(function(v){ return Number(v) || 0; });
+        var total = values.reduce(function(sum, v){ return sum + v; }, 0);
+        var format = new Intl.NumberFormat('fa-IR', { maximumFractionDigits:0 });
+        document.getElementById('revenueTotal').textContent = format.format(total);
+        document.getElementById('revenueAverage').textContent = format.format(values.length ? total / values.length : 0) + ' تومان';
+        document.getElementById('revenuePeak').textContent = format.format(values.reduce(function(peak, v){ return Math.max(peak, v); }, 0)) + ' تومان';
+    }
+
     function buildRevenue(){
         var el = document.getElementById('revenueChart'); if(!el) return;
         var c = colors(), ac = accent();
         if (revenue) revenue.destroy();
-        var g = el.getContext('2d').createLinearGradient(0,0,0,300);
-        g.addColorStop(0, hexA(ac,0.32)); g.addColorStop(1, hexA(ac,0));
+        updateRevenueSummary();
         revenue = new Chart(el, {
             type:'line',
-            data:{ labels: revLabels, datasets:[{ label:'درآمد', data: revData, borderColor: ac, backgroundColor: g, fill:true, tension:0.4, borderWidth:3, pointRadius:3, pointHoverRadius:6, pointBackgroundColor: ac }]},
-            options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-                plugins:{ legend:{display:false}, tooltip:{ rtl:true, backgroundColor:c.tipBg, titleColor:c.text, bodyColor:c.text, borderColor:c.tipBorder, borderWidth:1, padding:12, cornerRadius:8, callbacks:{ label:function(ctx){ return new Intl.NumberFormat('fa-IR').format(ctx.parsed.y) + ' T'; } } } },
-                scales:{ x:{ grid:{display:false}, ticks:{color:c.text} }, y:{ grid:{color:c.grid}, ticks:{ color:c.text, callback:function(v){ return faShort(v); } } } } }
+            data:{ labels: revLabels, datasets:[{ label:'درآمد', data: revData, borderColor: ac,
+                backgroundColor:function(context){ var chart=context.chart, area=chart.chartArea; if(!area) return 'transparent'; var dark=document.documentElement.getAttribute('data-theme') !== 'light'; var gradient=chart.ctx.createLinearGradient(0,area.top,0,area.bottom); gradient.addColorStop(0,hexA(ac,dark ? 0.25 : 0.12)); gradient.addColorStop(0.65,hexA(ac,dark ? 0.07 : 0.025)); gradient.addColorStop(1,hexA(ac,0)); return gradient; },
+                fill:true, cubicInterpolationMode:'monotone', borderWidth:3, borderCapStyle:'round', pointRadius:function(context){ return context.dataset.data.length === 1 ? 4 : 0; }, pointHitRadius:20, pointHoverRadius:6, pointBackgroundColor:ac, pointHoverBackgroundColor:ac, pointHoverBorderColor:c.tipBg, pointHoverBorderWidth:3 }]},
+            plugins:[{ id:'revenueGuide', beforeDatasetsDraw:function(chart){ var active=chart.tooltip && chart.tooltip.getActiveElements(); if(!active || !active.length) return; var x=active[0].element.x, ctx=chart.ctx, area=chart.chartArea; ctx.save(); ctx.beginPath(); ctx.setLineDash([4,5]); ctx.strokeStyle=hexA(ac,0.4); ctx.lineWidth=1; ctx.moveTo(x,area.top); ctx.lineTo(x,area.bottom); ctx.stroke(); ctx.restore(); } }],
+            options:{ responsive:true, maintainAspectRatio:false, animation:{duration:window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 650}, layout:{padding:{top:12,right:12,left:4}}, interaction:{mode:'index',intersect:false},
+                plugins:{ legend:{display:false}, tooltip:{ rtl:true, displayColors:false, backgroundColor:c.tipBg, titleColor:c.text, bodyColor:getComputedStyle(document.documentElement).getPropertyValue('--text-main').trim(), borderColor:hexA(ac,0.35), borderWidth:1, padding:16, cornerRadius:12, titleMarginBottom:10, bodyFont:{size:15,weight:'bold'}, callbacks:{ title:function(items){ return items.length ? fa(items[0].label) : ''; }, label:function(ctx){ return new Intl.NumberFormat('fa-IR').format(ctx.parsed.y) + ' تومان'; } } } },
+                scales:{ x:{ border:{display:false}, grid:{display:false}, ticks:{color:c.text,maxRotation:0,autoSkip:true,maxTicksLimit:7,padding:14,callback:function(value){ return fa(this.getLabelForValue(value)); }} }, y:{ beginAtZero:true, border:{display:false}, grid:{color:c.grid,drawTicks:false}, ticks:{ color:c.text,maxTicksLimit:5,padding:12,callback:function(v){ return faShort(v); } } } } }
         });
     }
 
@@ -718,21 +745,32 @@ $json_week_data   = json_encode($weekData);
             data:{ labels: <?php echo $json_cat_labels; ?>, datasets:[{ data: <?php echo $json_cat_data; ?>, backgroundColor: PALETTE, borderWidth:0, hoverOffset:10 }]},
             options:{ responsive:true, maintainAspectRatio:false, cutout:'66%',
                 plugins:{ legend:{ position:'bottom', rtl:true, labels:{ color:c.text, padding:14, usePointStyle:true, font:{size:12} } },
-                    tooltip:{ rtl:true, backgroundColor:c.tipBg, titleColor:c.text, bodyColor:c.text, borderColor:c.tipBorder, borderWidth:1, padding:12, cornerRadius:8, callbacks:{ label:function(ctx){ return ctx.label + ': ' + new Intl.NumberFormat('fa-IR').format(ctx.parsed) + ' T'; } } } } }
+                    tooltip:{ rtl:true, backgroundColor:c.tipBg, titleColor:c.text, bodyColor:c.text, borderColor:c.tipBorder, borderWidth:1, padding:12, cornerRadius:8, callbacks:{ label:function(ctx){ return ctx.label + ': ' + new Intl.NumberFormat('fa-IR').format(ctx.parsed) + ' تومان'; } } } } }
         });
     }
 
     function buildTraffic(){
         var el = document.getElementById('trafficChart'); if(!el) return;
         var c = colors(), ac = accent();
+        var labels = <?php echo $json_week_labels; ?>;
+        var values = <?php echo $json_week_data; ?>;
+        var total = values.reduce(function(sum, value){ return sum + Number(value); }, 0);
+        var peak = Math.max.apply(null, values.concat([0]));
+        var best = values.reduce(function(days, value, index){ if(peak > 0 && Number(value) === peak) days.push(labels[index]); return days; }, []);
+        document.getElementById('weeklyTotal').textContent = new Intl.NumberFormat('fa-IR').format(total);
+        document.getElementById('weeklyBest').textContent = best.length ? best.join('، ') : 'هنوز فروشی ثبت نشده';
+        document.getElementById('weeklyActive').textContent = fa(values.filter(function(value){ return Number(value) > 0; }).length) + ' روز از ' + fa(values.length) + ' روز';
+        el.setAttribute('aria-label', 'فروش هفته: ' + fa(total) + ' سفارش. ' + labels.map(function(label, index){ return label + ': ' + fa(values[index]); }).join('، '));
         if (traffic) traffic.destroy();
         traffic = new Chart(el, {
             type:'bar',
-            data:{ labels: <?php echo $json_week_labels; ?>, datasets:[{ label:'فروش', data: <?php echo $json_week_data; ?>,
-                backgroundColor:function(ctx){ var a=ctx.chart.ctx.createLinearGradient(0,0,0,240); a.addColorStop(0, hexA(ac,0.95)); a.addColorStop(1, hexA(ac,0.35)); return a; }, borderRadius:8, borderSkipped:false }]},
-            options:{ responsive:true, maintainAspectRatio:false,
-                plugins:{ legend:{display:false}, tooltip:{ rtl:true, backgroundColor:c.tipBg, titleColor:c.text, bodyColor:c.text, borderColor:c.tipBorder, borderWidth:1, padding:10, cornerRadius:8, callbacks:{ label:function(ctx){ return fa(ctx.parsed.y) + ' فروش'; } } } },
-                scales:{ x:{ grid:{display:false}, ticks:{color:c.text} }, y:{ grid:{color:c.grid}, ticks:{ color:c.text, precision:0, callback:function(v){ return fa(v); } } } } }
+            data:{ labels:labels, datasets:[{ label:'فروش', data:values,
+                backgroundColor:ac,
+                hoverBackgroundColor:ac, maxBarThickness:48, categoryPercentage:0.55, barPercentage:0.8, borderRadius:9, borderSkipped:false }]},
+            plugins:[{ id:'weeklyValues', afterDatasetsDraw:function(chart){ var ctx=chart.ctx, meta=chart.getDatasetMeta(0); ctx.save(); ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.font='600 12px Vazirmatn, Tahoma, sans-serif'; meta.data.forEach(function(bar,index){ var value=Number(values[index]); ctx.fillStyle=value > 0 ? getComputedStyle(document.documentElement).getPropertyValue('--text-main').trim() : c.text; ctx.fillText(fa(value),bar.x,bar.y - 9); }); ctx.restore(); } }],
+            options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:24,left:4,right:8}}, animation:{duration:window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 650}, interaction:{mode:'index',intersect:false},
+                plugins:{ legend:{display:false}, tooltip:{ rtl:true, displayColors:false, backgroundColor:c.tipBg, titleColor:c.text, bodyColor:getComputedStyle(document.documentElement).getPropertyValue('--text-main').trim(), borderColor:hexA(ac,0.35), borderWidth:1, padding:14, cornerRadius:12, titleMarginBottom:8, bodyFont:{size:14,weight:'bold'}, callbacks:{ label:function(ctx){ return fa(ctx.parsed.y) + ' سفارش'; } } } },
+                scales:{ x:{ border:{display:false}, grid:{display:false}, ticks:{color:c.text,padding:12,maxRotation:0,autoSkip:false,font:{size:11}} }, y:{ beginAtZero:true, grace:'18%', suggestedMax:peak === 0 ? 1 : undefined, border:{display:false}, grid:{color:c.grid,drawTicks:false}, ticks:{ color:c.text, precision:0,maxTicksLimit:5,padding:10,callback:function(v){ return fa(v); } } } } }
         });
     }
 
@@ -751,7 +789,7 @@ $json_week_data   = json_encode($weekData);
     function loadRange(url, range, subText){
         fetch(url, { credentials:'same-origin', headers:{'Accept':'application/json'} })
             .then(function(x){ return x.json(); })
-            .then(function(j){ if(!j.ok) throw 0; revLabels=j.labels; revData=j.data; currentRange=range; if(subEl) subEl.textContent=subText; setActive(range); if(revenue){ revenue.data.labels=revLabels; revenue.data.datasets[0].data=revData; revenue.update(); } })
+            .then(function(j){ if(!j.ok) throw 0; revLabels=j.labels; revData=j.data; currentRange=range; if(subEl) subEl.textContent=subText; setActive(range); updateRevenueSummary(); if(revenue){ revenue.data.labels=revLabels; revenue.data.datasets[0].data=revData; revenue.update(); } })
             .catch(function(){ if(subEl) subEl.textContent='خطا در بارگذاری'; });
     }
 

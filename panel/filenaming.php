@@ -27,17 +27,25 @@ $fnMaster = rxFileNamingEnabled(true);
 header('Cache-Control: no-store');
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="robots" content="noindex,nofollow">
     <title>تنظیمات ارسال فایل توسط ربات | پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
-    <link rel="stylesheet" href="css/admin-extra.css?v=flat35">
+    <link rel="stylesheet" href="css/theme.css?v=toman75">
+    <link rel="stylesheet" href="css/admin-extra.css?v=flat39">
     <link rel="stylesheet" href="css/filenaming.css?v=fn6">
-    <script src="js/theme.js?v=flat50" defer></script>
+    <script src="js/theme.js?v=dark62" defer></script>
     <script src="js/filenaming.js?v=fn6" defer></script>
+    <style>
+        #fnPage .fn-master-card {
+            background: radial-gradient(ellipse at 100% 0%, var(--accent-soft), transparent 65%), var(--surface-1);
+        }
+        #fnPage .fn-rules-card {
+            background: radial-gradient(ellipse at 0% 0%, var(--accent-soft), transparent 65%), var(--surface-1);
+        }
+    </style>
 </head>
 <body>
 <section id="container">

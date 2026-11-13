@@ -8,8 +8,10 @@ if (!function_exists('icon')) {
         static $paths = null;
         if ($paths === null) {
             $paths = [
+                'folder'      => '<path d="M20 20H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2Z"/>',
 
                 'bars'        => '<line x1="4" y1="6"  x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>',
+                'filter'      => '<path d="M4 3h16a1 1 0 0 1 .78 1.63L14 13v6l-4 2v-8L3.22 4.63A1 1 0 0 1 4 3Z"/>',
                 'chevron-down'=> '<polyline points="6 9 12 15 18 9"/>',
                 'chevron-up'  => '<polyline points="18 15 12 9 6 15"/>',
                 'chevron-left'=> '<polyline points="15 18 9 12 15 6"/>',

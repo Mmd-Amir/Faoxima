@@ -273,14 +273,14 @@ foreach (['dpreset', 'ddays', 'dfrom', 'dto', 'p'] as $dk) {
 $rxKeepQsString = http_build_query(array_filter($rxKeepQsArr, function ($v) { return $v !== null; }));
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>رسیدهای پرداخت | ربات فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
-    <link rel="stylesheet" href="css/admin-extra.css?v=flat38">
-    <script src="js/theme.js?v=flat50" defer></script>
+    <link rel="stylesheet" href="css/theme.css?v=filterdrawer111">
+    <link rel="stylesheet" href="css/admin-extra.css?v=flat39">
+    <script src="js/theme.js?v=dark62" defer></script>
 </head>
 <body>
 
@@ -288,7 +288,7 @@ $rxKeepQsString = http_build_query(array_filter($rxKeepQsArr, function ($v) { re
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper fx-page-list receipt-page">
+        <div class="wrapper fx-page-list receipt-page fx-page-receipts">
 
             <div class="page-head">
                 <div>
@@ -323,31 +323,40 @@ $rxKeepQsString = http_build_query(array_filter($rxKeepQsArr, function ($v) { re
                 </div>
                 <div class="card receipt-summary-card">
                     <div class="receipt-summary-card__label"><?php echo icon('coins', 'svg-icon svg-sm'); ?> مبلغ تایید شده امروز</div>
-                    <div class="receipt-summary-card__value"><?php echo number_format($rxConfirmedTodayAmount); ?></div>
+                    <div class="receipt-summary-card__value"><?php echo number_format($rxConfirmedTodayAmount); ?> <small class="currency-unit">تومان</small></div>
                 </div>
             </div>
 
+            <details class="wrapper fx-page-list fx-filter-drawer fx-page-receipts">
+                <summary class="fx-filter-drawer__summary">
+                    <span class="fx-filter-drawer__icon" aria-hidden="true"><?php echo icon('filter', 'svg-icon'); ?></span>
+                    <span class="fx-filter-drawer__text"><strong>جستجو و فیلترها</strong><small>جستجو، وضعیت و بازهٔ زمانی</small></span>
+                    <span class="fx-filter-drawer__action"><span class="fx-filter-drawer__show">نمایش فیلترها</span><span class="fx-filter-drawer__hide">بستن فیلترها</span></span>
+                    <span class="fx-filter-drawer__chevron" aria-hidden="true"><?php echo icon('chevron-down', 'svg-icon'); ?></span>
+                </summary>
             <?php echo fx_search_ui('receipts.php', $rxQ, array_merge(['status' => $rxStatus !== '' ? $rxStatus : null], $rxDateKeep, $rxExtraKeep), 'جستجو در کد پیگیری، آیدی کاربر یا ۴ رقم آخر کارت…'); ?>
 
             <?php echo fx_status_filter_ui('receipts.php', $rxStatusOptions, $rxStatus, array_merge(['q' => $rxQ !== '' ? $rxQ : null], $rxDateKeep, $rxExtraKeep)); ?>
 
             <?php $fxFd = fx_filter_delete_parts('receipts.php', $rxFilterParams, $rxFilterActive ? (int)$rxPg['total'] : 0, $rxFilterCriteria); ?>
-            <?php echo fx_date_filter_ui('receipts.php', '', array_merge(['q' => $rxQ !== '' ? $rxQ : null, 'status' => $rxStatus !== '' ? $rxStatus : null], $rxExtraKeep), '', $fxFd['button'], $fxFd['form']); ?>
+            <?php echo fx_date_filter_ui('receipts.php', '', array_merge(['q' => $rxQ !== '' ? $rxQ : null, 'status' => $rxStatus !== '' ? $rxStatus : null], $rxExtraKeep), '', $fxFd['button'], $fxFd['form'], true); ?>
+            </details>
 
-            <div class="card">
+            <div class="card invoice-results">
+                <div class="invoice-results__head"><div><h2>آرشیو رسیدهای پرداخت</h2><p>بررسی رسیدها، وضعیت تأیید و جزئیات پرداخت کارت به کارت</p></div><span class="invoice-page-count"><?php echo strtr(number_format((int)$rxPg['total']), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?> رسید<?php echo $rxFilterActive ? ' مطابق فیلتر' : ' ثبت‌شده'; ?></span></div>
                 <form method="POST" action="receipts.php" id="rx-bulk-form">
                 <?php echo fx_csrf_field(); ?>
                 <input type="hidden" name="_rx_action" value="bulk_delete">
                 <input type="hidden" name="_keep_qs" value="<?php echo htmlspecialchars($rxKeepQsString, ENT_QUOTES, 'UTF-8'); ?>">
                 <div class="table-wrap">
-                    <table class="display app-table app-table--summary" style="width:100%">
+                    <table id="receiptsTable" class="display app-table app-table--summary" style="width:100%">
                         <thead>
                             <tr>
                                 <th><input type="checkbox" id="rx-check-all" onclick="rxToggleAll(this)"></th>
                                 <th>وضعیت</th>
                                 <th>کاربر</th>
                                 <th>کد پیگیری</th>
-                                <th>مبلغ (T)</th>
+                                <th>مبلغ (تومان)</th>
                                 <th>نوع سفارش</th>
                                 <th>۴ رقم آخر کارت</th>
                                 <th>تاریخ</th>
@@ -377,12 +386,12 @@ $rxKeepQsString = http_build_query(array_filter($rxKeepQsArr, function ($v) { re
                                     <a href="user.php?id=<?php echo urlencode((string) $row['id_user']); ?>" class="text-link"><?php echo htmlspecialchars((string) $row['id_user'], ENT_QUOTES, 'UTF-8'); ?></a>
                                 </td>
                                 <td data-label="کد پیگیری" data-summary="1">
-                                    <span class="track-id" onclick="rxCopy('<?php echo htmlspecialchars(addslashes((string) $row['id_order']), ENT_QUOTES, 'UTF-8'); ?>')" title="کپی کردن"><?php echo htmlspecialchars((string) $row['id_order'], ENT_QUOTES, 'UTF-8'); ?></span>
+                                    <span class="track-id invoice-reference" onclick="rxCopy('<?php echo htmlspecialchars(addslashes((string) $row['id_order']), ENT_QUOTES, 'UTF-8'); ?>')" title="کپی کردن"><?php echo htmlspecialchars((string) $row['id_order'], ENT_QUOTES, 'UTF-8'); ?></span>
                                 </td>
-                                <td data-label="مبلغ (T)" data-summary="1"><?php echo number_format((int) $row['price']); ?></td>
-                                <td data-label="نوع سفارش"><?php echo htmlspecialchars($typeLabel, ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td data-label="مبلغ (تومان)" data-summary="1"><span class="invoice-amount"><bdi><?php echo number_format((int) $row['price']); ?></bdi><small class="currency-unit">تومان</small></span></td>
+                                <td data-label="نوع سفارش"><span class="receipt-order-type"><?php echo htmlspecialchars($typeLabel, ENT_QUOTES, 'UTF-8'); ?></span></td>
                                 <td data-label="۴ رقم آخر کارت" style="direction:ltr; text-align:right;"><?php echo $row['card_last4'] !== null && $row['card_last4'] !== '' ? htmlspecialchars((string) $row['card_last4'], ENT_QUOTES, 'UTF-8') : '—'; ?></td>
-                                <td data-label="تاریخ" style="direction:ltr; text-align:right;"><?php echo htmlspecialchars(rxReceiptJdate($row['time']), ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td data-label="تاریخ" style="direction:ltr; text-align:right;"><span class="invoice-date"><?php echo htmlspecialchars(rxReceiptJdate($row['time']), ENT_QUOTES, 'UTF-8'); ?></span></td>
                                 <td data-label="عملیات" class="cell-actions">
                                     <?php
                                     $rxViewRow = $row;

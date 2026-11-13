@@ -20,11 +20,11 @@
     }
 
     var INK_MIN = 4.5;
-    var INK_SURFACE_FALLBACK = { light: [255, 255, 255], dark: [21, 22, 26] };
+    var INK_SURFACE_FALLBACK = { light: [255, 255, 255], dark: [31, 31, 33] };
     function linCh(v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
     function relLum(r, g, b) { return 0.2126 * linCh(r) + 0.7152 * linCh(g) + 0.0722 * linCh(b); }
     function ratioOn(r, g, b, bgL) { var L = relLum(r, g, b); var hi = L > bgL ? L : bgL, lo = L > bgL ? bgL : L; return (hi + 0.05) / (lo + 0.05); }
-    function currentTheme() { return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'; }
+    function currentTheme() { return 'dark'; }
     function surfaceLum(theme) {
         var raw = '';
         try { raw = getComputedStyle(document.documentElement).getPropertyValue('--surface-1') || ''; } catch (e) { raw = ''; }
@@ -102,24 +102,13 @@
     }
 
 
-    var SVG_MOON = '<svg class="svg-icon svg-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
-    var SVG_SUN  = '<svg class="svg-icon svg-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
 
-    function applyTheme(theme) {
-        if (theme !== 'light' && theme !== 'dark') theme = DEFAULT_THEME;
+    function applyTheme() {
+        var theme = DEFAULT_THEME;
         document.documentElement.setAttribute('data-theme', theme);
         try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
         var customHex = storedCustomHex();
         if (customHex) applyCustomAccent(customHex);
-        var icon = document.getElementById('theme-toggle-icon');
-        var label = document.getElementById('theme-toggle-label');
-        if (icon) {
-            icon.innerHTML = (theme === 'light') ? SVG_SUN : SVG_MOON;
-        }
-        if (label) {
-            label.textContent = theme === 'light' ? 'حالت شب' : 'حالت روز';
-        }
-
         try {
             document.dispatchEvent(new CustomEvent('faoxima:themechange', { detail: { theme: theme } }));
         } catch (e) {}
@@ -130,8 +119,7 @@
     var savedTheme = DEFAULT_THEME;
     try {
         savedColor = localStorage.getItem(COLOR_KEY) || DEFAULT_COLOR;
-        var st = localStorage.getItem(THEME_KEY);
-        savedTheme = (st === 'light' || st === 'dark') ? st : DEFAULT_THEME;
+        localStorage.setItem(THEME_KEY, DEFAULT_THEME);
     } catch (e) {}
     document.documentElement.setAttribute('data-color', savedColor);
     document.documentElement.setAttribute('data-theme', savedTheme);
@@ -140,10 +128,7 @@
     window.FaoximaTheme = {
         setColor: applyColor,
         setTheme: applyTheme,
-        toggleTheme: function () {
-            var current = document.documentElement.getAttribute('data-theme') || DEFAULT_THEME;
-            applyTheme(current === 'light' ? 'dark' : 'light');
-        }
+        toggleTheme: applyTheme
     };
 
 
@@ -223,13 +208,7 @@
         }
 
 
-        var themeToggleBtn = document.getElementById('theme-toggle');
-        if (themeToggleBtn) {
-            themeToggleBtn.addEventListener('click', function (ev) {
-                ev.stopPropagation();
-                window.FaoximaTheme.toggleTheme();
-            });
-        }
+
 
 
         var groups = document.querySelectorAll('.nav-group');

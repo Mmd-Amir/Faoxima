@@ -379,13 +379,13 @@ if (isset($_SESSION['textbot_save_error'])) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>متن‌های ربات | پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
-    <script src="js/theme.js?v=flat50" defer>
+    <link rel="stylesheet" href="css/theme.css?v=toman75">
+    <script src="js/theme.js?v=dark62" defer>
 
 </script>
     <style>
@@ -1123,6 +1123,77 @@ if (isset($_SESSION['textbot_save_error'])) {
             border-radius: var(--radius-md);
             margin-bottom: 8px;
         }
+        .fx-page-textbot .filter-bar { padding: 18px; border: 1px solid var(--border-soft); border-radius: 18px; background: radial-gradient(ellipse at 100% 0%, var(--accent-soft), transparent 65%), var(--surface-1); gap: 14px; margin-bottom: 16px; }
+        .fx-page-textbot .filter-bar input { background: var(--surface-2); border-color: var(--border-soft); border-radius: 12px; font-size: 12px; min-height: 42px; }
+        .fx-page-textbot .search-scope { padding: 4px; border-radius: 12px; background: var(--surface-2); border-color: var(--border-soft); }
+        .fx-page-textbot .search-scope__btn { min-height: 36px; font-size: 11px; border-radius: 9px; }
+        .fx-page-textbot .search-scope__btn.active { color: var(--accent-ink); background: var(--accent-soft); border-color: var(--border-soft); }
+        .fx-page-textbot .cat-select__box { background: var(--surface-1); border-color: var(--border-soft); border-radius: 12px; min-height: 44px; font-size: 12px; }
+        .fx-page-textbot .cat-select__dd { border-color: var(--border-soft); border-radius: 14px; background: var(--surface-3); }
+        .fx-page-textbot .text-row { background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 16px; padding: 18px; margin-bottom: 12px; gap: 18px; }
+        .fx-page-textbot .text-row:hover { border-color: var(--border-mid); }
+        .fx-page-textbot .text-key { padding-top: 4px; gap: 9px; font-size: 11px; }
+        .fx-page-textbot .text-key__id { display: inline-block; padding: 6px 9px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink); line-height: 1.6; }
+        .fx-page-textbot .text-key__hint { font-size: 10px; line-height: 1.7; }
+        .fx-page-textbot .text-row textarea { background: var(--surface-2); border-color: var(--border-soft); border-radius: 12px; font-size: 12px; line-height: 1.9; padding: 14px; min-height: 80px; max-height: 180px; overflow-y: auto; }
+        .fx-page-textbot .text-row textarea.changed { background: var(--color-warning-soft); border-color: var(--color-warning); }
+        .fx-page-textbot .text-row textarea.edge-invalid { border-color: var(--color-danger); }
+        .fx-page-textbot .text-row textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .fx-page-textbot .text-row .btn { border-radius: 10px; min-height: 34px; }
+        .fx-page-textbot .save-bar { padding: 14px 18px; background: var(--surface-1); border-top: 1px solid var(--border-mid); gap: 12px; }
+        :is(#modal-edit-text, #modal-rich-text, #modal-add-text) .modal-box { background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 22px; }
+        :is(#modal-edit-text, #modal-rich-text, #modal-add-text) .modal-head { padding: 18px 22px; gap: 12px; background: radial-gradient(ellipse at 0% 0%, var(--accent-soft), transparent 65%), var(--surface-1); border-bottom: 1px solid var(--border-soft); }
+        :is(#modal-edit-text, #modal-rich-text, #modal-add-text) .modal-head__title { font-size: 16px; line-height: 1.7; min-width: 0; overflow-wrap: anywhere; }
+        :is(#modal-edit-text, #modal-rich-text) .modal-head__title code { font-size: 12px; color: var(--accent-ink); }
+        :is(#modal-edit-text, #modal-rich-text, #modal-add-text) .modal-foot { background: var(--surface-1); padding: 14px 20px; border-top: 1px solid var(--border-soft); gap: 8px; }
+        :is(#modal-edit-text, #modal-rich-text) .fmt-btn { min-height: 34px; padding: 7px 11px; font-size: 11px; border: 1px solid var(--border-soft); background: var(--surface-2); color: var(--text-main); border-radius: 9px; }
+        :is(#modal-edit-text, #modal-rich-text) .fmt-btn:hover { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent); }
+        :is(#modal-edit-text, #modal-rich-text) :is(.fmt-btn, .rich-mini-btn, .rich-select):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        #modal-edit-text .text-format-bar { margin: 0; padding: 14px 20px; gap: 8px; border-bottom: 1px solid var(--border-soft); }
+        #modal-edit-text .modal-box > .form-group { margin: 18px 20px; }
+        #modal-edit-text #editTextArea { background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: 14px; padding: 18px; line-height: 2; font-size: 13px; }
+        #modal-edit-text #editTextArea:focus { border-color: var(--accent); box-shadow: none; outline: 2px solid var(--accent-soft); outline-offset: 2px; }
+        #modal-edit-text #editTextArea.edge-invalid { border-color: var(--color-danger); }
+        #modal-rich-text .rich-modal-body { padding: 18px 20px; }
+        #modal-rich-text .rich-layout { gap: 20px; }
+        #modal-rich-text .rich-toolbar { margin-bottom: 16px; }
+        #modal-rich-text .rich-toolbar__group { background: var(--surface-2); border-color: var(--border-soft); border-radius: 12px; padding: 5px; gap: 5px; }
+        #modal-rich-text .rich-block { border-color: var(--border-soft); border-radius: 14px; margin-bottom: 12px; background: var(--surface-2); }
+        #modal-rich-text .rich-block__bar { padding: 10px; background: var(--surface-1); gap: 8px; }
+        #modal-rich-text .rich-mini-btn, #modal-rich-text .rich-select { border-color: var(--border-soft); background: var(--surface-2); border-radius: 8px; min-height: 30px; }
+        #modal-rich-text .rich-input { border-color: var(--border-soft); border-radius: 9px; background: var(--surface-2); }
+        #modal-rich-text .rich-table-controls > summary { background: var(--surface-2); padding: 12px; font-size: 11px; }
+        #modal-rich-text .rich-table-options, #modal-rich-text .rich-table-cellbar { padding: 12px; gap: 10px; background: var(--surface-1); }
+        #modal-rich-text .rich-table-formatbar { background: var(--surface-2); gap: 6px; }
+        #modal-rich-text .rich-table-drag-hint { padding: 10px 12px; font-size: 10px; }
+        #modal-rich-text .rich-table-wrap { padding: 12px; }
+        #modal-rich-text .rich-add-text { width: 100%; background: var(--surface-2); border-style: dashed; min-height: 42px; }
+        #modal-rich-text .rich-preview-pane { border: 1px solid var(--border-soft); border-radius: 16px; padding: 14px; background: var(--surface-2); }
+        #modal-rich-text .rich-preview__title { color: var(--text-main); font-size: 12px; margin-bottom: 12px; }
+        #modal-rich-text .rich-preview__hint { font-size: 10px; line-height: 1.8; margin-top: 12px; }
+        #modal-rich-text .rich-check { gap: 7px; font-size: 11px; }
+        #modal-rich-text .rich-options { margin: 16px 0 0; padding: 14px 0 0; }
+        @media (max-width: 900px) {
+            .fx-page-textbot .text-row { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+            .fx-page-textbot .text-key { grid-column: 1; }
+            .fx-page-textbot .text-row > div:last-child { grid-column: 2; grid-row: 1; }
+            .fx-page-textbot .text-row textarea { grid-column: 1 / -1; grid-row: 2; }
+        }
+        @media (max-width: 700px) {
+            .fx-page-textbot .filter-bar, .fx-page-textbot .text-row { padding: 14px; }
+            :is(#modal-edit-text, #modal-rich-text) .modal-head { padding: 12px; }
+            :is(#modal-edit-text, #modal-rich-text) .modal-head__title { font-size: 13px; }
+            #modal-rich-text .modal-head__title code { font-size: 10px; }
+            #modal-rich-text .rich-modal-body { padding: 10px; }
+            #modal-rich-text .rich-preview-pane { padding: 10px; }
+            #modal-rich-text .rich-toolbar__group { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+            #modal-rich-text .rich-table-cellbar { display: grid; gap: 6px; padding: 8px; }
+            #modal-rich-text .rich-table-cellbar .rich-select { min-width: 0; }
+            #modal-rich-text .modal-foot { padding: 10px; }
+            #modal-edit-text .text-format-bar { padding: 12px; }
+            #modal-edit-text .modal-box > .form-group { margin: 12px; }
+            #modal-edit-text #editTextArea { padding: 14px; font-size: 12px; }
+        }
     </style>
 </head>
 <body>
@@ -1131,7 +1202,7 @@ if (isset($_SESSION['textbot_save_error'])) {
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper fx-page-settings-theme">
+        <div class="wrapper fx-page-settings-theme fx-page-textbot">
 
             <div class="page-head">
                 <div>

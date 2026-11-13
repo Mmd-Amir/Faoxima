@@ -267,24 +267,24 @@ $agent_types = [
 $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent']] : 'نامشخص';
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>مدیریت کاربر <?php echo htmlspecialchars($user['username'], ENT_QUOTES, 'UTF-8'); ?></title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
+    <link rel="stylesheet" href="css/theme.css?v=identity104">
 <script src="js/money-input.js?v=fx1" defer></script>
-<script src="js/theme.js?v=flat50" defer>
+<script src="js/theme.js?v=dark62" defer>
 
 </script>
 </head>
-<body>
+<body class="fx-user-detail">
 
 <section id="container">
     <?php include("header.php"); ?>
 
     <section id="main-content">
-        <div class="wrapper">
+        <div class="wrapper fx-page-user-detail">
 
             <div class="page-head">
                 <div>
@@ -304,14 +304,14 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                 <div class="avatar-circle">
                     <?php echo icon('user', 'svg-icon'); ?>
                 </div>
-                <div>
-                    <h1 style="direction:ltr;"><?php echo htmlspecialchars($user['username'], ENT_QUOTES, 'UTF-8'); ?></h1>
-                    <p>شناسه عددی: <?php echo $user['id']; ?></p>
+                <div class="profile-identity">
+                    <p>شناسه عددی: <bdi><?php echo htmlspecialchars((string)$user['id'], ENT_QUOTES, 'UTF-8'); ?></bdi></p>
                 </div>
-                <a href="https://t.me/<?php echo urlencode($user['username']); ?>" target="_blank" class="tg-btn">
+                <a href="https://t.me/<?php echo urlencode($user['username']); ?>" target="_blank" rel="noopener noreferrer" class="tg-btn" aria-label="مشاهدهٔ کاربر در تلگرام">
                     <?php echo icon('paper-plane', 'svg-icon'); ?>
-                    مشاهده در تلگرام
+                    <bdi><?php echo htmlspecialchars($user['username'], ENT_QUOTES, 'UTF-8'); ?></bdi>
                 </a>
+                <span class="badge profile-status <?php echo $status_class; ?>"><?php echo $status_label; ?></span>
             </div>
 
             <div class="info-grid">
@@ -325,7 +325,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                     </div>
                     <div class="info-row">
                         <span class="info-label">موجودی کیف پول</span>
-                        <span class="info-value text-accent"><?php echo number_format($user['Balance']); ?> T</span>
+                        <span class="info-value text-accent"><?php echo number_format($user['Balance']); ?> <small class="currency-unit">تومان</small></span>
                     </div>
                     <div class="info-row">
                         <span class="info-label">شماره موبایل</span>
@@ -360,7 +360,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                 </div>
             </div>
 
-            <div class="card">
+            <div class="card user-management">
                 <div class="card__head">
                     <div class="card__title"><?php echo icon('sliders', 'svg-icon svg-md'); ?><span>عملیات مدیریت</span></div>
                 </div>
@@ -416,7 +416,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                 </div>
             </div>
 
-            <div class="card">
+            <div class="card user-private-codes">
                 <div class="card__head">
                     <div class="card__title"><?php echo icon('ticket', 'svg-icon svg-md'); ?><span>کدهای اختصاصی این کاربر</span></div>
                 </div>
@@ -429,7 +429,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                     </button>
                 </div>
                 <div class="table-wrap">
-                    <table class="app-table">
+                    <table id="userCodesTable" class="app-table">
                         <thead><tr><th>کد</th><th>نوع</th><th>مقدار</th><th>بخش/کاربرد</th><th>عملیات</th></tr></thead>
                         <tbody>
                         <?php
@@ -443,7 +443,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                                 if (!isset($__vtFa[$vt])) $vt = 'percent';
                                 $sec = $c['section'] ?? 'all';
                                 if (!isset($__sectionFa[$sec])) $sec = 'all';
-                                $val = $vt === 'free' ? 'رایگان' : ($vt === 'amount' ? number_format((int)$c['price']) . ' T' : ((string)$c['price'] . '٪'));
+                                $val = $vt === 'free' ? 'رایگان' : ($vt === 'amount' ? number_format((int)$c['price']) . ' <small class="currency-unit">تومان</small>' : ((string)$c['price'] . '٪'));
                         ?>
                             <tr>
                                 <td data-label="کد"><code style="direction:ltr"><?php echo htmlspecialchars($c['codeDiscount'], ENT_QUOTES); ?></code></td>
@@ -477,7 +477,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                             <tr>
                                 <td data-label="کد"><code style="direction:ltr"><?php echo htmlspecialchars((string)$g['code'], ENT_QUOTES); ?></code></td>
                                 <td data-label="نوع"><span class="badge badge-success">هدیه</span></td>
-                                <td data-label="مقدار"><?php echo number_format((int)($g['price'] ?? 0)); ?> T</td>
+                                <td data-label="مقدار"><?php echo number_format((int)($g['price'] ?? 0)); ?> <small class="currency-unit">تومان</small></td>
                                 <td data-label="بخش/کاربرد">شارژ کیف پول</td>
                                 <td data-label="عملیات">
                                     <div style="display:flex; gap:6px; justify-content:flex-end;">
@@ -527,7 +527,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                 <label class="form-label">نوع تخفیف</label>
                 <select name="value_type" id="add_d_vt" class="form-control" onchange="faoximaToggleDiscountMoney('add_d_price', this.value)">
                     <option value="percent">درصدی</option>
-                    <option value="amount">مبلغی (T)</option>
+                    <option value="amount">مبلغی (تومان)</option>
                     <option value="free">رایگان</option>
                 </select>
             </div>
@@ -572,7 +572,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                 <input type="text" name="code" class="form-control" style="direction:ltr;" required>
             </div>
             <div class="form-group">
-                <label class="form-label">مبلغ (T)</label>
+                <label class="form-label">مبلغ (تومان)</label>
                 <input type="text" name="gift_price" class="form-control" data-money min="1" required>
             </div>
             <div class="form-group">
@@ -598,7 +598,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
             <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
             <input type="hidden" name="_action" value="user_balance_add">
             <div class="form-group">
-                <label class="form-label">مبلغ (T)</label>
+                <label class="form-label">مبلغ (تومان)</label>
                 <input type="text" name="priceadd" class="form-control" data-money placeholder="مثلا 50000" required>
             </div>
             <button type="submit" class="btn btn-primary btn-block">افزایش موجودی</button>
@@ -616,7 +616,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
             <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
             <input type="hidden" name="_action" value="user_balance_lower">
             <div class="form-group">
-                <label class="form-label">مبلغ کسر (T)</label>
+                <label class="form-label">مبلغ کسر (تومان)</label>
                 <input type="text" name="pricelow" class="form-control" data-money placeholder="مثلا 10000" required>
             </div>
             <button type="submit" class="btn btn-soft-warning btn-block">کسر موجودی</button>
@@ -701,7 +701,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                 <label class="form-label">نوع تخفیف</label>
                 <select name="value_type" id="eu_d_vt" class="form-control" onchange="faoximaToggleDiscountMoney('eu_d_price', this.value)">
                     <option value="percent">درصدی</option>
-                    <option value="amount">مبلغی (T)</option>
+                    <option value="amount">مبلغی (تومان)</option>
                     <option value="free">رایگان</option>
                 </select>
             </div>
@@ -747,7 +747,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                 <input type="text" name="code" id="eu_g_code" class="form-control" style="direction:ltr;" required>
             </div>
             <div class="form-group">
-                <label class="form-label">مبلغ (T)</label>
+                <label class="form-label">مبلغ (تومان)</label>
                 <input type="text" name="gift_price" id="eu_g_price" class="form-control" data-money min="1" required>
             </div>
             <div class="form-group">

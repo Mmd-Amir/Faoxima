@@ -490,9 +490,20 @@ function adduser($location,$data_limit,$username_ac,$timestamp,$note ='',$data_l
         $inbounds = json_decode($marzban_list_get['inbounds'],true);
             }
         }
+    $proxySettings = json_decode($marzban_list_get['proxies'] ?? 'null');
+    if (is_object($proxySettings)) {
+        foreach ($proxySettings as $options) {
+            if (!is_object($options)) {
+                continue;
+            }
+            foreach (['id', 'uuid', 'password', 'secret', 'auth', 'private_key', 'public_key', 'pre_shared_key', 'peer_ips'] as $field) {
+                unset($options->{$field});
+            }
+        }
+    }
     if ((string)($marzban_list_get['version_panel'] ?? '0') === '1') {
             $data = array(
-            "proxy_settings" => json_decode($marzban_list_get['proxies']),
+            "proxy_settings" => $proxySettings,
             "data_limit" => $data_limit,
             "username" => $username_ac,
             "note" => $note,
@@ -536,7 +547,7 @@ function adduser($location,$data_limit,$username_ac,$timestamp,$note ='',$data_l
         }
     }else{
         $data = array(
-            "proxies" => json_decode($marzban_list_get['proxies']),
+            "proxies" => $proxySettings,
             "data_limit" => $data_limit,
             "username" => $username_ac,
             "note" => $note,

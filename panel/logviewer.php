@@ -24,16 +24,23 @@ $lvCsrf = fx_csrf_token();
 header('Cache-Control: no-store');
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="robots" content="noindex,nofollow">
     <title>مشاهده ارور‌ها | پنل فاکسیما</title>
-    <link rel="stylesheet" href="css/theme.css?v=flat50">
-    <link rel="stylesheet" href="css/admin-extra.css?v=flat34">
+    <link rel="stylesheet" href="css/theme.css?v=toman75">
+    <link rel="stylesheet" href="css/admin-extra.css?v=flat39">
     <link rel="stylesheet" href="css/logviewer.css?v=lv1">
-    <script src="js/theme.js?v=flat50" defer></script>
+    <style>
+        #lv .lv-stat,
+        #lv .lv-toolbar,
+        #lv .lv-state {
+            background: radial-gradient(ellipse at 0% 0%, var(--accent-soft), transparent 65%), var(--surface-1);
+        }
+    </style>
+    <script src="js/theme.js?v=dark62" defer></script>
     <script src="js/logviewer.js?v=lv1" defer></script>
 </head>
 <body>
