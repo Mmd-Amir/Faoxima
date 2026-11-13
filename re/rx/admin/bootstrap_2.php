@@ -1795,7 +1795,7 @@ $paycount
         savedata("save", "password", "null");
         return;
     }
-    nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['addpanelurl'], $backadmin, 'HTML');
+    nm_adminInstantReply($from_id, rxPanelUrlPrompt(is_array($userdata) ? ($userdata['type'] ?? '') : ''), $backadmin, 'HTML');
     step('add_link_panel', $from_id);
 } elseif ($user['step'] == "add_link_panel") {
     if (!isset($update['message']) && empty($text)) { return; }
@@ -2393,7 +2393,23 @@ $paycount
     }
 }
 
-elseif ($user['step'] == "switchtype_pick" && preg_match('/switchtype#(.*)/', $datain, $dataget)) {
+elseif ($user['step'] == "switchtype_pick" && preg_match('/^switchpanelcat#(root|public|subscription|menu)$/', (string) $datain, $rxSwitchPanelCat)) {
+    $rxSwitchCategory = $rxSwitchPanelCat[1];
+    if ($rxSwitchCategory === 'menu') {
+        $rxSwitchDraft = json_decode((string) ($user['Processing_value'] ?? ''), true);
+        $rxSwitchPanelName = is_array($rxSwitchDraft) ? (string) ($rxSwitchDraft['name_panel'] ?? '') : '';
+        $rxSwitchPanel = $rxSwitchPanelName !== '' ? select("marzban_panel", "*", "name_panel", $rxSwitchPanelName, "select") : false;
+        if (is_array($rxSwitchPanel) && !empty($rxSwitchPanel)) {
+            update("user", "Processing_value", $rxSwitchPanel['name_panel'], "id", $from_id);
+            outtypepanel($rxSwitchPanel['type'], $textbotlang['Admin']['Back-menu']);
+        } else {
+            step('home', $from_id);
+            nm_adminInstantReply($from_id, $textbotlang['users']['selectoption'], $adminPanelsMenu, 'HTML');
+        }
+    } else {
+        nm_adminInstantReply($from_id, rxAddPanelCategoryMessage($rxSwitchCategory), rxSwitchTypeKeyboard($rxSwitchCategory), 'HTML');
+    }
+} elseif ($user['step'] == "switchtype_pick" && preg_match('/^switchtype#(marzban|rebecca|pasarguard|pasargard|remnawave|guard|x-ui_single|jovadpanel|Manualsale)$/', (string) $datain, $dataget)) {
     $newType = $dataget[1];
     savedata("save", "new_type", $newType);
     if ($newType == "Manualsale") {
@@ -2403,7 +2419,7 @@ elseif ($user['step'] == "switchtype_pick" && preg_match('/switchtype#(.*)/', $d
         nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
         step('switchtype_confirm', $from_id);
     } else {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['addpanelurl'], $backadmin, 'HTML');
+        nm_adminInstantReply($from_id, rxPanelUrlPrompt($newType), $backadmin, 'HTML');
         step('switchtype_link_panel', $from_id);
     }
 } elseif ($user['step'] == "switchtype_link_panel") {

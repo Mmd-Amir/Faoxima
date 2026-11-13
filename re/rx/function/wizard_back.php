@@ -213,7 +213,7 @@ if (!function_exists('rxRenderWizardStep')) {
                 nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['addpanelname'], rxAddPanelBackKeyboard(rxWizardProcessingType($from_id)), 'HTML');
                 return true;
             case 'add_link_panel':
-                nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['addpanelurl'], $backadmin, 'HTML');
+                nm_adminInstantReply($from_id, rxPanelUrlPrompt(rxWizardProcessingType($from_id)), $backadmin, 'HTML');
                 return true;
             case 'add_username_panel':
                 nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['usernameset'], $backadmin, 'HTML');

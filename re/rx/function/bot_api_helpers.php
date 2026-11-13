@@ -936,18 +936,34 @@ function rxAddPanelCategory($type = '')
     if (in_array((string) $type, ['marzban', 'rebecca', 'pasarguard', 'pasargard', 'remnawave', 'x-ui_single', 'public'], true)) return 'public';
     return 'root';
 }
+function rxPanelUrlPrompt($type = '', $editing = false)
+{
+    global $textbotlang;
+    $manage = (isset($textbotlang['Admin']['managepanel']) && is_array($textbotlang['Admin']['managepanel']))
+        ? $textbotlang['Admin']['managepanel']
+        : [];
+    $baseKey = $editing ? 'geturlnew' : 'addpanelurl';
+    $key = ((string) $type === 'x-ui_single') ? $baseKey . '_xui' : $baseKey;
+    if (!empty($manage[$key])) {
+        return (string) $manage[$key];
+    }
+    return (string) ($manage[$baseKey] ?? '');
+}
 function rxPanelUrlPathViolation($url, $type = '')
 {
+    $type = strtolower(trim((string) $type));
     $path = parse_url(trim((string) $url), PHP_URL_PATH);
     if (!is_string($path) || trim($path, '/') === '') {
         return '';
     }
-    foreach (explode('/', trim($path, '/')) as $segment) {
-        if (strcasecmp($segment, 'dashboard') === 0) {
-            return 'dashboard';
+    if ($type !== 'x-ui_single') {
+        foreach (explode('/', trim($path, '/')) as $segment) {
+            if (strcasecmp($segment, 'dashboard') === 0) {
+                return 'dashboard';
+            }
         }
     }
-    if (strtolower(trim((string) $type)) === 'remnawave') {
+    if ($type === 'remnawave') {
         return 'path';
     }
     return '';
@@ -1008,21 +1024,54 @@ function rxAddPanelBackKeyboard($type = '')
         [['text' => $textbotlang['Admin']['backadmin'], 'callback_data' => 'admin']],
     ]], JSON_UNESCAPED_UNICODE);
 }
-function rxAddPanelShowCategory($chatId, $type = '', $notice = '')
+function rxAddPanelCategoryKeyboard($category = 'root')
 {
     global $keyboardpanelcategory, $keyboardtypepanelpublic, $keyboardtypepanelsubscription;
+    if ((string) $category === 'public') return $keyboardtypepanelpublic;
+    if ((string) $category === 'subscription') return $keyboardtypepanelsubscription;
+    return $keyboardpanelcategory;
+}
+function rxAddPanelCategoryMessage($category = 'root')
+{
+    if ((string) $category === 'public') {
+        return "🌐 پنل‌های عمومی (رایگان)\n\nاین پنل‌ها به‌صورت رایگان از طریق مخازن عمومی مانند GitHub در دسترس هستند. برای استفاده، باید پنل موردنظر را روی سرور خود نصب و راه‌اندازی کنید.\n\nلطفاً نوع پنل خود را انتخاب کنید.";
+    }
+    if ((string) $category === 'subscription') {
+        return "💳 پنل‌های اشتراکی (پولی)\n\nبرای استفاده از این پنل‌ها، لازم است ابتدا حساب و اشتراک یا اعتبار موردنیاز را از ارائه‌دهندهٔ مربوط تهیه کنید.\n\nپس از فعال‌سازی حساب، می‌توانید با اطلاعات اتصال و کلید API، پنل خود را به ربات متصل کنید.\n\nلطفاً نوع پنل خود را انتخاب کنید.";
+    }
+    return 'لطفاً دسته‌بندی پنل موردنظر را انتخاب کنید.';
+}
+function rxSwitchTypeKeyboard($category = 'root')
+{
+    $source = (string) rxAddPanelCategoryKeyboard($category);
+    $decoded = json_decode($source, true);
+    if (!is_array($decoded) || !isset($decoded['inline_keyboard']) || !is_array($decoded['inline_keyboard'])) {
+        return $source;
+    }
+    foreach ($decoded['inline_keyboard'] as $rowIndex => $row) {
+        if (!is_array($row)) continue;
+        foreach ($row as $buttonIndex => $button) {
+            if (!is_array($button)) continue;
+            $callbackData = (string) ($button['callback_data'] ?? '');
+            if (strpos($callbackData, 'panelcat#') === 0) {
+                $decoded['inline_keyboard'][$rowIndex][$buttonIndex]['callback_data'] = 'switchpanelcat#' . substr($callbackData, strlen('panelcat#'));
+            } elseif (strpos($callbackData, 'typepanel#') === 0) {
+                $decoded['inline_keyboard'][$rowIndex][$buttonIndex]['callback_data'] = 'switchtype#' . substr($callbackData, strlen('typepanel#'));
+            } elseif ($callbackData === 'admin') {
+                $decoded['inline_keyboard'][$rowIndex][$buttonIndex]['callback_data'] = 'switchpanelcat#menu';
+                $decoded['inline_keyboard'][$rowIndex][$buttonIndex]['text'] = '🔙 بازگشت به منوی پنل';
+            }
+        }
+    }
+    return json_encode($decoded, JSON_UNESCAPED_UNICODE);
+}
+function rxAddPanelShowCategory($chatId, $type = '', $notice = '')
+{
     $category = rxAddPanelCategory($type);
     rxAddPanelResetDraft($chatId);
     if (function_exists('rxNavSetState')) rxNavSetState($chatId, 'panels');
-    $keyboard = $keyboardpanelcategory;
-    $message = 'لطفاً دسته‌بندی پنل موردنظر را انتخاب کنید.';
-    if ($category === 'public') {
-        $keyboard = $keyboardtypepanelpublic;
-        $message = "🌐 پنل‌های عمومی (رایگان)\n\nاین پنل‌ها به‌صورت رایگان از طریق مخازن عمومی مانند GitHub در دسترس هستند. برای استفاده، باید پنل موردنظر را روی سرور خود نصب و راه‌اندازی کنید.\n\nلطفاً نوع پنل خود را انتخاب کنید.";
-    } elseif ($category === 'subscription') {
-        $keyboard = $keyboardtypepanelsubscription;
-        $message = "💳 پنل‌های اشتراکی (پولی)\n\nبرای استفاده از این پنل‌ها، لازم است ابتدا حساب و اشتراک یا اعتبار موردنیاز را از ارائه‌دهندهٔ مربوط تهیه کنید.\n\nپس از فعال‌سازی حساب، می‌توانید با اطلاعات اتصال و کلید API، پنل خود را به ربات متصل کنید.\n\nلطفاً نوع پنل خود را انتخاب کنید.";
-    }
+    $keyboard = rxAddPanelCategoryKeyboard($category);
+    $message = rxAddPanelCategoryMessage($category);
     if ($notice !== '') $message = htmlspecialchars((string) $notice, ENT_QUOTES, 'UTF-8') . "\n\n" . $message;
     return nm_adminInstantReply($chatId, $message, $keyboard, 'HTML');
 }

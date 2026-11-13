@@ -333,27 +333,6 @@ $keyboardtypepanelsubscription = json_encode([
         ]
     ],
 ]);
-$keyboardswitchtype = json_encode([
-    'inline_keyboard' => [
-        [
-            ['text' => "Marzban", 'callback_data' => 'switchtype#marzban'],
-            ['text' => "Rebecca", 'callback_data' => 'switchtype#rebecca'],
-            ['text' => "PasarGuard" , 'callback_data' => "switchtype#pasargard"]
-        ],
-        [
-            ['text' => "Remnawave", 'callback_data' => 'switchtype#remnawave'],
-            ['text' => "Guard", 'callback_data' => 'switchtype#guard'],
-            ['text' => '3x-ui', 'callback_data' => 'switchtype#x-ui_single']
-        ],
-        [
-            ['text' => "JovadPanel", 'callback_data' => 'switchtype#jovadpanel']
-        ],
-        [
-            ['text' => $textbotlang['Admin']['backadmin'] , 'callback_data' => 'admin']
-        ]
-    ],
-]);
-
 $panelechekc = select("marzban_panel","*","MethodUsername","متن دلخواه نماینده + عدد ترتیبی","count");
 if($setting['inlinebtnmain'] == "oninline"){
     $keyboardagent = [

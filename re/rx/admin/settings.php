@@ -3518,7 +3518,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     savedata("clear", "code_panel", $panel['code_panel']);
     savedata("save", "old_type", $panel['type']);
     savedata("save", "name_panel", $panel['name_panel']);
-    nm_replyOrEdit($from_id, $textbotlang['Admin']['managepanel']['Inbound']['gettypepanel'], $keyboardswitchtype, 'HTML');
+    nm_replyOrEdit($from_id, rxAddPanelCategoryMessage('root'), rxSwitchTypeKeyboard('root'), 'HTML');
     step("switchtype_pick", $from_id);
 } elseif ($text == "➕ افزودن کانفیگ") {
     $panelName = function_exists('nmResolvePanelNameForUser') ? nmResolvePanelNameForUser($user) : (string)$user['Processing_value'];

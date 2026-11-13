@@ -321,7 +321,8 @@ if (false) {
     }
     step('remna_panel_back', $from_id);
 } elseif ($text == "🔗 ویرایش آدرس پنل" && $adminrulecheck['rule'] == "administrator") {
-    nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['geturlnew'], $backadmin, 'HTML');
+    $typepanel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
+    nm_adminInstantReply($from_id, rxPanelUrlPrompt(is_array($typepanel) ? ($typepanel['type'] ?? '') : '', true), $backadmin, 'HTML');
     step('GeturlNew', $from_id);
 } elseif ($user['step'] == "GeturlNew") {
     if (!isset($update['message']) && empty($text)) { return; }
