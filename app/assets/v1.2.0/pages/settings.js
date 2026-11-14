@@ -94,12 +94,8 @@ export async function settings(view) {
             <span>بازگشت</span>
         </a>
 
-        <article class="card card-window">
-            <header class="card-window-bar">
-                <span class="dots"><span></span><span></span><span></span></span>
-                <span class="window-url">faoxima/settings</span>
-            </header>
-            <div class="card-body" id="settings-body">
+        <article class="settings-page">
+            <div id="settings-body">
                 <div class="empty">
                     ${icon('settings', 'class="ico ico-xxl ico-accent"')}
                     <h3>تنظیمات</h3>
@@ -137,10 +133,11 @@ export async function settings(view) {
 }
 
 function renderAdminPanel(host, brand) {
-    const curHex = normalizeHex(globalAccent()) || normalizeHex(brand.accent) || THEMES.find((t) => t.key === 'purple').color;
+    const accent = globalAccent();
+    const curHex = normalizeHex(accent) || THEMES.find(t => t.key === accent)?.color || normalizeHex(brand.accent) || THEMES.find(t => t.key === brand.accent)?.color || THEMES.find(t => t.key === 'purple').color;
 
     const tiles = THEMES.map((t) => `
-        <button class="theme-tile ${normalizeHex(t.color) === normalizeHex(curHex) ? 'is-active' : ''}" data-accent="${t.color}" type="button" aria-label="${escapeAttr(t.name)}">
+        <button class="theme-tile ${normalizeHex(t.color) === normalizeHex(curHex) ? 'is-active' : ''}" data-accent="${t.color}" type="button" aria-label="${escapeAttr(t.name)}" aria-pressed="${normalizeHex(t.color) === normalizeHex(curHex)}">
             <span class="theme-swatch" style="background:${t.color}"></span>
             <span class="theme-name">${t.name}</span>
             ${normalizeHex(t.color) === normalizeHex(curHex) ? icon('check', 'class="ico ico-accent"') : ''}
@@ -148,31 +145,14 @@ function renderAdminPanel(host, brand) {
     `).join('');
 
     host.innerHTML = `
-        <p class="section-title">${icon('settings')} رنگ اصلی مینی‌اپ</p>
-        <h2 class="section-headline">یک رنگ برای همهٔ کاربران انتخاب کنید</h2>
-        <p class="muted center mb-md" style="font-size:13px">این رنگ به‌صورت سراسری ذخیره و برای همهٔ کاربران اعمال می‌شود.</p>
-
+        <header class="settings-hero"><span>${icon('settings')}</span><div><small>مدیریت ظاهر مینی‌اپ</small><h1>رنگ و نشان، به سلیقهٔ تو.</h1><p>تغییرات این صفحه برای همهٔ کاربران ذخیره می‌شود.</p></div></header>
+        <section class="settings-color-card"><div class="settings-section-heading"><div><h2>رنگ اصلی</h2><p>یک رنگ انتخاب کن و نتیجه را همین‌جا ببین.</p></div><span class="settings-scope">سراسری</span></div>
+        <div class="settings-preview" aria-label="پیش‌نمایش رنگ"><div class="settings-preview-top"><span>${icon('wallet')}</span><div><b>پیش‌نمایش ظاهر</b><small>رنگ دکمه‌ها، آیکون‌ها و حاشیه‌ها</small></div><span class="settings-preview-pill">نمونه</span></div><div class="settings-preview-bottom"><span class="settings-preview-bar"></span><span class="settings-preview-button">${icon('check')} ادامه</span></div></div>
         <div class="theme-grid" id="accent-grid">${tiles}</div>
-
-        <div class="card-section">
-            <p class="section-title">رنگ دلخواه</p>
-            <div class="form-row">
-                <label class="muted" style="font-size:12px" for="accent-hex">کد رنگ (مثلاً ‎#eaedf8)</label>
-                <div class="row-spread" style="gap:10px;align-items:center">
-                    <input id="accent-hex" type="text" inputmode="latin" maxlength="7" placeholder="#eaedf8" value="${escapeAttr(curHex)}" class="input-mono" dir="ltr" style="flex:1" />
-                    <input id="accent-native" type="color" value="${escapeAttr(curHex)}" aria-label="انتخابگر رنگ" style="width:48px;height:48px;border:none;background:none;padding:0;border-radius:12px" />
-                </div>
-            </div>
-        </div>
-
-        <button id="accent-save" type="button" class="btn btn-primary btn-block mt-sm">
-            ${icon('check', 'class="ico ico-leading"')}
-            <span class="accent-save-label">ذخیره رنگ برای همه</span>
-        </button>
-
-        <div class="card-section" id="admin-notification-host"></div>
-
-        <div id="admin-brand-host" class="card-section"></div>
+        <div class="settings-custom-color"><label for="accent-hex">رنگ دلخواه <span>کد HEX</span></label><div><input id="accent-native" type="color" value="${escapeAttr(curHex)}" aria-label="انتخاب رنگ دلخواه" /><input id="accent-hex" type="text" maxlength="7" placeholder="#7c5cff" value="${escapeAttr(curHex)}" class="input-mono" dir="ltr" spellcheck="false" aria-describedby="accent-status" /></div></div>
+        <div class="settings-save-row"><span id="accent-status" role="status">رنگ فعلی مینی‌اپ</span><button id="accent-save" type="button" class="btn btn-primary">${icon('check')}<span class="accent-save-label">ذخیره رنگ</span></button></div></section>
+        <details class="settings-accordion"><summary><span>${icon('bell')}</span><div><b>اعلان به کاربران</b><small>ارسال و مدیریت پیام‌های عمومی</small></div>${icon('chevronDown')}</summary><div id="admin-notification-host" class="settings-accordion-body"></div></details>
+        <details class="settings-accordion"><summary><span>${icon('user')}</span><div><b>نام و نشان مینی‌اپ</b><small>عنوان، حروف نشان و تصویر لوگو</small></div>${icon('chevronDown')}</summary><div id="admin-brand-host" class="settings-accordion-body"></div></details>
     `;
 
     const grid = host.querySelector('#accent-grid');
@@ -180,18 +160,21 @@ function renderAdminPanel(host, brand) {
     const $native = host.querySelector('#accent-native');
     const $save = host.querySelector('#accent-save');
     const $saveLabel = $save.querySelector('.accent-save-label');
-    let pending = curHex;
+    let savedHex = curHex;
+    const $status = host.querySelector('#accent-status');
 
     function setPending(hex) {
         const norm = normalizeHex(hex);
         if (!norm) return;
-        pending = norm;
+        $status.textContent = norm === savedHex ? 'رنگ فعلی مینی‌اپ' : 'پیش‌نمایش؛ هنوز ذخیره نشده';
+        $hex.removeAttribute('aria-invalid');
         applyColor(norm);
         $hex.value = norm;
         try { $native.value = norm; } catch (_) {  }
         grid.querySelectorAll('[data-accent]').forEach((b) => {
             const match = normalizeHex(b.dataset.accent) === norm;
             b.classList.toggle('is-active', match);
+            b.setAttribute('aria-pressed', String(match));
             const c = b.querySelector('svg'); if (c) c.remove();
             if (match) b.insertAdjacentHTML('beforeend', icon('check', 'class="ico ico-accent"'));
         });
@@ -208,8 +191,8 @@ function renderAdminPanel(host, brand) {
 
     $save.addEventListener('click', async () => {
         if ($save.disabled) return;
-        const norm = normalizeHex($hex.value) || pending;
-        if (!norm) { toast('کد رنگ نامعتبر است', 'error', 3000); return; }
+        const norm = normalizeHex($hex.value);
+        if (!norm) { $hex.setAttribute('aria-invalid', 'true'); $status.textContent = 'کد رنگ شش‌رقمی معتبر وارد کن؛ مثلاً #7c5cff'; $hex.focus(); return; }
         const old = $saveLabel.textContent;
         $save.disabled = true;
         $saveLabel.textContent = 'در حال ذخیره…';
@@ -217,7 +200,9 @@ function renderAdminPanel(host, brand) {
             const res = await call('brand_save', { method: 'POST', body: { accent: norm }, timeoutMs: 15000 });
             const o = res?.obj || {};
             const saved = normalizeHex(o.accent) || norm;
-            applyColor(saved);
+            savedHex = saved;
+            setPending(saved);
+            $status.textContent = 'برای همهٔ کاربران ذخیره شد';
             try {
                 const raw = localStorage.getItem('faoxima.brand');
                 const cache = raw ? JSON.parse(raw) : {};
@@ -232,6 +217,7 @@ function renderAdminPanel(host, brand) {
             toast('رنگ برای همهٔ کاربران ذخیره شد', 'success', 2800);
         } catch (err) {
             hapticNotify('error');
+            $status.textContent = err.message || 'ذخیره انجام نشد؛ دوباره تلاش کن.';
             toast(err.message || 'خطا در ذخیره رنگ', 'error', 4000);
         } finally {
             $save.disabled = false;

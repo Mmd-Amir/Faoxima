@@ -4,8 +4,8 @@ import { setUser } from '../state.js';
 import { icon } from '../icons.js?v=0.0.52';
 import { hapticImpact, showConfirm, getInitDataUnsafe } from '../telegram.js?v=0.0.52';
 import { mountHomeBell } from '../notifications.js?v=0.0.52';
-import { methodLabel } from '../payment-ui.js?v=0.0.67';
-import { cancelVerifyPayment } from '../card-verify.js?v=0.0.4';
+import { methodLabel } from '../payment-ui.js?v=0.0.73';
+import { cancelVerifyPayment } from '../card-verify.js?v=0.0.6';
 
 function greetingName() {
     try {
@@ -13,6 +13,22 @@ function greetingName() {
         if (u && u.first_name) return String(u.first_name);
     } catch (_) {  }
     return 'کاربر';
+}
+
+function mountProfilePhoto(view) {
+    const avatar = view.querySelector('.home-profile-avatar');
+    if (!avatar) return;
+    try {
+        const photoUrl = getInitDataUnsafe()?.user?.photo_url;
+        if (!photoUrl || new URL(photoUrl).protocol !== 'https:') return;
+        const photo = document.createElement('img');
+        photo.alt = '';
+        photo.referrerPolicy = 'no-referrer';
+        photo.decoding = 'async';
+        photo.addEventListener('load', () => avatar.replaceChildren(photo), { once: true });
+        // Keep the initials visible if Telegram supplies no photo or loading fails.
+        photo.src = photoUrl;
+    } catch (_) { }
 }
 
 function brandMarkHtml() {
@@ -27,77 +43,77 @@ function brandMarkHtml() {
     }
     const state = String(source.avatar_state || (source.logo_url ? 'custom' : (source.mark ? 'initials' : ''))).trim();
     const mark = String(source.mark || '').trim() || 'F';
-    const title = String(source.title || '').trim();
+    const title = String(source.title || source.name || 'Faoxima').trim();
     const logoUrl = state === 'custom' ? String(source.logo_url || '').trim() : '';
     const markHtml = logoUrl
         ? `<span class="brand-mark" aria-hidden="true" style="background:transparent;padding:0;overflow:hidden"><img src="${escapeHtml(logoUrl)}" alt="logo" style="width:100%;height:100%;object-fit:cover;border-radius:inherit" /></span>`
         : `<span class="brand-mark" aria-hidden="true">${escapeHtml(mark)}</span>`;
     const titleHtml = `<span class="brand-title"${title ? '' : ' hidden'}>${escapeHtml(title)}</span>`;
-    return titleHtml + markHtml;
+    return { markHtml, titleHtml };
 }
 
 export async function home(view) {
-    const name = greetingName();
+    const { markHtml, titleHtml } = brandMarkHtml();
 
     view.innerHTML = `
-        <div class="home-header">
-            <div>
-                <p class="home-greeting">خوش اومدی</p>
-                <p class="home-username">${escapeHtml(name)}</p>
+        <header class="home-header home-header-v2" aria-label="منوی اصلی">
+            <div class="home-header-main"><div class="home-identity">
+                <div class="home-brand">
+                    <div class="home-brand-avatar">${markHtml}</div>
+                    <div class="home-brand-copy">${titleHtml}<small>پنل کاربری</small></div>
+                </div>
             </div>
-            <div class="header-actions" id="home-header-icons">
-                ${brandMarkHtml()}
+                <a href="#/account" class="home-header-account" aria-label="حساب کاربری" title="حساب کاربری">${icon('user')}</a>
+            </div>
+            <div class="header-actions" id="home-header-icons" role="group" aria-label="دسترسی سریع">
                 <span id="home-admin-gear-host"></span>
-                <button id="notif-bell-btn" class="icon-btn" aria-label="اعلان‌ها" title="اعلان‌ها">
+                <button type="button" id="notif-bell-btn" class="icon-btn" aria-label="اعلان‌ها" title="اعلان‌ها">
                     ${icon('bell')}
-                    <span class="bell-dot" id="notif-bell-dot" hidden></span>
+                    <span class="home-action-label">اعلان‌ها</span>
+                    <span class="bell-dot" id="notif-bell-dot" aria-hidden="true" hidden></span>
                 </button>
-                <button id="reload-btn" class="icon-btn" aria-label="Reload" title="Reload (پاکسازی کش)"
+                <button type="button" id="reload-btn" class="icon-btn" aria-label="به‌روزرسانی برنامه" title="به‌روزرسانی برنامه و پاکسازی کش"
                         onclick="window.__hardReload && window.__hardReload();">
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
+                    <span class="home-action-label">به‌روزرسانی</span>
                 </button>
+
             </div>
-        </div>
+        </header>
 
         <div id="home-pending-host"></div>
 
-        <div class="wallet-hero" id="wallet-hero">
-            <div class="wallet-hero-top">
-                ${icon('wallet', 'class="ico"')}
-                <span>موجودی کیف پول</span>
-                <span class="dot-online" aria-hidden="true"></span>
-            </div>
-            <div class="wallet-hero-amount" id="wallet-hero-amount">
-                <div class="skeleton skeleton-row" style="background:rgba(255,255,255,0.18)"></div>
-            </div>
-            <div class="wallet-hero-actions">
-                <a href="#/recharge" class="wallet-hero-btn-primary">
-                    ${icon('plus', 'class="ico"')}
-                    <span>شارژ کیف پول</span>
-                </a>
-                <a href="#/history" class="wallet-hero-btn-ghost">
-                    ${icon('clock', 'class="ico"')}
-                    <span>تاریخچه</span>
-                </a>
-            </div>
-        </div>
-
-        <div class="action-grid mt-md">
-            <a href="#/buy" class="action-tile">
+        <div class="action-grid home-action-grid mt-md" role="navigation" aria-label="دسترسی به خدمات">
+            <a href="#/buy" class="action-tile home-shortcut-buy">
                 ${icon('cart', 'class="ico ico-xl action-icon is-green"')}
-                <span>خرید سرویس</span>
+                <span class="home-shortcut-copy">
+                    <span class="home-shortcut-eyebrow">یک اتصال تازه</span>
+                    <span class="home-shortcut-title">خرید سرویس</span>
+                    <span class="home-shortcut-description">پلن مناسب خودت را انتخاب کن</span>
+                </span>
+                <span class="home-shortcut-go" aria-hidden="true">${icon('arrowLeft')}</span>
             </a>
-            <a href="#/services" class="action-tile">
+            <a href="#/services" class="action-tile home-shortcut-services">
                 ${icon('fileText', 'class="ico ico-xl action-icon is-yellow"')}
-                <span>سرویس‌های من</span>
+                <span class="home-shortcut-copy">
+                    <span class="home-shortcut-title">سرویس‌های من</span>
+                    <span class="home-shortcut-description">مدیریت و تمدید سرویس‌ها</span>
+                </span>
+                <span class="home-shortcut-go" aria-hidden="true">${icon('chevronLeft')}</span>
             </a>
-            <a href="#/tickets" class="action-tile">
+            <a href="#/tickets" class="action-tile home-shortcut-support">
                 ${icon('shield', 'class="ico ico-xl action-icon is-orange"')}
-                <span>پشتیبانی</span>
+                <span class="home-shortcut-copy">
+                    <span class="home-shortcut-title">پشتیبانی</span>
+                    <span class="home-shortcut-description">پیگیری درخواست‌ها</span>
+                </span>
             </a>
-            <a href="#/account" class="action-tile">
+            <a href="#/account" class="action-tile home-shortcut-account">
                 ${icon('user', 'class="ico ico-xl action-icon is-blue"')}
-                <span>حساب کاربری</span>
+                <span class="home-shortcut-copy">
+                    <span class="home-shortcut-title">حساب کاربری</span>
+                    <span class="home-shortcut-description">اطلاعات حساب</span>
+                </span>
             </a>
         </div>
 
@@ -112,19 +128,20 @@ export async function home(view) {
         </div>
     `;
 
+    mountProfilePhoto(view);
     mountHomeBell().catch(() => {});
 
-    let info = null;
     try {
         const res = await call('user_info');
-        info = res?.obj || null;
+        const info = res?.obj || null;
         if (info) setUser(info);
         if (info && info.is_admin) {
             const gearHost = view.querySelector('#home-admin-gear-host');
             if (gearHost) {
                 gearHost.innerHTML = `
-                    <button id="admin-settings-btn" class="icon-btn" aria-label="تنظیمات" title="تنظیمات">
+                    <button type="button" id="admin-settings-btn" class="icon-btn" aria-label="تنظیمات مدیریت" title="تنظیمات مدیریت">
                         ${icon('settings')}
+                        <span class="home-action-label">مدیریت</span>
                     </button>
                 `;
                 const gearBtn = gearHost.querySelector('#admin-settings-btn');
@@ -134,14 +151,7 @@ export async function home(view) {
             }
         }
     } catch (err) {
-        const amount = view.querySelector('#wallet-hero-amount');
-        if (amount) amount.innerHTML = `<span style="font-size:14px">${escapeHtml(err.message || 'خطا در دریافت موجودی')}</span>`;
-        return;
-    }
-
-    const amount = view.querySelector('#wallet-hero-amount');
-    if (amount && info) {
-        amount.textContent = fmtPrice(info.balance);
+        toast(err.message || 'خطا در دریافت اطلاعات کاربری', 'error');
     }
 
     loadActiveServices(view);
@@ -378,15 +388,15 @@ function renderPendingCard(p) {
         ? `<p class="pending-banner-note muted" style="font-size:12px;margin:8px 0 0">${rialitAwaitingResult ? 'مهلت ورود به پرداخت تمام شده؛ در انتظار نتیجه' : ''}</p>`
         : '';
     return `
-        <div class="pending-banner">
+        <div class="pending-banner pending-payment">
             <div class="pending-banner-head">
                 ${icon('hourglass', 'class="ico ico-leading"')}
-                <span>پرداخت در انتظار تأیید — ${escapeHtml(methodFa)}${cur}</span>
+                <div><span class="pending-payment-kicker">پرداخت در انتظار تأیید</span><strong>${escapeHtml(methodFa)}${cur}</strong></div>
             </div>
             <div class="pending-banner-grid">
                 <div><span class="muted">کد فاکتور</span><span class="mono">${escapeHtml(p.order_id)}</span></div>
                 <div><span class="muted">مبلغ</span><span class="mono accent">${escapeHtml(fmtPrice(p.amount))}</span></div>
-                <div><span class="muted">باقی‌مانده</span><span class="mono pending-remaining" data-expires-at="${expiresAt}" data-method="${escapeHtml(p.method || '')}">${escapeHtml(initialRemain)}</span></div>
+                <div class="pending-payment-time"><span class="muted">زمان باقی‌مانده</span><span class="mono pending-remaining" data-expires-at="${expiresAt}" data-method="${escapeHtml(p.method || '')}">${escapeHtml(initialRemain)}</span></div>
             </div>
             ${rialitNote}
             <div class="pending-banner-actions">

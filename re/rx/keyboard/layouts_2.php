@@ -729,15 +729,7 @@ if (!function_exists('rx_makeAdminPanelCallback')) {
 
 
         $code = 'apnh:' . substr(hash('sha256', $text), 0, 32);
-        $file = rx_adminPanelCallbackMapFile();
-        $map = [];
-        if (is_file($file)) {
-            $dec = json_decode((string) @file_get_contents($file), true);
-            if (is_array($dec)) $map = $dec;
-        }
-        $map[$code] = $text;
-        @file_put_contents($file, json_encode($map, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), LOCK_EX);
-        return $code;
+        return rx_callbackMapStore(rx_adminPanelCallbackMapFile(), $code, $text) ? $code : 'admin_back';
     }
 }
 if (!function_exists('rx_resolveAdminPanelCallback')) {
@@ -746,9 +738,7 @@ if (!function_exists('rx_resolveAdminPanelCallback')) {
             return substr($callbackData, 4);
         }
         if (strpos($callbackData, 'apnh:') === 0) {
-            $file = rx_adminPanelCallbackMapFile();
-            if (!is_file($file)) return null;
-            $map = json_decode((string) @file_get_contents($file), true);
+            $map = rx_callbackMapRead(rx_adminPanelCallbackMapFile());
             return (is_array($map) && isset($map[$callbackData])) ? (string)$map[$callbackData] : null;
         }
         return null;

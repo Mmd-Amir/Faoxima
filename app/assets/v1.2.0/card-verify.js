@@ -1,3 +1,4 @@
+import { paymentResultHtml } from './payment-view.js?v=2';
 import { escapeHtml, copyToClipboard, toast } from './utils.js?v=0.0.53';
 import { hapticImpact, hapticNotify, showConfirm } from './telegram.js?v=0.0.52';
 import { icon } from './icons.js?v=0.0.52';
@@ -109,46 +110,15 @@ export function verifyAmountHtml(d) {
     const rial = String(Math.round(Number(v.payable_rial) || 0));
     const canCancel = String(v.state || '') === 'open' && String(v.verify_status || '') === 'waiting';
     return `
-        <div class="card-section mt-md sbv-box">
-            <p class="section-title">${icon('info')} تأیید خودکار واریز</p>
-            <div class="kv">
-                <span class="kv-label">مبلغ شارژ / سفارش</span>
-                <span class="kv-value mono">${fmt(v.principal_toman)} تومان</span>
-            </div>
-            <div class="kv">
-                <span class="kv-label">کارمزد شناسایی</span>
-                <span class="kv-value mono">${fmt(v.fee_toman)} تومان</span>
-            </div>
-            <div class="kv mt-sm">
-                <span class="kv-label">مبلغ دقیق قابل واریز</span>
-                <span class="kv-value mono accent" style="font-size:18px;font-weight:700">${fmt(v.payable_toman)} تومان</span>
-            </div>
-            <div class="kv">
-                <span class="kv-label">معادل ریالی</span>
-                <span class="kv-value mono">${escapeHtml(rial)} ریال</span>
-            </div>
-            <button type="button" class="btn btn-ghost btn-block mt-sm sbv-copy-rial" data-copy="${escapeHtml(rial)}">
-                ${icon('copy', 'class="ico ico-leading"')}
-                <span>کپی مبلغ به ریال</span>
-            </button>
-            <div class="callout mt-md">
-                ${icon('info', 'class="ico ico-leading"')}
-                <span>دقیقاً همین مبلغ را یکجا واریز کنید. مبلغ کمتر، بیشتر یا چند واریز جداگانه به‌صورت خودکار تأیید نمی‌شود. کارمزد شناسایی جزو شارژ کیف پول یا مبلغ سفارش نیست و بازگردانده نمی‌شود.</span>
-            </div>
-            <div class="kv mt-sm">
-                <span class="kv-label">مهلت پرداخت</span>
-                <span class="kv-value mono">تا ساعت ${escapeHtml(v.expires_at_clock || '')} (<span data-sbv-left>—</span>)</span>
-            </div>
-            <div class="kv">
-                <span class="kv-label">وضعیت</span>
-                <span class="kv-value" data-sbv-status>در انتظار واریز — بررسی خودکار فعال است</span>
-            </div>
-            ${canCancel ? `
-            <button type="button" class="btn btn-ghost btn-block mt-sm sbv-cancel-pay" data-order="${escapeHtml(d.order_id || '')}">
-                ${icon('close', 'class="ico ico-leading"')}
-                <span>لغو پرداخت</span>
-            </button>` : ''}
-        </div>`;
+        <section class="sbv-box sbv-compact">
+            <div class="sbv-heading"><span class="sbv-live-dot"></span><span>تأیید خودکار واریز</span><span class="sbv-expiry" title="زمان باقی‌مانده تا انقضای پرداخت">${icon('clock')} مهلت <b data-sbv-left>—</b></span></div>
+            <div class="sbv-payable"><span>دقیقاً این مبلغ را واریز کن</span><strong>${fmt(v.payable_rial)} <small>ریال</small></strong><span class="sbv-toman">${fmt(v.payable_toman)} تومان</span></div>
+            <button type="button" class="btn btn-primary btn-block sbv-copy-rial" data-copy="${escapeHtml(rial)}">${icon('copy')} <span>کپی مبلغ به ریال</span></button>
+            <p class="sbv-short-notice">${icon('info')} مبلغ را یکجا و دقیق واریز کن؛ واریز کمتر، بیشتر یا چندمرحله‌ای خودکار تأیید نمی‌شود.</p>
+            <details class="sbv-breakdown"><summary>جزئیات مبلغ و کارمزد ${icon('chevronDown')}</summary><div class="sbv-breakdown-row"><span>مبلغ شارژ / سفارش</span><b>${fmt(v.principal_toman)} تومان</b></div><div class="sbv-breakdown-row"><span>کارمزد شناسایی</span><b>${fmt(v.fee_toman)} تومان</b></div><p>کارمزد شناسایی به موجودی یا مبلغ سفارش اضافه نمی‌شود و بازگردانده نمی‌شود.</p><div class="sbv-breakdown-row"><span>مهلت واریز</span><b>تا ساعت ${escapeHtml(v.expires_at_clock || '')}</b></div><div class="sbv-breakdown-row"><span>کد پیگیری</span><b dir="ltr">${escapeHtml(d.order_id || '')}</b></div></details>
+            <p class="sbv-fee-note">شامل ${fmt(v.fee_toman)} تومان کارمزد شناساییِ غیرقابل‌برگشت</p>
+            <div class="sbv-bottom"><span data-sbv-status>در انتظار واریز · بررسی خودکار فعال</span>${canCancel ? `<button type="button" class="sbv-cancel-pay" data-order="${escapeHtml(d.order_id || '')}">لغو پرداخت</button>` : ''}</div>
+        </section>`;
 }
 
 export function verifyReceiptNoteHtml(d) {
@@ -197,19 +167,8 @@ export function evaluateVerifyStatus(obj, flowHint) {
 }
 
 function resultCard(iconName, iconClass, title, text, orderId, actions) {
-    const links = (actions || []).map((a, i) => a.recheck
-        ? `<button type="button" class="btn ${i === 0 ? 'btn-primary' : 'btn-ghost'} btn-block" data-sbv-recheck style="flex:1">${escapeHtml(a.label)}</button>`
-        : `<a href="${escapeHtml(a.href)}" class="btn ${i === 0 ? 'btn-primary' : 'btn-ghost'} btn-block" style="flex:1">${escapeHtml(a.label)}</a>`).join('');
-    return `
-        <div class="card-section">
-            <div class="empty">
-                ${icon(iconName, `class="ico ico-xxl ${iconClass}"`)}
-                <h3>${escapeHtml(title)}</h3>
-                <p class="muted">${escapeHtml(text)}</p>
-                ${orderId ? `<p class="muted mono mt-sm" style="font-size:12px">کد پیگیری: ${escapeHtml(orderId)}</p>` : ''}
-                ${links ? `<div class="row-spread mt-md stack-on-mobile" style="gap:10px">${links}</div>` : ''}
-            </div>
-        </div>`;
+    const tone = iconClass === 'ico-success' ? 'success' : iconName === 'xCircle' ? 'danger' : iconClass === 'ico-warn' ? 'warning' : 'pending';
+    return paymentResultHtml({ tone, title, text, orderId, actions: actions || [], iconName });
 }
 
 function createTracker(view, orderId, opts, ui) {
@@ -371,8 +330,8 @@ function createTracker(view, orderId, opts, ui) {
 export function startVerifyTracker(view, orderId, opts = {}) {
     if (!view.querySelector('#pay-result-host')) {
         view.innerHTML = `
-            <article class="card card-window">
-                <header class="card-window-bar"><span class="dots"><span></span><span></span><span></span></span><span class="window-url">faoxima/payment</span></header>
+            <article class="verify-payment-page">
+
                 <div class="card-body">
                     <div id="pay-form-host"></div>
                     <div id="pay-result-host">${resultCard('hourglass', 'ico-accent', 'در حال دریافت وضعیت پرداخت…', '', orderId, [])}</div>
@@ -402,6 +361,8 @@ export function wireVerify(view, d, opts = {}) {
     const $pick = view.querySelector('#receipt-pick');
     const $submit = view.querySelector('#receipt-submit');
     const $cancel = view.querySelector('.sbv-cancel-pay');
+    const receiptZone = $pick?.closest('.receipt-upload-zone');
+    receiptZone?.classList.add('sbv-receipt-zone');
     let clockStopped = false;
 
     view.querySelectorAll('.sbv-copy-rial').forEach((btn) => {
@@ -417,6 +378,7 @@ export function wireVerify(view, d, opts = {}) {
     const setUpload = (enabled, text) => {
         if (uploadEnabled !== enabled) {
             uploadEnabled = enabled;
+            if (receiptZone) receiptZone.dataset.receiptReady = enabled ? 'true' : 'false';
             if ($pick) $pick.disabled = !enabled;
             if ($submit) $submit.disabled = !enabled;
         }
@@ -434,8 +396,8 @@ export function wireVerify(view, d, opts = {}) {
         onWaiting: (kind) => {
             if ($status) {
                 $status.textContent = kind === 'receipt'
-                    ? 'رسید ارسال شده — بررسی خودکار همچنان فعال است'
-                    : 'در انتظار واریز — بررسی خودکار فعال است';
+                    ? 'رسید دریافت شد · بررسی خودکار فعال'
+                    : 'در انتظار واریز · بررسی خودکار فعال';
             }
             if (kind === 'receipt' && $cancel) $cancel.remove();
         },
@@ -456,7 +418,7 @@ export function wireVerify(view, d, opts = {}) {
         if (clockStopped) return;
         const now = nowSrv();
         const left = Number(v.expires_at) - now;
-        if ($left) $left.textContent = left > 0 ? mmss(left) + ' مانده' : 'پایان مهلت';
+        if ($left) $left.textContent = left > 0 ? mmss(left) : 'پایان مهلت';
         if (left <= 0) {
             setUpload(false, 'مهلت این پرداخت به پایان رسیده است.');
             if ($cancel) $cancel.remove();
@@ -464,7 +426,7 @@ export function wireVerify(view, d, opts = {}) {
         }
         const wait = Number(v.receipt_after) - now;
         if (wait > 0) {
-            setUpload(false, `ارسال رسید از ساعت ${v.receipt_after_clock} (${mmss(wait)} دیگر) فعال می‌شود. تا آن زمان واریز شما به‌صورت خودکار بررسی می‌شود.`);
+            setUpload(false, `ارسال رسید تا ${mmss(wait)} دیگر فعال می‌شود؛ بررسی خودکار در حال انجام است.`);
         } else {
             setUpload(true, 'اگر پرداخت شما هنوز تأیید نشده است، می‌توانید رسید را ارسال کنید.');
         }

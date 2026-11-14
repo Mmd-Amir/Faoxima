@@ -2,22 +2,11 @@ import { call } from '../api.js?v=0.0.53';
 import { escapeHtml, skeletonList, emptyState, copyToClipboard, toast } from '../utils.js?v=0.0.52';
 import { hapticImpact, hapticNotify } from '../telegram.js?v=0.0.52';
 import { icon } from '../icons.js?v=0.0.52';
-import { renderServiceOutputs } from './service.js?v=0.0.70';
+import { renderServiceOutputs } from './service.js?v=0.0.76';
 import { downloadBlob, base64ToBlob } from '../download.js?v=0.0.52';
 
 export async function usertest(view) {
-    view.innerHTML = `
-        <article class="card card-window card-bare">
-            <header class="card-window-bar">
-                <span class="dots"><span></span><span></span><span></span></span>
-                <span class="window-url">faoxima/usertest</span>
-            </header>
-            <div class="card-body">
-                <p class="section-title">${icon('gift')} دریافت اکانت تست</p>
-                <div id="ut-host" class="mt-md">${skeletonList(3)}</div>
-            </div>
-        </article>
-    `;
+    view.innerHTML = `<a href="#/" class="page-back">${icon('chevronRight')} بازگشت به خانه</a><article class="ut-page"><header class="ut-hero"><div><span class="ut-eyebrow">قبل از خرید، امتحان کن</span><h1>اکانت تست تو.</h1><p>موقعیت دلخواهت را انتخاب کن و سرویس تستت را بگیر.</p></div><span class="ut-hero-visual">${icon('gift')}<i>${icon('check')}</i></span></header><div id="ut-host">${skeletonList(3)}</div></article>`;
 
     const $host = view.querySelector('#ut-host');
 
@@ -27,11 +16,12 @@ export async function usertest(view) {
         info = res?.obj || {};
     } catch (err) {
         $host.innerHTML = errorBlock(err);
+        $host.querySelector('[data-ut-retry]')?.addEventListener('click', () => usertest(view));
         return;
     }
 
     if (!info.available) {
-        $host.innerHTML = emptyState('در دسترس نیست', info.reason_message ? String(info.reason_message) : unavailableText(info.reason));
+        $host.innerHTML = `<div class="ut-unavailable">${emptyState(info.reason === 'limit_reached' ? 'سهمیهٔ تستت تمام شده' : 'اکانت تست فعلاً در دسترس نیست', info.reason_message ? String(info.reason_message) : unavailableText(info.reason))}<a href="#/buy" class="btn btn-primary btn-block">${icon('box')} مشاهدهٔ سرویس‌ها</a></div>`;
         return;
     }
 
@@ -62,21 +52,11 @@ function quotaLeft(panel, info) {
     if (panel && Object.prototype.hasOwnProperty.call(panel, 'limit_left')) {
         return panel.limit_left === null ? 'نامحدود' : panel.limit_left;
     }
-    return info.limit_left;
+    return info.limit_left === null ? 'نامحدود' : (info.limit_left ?? '—');
 }
 
 function renderPanelList($host, panels, info) {
-    $host.innerHTML = `
-        <p class="muted" style="font-size:13px">موقعیت سرویس تست را انتخاب کنید</p>
-        <div class="list mt-sm">
-            ${panels.map((p) => `
-                <button class="plan" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}">
-                    <div class="plan-info"><div class="plan-title">${escapeHtml(p.name)}</div><div class="muted" style="font-size:12px">سهمیه باقیمانده: ${escapeHtml(quotaLeft(p, info))}</div></div>
-                    <div class="plan-price"><span class="amt">${icon('select', 'class="ico ico-lg"')}</span></div>
-                </button>
-            `).join('')}
-        </div>
-    `;
+    $host.innerHTML = `<div class="ut-list-heading"><h2>موقعیت‌های تست</h2><span>برای ادامه یک موقعیت انتخاب کن</span></div><div class="ut-location-list">${panels.map(p => `<button type="button" class="plan ut-location" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}"><span class="ut-location-icon">${icon('globe')}</span><span class="ut-location-copy"><b>${escapeHtml(p.name)}</b><small>سهمیهٔ باقی‌مانده <strong>${escapeHtml(quotaLeft(p, info))}</strong></small></span><span class="ut-location-arrow">${icon('arrowLeft')}</span></button>`).join('')}</div>`;
     $host.querySelectorAll('.plan').forEach((btn) => {
         btn.addEventListener('click', () => {
             hapticImpact('light');
@@ -87,20 +67,9 @@ function renderPanelList($host, panels, info) {
 }
 
 function renderCreateForm($host, panel, info) {
-    $host.innerHTML = `
-        <p class="muted" style="font-size:13px">
-            ${panel ? `موقعیت: <b>${escapeHtml(panel.name)}</b> — ` : ''}سهمیه باقیمانده: <b>${escapeHtml(quotaLeft(panel, info))}</b>
-        </p>
-        <div class="form-row mt-sm" id="ut-username-row" hidden>
-            <label class="muted" style="font-size:12px">نام کاربری دلخواه</label>
-            <input id="ut-username" type="text" maxlength="32" placeholder="مثلاً myuser" />
-        </div>
-        <button id="ut-submit" type="button" class="btn btn-primary btn-block mt-md">
-            ${icon('gift', 'class="ico ico-leading"')}
-            <span class="ut-label">دریافت اکانت تست</span>
-        </button>
-    `;
-
+    const panels = (Array.isArray(info.panels) ? info.panels : []).filter(p => p && p.available !== false);
+    $host.innerHTML = `<section class="ut-create"><div class="ut-selected"><span>${icon('pin')}</span><div><small>موقعیت انتخابی</small><b>${escapeHtml(panel?.name || 'سرویس تست')}</b></div>${panels.length > 1 ? '<button type="button" class="ut-change" id="ut-change-location">تغییر</button>' : ''}</div><div class="ut-quota">${icon('gift')} سهمیهٔ باقی‌مانده <strong>${escapeHtml(quotaLeft(panel, info))}</strong></div><div class="form-row" id="ut-username-row" hidden><label for="ut-username">نام کاربری سرویس</label><input id="ut-username" type="text" maxlength="32" placeholder="مثلاً myuser" dir="ltr" autocomplete="off" /></div><button id="ut-submit" type="button" class="btn btn-primary btn-block">${icon('gift')}<span class="ut-label">ساخت اکانت تست</span>${icon('arrowLeft')}</button><div id="ut-error-host" aria-live="polite"></div></section>`;
+    $host.querySelector('#ut-change-location')?.addEventListener('click', () => renderPanelList($host, panels, info));
     const $submit = $host.querySelector('#ut-submit');
     const $label = $submit.querySelector('.ut-label');
     const $usernameRow = $host.querySelector('#ut-username-row');
@@ -109,8 +78,12 @@ function renderCreateForm($host, panel, info) {
     $usernameRow.hidden = false;
 
     $submit.addEventListener('click', async () => {
+        if ($submit.disabled) return;
         hapticImpact('light');
+        $host.querySelector('#ut-error-host').innerHTML = '';
         $submit.disabled = true;
+        const change = $host.querySelector('#ut-change-location');
+        if (change) change.disabled = true;
         const old = $label.textContent;
         $label.textContent = 'در حال ساخت…';
 
@@ -128,11 +101,8 @@ function renderCreateForm($host, panel, info) {
             hapticNotify('error');
             $submit.disabled = false;
             $label.textContent = old;
-            const $err = document.createElement('p');
-            $err.className = 'muted';
-            $err.style.cssText = 'color:var(--red);font-size:13px;margin-top:8px';
-            $err.textContent = err.message || 'خطا در دریافت اکانت تست';
-            $host.appendChild($err);
+            if (change) change.disabled = false;
+            $host.querySelector('#ut-error-host').innerHTML = `<div class="ut-error" role="alert">${icon('alert')}<p>${escapeHtml(err.message || 'اکانت تست ساخته نشد؛ دوباره تلاش کن.')}</p></div>`;
         }
     });
 }
@@ -155,15 +125,8 @@ function renderSuccess($host, obj) {
     const showNativeDownload = canDownload && !outputsHaveFile;
 
     $host.innerHTML = `
-        <div class="empty">
-            ${icon('checkCircle', 'class="ico ico-xxl ico-success"')}
-            <h3>اکانت تست شما ساخته شد</h3>
-            <p class="muted">${obj.delivery_failed ? escapeHtml(obj.delivery_message || 'ارسال جزئیات در تلگرام ناموفق بود؛ اطلاعات سرویس در همین صفحه در دسترس است.') : 'جزئیات کانفیگ برای شما در تلگرام ارسال شد.'}</p>
-        </div>
-        <div class="kv mt-md">
-            <span class="kv-label">نام کاربری</span>
-            <span class="kv-value mono">${escapeHtml(svc.username || '—')}</span>
-        </div>
+        <div class="ut-success-heading" role="status"><span>${icon('check')}</span><div><small>تست شروع شد</small><h2>اکانت تست تو آماده‌ست!</h2><p>${obj.delivery_failed ? escapeHtml(obj.delivery_message || 'ارسال تلگرام انجام نشد؛ اطلاعات اتصال همین‌جا در دسترس است.') : 'اطلاعات اتصال در تلگرام هم برایت ارسال شد.'}</p></div></div>
+        <div class="ut-service-name">${icon('user')} نام کاربری <strong dir="ltr">${escapeHtml(svc.username || '—')}</strong></div>
         ${showNativeDownload ? `
             <button id="ut-download" type="button" class="btn btn-primary btn-block mt-md">
                 ${icon('download', 'class="ico ico-leading"')}
@@ -176,7 +139,7 @@ function renderSuccess($host, obj) {
             ${linkValue ? `
                 <div class="sub-link-box mt-md">
                     <div class="label">${icon('link', 'class="ico ico-leading"')} <span>لینک اشتراک</span></div>
-                    <div class="sub-link-value mono" id="ut-link-value" title="برای کپی کلیک کنید">${escapeHtml(linkValue)}</div>
+                    <div class="sub-link-value mono" id="ut-link-value" dir="ltr">${escapeHtml(linkValue)}</div>
                 </div>
                 <button id="ut-copy-link" type="button" class="btn btn-primary btn-block mt-sm">
                     ${icon('copy', 'class="ico ico-leading"')}
@@ -185,7 +148,7 @@ function renderSuccess($host, obj) {
             ` : ''}
             ${configs.length ? `<div class="codeblock mt-md">${escapeHtml(configs.join('\n'))}</div>` : ''}
         `}
-        <div class="row-spread mt-md stack-on-mobile" style="gap:10px">
+        <div class="ut-success-actions">
             <a href="#/services/${encodeURIComponent(svc.username || '')}" class="btn ${showNativeDownload || linkValue || hasOutputs ? 'btn-ghost' : 'btn-primary'} btn-block" style="flex:1">مشاهده سرویس</a>
             <a href="#/" class="btn btn-ghost btn-block" style="flex:1">خانه</a>
         </div>
@@ -227,7 +190,7 @@ function errorBlock(err) {
         <div class="empty">
             ${icon('alert', 'class="ico ico-xxl ico-warn"')}
             <h3>خطا در دریافت اطلاعات</h3>
-            <p class="muted">${escapeHtml(err.message || '')}</p>
+            <p class="muted">${escapeHtml(err.message || '')}</p><button type="button" class="btn btn-primary" data-ut-retry>تلاش دوباره</button>
         </div>
     `;
 }

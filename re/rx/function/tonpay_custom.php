@@ -522,6 +522,7 @@ function tonpayCustomBuildState(array $report, $now = null)
         'can_refund' => $more && $refundAmount > 0 && $refundCardSubmittedAt <= 0,
         'show_change_card' => $showChange,
         'created_at' => $createdAt,
+        'expires_at' => $submittedAt > 0 ? $deadlineAt : ($createdAt > 0 ? $createdAt + TONPAY_CUSTOM_UNPAID_LIFETIME_SECONDS : 0),
         'receipt_available_at' => $availableAt,
         'receipt_wait_remaining' => max(0, $availableAt - $now),
         'receipt_submitted_at' => $submittedAt,

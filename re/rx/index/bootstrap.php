@@ -594,6 +594,17 @@ if (function_exists('rx_resolveInlineButtonText') && isset($datain) && is_string
     if ($rxResolvedInlineText !== null && $rxResolvedInlineText !== '') {
         $datain = $rxResolvedInlineText;
         $text = $rxResolvedInlineText;
+    } else {
+        if (!empty($callback_query_id) && function_exists('telegram')) {
+            @telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => 'این دکمه دیگر معتبر نیست؛ لطفاً از منوی اصلی دوباره انتخاب کنید.',
+                'show_alert' => true,
+                'cache_time' => 0,
+            ]);
+        }
+        sendmessage($from_id, 'این دکمه دیگر معتبر نیست. از منوی اصلی گزینه مورد نظر را انتخاب کنید.', $keyboard, 'html');
+        return;
     }
 }
 
@@ -627,6 +638,16 @@ if (
         }
         $text  = $rxResolvedText;
         $datain = '';
+    } else {
+        if (!empty($callback_query_id) && function_exists('telegram')) {
+            @telegram('answerCallbackQuery', [
+                'callback_query_id' => $callback_query_id,
+                'text' => 'این دکمه دیگر معتبر نیست؛ لطفاً منوی مدیریت را دوباره باز کنید.',
+                'show_alert' => true,
+                'cache_time' => 0,
+            ]);
+        }
+        return;
     }
 }
 
@@ -1221,6 +1242,33 @@ if (is_string($datain) && preg_match('/^cdpick_([0-9]{1,5})$/', $datain, $rxDura
     }
     $text = $rxDurationPick[1];
     $datain = '';
+}
+if (
+    function_exists('rx_ui_route')
+    && in_array((string) ($user['step'] ?? ''), ['getTransferRecipient', 'getTransferAmount', 'getTransferConfirm'], true)
+    && rx_ui_route($datain ?? '', $text ?? '') !== null
+) {
+    $rxPendingResetStmt = $pdo->prepare("UPDATE user SET Processing_value = '0', Processing_value_one = '', Processing_value_tow = '0' WHERE id = ?");
+    $rxPendingResetStmt->execute([$from_id]);
+    if (function_exists('clearSelectCacheRow')) {
+        clearSelectCacheRow('user', 'id', $from_id);
+    }
+    $user['step'] = 'home';
+    $user['Processing_value'] = '0';
+    $user['Processing_value_one'] = '';
+    $user['Processing_value_tow'] = '0';
+    step('home', $from_id);
+}
+if ($datain === 'confirmpaid') {
+    if (!empty($callback_query_id) && function_exists('telegram')) {
+        @telegram('answerCallbackQuery', [
+            'callback_query_id' => $callback_query_id,
+            'text' => '✅ این پرداخت قبلاً تأیید شده است.',
+            'show_alert' => false,
+            'cache_time' => 0,
+        ]);
+    }
+    return;
 }
 if ($text == "version") {
     sendmessage($from_id, $version, null, 'html');

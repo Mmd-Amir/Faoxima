@@ -6,8 +6,8 @@ import {
 } from '../utils.js?v=0.0.52';
 import { hapticImpact, hapticNotify, showConfirm, openLink, supportsNativeDownload, downloadFileNative } from '../telegram.js?v=0.0.52';
 import { icon } from '../icons.js?v=0.0.52';
-import { showVerifyPending } from '../card-verify.js?v=0.0.4';
-import { renderMethodCard, handleInitResult, resolveWalletChoice, walletBreakdownHtml } from '../payment-ui.js?v=0.0.67';
+import { showVerifyPending } from '../card-verify.js?v=0.0.6';
+import { renderMethodCard, handleInitResult, resolveWalletChoice, walletBreakdownHtml } from '../payment-ui.js?v=0.0.73';
 
 const ALL_ACTIONS = [
     { id: 'renew',           label: 'تمدید سرویس',            ico: 'rotate',     cls: '', inline: true  },
@@ -15,15 +15,53 @@ const ALL_ACTIONS = [
     { id: 'extra_volume',    label: 'خرید حجم اضافه',          ico: 'box',        cls: '', inline: true  },
     { id: 'changelink',      label: 'تغییر لینک',              ico: 'link',       cls: '', inline: false },
     { id: 'refund',          label: 'بازگشت وجه',              ico: 'diamond',    cls: 'is-danger', inline: false },
-    { id: 'toggle_status',   label: 'خاموش / روشن کردن اکانت', ico: 'power',      cls: 'is-danger', inline: true  },
+    { id: 'config',          label: 'دریافت کانفیگ',           ico: 'config',     cls: '', inline: true  },
     { id: 'transfer',        label: 'انتقال به کاربر دیگر',    ico: 'transfer',   cls: '', inline: false },
     { id: 'change_location', label: 'تغییر موقعیت',            ico: 'pin',        cls: '', inline: false },
     { id: 'report_problem',  label: 'گزارش اختلال',            ico: 'alert',      cls: '', inline: true  },
     { id: 'note',            label: 'تغییر یادداشت',           ico: 'note',       cls: '', inline: true  },
     { id: 'update_info',     label: 'بروزرسانی اطلاعات',       ico: 'refresh',    cls: '', inline: true  },
     { id: 'subscription',    label: 'لینک اشتراک',             ico: 'book',       cls: '', inline: true  },
-    { id: 'config',          label: 'دریافت کانفیگ',           ico: 'config',     cls: '', inline: true  },
+    { id: 'toggle_status',   label: 'خاموش / روشن کردن اکانت', ico: 'power',      cls: 'is-danger sd-action-toggle', inline: true  },
 ];
+const ACTION_HINTS = {
+    renew: 'انتخاب پلن و ادامهٔ اشتراک', extra_time: 'روزهای بیشتری به سرویس اضافه کن',
+    extra_volume: 'افزایش حجم قابل استفاده', changelink: 'ساخت لینک اتصال جدید',
+    refund: 'ثبت درخواست بازگشت وجه', toggle_status: 'مدیریت وضعیت اتصال',
+    transfer: 'واگذاری سرویس به حساب دیگر', change_location: 'انتخاب موقعیت اتصال',
+    report_problem: 'پیگیری مشکل اتصال', note: 'یک نام یا یادداشت شخصی',
+    update_info: 'دریافت آخرین وضعیت سرویس', subscription: 'مشاهده و کپی لینک اتصال', config: 'نمایش تنظیمات اتصال',
+};
+const SENSITIVE_ACTIONS = new Set(['change_location', 'report_problem', 'transfer', 'refund', 'subscription', 'update_info']);
+
+function managementActionGroups(visibleActions) {
+    const primary = visibleActions.filter(a => a.id !== 'renew' && a.id !== 'toggle_status' && !SENSITIVE_ACTIONS.has(a.id));
+    const extra = visibleActions.filter(a => SENSITIVE_ACTIONS.has(a.id));
+
+    if (primary.length % 2 !== 0 && extra.length > 0) {
+        const index = Math.floor(Math.random() * extra.length);
+        primary.push(extra.splice(index, 1)[0]);
+    }
+
+    primary.push(...visibleActions.filter(a => a.id === 'toggle_status'));
+    return { primary, extra };
+}
+
+function managementButton(a) {
+    return `<button type="button" class="action-tile sd-action ${a.id === 'renew' ? 'sd-action-renew' : ''} ${a.cls}" data-action="${a.id}">
+        <span class="sd-action-icon">${icon(a.ico)}</span>
+        <span class="sd-action-copy"><b>${escapeHtml(a.label)}</b><small>${escapeHtml(ACTION_HINTS[a.id] || '')}</small></span>
+        ${icon('chevronLeft', 'class="ico sd-action-arrow"')}
+    </button>`;
+}
+
+function actionPanelHeading(title, ico) {
+    return `<div class="sd-form-heading">
+        <span class="sd-form-icon">${icon(ico)}</span>
+        <h2>${escapeHtml(title)}</h2>
+        <button type="button" class="sd-form-close" data-panel-close aria-label="بستن فرم">${icon('close')}</button>
+    </div>`;
+}
 const downloadSources = new Map();
 let downloadSourceSeq = 0;
 
@@ -594,6 +632,7 @@ export function bindConfigList($scope) {
             if (!detail) return;
             const isOpen = detail.style.display !== 'none';
             document.querySelectorAll('.cfg-detail').forEach((d) => { d.style.display = 'none'; });
+            document.querySelectorAll('.cfg-toggle').forEach((toggle) => toggle.setAttribute('aria-expanded', 'false'));
             if (isOpen) return;
             const img = detail.querySelector('.qr-img');
             if (img && !img.getAttribute('src') && img.dataset.qr) {
@@ -608,6 +647,7 @@ export function bindConfigList($scope) {
                 }
             }
             detail.style.display = 'block';
+            btn.setAttribute('aria-expanded', 'true');
             try { hapticImpact('light'); } catch (_) {}
         });
     });
@@ -773,17 +813,13 @@ export async function service(view, encodedUsername) {
     const username = decodeURIComponent(encodedUsername || '');
 
     view.innerHTML = `
-        <a href="#/services" class="page-back">
+        <a href="#/services" class="page-back sd-back">
             ${icon('chevronLeft', 'class="ico"')}
-            <span>بازگشت</span>
+            <span>سرویس‌های من</span>
         </a>
 
-        <article class="card card-window">
-            <header class="card-window-bar">
-                <span class="dots"><span></span><span></span><span></span></span>
-                <span class="window-url">faoxima/service/${escapeHtml(username)}</span>
-            </header>
-            <div class="card-body" id="service-body">
+        <article class="service-detail-page">
+            <div class="sd-body" id="service-body">
                 ${skeletonList(4)}
             </div>
         </article>
@@ -859,18 +895,19 @@ function renderBody($body, info, username, reload) {
 
 
     const visibleActions = ALL_ACTIONS.filter((a) => !disabled.has(a.id));
+    const { primary: primaryActions, extra: extraActions } = managementActionGroups(visibleActions);
 
     $body.innerHTML = `
-        <div class="row-spread">
-            <div>
-                <div class="muted mono" style="font-size:12px">${escapeHtml(info.display_username || info.username || username)}</div>
-                <h2 style="margin:4px 0 0;font-size:20px;font-weight:700">${escapeHtml(info.product_name || '—')}</h2>
-            </div>
+        <section class="sd-hero sd-panel ${statusBadge}" aria-label="مشخصات سرویس">
+            <div class="sd-hero-top"><span class="sd-hero-icon">${icon('globe')}</span><span class="sd-eyebrow">جزئیات سرویس</span>
             <span class="badge ${statusBadge}">
                 ${icon(statusIcon, 'class="ico"')}
                 ${escapeHtml(statusText)}
             </span>
-        </div>
+            </div>
+            <h1>${escapeHtml(info.product_name || '—')}</h1>
+            <div class="sd-identifier"><span>شناسه</span><bdi>${escapeHtml(info.display_username || info.username || username)}</bdi></div>
+        </section>
 
         ${info.has_queued_renewal ? `
         <div class="queued-renewal-notice">
@@ -880,24 +917,25 @@ function renderBody($body, info, username, reload) {
         ` : ''}
 
         ${isManual ? '' : (isStock ? `
-        <div class="card-section">
+        <section class="sd-panel sd-stock">
             <p class="muted center" style="font-size:13px">
                 ${icon('box', 'class="ico ico-leading"')}
-                این سرویس از انبار کانفیگ ارسال شده است و امکان مشاهده حجم به صورت آنی وجود دارد
+                این سرویس از انبار کانفیگ ارسال شده است؛ نمایش لحظه‌ای مصرف برای آن در دسترس نیست.
             </p>
-        </div>
+        </section>
         ` : `
-        <div class="card-section">
+        <section class="sd-panel sd-traffic">
             <div class="row-spread">
                 <span class="kv-label">${icon('chart')} مصرف ترافیک</span>
-                <span class="mono accent">${escapeHtml(fmtBytes(usedBytes))} / ${escapeHtml(fmtBytes(totalBytes))}</span>
+                <span class="sd-traffic-value" dir="ltr">${escapeHtml(fmtBytes(usedBytes))} <span>/ ${escapeHtml(isUnlimited ? '∞' : fmtBytes(totalBytes))}</span></span>
             </div>
-            <div class="progress"><span class="progress-fill ${pctClass}" style="width:${percent.toFixed(1)}%"></span></div>
-            <div class="muted mono" style="font-size:12px">${icon('box', 'class="ico ico-sm"')} باقی‌مانده: ${escapeHtml(isUnlimited ? 'نامحدود' : fmtBytes(remainingBytes))}</div>
-        </div>
+            <div class="progress"${isUnlimited ? '' : ` role="progressbar" aria-label="درصد مصرف ترافیک" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent.toFixed(1)}"`}><span class="progress-fill ${pctClass}" style="width:${percent.toFixed(1)}%"></span></div>
+            <div class="sd-traffic-foot"><span>باقی‌مانده: <b>${escapeHtml(isUnlimited ? 'نامحدود' : fmtBytes(remainingBytes))}</b></span>${isUnlimited ? '' : `<span>${fmtNum(Math.round(percent))}٪ مصرف شده</span>`}</div>
+        </section>
         `)}
 
-        <div class="card-section">
+        <section class="sd-panel sd-details" aria-label="اطلاعات اتصال">
+            <h2 class="sd-section-title">اطلاعات اتصال</h2>
             <div class="kv">
                 <span class="kv-label">${icon('calendar')} تاریخ انقضا</span>
                 <span class="kv-value">${escapeHtml(expiration)}</span>
@@ -947,22 +985,19 @@ function renderBody($body, info, username, reload) {
                 <span class="kv-label">${icon('note')} یادداشت</span>
                 <span class="kv-value">${escapeHtml(info.note)}</span>
             </div>` : ''}
-        </div>
+        </section>
 
-        <div class="card-section" id="service-config-host"></div>
+        <section class="sd-panel sd-config" id="service-config-host" aria-label="دریافت اتصال"></section>
 
         ${visibleActions.length > 0 ? `
-        <div class="card-section">
-            <p class="section-title">${icon('settings')} مدیریت سرویس</p>
-            <div class="action-grid" id="action-grid">
-                ${visibleActions.map((a) => `
-                    <button type="button" class="action-tile ${a.cls}" data-action="${a.id}">
-                        ${icon(a.ico, 'class="ico ico-accent"')}
-                        <span class="action-label">${escapeHtml(a.label)}</span>
-                    </button>
-                `).join('')}
+        <section class="sd-management">
+            <div class="sd-management-heading"><h2 class="sd-section-title">مدیریت سرویس</h2><span>دسترسی سریع به تنظیمات</span></div>
+            <div id="action-grid" class="sd-action-groups">
+                ${visibleActions.filter(a => a.id === 'renew').map(managementButton).join('')}
+                ${primaryActions.length > 0 ? `<div class="sd-action-grid">${primaryActions.map(managementButton).join('')}</div>` : ''}
+                ${extraActions.length > 0 ? `<details class="sd-sensitive"><summary>${icon('settings')} تنظیمات بیشتر ${icon('chevronDown')}</summary><p>موقعیت، پشتیبانی و درخواست‌های سرویس</p><div class="sd-action-grid">${extraActions.map(managementButton).join('')}</div></details>` : ''}
             </div>
-        </div>` : ''}
+        </section>` : ''}
 
         <div id="action-panel-host"></div>
     `;
@@ -977,7 +1012,7 @@ function renderBody($body, info, username, reload) {
             : outputs;
         $cfgHost.innerHTML = shownOutputs.length === 0
             ? `<div class="muted center mono" style="font-size:12px">کانفیگی برای نمایش وجود ندارد</div>`
-            : shownOutputs.map((o) => renderOutput({ ...o, isManual: isManual || isStock })).join('');
+            : shownOutputs.map((o) => renderOutput({ ...o, isManual: isManual || isStock, compact: true })).join('');
     }
 
     const hasLinkConfigs = outputs.some((o) => String(o?.type || '').toLowerCase() === 'config');
@@ -1005,8 +1040,16 @@ function renderBody($body, info, username, reload) {
             const actionId = btn.dataset.action;
             hapticImpact('light');
             handleAction(actionId, info, username, $body, reload, btn);
+            if (!['config', 'subscription', 'update_info'].includes(actionId)) {
+                $body.querySelector('#action-panel-host')?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+            }
         });
     }
+    $body.querySelector('#action-panel-host')?.addEventListener('click', e => {
+        if (!e.target.closest('[data-panel-close]')) return;
+        $body.querySelector('#action-panel-host').innerHTML = '';
+        $body.querySelectorAll('.sd-action.is-active').forEach(btn => btn.classList.remove('is-active'));
+    });
 }
 
 
@@ -1370,12 +1413,16 @@ function renderToggleStatusPanel($panel, info, username, reload) {
     const ico = isActive ? 'power' : 'online';
 
     $panel.innerHTML = `
-        <div class="card-section">
-            <p class="section-title">${icon(ico)} تغییر وضعیت سرویس</p>
-            <p>وضعیت فعلی سرویس: <span class="accent mono">${escapeHtml(isActive ? 'فعال' : 'غیرفعال')}</span></p>
-            <p class="muted" style="font-size:13px">با تایید این عملیات، سرویس به وضعیت <b>${willBecome}</b> تغییر می‌کند.</p>
-            <button id="toggle-confirm" type="button" class="btn btn-primary btn-block mt-md">
-                ${icon('check', 'class="ico ico-leading"')}
+        <div class="card-section sd-form">
+            ${actionPanelHeading('تغییر وضعیت سرویس', ico)}
+            <div class="sd-status-change">
+                <span><small>وضعیت فعلی</small><b class="${isActive ? 'sd-state-on' : 'sd-state-off'}">${escapeHtml(isActive ? 'فعال' : 'غیرفعال')}</b></span>
+                ${icon('arrowLeft')}
+                <span><small>پس از تأیید</small><b class="${isActive ? 'sd-state-off' : 'sd-state-on'}">${willBecome}</b></span>
+            </div>
+            <p class="sd-form-description">${isActive ? 'با خاموش‌کردن، اتصال این سرویس متوقف می‌شود.' : 'با روشن‌کردن، وضعیت این سرویس به فعال تغییر می‌کند.'}</p>
+            <button id="toggle-confirm" type="button" class="btn btn-primary btn-block mt-md ${isActive ? 'sd-confirm-off' : ''}">
+                ${icon(ico, 'class="ico"')}
                 <span class="toggle-label">${escapeHtml(cta)}</span>
             </button>
         </div>
@@ -1456,19 +1503,22 @@ function renderReportProblemPanel($panel, info, username) {
 
 async function renderRenewPanel($panel, info, username, reload) {
     $panel.innerHTML = `
-        <div class="card-section">
-            <p class="section-title">${icon('rotate')} تمدید سرویس</p>
+        <div class="card-section sd-form">
+            ${actionPanelHeading('تمدید سرویس', 'rotate')}
             <div id="renew-list">${skeletonList(3)}</div>
             <div id="renew-confirm-host"></div>
             <div id="renew-pay-host"></div>
         </div>
     `;
 
+    const $loadingList = $panel.querySelector('#renew-list');
     let opts = null;
     try {
         const res = await call('service_renew_options', { params: { username } });
+        if (!$loadingList.isConnected) return;
         opts = res?.obj || {};
     } catch (err) {
+        if (!$loadingList.isConnected) return;
         $panel.querySelector('#renew-list').innerHTML = `
             <div class="empty">
                 ${icon('alert', 'class="ico ico-xxl ico-warn"')}
@@ -1556,6 +1606,7 @@ async function renderRenewPanel($panel, info, username, reload) {
     });
 
     if (products.length === 0 && custom.enabled) {
+        $list.hidden = true;
         renderRenewCustomForm($panel, opts, username, reload);
     }
 }
@@ -1569,21 +1620,21 @@ function renderRenewCustomForm($panel, opts, username, reload) {
     const $host = $panel.querySelector('#renew-confirm-host');
     $panel.querySelector('#renew-pay-host').innerHTML = '';
     $host.innerHTML = `
-        <div class="card-section mt-md">
-            <p class="section-title">${icon('settings')} پلن سفارشی</p>
-            <p class="muted" style="font-size:13px">
+        <div class="card-section sd-custom-renew">
+            <h3>پلن را متناسب با نیازت بساز</h3>
+            <p class="sd-form-description">
                 حجم: بین ${fmtNum(c.min_volume_gb)} و ${fmtNum(c.max_volume_gb)} گیگابایت ·
                 زمان: ${timeFixed ? `${fmtNum(c.min_time_days)} روز` : `بین ${fmtNum(c.min_time_days)} و ${fmtNum(c.max_time_days)} روز`}
             </p>
             <div class="form-row mt-sm">
-                <label class="muted" style="font-size:12px">حجم (گیگابایت)</label>
+                <label for="cv-volume">حجم (گیگابایت)</label>
                 <input id="cv-volume" type="number" inputmode="numeric"
                        min="${c.min_volume_gb}" max="${c.max_volume_gb}"
                        value="${volFixed ? c.min_volume_gb : ''}" ${volFixed ? 'readonly' : ''}
                        placeholder="${c.min_volume_gb}-${c.max_volume_gb}" />
             </div>
             <div class="form-row mt-sm">
-                <label class="muted" style="font-size:12px">زمان (روز)</label>
+                <label${c.duration_pricing ? '' : ' for="cv-time"'}>مدت اشتراک (روز)</label>
                 ${c.duration_pricing ? durationCardsHtml(c.duration_tariffs, selectedDays) : `<input id="cv-time" type="number" inputmode="numeric"
                        min="${c.min_time_days}" max="${c.max_time_days}"
                        value="${timeFixed ? c.min_time_days : ''}" ${timeFixed ? 'readonly' : ''}
@@ -1955,7 +2006,7 @@ async function renderRenewInlinePayment($panel, pay, reload) {
         const cryptoOfflineIds = ['crypto_offline', 'digitaltron'];
         if (method.kind === 'crypto_offline' || cryptoOfflineIds.includes(method.id)) {
             try {
-                const mod = await import('./crypto-offline.js');
+                const mod = await import('./crypto-offline.js?v=3');
                 if (mod && typeof mod.renderCryptoOffline === 'function') {
                     mod.renderCryptoOffline($panel, {
                         amount: amountDue,
@@ -2263,7 +2314,7 @@ async function renderExtraInlinePayment($host, pay, reload, $panel, kind) {
         const cryptoOfflineIds = ['crypto_offline', 'digitaltron'];
         if ((method.kind === 'crypto_offline' || cryptoOfflineIds.includes(method.id)) && $panel) {
             try {
-                const mod = await import('./crypto-offline.js');
+                const mod = await import('./crypto-offline.js?v=3');
                 if (mod && typeof mod.renderCryptoOffline === 'function') {
                     mod.renderCryptoOffline($panel, {
                         amount: amountDue,
@@ -2382,12 +2433,12 @@ function requestAdminAction($panel, actionId, username) {
 
 const ACTION_REQUEST_META = {
     transfer: {
-        title:   '↪️ انتقال سرویس به کاربر دیگر',
+        title:   'انتقال سرویس به کاربر دیگر',
         intro:   'شناسهٔ عددی کاربری که می‌خواهید سرویس به او منتقل شود را وارد کنید. ادمین درخواست را بررسی خواهد کرد.',
         ico:     'transfer',
         fields: [
             { id: 'target_user_id', label: 'شناسهٔ عددی کاربر مقصد', type: 'tel', placeholder: 'مثلاً 123456789', required: true,
-              help: 'این شناسه را می‌توانید از پروفایل کاربر در تلگرام پیدا کنید.' },
+              help: 'شناسهٔ عددی تلگرام کاربر مقصد را وارد کنید؛ یوزرنیم و شماره تلفن قابل استفاده نیست.' },
         ],
     },
     refund: {
@@ -2413,16 +2464,16 @@ function renderAdminRequestForm($panel, actionId, username, meta) {
         if (f.type === 'textarea') {
             return `
                 <div class="form-row mt-sm">
-                    <label class="muted" style="font-size:12px">${escapeHtml(f.label)}</label>
-                    <textarea data-field="${escapeHtml(f.id)}" rows="3" maxlength="${f.maxlength || 500}"
+                    <label for="sd-field-${escapeHtml(f.id)}">${escapeHtml(f.label)}</label>
+                    <textarea id="sd-field-${escapeHtml(f.id)}" data-field="${escapeHtml(f.id)}" rows="3" maxlength="${f.maxlength || 500}"
                               placeholder="${escapeHtml(f.placeholder || '')}"></textarea>
                     ${f.help ? `<p class="muted" style="font-size:11px">${escapeHtml(f.help)}</p>` : ''}
                 </div>`;
         }
         return `
             <div class="form-row mt-sm">
-                <label class="muted" style="font-size:12px">${escapeHtml(f.label)}</label>
-                <input data-field="${escapeHtml(f.id)}" type="${escapeHtml(f.type || 'text')}"
+                <label for="sd-field-${escapeHtml(f.id)}">${escapeHtml(f.label)}</label>
+                <input id="sd-field-${escapeHtml(f.id)}" data-field="${escapeHtml(f.id)}" type="${escapeHtml(f.type || 'text')}"
                        inputmode="${f.type === 'tel' ? 'numeric' : 'text'}"
                        maxlength="${f.maxlength || 100}"
                        placeholder="${escapeHtml(f.placeholder || '')}" />
@@ -2433,12 +2484,12 @@ function renderAdminRequestForm($panel, actionId, username, meta) {
     const submitLabel = meta.submitLabel || 'ارسال درخواست برای ادمین';
     const submitIcon = meta.immediate ? 'refresh' : 'send';
     $panel.innerHTML = `
-        <div class="card-section">
-            <p class="section-title">${icon(meta.ico)} ${escapeHtml(meta.title)}</p>
-            <p class="muted" style="font-size:13px">${escapeHtml(meta.intro)}</p>
+        <div class="card-section sd-form">
+            ${actionPanelHeading(meta.title, meta.ico)}
+            <p class="sd-form-description">${escapeHtml(meta.intro)}</p>
             ${fieldsHtml}
             <button id="ar-submit" type="button" class="btn btn-primary btn-block mt-md">
-                ${icon(submitIcon, 'class="ico ico-leading"')}
+                ${icon(submitIcon, 'class="ico"')}
                 <span class="ar-label">${escapeHtml(submitLabel)}</span>
             </button>
         </div>
@@ -2503,26 +2554,26 @@ async function submitAdminRequest($panel, actionId, username, payload) {
         if (obj.kind === 'changelink_done') {
             const newLink = String(obj.subscription_url || '');
             $panel.innerHTML = `
-                <div class="card-section">
-                    <div class="empty">
-                        ${icon('checkCircle', 'class="ico ico-xxl ico-success"')}
-                        <h3>لینک سرویس با موفقیت تغییر کرد</h3>
-                        <p class="muted">${escapeHtml(obj.message || 'لینک قبلی دیگر معتبر نیست.')}</p>
+                <div class="sd-result" role="status">
+                    <div class="sd-result-heading">
+                        <span class="sd-result-symbol">${icon('checkCircle')}</span>
+                        <h2>لینک جدید آماده است</h2>
+                        <p>${escapeHtml(obj.message || 'لینک قبلی دیگر معتبر نیست؛ لینک جدید را در برنامه جایگزین کنید.')}</p>
                     </div>
                     ${newLink ? `
-                        <div class="sub-link-box mt-md">
-                            <div class="label">${icon('link', 'class="ico ico-leading"')} <span>لینک جدید اشتراک</span></div>
-                            <div class="sub-link-value mono" id="new-sub-link" title="برای کپی کلیک کنید">${escapeHtml(newLink)}</div>
+                        <div class="sd-result-link">
+                            <label for="new-sub-link">لینک جدید اشتراک</label>
+                            <textarea readonly rows="3" dir="ltr" id="new-sub-link">${escapeHtml(newLink)}</textarea>
                         </div>
                         <button id="copy-new-link" type="button" class="btn btn-primary btn-block mt-sm">
-                            ${icon('copy', 'class="ico ico-leading"')}
+                            ${icon('copy', 'class="ico"')}
                             <span>کپی لینک جدید</span>
                         </button>
                     ` : ''}
-                    <button type="button" class="btn btn-ghost btn-block mt-sm" onclick="location.reload()">
-                        ${icon('refresh', 'class="ico ico-leading"')}
-                        <span>بازنشانی سرویس</span>
-                    </button>
+                    <div class="sd-result-footer">
+                        <button type="button" class="btn btn-ghost" data-service-refresh>${icon('refresh')} به‌روزرسانی سرویس</button>
+                        <button type="button" class="btn btn-ghost" data-panel-close>بستن</button>
+                    </div>
                 </div>`;
             const $copyBtn = $panel.querySelector('#copy-new-link');
             const $linkVal = $panel.querySelector('#new-sub-link');
@@ -2533,17 +2584,23 @@ async function submitAdminRequest($panel, actionId, username, payload) {
             };
             if ($copyBtn) $copyBtn.addEventListener('click', doCopy);
             if ($linkVal) $linkVal.addEventListener('click', doCopy);
+            $panel.querySelector('[data-service-refresh]')?.addEventListener('click', () => {
+                const refresh = $panel.closest('#service-body')?.querySelector('[data-action="update_info"]');
+                if (refresh) refresh.click();
+                else location.reload();
+            });
             return;
         }
 
 
         $panel.innerHTML = `
-            <div class="card-section">
-                <div class="empty">
-                    ${icon('checkCircle', 'class="ico ico-xxl ico-success"')}
-                    <h3>درخواست شما برای ادمین ارسال شد</h3>
-                    <p class="muted">${escapeHtml(obj.message || 'ادمین پس از بررسی با شما تماس می‌گیرد.')}</p>
+            <div class="sd-result" role="status">
+                <div class="sd-result-heading">
+                    <span class="sd-result-symbol">${icon('checkCircle')}</span>
+                    <h2>درخواست ارسال شد</h2>
+                    <p>${escapeHtml(obj.message || 'ادمین پس از بررسی با شما تماس می‌گیرد.')}</p>
                 </div>
+                <button type="button" class="btn btn-ghost btn-block" data-panel-close>بازگشت به مدیریت سرویس</button>
             </div>`;
     } catch (err) {
         hapticNotify('error');
@@ -2586,6 +2643,19 @@ export function renderOutput(o) {
         const url = String(o.value || '');
         if (url === '') return '';
         const showQr = (!o.isManual && isQrEnabled());
+        if (o.compact) {
+            return `<div class="sd-subscription cfg-item">
+                <div class="sd-subscription-heading"><span class="sd-subscription-icon">${icon('link')}</span><div><h2 class="sd-section-title">لینک اشتراک</h2><p>برای اتصال، لینک را در برنامهٔ خود وارد کن.</p></div></div>
+                <div class="sd-subscription-actions">
+                    <button type="button" class="copy-btn" data-copy="${escapeHtml(url)}">${icon('copy')} کپی لینک</button>
+                    <button type="button" class="cfg-toggle" aria-expanded="false">${icon('book')} ${showQr ? 'نمایش لینک و QR' : 'نمایش لینک'}</button>
+                </div>
+                <div class="cfg-detail" style="display:none">
+                    ${showQr ? (qrPayloadBytes(url) > QR_MAX_BYTES ? qrUnavailableHtml() : `<div class="qr-block"><img class="qr-img" data-qr="${escapeHtml(url)}" alt="کد QR لینک اشتراک" /></div>`) : ''}
+                    <div class="codeblock" dir="ltr">${escapeHtml(url)}</div>
+                </div>
+            </div>`;
+        }
         return `
             <div class="sub-card">
                 <p class="section-title">${icon('book')} لینک اشتراک</p>

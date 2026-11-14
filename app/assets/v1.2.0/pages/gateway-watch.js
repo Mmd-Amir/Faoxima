@@ -95,7 +95,7 @@ export function startGatewayWatch(view, opts) {
             <div class="empty">
                 ${icon('alert', 'class="ico ico-xxl ico-warn"')}
                 <h3>پارامتر نامعتبر</h3>
-                <p class="muted">order_id پاس داده نشده.</p>
+                <p class="muted">اطلاعات این پرداخت در دسترس نیست. از بخش حساب، پرداخت را دوباره باز کن.</p>
             </div>`;
         return () => {};
     }
@@ -115,19 +115,16 @@ export function startGatewayWatch(view, opts) {
 
     function html() {
         const reopenBtn = gatewayUrl
-            ? `<button type="button" class="btn btn-ghost btn-block mt-sm" id="watch-reopen">
+            ? `<button type="button" class="btn btn-primary btn-block mt-sm" id="watch-reopen">
                     ${icon('arrowLeft', 'class="ico ico-leading"')}
                     <span>بازکردن مجدد صفحه پرداخت</span>
                </button>`
             : '';
 
         view.innerHTML = `
-            <article class="card card-window watch-card">
-                <header class="card-window-bar">
-                    <span class="dots"><span></span><span></span><span></span></span>
-                    <span class="window-url">${isCrypto ? 'faoxima/crypto/watch' : 'faoxima/gateway/watch'}</span>
-                </header>
-                <div class="card-body" style="text-align:center;padding:22px 18px">
+            <article class="payment-flow gateway-page watch-card">
+                <div class="gateway-body">
+                    <span class="gateway-live">${icon('refresh')} پیگیری خودکار پرداخت</span>
                     <div class="watch-spinner-wrap" aria-hidden="true">
                         <svg class="watch-spinner-ring" viewBox="0 0 80 80">
                             <circle cx="40" cy="40" r="34" class="watch-spinner-track"/>
@@ -143,14 +140,14 @@ export function startGatewayWatch(view, opts) {
                     <div class="watch-countdown mt-md" id="watch-countdown">
                         <span class="glyph">${icon('hourglass', 'class="ico"')}</span>
                         <span class="mono" id="watch-time">${fmtCountdown(Math.max(0, Math.floor((deadline - Date.now()) / 1000)))}</span>
-                        <span class="muted" style="font-size:12px">باقی‌مانده</span>
+                        <span class="muted" style="font-size:12px">تا پایان مهلت پیگیری</span>
                     </div>
 
-                    <p class="muted mt-md" style="font-size:12px">
+                    <p class="gateway-tracking">
                         کد پیگیری: <span class="mono gold">${escapeHtml(orderId)}</span>
                     </p>
 
-                    <div class="row-spread mt-md stack-on-mobile" style="gap:8px">
+                    <div class="gateway-actions">
                         <button type="button" class="btn btn-ghost btn-block is-locked" id="watch-check" style="flex:1">
                             ${icon('refresh', 'class="ico ico-leading"')}
                             <span class="watch-check-label">بررسی مجدد</span>
@@ -266,7 +263,7 @@ export function startGatewayWatch(view, opts) {
                         const reopen = document.createElement('button');
                         reopen.type = 'button';
                         reopen.id = 'watch-reopen';
-                        reopen.className = 'btn btn-ghost btn-block mt-sm';
+                        reopen.className = 'btn btn-primary btn-block mt-sm';
                         reopen.textContent = 'بازکردن مجدد صفحه پرداخت';
                         reopen.addEventListener('click', () => openGatewayLink(currentGatewayUrl, { keepMiniAppOpen }));
                         actions.appendChild(reopen);

@@ -5250,20 +5250,39 @@ $caption";
 
     $rxConfirmResult = rxReceiptConfirm($order_id, ['actor_id' => $from_id, 'actor_label' => (string) $from_id]);
 
-    if (!$rxConfirmResult['ok'] && in_array($rxConfirmResult['reason'] ?? '', ['race_lost', 'already_paid', 'already_final', 'not_waiting'], true)) {
-        telegram('answerCallbackQuery', array(
-            'callback_query_id' => $callback_query_id,
-            'text' => $textbotlang['Admin']['Payment']['reviewedpayment'],
-            'show_alert' => true,
-            'cache_time' => 0,
-        ));
-        return;
-    }
-
     if (!$rxConfirmResult['ok']) {
+        $rxConfirmReason = (string) ($rxConfirmResult['reason'] ?? '');
+        if (function_exists('rx_log_event')) {
+            rx_log_event('RECEIPT_CONFIRM_CALLBACK_FAILED', 'Admin receipt confirmation did not complete', [
+                'id_order' => $order_id,
+                'actor_id' => $from_id,
+                'reason' => $rxConfirmReason,
+            ]);
+        }
+        if (in_array($rxConfirmReason, ['already_paid', 'already_final'], true)) {
+            $rxConfirmAlert = (string) ($textbotlang['Admin']['Payment']['reviewedpayment'] ?? 'این رسید قبلاً بررسی شده است.');
+        } elseif (in_array($rxConfirmReason, ['processing', 'fulfillment_reconciling', 'race_lost'], true)) {
+            $rxConfirmAlert = '⏳ تأیید این رسید در حال پردازش است؛ لطفاً چند لحظه بعد وضعیت را دوباره بررسی کنید.';
+        } elseif ($rxConfirmReason === 'not_waiting') {
+            $rxConfirmAlert = '⚠️ این پرداخت در وضعیت انتظار تأیید رسید نیست؛ وضعیت آن را در گزارش پرداخت بررسی کنید.';
+        } elseif ($rxConfirmReason === 'manual_review') {
+            $rxConfirmAlert = '⚠️ این پرداخت نیازمند بررسی دستی است و به‌صورت خودکار تأیید نشد.';
+        } elseif ($rxConfirmReason === 'verify_reason_required') {
+            $rxConfirmAlert = '🔐 این رسید نیازمند تأیید با بررسی (پیامک بانکی/ForApp) یا ثبت دلیل توسط ادمین است.';
+        } elseif ($rxConfirmReason === 'purchase_receipts_pending') {
+            $rxConfirmAlert = '⚠️ ابتدا رسیدهای خرید یا تمدید اشتراک این کاربر را تأیید کنید و سپس رسید شارژ کیف پول را تأیید کنید.';
+        } elseif (in_array($rxConfirmReason, ['not_found', 'pdo_unavailable'], true)) {
+            $rxConfirmAlert = '❌ تراکنش یا اتصال پایگاه داده در دسترس نیست؛ صفحه را به‌روزرسانی کنید و دوباره تلاش کنید.';
+        } elseif ($rxConfirmReason === 'fulfillment_failed') {
+            $rxConfirmAlert = '❌ تکمیل پرداخت با خطا مواجه شد؛ وضعیت پرداخت را بررسی کنید یا با پشتیبانی تماس بگیرید.';
+        } elseif ($rxConfirmReason === 'db_error') {
+            $rxConfirmAlert = '❌ ذخیره‌سازی تأیید پرداخت با خطا مواجه شد؛ پیش از تلاش دوباره، وضعیت پرداخت را بررسی کنید.';
+        } else {
+            $rxConfirmAlert = '❌ تکمیل عملیات با خطا مواجه شد؛ وضعیت پرداخت را بررسی کنید یا با پشتیبانی تماس بگیرید.';
+        }
         telegram('answerCallbackQuery', array(
             'callback_query_id' => $callback_query_id,
-            'text' => "❌ تکمیل عملیات با خطا مواجه شد، دوباره تلاش کنید",
+            'text' => $rxConfirmAlert,
             'show_alert' => true,
             'cache_time' => 0,
         ));

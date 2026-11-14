@@ -1,19 +1,19 @@
-import { home } from './pages/home.js?v=0.0.64';
-import { services as servicesPage } from './pages/services.js?v=0.0.53';
+import { home } from './pages/home.js?v=0.0.76';
+import { services as servicesPage } from './pages/services.js?v=0.0.54';
 
-import { buy as buyPage } from './pages/buy.js?v=0.0.64';
-import { account as accountPage } from './pages/account.js?v=0.0.52';
-import { settings as settingsPage } from './pages/settings.js?v=0.0.52';
-import { recharge as rechargePage } from './pages/recharge.js?v=0.0.64';
+import { buy as buyPage } from './pages/buy.js?v=0.0.67';
+import { account as accountPage } from './pages/account.js?v=0.0.56';
+import { settings as settingsPage } from './pages/settings.js?v=0.0.53';
+import { recharge as rechargePage } from './pages/recharge.js?v=0.0.69';
 import { icon } from './icons.js?v=0.0.52';
-import { methodLabel, handleInitResult } from './payment-ui.js?v=0.0.67';
-import { startVerifyTracker } from './card-verify.js?v=0.0.4';
+import { methodLabel, handleInitResult } from './payment-ui.js?v=0.0.73';
+import { startVerifyTracker } from './card-verify.js?v=0.0.6';
 
 
 let _watchModulePromise = null;
 function loadWatchPage() {
     if (_watchModulePromise) return _watchModulePromise;
-    _watchModulePromise = import('./pages/gateway-watch.js');
+    _watchModulePromise = import('./pages/gateway-watch.js?v=2');
     return _watchModulePromise;
 }
 
@@ -64,14 +64,14 @@ async function watchResumePage(view, encodedOrderId) {
         }
     } catch (_) {  }
     if (statusObj.tonpay_custom) {
-        const customMod = await import('./pages/tonpay-custom.js?v=0.0.7');
+        const customMod = await import('./pages/tonpay-custom.js?v=0.0.10');
         return customMod.startTonpayCustom(view, orderId, {
             mode: flowStr === 'direct_buy' ? 'direct_buy' : 'recharge',
             initialView: statusObj.tonpay_custom,
         });
     }
     if (statusObj.atlaspay_custom) {
-        const atlasMod = await import('./pages/atlaspay-custom.js?v=0.0.1');
+        const atlasMod = await import('./pages/atlaspay-custom.js?v=0.0.3');
         return atlasMod.startAtlaspayCustom(view, orderId, {
             mode: flowStr === 'direct_buy' ? 'direct_buy' : 'recharge',
             initialView: statusObj.atlaspay_custom,
@@ -79,8 +79,7 @@ async function watchResumePage(view, encodedOrderId) {
     }
     if (statusObj.verify && methodStr === 'cart to cart' && paymentStatus === 'Unpaid' && String(statusObj.verify.verify_status || '') === 'waiting') {
         view.innerHTML = `
-            <article class="card card-window">
-                <header class="card-window-bar"><span class="dots"><span></span><span></span><span></span></span><span class="window-url">faoxima/payment</span></header>
+            <article class="verify-payment-page">
                 <div class="card-body">
                     <div id="pay-form-host"></div>
                     <div id="pay-result-host"></div>
@@ -112,7 +111,7 @@ async function watchResumePage(view, encodedOrderId) {
             ? 'این فاکتور لغو شده است'
             : (paymentStatus === 'expire' ? 'فاکتور منقضی شده است' : 'پرداخت ناموفق بود');
         view.innerHTML = `
-            <article class="card card-window">
+            <article class="payment-flow gateway-result payment-outcome" data-outcome="danger">
                 <header class="card-window-bar"><span class="dots"><span></span><span></span><span></span></span><span class="window-url">faoxima/recharge/fail</span></header>
                 <div class="card-body" style="text-align:center;padding:22px">
                     <div style="font-size:42px;line-height:1;color:var(--red);margin:4px 0 10px">${icon('xCircle', 'class="ico ico-xxl ico-warn"')}</div>
@@ -128,7 +127,7 @@ async function watchResumePage(view, encodedOrderId) {
     }
     if (paymentStatus === 'paid' && !statusObj.is_service_ready && flowStr !== 'direct_buy') {
         view.innerHTML = `
-            <article class="card card-window">
+            <article class="payment-flow gateway-result payment-outcome" data-outcome="success">
                 <header class="card-window-bar"><span class="dots"><span></span><span></span><span></span></span><span class="window-url">faoxima/recharge/done</span></header>
                 <div class="card-body" style="text-align:center;padding:22px">
                     <div style="font-size:42px;line-height:1;color:var(--green);margin:4px 0 10px">${icon('checkCircle', 'class="ico ico-xxl ico-success"')}</div>
@@ -166,7 +165,7 @@ async function watchResumePage(view, encodedOrderId) {
         onSuccess: (st) => {
             const amount = Number(st.amount || 0).toLocaleString('en-US');
             view.innerHTML = `
-                <article class="card card-window">
+                <article class="payment-flow gateway-result payment-outcome" data-outcome="success">
                     <header class="card-window-bar"><span class="dots"><span></span><span></span><span></span></span><span class="window-url">faoxima/recharge/done</span></header>
                     <div class="card-body" style="text-align:center;padding:22px">
                         <div style="font-size:42px;line-height:1;color:var(--green);margin:4px 0 10px">${icon('checkCircle', 'class="ico ico-xxl ico-success"')}</div>
@@ -182,7 +181,7 @@ async function watchResumePage(view, encodedOrderId) {
         },
         onFail: (st) => {
             view.innerHTML = `
-                <article class="card card-window">
+                <article class="payment-flow gateway-result payment-outcome" data-outcome="danger">
                     <header class="card-window-bar"><span class="dots"><span></span><span></span><span></span></span><span class="window-url">faoxima/recharge/fail</span></header>
                     <div class="card-body" style="text-align:center;padding:22px">
                         <div style="font-size:42px;line-height:1;color:var(--red);margin:4px 0 10px">${icon('xCircle', 'class="ico ico-xxl ico-warn"')}</div>
@@ -209,7 +208,7 @@ function loadServicePage() {
 
 
     const url = new URL('./pages/service.js', import.meta.url);
-    url.searchParams.set('v', `${ver}-0.0.70`);
+    url.searchParams.set('v', `${ver}-0.0.76`);
     _serviceModulePromise = import(url.href).catch((err) => {
 
 
@@ -229,7 +228,7 @@ async function serviceDetailPage(view, ...params) {
 let _usertestModulePromise = null;
 function loadUsertestPage() {
     if (_usertestModulePromise) return _usertestModulePromise;
-    _usertestModulePromise = import('./pages/usertest.js?v=0.0.70');
+    _usertestModulePromise = import('./pages/usertest.js?v=0.0.71');
     return _usertestModulePromise;
 }
 async function usertestPage(view) {
@@ -240,7 +239,7 @@ async function usertestPage(view) {
 let _ticketsModulePromise = null;
 function loadTicketsPage() {
     if (_ticketsModulePromise) return _ticketsModulePromise;
-    _ticketsModulePromise = import('./pages/tickets.js');
+    _ticketsModulePromise = import('./pages/tickets.js?v=2');
     return _ticketsModulePromise;
 }
 async function ticketsPage(view) {
@@ -259,7 +258,7 @@ async function ticketDetailPage(view, ...params) {
 let _historyModulePromise = null;
 function loadHistoryPage() {
     if (_historyModulePromise) return _historyModulePromise;
-    _historyModulePromise = import('./pages/history.js');
+    _historyModulePromise = import('./pages/history.js?v=3');
     return _historyModulePromise;
 }
 async function historyPage(view) {
@@ -270,7 +269,7 @@ async function historyPage(view) {
 let _transferModulePromise = null;
 function loadTransferPage() {
     if (_transferModulePromise) return _transferModulePromise;
-    _transferModulePromise = import('./pages/transfer.js?v=0.0.1');
+    _transferModulePromise = import('./pages/transfer.js?v=0.0.2');
     return _transferModulePromise;
 }
 async function transferPage(view) {

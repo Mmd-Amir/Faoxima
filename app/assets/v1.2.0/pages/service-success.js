@@ -1,54 +1,23 @@
 import { escapeHtml, fmtBytes, copyToClipboard, toast, blobToDataUrl } from '../utils.js?v=0.0.52';
 import { icon } from '../icons.js?v=0.0.52';
 import { hapticImpact } from '../telegram.js?v=0.0.52';
-import { renderServiceOutputs } from './service.js?v=0.0.70';
-
-
-function gaugeSvg(percent, opts = {}) {
-    const r = 50;
-    const c = 2 * Math.PI * r;
-    const safePct = Math.max(0, Math.min(100, Number(percent) || 0));
-    const offset = c * (1 - safePct / 100);
-    const stroke = opts.strokeWidth || 9;
-    return `
-        <svg viewBox="0 0 120 120" aria-hidden="true">
-            <circle cx="60" cy="60" r="${r}" class="info-gauge-track" stroke-width="${stroke}"/>
-            <circle cx="60" cy="60" r="${r}" class="info-gauge-fill"
-                stroke-width="${stroke}"
-                stroke-dasharray="${c.toFixed(2)}"
-                stroke-dashoffset="${offset.toFixed(2)}"/>
-        </svg>`;
-}
-
+import { renderServiceOutputs } from './service.js?v=0.0.76';
 
 function getConnectionData(service) {
     const sub = String(service?.subscription_url || '').trim();
     if (sub) return sub;
     const configs = Array.isArray(service?.configs) ? service.configs : [];
-    for (const c of configs) {
-        if (typeof c === 'string' && c.trim() !== '') return c.trim();
-    }
-    return '';
+    return configs.find(c => typeof c === 'string' && c.trim())?.trim() || '';
 }
 
-
-function renderQrPanel(data) {
-    if (!data) return '';
-    return `
-        <div class="qr-panel" id="qr-panel">
-            <div class="qr-frame">
-                <img data-qr="${escapeHtml(data)}" alt="QR Code" />
-            </div>
-            <p class="qr-hint">دستگاه دیگر را به QR Code نزدیک کنید تا لینک اتصال خوانده شود.</p>
-        </div>`;
+function detailRow(label, value, ico, copy = '') {
+    return `<div class="ss-detail"><dt>${icon(ico)} ${escapeHtml(label)}</dt><dd><span>${escapeHtml(value)}</span>${copy ? `<button type="button" class="ss-copy-icon" data-success-copy="${escapeHtml(copy)}" aria-label="کپی ${escapeHtml(label)}">${icon('copy')}</button>` : ''}</dd></div>`;
 }
-
-
 
 export function renderServiceSuccess(view, res, opts = {}) {
     const service = res?.service || {};
-    const usernameAc = String(service.username || res?.username || '—');
-    const displayUsernameAc = String(service.display_username || usernameAc);
+    const username = String(service.username || res?.username || '—');
+    const displayUsername = String(service.display_username || username);
     const orderId = String(res?.order_id || service.id || '—');
     const productName = String(service.product_name || opts.productName || '—');
     const panelName = String(service.panel_name || opts.panelName || '—');
@@ -56,198 +25,92 @@ export function renderServiceSuccess(view, res, opts = {}) {
     const usedGb = Number(service.used_traffic_gb) || 0;
     const totalBytes = Number.isFinite(Number(service.total_bytes)) ? Number(service.total_bytes) : totalGb * Math.pow(1024, 3);
     const usedBytes = Number.isFinite(Number(service.used_bytes)) ? Number(service.used_bytes) : usedGb * Math.pow(1024, 3);
-    const unlimitedVolume = service.is_stock === true
-        || service.unlimited_volume === true
-        || totalBytes === 0;
-    const expirationText = String(service.expiration_time || 'نامحدود');
-    const unlimitedTime = expirationText === 'نامحدود';
-    const percent = (!unlimitedVolume && totalBytes > 0)
-        ? Math.max(0, Math.min(100, (usedBytes / totalBytes) * 100))
-        : 0;
-
-    const connectionData = getConnectionData(service);
+    const unlimitedVolume = service.is_stock === true || service.unlimited_volume === true || totalBytes === 0;
+    const expiration = String(service.expiration_time || 'نامحدود');
+    const percent = !unlimitedVolume && totalBytes > 0 ? Math.max(0, Math.min(100, usedBytes / totalBytes * 100)) : 0;
     const isManual = String(service.panel_type || '') === 'Manualsale' || service.is_stock === true;
     const outputs = Array.isArray(service.service_output) ? service.service_output : [];
-    const hasOutputs = outputs.length > 0;
-    const qrAllowed = !isManual && (window.__APP_CONFIG__ || {}).qrEnabled !== false;
-
-    const headerTag = (window.__APP_CONFIG__ || {}).botUsername
-        ? `@${(window.__APP_CONFIG__ || {}).botUsername}`
-        : '';
+    const primaryLink = outputs.find(o => String(o?.type || '').toLowerCase() === 'link' && String(o.value || '').trim());
+    const connectionData = outputs.length ? String(primaryLink?.value || '').trim() : getConnectionData(service);
+    const remainingOutputs = outputs.filter(o => o !== primaryLink);
+    const qrAllowed = connectionData && !isManual && (window.__APP_CONFIG__ || {}).qrEnabled !== false && new TextEncoder().encode(connectionData).length <= 2048;
+    const headerTag = (window.__APP_CONFIG__ || {}).botUsername || '';
 
     view.innerHTML = `
-        <article class="card card-bare" style="padding:0">
-            <div class="card-body" style="text-align:center;padding:8px 4px 16px">
-                <div style="font-size:42px;line-height:1;color:var(--green);margin:4px 0 8px">
-                    ${icon('checkCircle', 'class="ico ico-xxl ico-success"')}
-                </div>
-                <h2 style="margin:6px 0 4px;font-size:18px">سرویس با موفقیت ایجاد شد</h2>
-                <p class="muted" style="font-size:13px">جزئیات و کانفیگ سرویس برای شما ارسال شد.</p>
-            </div>
+        <article class="ss-page" aria-label="خرید موفق">
+            <header class="ss-hero" role="status">
+                <span class="ss-success-icon" aria-hidden="true">${icon('check')}</span>
+                <div><span class="ss-eyebrow">خرید تکمیل شد</span><h1>سرویس تو آماده‌ست!</h1><p>از بخش اتصال، اطلاعات سرویس را دریافت کن.</p></div>
+                <span class="ss-hero-spark" aria-hidden="true">${icon('checkCircle')}</span>
+            </header>
 
-            <article class="card card-window">
-                <header class="card-window-bar">
-                    <span class="dots"><span></span><span></span><span></span></span>
-                    <span class="window-url">service/info</span>
-                </header>
-                <div class="card-body info-card">
-                    <div class="info-card-title-row">
-                        <div class="info-card-title">
-                            <span class="arrow">&gt;</span><span>کانفیگ: ${escapeHtml(displayUsernameAc)}</span>
-                        </div>
-                        <span class="info-card-status is-active">فعال</span>
-                    </div>
+            ${connectionData ? `
+                <section class="ss-connect" aria-labelledby="ss-connect-title">
+                    <div class="ss-section-heading"><span class="ss-section-icon">${icon('link')}</span><div><h2 id="ss-connect-title">${primaryLink || service.subscription_url ? 'لینک اشتراک تو' : 'لینک اتصال تو'}</h2><p>لینک را کپی کن و در برنامهٔ اتصال وارد کن.</p></div><span class="ss-ready">آمادهٔ اتصال</span></div>
+                    <label class="ss-sr-only" for="ss-connection">لینک اتصال</label><textarea id="ss-connection" rows="2" readonly dir="ltr" spellcheck="false">${escapeHtml(connectionData)}</textarea>
+                    <div class="ss-connect-actions"><button type="button" class="btn btn-primary" data-success-copy="${escapeHtml(connectionData)}">${icon('copy')} کپی لینک اتصال</button>${qrAllowed ? `<button type="button" class="btn btn-ghost" id="qr-toggle-btn" aria-expanded="false" aria-controls="qr-host">${icon('qrCode')} <span>نمایش QR</span></button>` : ''}</div>
+                    <div id="qr-host" aria-live="polite"></div>
+                </section>
+            ` : ''}
 
-                    ${isManual ? '' : `
-                    <div class="info-card-body">
-                        <div class="info-gauge">
-                            ${unlimitedVolume ? `
-                                ${gaugeSvg(0)}
-                                <div class="info-gauge-text">
-                                    <span class="info-gauge-unl">نامحدود</span>
-                                </div>
-                            ` : `
-                                ${gaugeSvg(percent)}
-                                <div class="info-gauge-text">
-                                    <span class="info-gauge-percent">${percent.toFixed(1)}%</span>
-                                    <span class="info-gauge-label">مصرف</span>
-                                </div>
-                            `}
-                        </div>
+            <section class="ss-overview" aria-labelledby="ss-overview-title">
+                <div class="ss-overview-heading"><div><span class="ss-eyebrow">سرویس جدید تو</span><h2 id="ss-overview-title">${escapeHtml(productName)}</h2></div><span class="ss-status"><i></i> فعال</span></div>
+                ${!isManual ? `<div class="ss-stats"><div>${icon('box')}<span>حجم باقی‌مانده</span><strong>${escapeHtml(unlimitedVolume ? 'نامحدود' : fmtBytes(Math.max(0, totalBytes - usedBytes)))}</strong></div><div>${icon('calendar')}<span>تاریخ انقضا</span><strong>${escapeHtml(expiration)}</strong></div></div><div class="ss-usage-heading"><span>مصرف سرویس</span><b dir="ltr">${escapeHtml(fmtBytes(usedBytes))} / ${escapeHtml(unlimitedVolume ? '∞' : fmtBytes(totalBytes))}</b></div><div class="ss-usage" ${unlimitedVolume ? '' : `role="progressbar" aria-label="مصرف سرویس" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent.toFixed(1)}"`}><span style="width:${percent}%"></span></div>` : ''}
+                <dl class="ss-details">
+                    ${detailRow('نام کاربری', displayUsername, 'user', username === '—' ? '' : username)}
+                    ${detailRow('موقعیت', panelName, 'pin')}
+                    ${isManual ? detailRow('تاریخ انقضا', expiration, 'calendar') : ''}
+                    ${detailRow('کد پیگیری', orderId, 'fileText', orderId === '—' ? '' : orderId)}
+                </dl>
+                ${headerTag ? `<div class="ss-bot-tag" dir="ltr">@${escapeHtml(String(headerTag).replace(/^@/, ''))}</div>` : ''}
+            </section>
 
-                        <div class="info-stats">
-                            <div>
-                                <div class="info-stat-label"><span class="glyph">$</span><span>حجم مصرفی</span></div>
-                                <div class="info-stat-value">
-                                    ${unlimitedVolume
-                                        ? '<span class="fa">نامحدود</span>'
-                                        : `<span dir="ltr">${fmtBytes(usedBytes)} <span style="color:var(--text-dim)">/</span> ${fmtBytes(totalBytes)}</span>`}
-                                </div>
-                            </div>
-                            <div>
-                                <div class="info-stat-label"><span class="glyph">#</span><span>تاریخ انقضا</span></div>
-                                <div class="info-stat-value">
-                                    <span class="fa">${escapeHtml(expirationText)}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    `}
+            ${remainingOutputs.length ? `<section class="ss-outputs" aria-labelledby="ss-outputs-title"><div class="ss-list-heading"><h2 id="ss-outputs-title">${connectionData ? 'روش‌های دیگر اتصال' : 'اطلاعات اتصال'}</h2><span>برای دریافت، گزینهٔ دلخواه را باز کن</span></div><div id="service-output-host"></div></section>` : ''}
+            ${!connectionData && !remainingOutputs.length ? `<div class="ss-empty">${icon('info')} اطلاعات اتصال را از بخش مدیریت سرویس بررسی کن.</div>` : ''}
 
-                    ${headerTag ? `<div class="info-card-footer">${escapeHtml(headerTag)}</div>` : ''}
-                </div>
-            </article>
+            <footer class="ss-footer"><a href="#/services/${encodeURIComponent(username)}" class="btn btn-primary">${icon('settings')} مدیریت سرویس ${icon('arrowLeft')}</a><a href="#/" class="ss-home-link">${icon('home')} بازگشت به خانه</a></footer>
+        </article>`;
 
-            <div class="service-detail-list">
-                <div class="service-detail-row">
-                    ${icon('user', 'class="ico ico-leading"')}
-                    <span class="service-detail-label">نام کاربری</span>
-                    <span class="service-detail-value mono">${escapeHtml(displayUsernameAc)}</span>
-                </div>
-                <div class="service-detail-row">
-                    ${icon('fileText', 'class="ico ico-leading"')}
-                    <span class="service-detail-label">نام سرویس</span>
-                    <span class="service-detail-value">${escapeHtml(productName)}</span>
-                </div>
-                <div class="service-detail-row">
-                    ${icon('pin', 'class="ico ico-leading"')}
-                    <span class="service-detail-label">لوکیشن</span>
-                    <span class="service-detail-value">${escapeHtml(panelName)}</span>
-                </div>
-                <div class="service-detail-row">
-                    ${icon('hourglass', 'class="ico ico-leading"')}
-                    <span class="service-detail-label">تاریخ انقضا</span>
-                    <span class="service-detail-value">${escapeHtml(expirationText)}</span>
-                </div>
-                ${isManual ? '' : `
-                <div class="service-detail-row">
-                    ${icon('box', 'class="ico ico-leading"')}
-                    <span class="service-detail-label">حجم سرویس</span>
-                    <span class="service-detail-value">${escapeHtml(unlimitedVolume ? 'نامحدود' : fmtBytes(totalBytes))}</span>
-                </div>
-                `}
-                <div class="service-detail-row">
-                    ${icon('copy', 'class="ico ico-leading"')}
-                    <span class="service-detail-label">کد پیگیری</span>
-                    <span class="service-detail-value mono" style="color:var(--gold-bright)">${escapeHtml(orderId)}</span>
-                </div>
-            </div>
+    const outputHost = view.querySelector('#service-output-host');
+    if (outputHost) renderServiceOutputs(outputHost, remainingOutputs, { isManual, username, filePrefix: service.file_prefix || '' });
 
-            ${hasOutputs ? `
-                <div id="service-output-host" class="mt-md"></div>
-            ` : (connectionData ? `
-                <div class="sub-link-box">
-                    <div class="label">${icon('link', 'class="ico ico-leading"')} <span>لینک اتصال</span></div>
-                    <div class="sub-link-value mono" id="sub-link-value" title="برای کپی کلیک کنید">${escapeHtml(connectionData)}</div>
-                </div>
-            ` : '')}
-
-            <div id="qr-host"></div>
-
-            <div class="row-spread mt-md stack-on-mobile" style="gap:10px">
-                ${(!hasOutputs && connectionData && qrAllowed) ? `
-                    <button type="button" class="btn btn-primary btn-block" id="qr-toggle-btn" style="flex:1">
-                        ${icon('qrCode', 'class="ico ico-leading"')}
-                        <span>دریافت QR Code</span>
-                    </button>` : ''}
-                <a href="#/services/${encodeURIComponent(usernameAc)}" class="btn btn-ghost btn-block" style="flex:1">
-                    ${icon('user', 'class="ico ico-leading"')}
-                    <span>مشاهده سرویس</span>
-                </a>
-            </div>
-            <a href="#/" class="btn btn-ghost btn-block mt-sm">
-                ${icon('home', 'class="ico ico-leading"')}
-                <span>بازگشت به خانه</span>
-            </a>
-        </article>
-    `;
-
-
-    const $outputHost = view.querySelector('#service-output-host');
-    if ($outputHost && hasOutputs) {
-        renderServiceOutputs($outputHost, outputs, { isManual, username: usernameAc || '' });
-    }
-
-
-    const $linkBox = view.querySelector('#sub-link-value');
-    if ($linkBox) {
-        $linkBox.addEventListener('click', async () => {
-            const ok = await copyToClipboard($linkBox.textContent || '');
+    view.querySelectorAll('[data-success-copy]').forEach(button => {
+        button.addEventListener('click', async () => {
+            const ok = await copyToClipboard(button.dataset.successCopy || '');
             hapticImpact('light');
-            toast(ok ? 'لینک کپی شد' : 'خطا در کپی', ok ? 'success' : 'error');
+            toast(ok ? 'کپی شد' : 'خطا در کپی', ok ? 'success' : 'error');
         });
-    }
+    });
 
-
-    const $qrBtn = view.querySelector('#qr-toggle-btn');
-    const $qrHost = view.querySelector('#qr-host');
-    if ($qrBtn && $qrHost) {
-        let open = false;
-        $qrBtn.addEventListener('click', async () => {
+    const qrButton = view.querySelector('#qr-toggle-btn');
+    const qrHost = view.querySelector('#qr-host');
+    if (qrButton && qrHost) {
+        qrButton.addEventListener('click', async () => {
             hapticImpact('light');
-            open = !open;
-            if (open) {
-                $qrHost.innerHTML = renderQrPanel(connectionData);
-                const img = $qrHost.querySelector('img[data-qr]');
-                if (img) {
-                    const apiUrl = (window.__APP_CONFIG__ || {}).apiUrl || '/api';
-                    const v = Math.floor(Date.now() / (60 * 60 * 1000));
-                    try {
-                        const res = await fetch(`${apiUrl}/qr.php?d=${encodeURIComponent(img.dataset.qr || '')}&s=480&v=${v}`, { credentials: 'same-origin' });
-                        if (!res.ok) throw new Error('QR load failed');
-                        img.src = await blobToDataUrl(await res.blob());
-                    } catch (_) {
-                        $qrHost.innerHTML = '';
-                        open = false;
-                        $qrBtn.querySelector('span:last-child').textContent = 'دریافت QR Code';
-                        return;
-                    }
-                }
-                $qrBtn.querySelector('span:last-child').textContent = 'بستن QR Code';
-                $qrHost.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            } else {
-                $qrHost.innerHTML = '';
-                $qrBtn.querySelector('span:last-child').textContent = 'دریافت QR Code';
+            if (qrButton.getAttribute('aria-expanded') === 'true') {
+                qrHost.innerHTML = '';
+                qrButton.setAttribute('aria-expanded', 'false');
+                qrButton.querySelector('span').textContent = 'نمایش QR';
+                return;
+            }
+            qrButton.disabled = true;
+            qrButton.setAttribute('aria-busy', 'true');
+            qrButton.querySelector('span').textContent = 'در حال دریافت…';
+            try {
+                const apiUrl = (window.__APP_CONFIG__ || {}).apiUrl || '/api';
+                const version = Math.floor(Date.now() / (60 * 60 * 1000));
+                const response = await fetch(`${apiUrl}/qr.php?d=${encodeURIComponent(connectionData)}&s=480&v=${version}`, { credentials: 'same-origin' });
+                if (!response.ok) throw new Error('QR load failed');
+                const src = await blobToDataUrl(await response.blob());
+                qrHost.innerHTML = `<div class="ss-qr"><img src="${escapeHtml(src)}" alt="کد QR اتصال سرویس" /><p>کد را با برنامهٔ اتصال در دستگاه دیگر اسکن کن.</p></div>`;
+                qrButton.setAttribute('aria-expanded', 'true');
+                qrButton.querySelector('span').textContent = 'بستن QR';
+            } catch (_) {
+                qrButton.querySelector('span').textContent = 'نمایش QR';
+                toast('دریافت QR ممکن نشد؛ دوباره تلاش کن.', 'error');
+            } finally {
+                qrButton.disabled = false;
+                qrButton.removeAttribute('aria-busy');
             }
         });
     }

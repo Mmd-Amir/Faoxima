@@ -15,15 +15,16 @@ const ACTION_BUTTON_STYLES = {
 };
 
 function actionButton(id, styleKey, v, content, extraAttrs = '') {
-    const configured = v && v.button_styles ? v.button_styles[styleKey] : 'default';
-    const picked = ACTION_BUTTON_STYLES[configured] || ACTION_BUTTON_STYLES.default;
-    return `<button type="button" class="${picked.cls}" id="${id}" style="flex:1;${picked.style}" ${extraAttrs}>${content}</button>`;
+    const configured = (v && v.button_styles ? v.button_styles[styleKey] : '') || 'default';
+    const primary = styleKey === 'check_status' || styleKey === 'pay_link';
+    const picked = ACTION_BUTTON_STYLES[configured === 'default' && primary ? 'primary' : configured] || ACTION_BUTTON_STYLES.default;
+    return `<button type="button" class="${picked.cls} apc-action-${styleKey}" id="${id}" style="flex:1;${picked.style}" ${extraAttrs}>${content}</button>`;
 }
 
 function actionRow(buttons) {
     const filtered = buttons.filter(Boolean);
     if (!filtered.length) return '';
-    return `<div class="mt-sm" style="display:flex;gap:8px">${filtered.join('')}</div>`;
+    return `<div class="tpc-action-row">${filtered.join('')}</div>`;
 }
 
 function pad2(n) { return n < 10 ? '0' + n : String(n); }
@@ -104,58 +105,21 @@ export function startAtlaspayCustom(view, orderId, opts = {}) {
     }
 
     function frame(inner) {
-        return `
-            <article class="card card-window">
-                <header class="card-window-bar">
-                    <span class="dots"><span></span><span></span><span></span></span>
-                    <span class="window-url">faoxima/payment/atlaspay</span>
-                </header>
-                <div class="card-body" style="padding:18px">${inner}</div>
-            </article>`;
+        return `<article class="tpc-page apc-page"><div class="tpc-body">${inner}</div></article>`;
     }
 
     function amountRows(v) {
-        return `
-            <div class="kv"><span class="kv-label">${icon('wallet')} مبلغ شارژ / خرید</span><span class="kv-value mono">${fmtNum(v.request_amount)} تومان</span></div>
-            <div class="kv">
-                <span class="kv-label">${icon('creditCard')} مبلغ قابل پرداخت</span>
-                <span class="kv-value mono accent" style="font-size:18px;font-weight:700">${fmtNum(v.payable_rial)} ریال</span>
-            </div>
-            ${v.phase === 'awaiting_payment' ? `<p class="mt-sm" id="apc-amount-warning" style="font-size:12.5px;line-height:1.8;color:var(--yellow);white-space:pre-line">${escapeHtml((v.messages && v.messages.amount_warning) || '')}</p>
-            <p class="mt-sm" id="apc-card-only-warning" style="font-size:12.5px;line-height:1.8;color:var(--red);white-space:pre-line">${escapeHtml((v.messages && v.messages.card_only_warning) || '')}</p>` : ''}`;
+        return `<section class="tpc-amount-card"><span class="pay-eyebrow">مبلغ دقیق قابل پرداخت</span><strong>${fmtNum(v.payable_rial)} <small>ریال</small></strong><div class="tpc-request-amount"><span>مبلغ ${mode === 'direct_buy' ? 'خرید' : 'شارژ'}</span><b>${fmtNum(v.request_amount)} تومان</b></div>${v.phase === 'awaiting_payment' ? actionButton('apc-copy-amount', 'copy_amount', v, `${icon('copy')}<span>کپی مبلغ به ریال</span>`) : ''}</section>`;
     }
 
     function cardBlock(v) {
         if (v.phase !== 'awaiting_payment') return '';
-        if (!v.card_complete) {
-            return `
-                <div class="card-section mt-md">
-                    <p class="muted" style="font-size:12px;color:var(--yellow)">${v.payment_url ? 'شماره کارت به‌صورت کامل دریافت نشد؛ برای مشاهده اطلاعات کارت و پرداخت، از دکمه «مشاهده اطلاعات پرداخت» استفاده کنید.' : 'شماره کارت به‌صورت کامل دریافت نشد؛ برای دریافت اطلاعات پرداخت با پشتیبانی فروشگاه در ارتباط باشید.'}</p>
-                </div>`;
-        }
-        const holder = v.card_name
-            ? `<div class="kv"><span class="kv-label">${icon('user')} به نام</span><span class="kv-value">${escapeHtml(v.card_name)}</span></div>`
-            : '';
-        const bank = v.bank_name
-            ? `<div class="kv"><span class="kv-label">${icon('creditCard')} بانک</span><span class="kv-value">${escapeHtml(v.bank_name)}</span></div>`
-            : '';
-        return `
-            <div class="card-section mt-md">
-                <p class="section-title">${icon('creditCard')} کارت مقصد</p>
-                <div class="kv"><span class="kv-label">شماره کارت</span><span class="kv-value mono" dir="ltr" id="apc-card-number">${escapeHtml(v.card_number_display || v.card_number)}</span></div>
-                ${holder}
-                ${bank}
-            </div>`;
+        if (!v.card_complete) return `<div class="apc-incomplete-card">${icon('info')}<p>${v.payment_url ? 'برای مشاهدهٔ کارت مقصد و تکمیل پرداخت، دکمهٔ «مشاهده اطلاعات پرداخت» را بزن.' : 'اطلاعات کامل کارت در دسترس نیست؛ قبل از واریز با پشتیبانی تماس بگیر.'}</p></div>`;
+        return `<section class="pay-bank-card"><div class="pay-bank-heading"><span>${icon('creditCard')} ${escapeHtml(v.bank_name || 'کارت مقصد')}</span><span class="pay-bank-chip" aria-hidden="true"></span></div><div class="pay-bank-number-row"><b dir="ltr" id="apc-card-number">${escapeHtml(v.card_number_display || v.card_number)}</b>${actionButton('apc-copy-card', 'copy_card', v, icon('copy'), 'aria-label="کپی شماره کارت"')}</div><div class="pay-bank-holder"><span>به نام</span><strong>${escapeHtml(v.card_name || '—')}</strong></div></section>`;
     }
 
     function actionsBlock(v) {
         const rows = [];
-        if (v.phase === 'awaiting_payment') {
-            rows.push(actionRow([
-                v.card_complete ? actionButton('apc-copy-card', 'copy_card', v, `${icon('copy', 'class="ico ico-leading"')}<span>کپی شماره</span>`) : '',
-                actionButton('apc-copy-amount', 'copy_amount', v, `${icon('copy', 'class="ico ico-leading"')}<span>کپی مبلغ</span>`),
-            ]));
-        }
         const terminal = FAIL_PHASES.includes(v.phase) || v.phase === 'paid';
         if (v.phase === 'awaiting_payment' && !v.card_complete && v.payment_url) {
             rows.push(actionRow([
@@ -163,7 +127,7 @@ export function startAtlaspayCustom(view, orderId, opts = {}) {
             ]));
         }
         rows.push(actionRow([
-            !terminal && v.phase !== 'confirming' ? actionButton('apc-refresh', 'check_status', v, `${icon('refresh', 'class="ico ico-leading"')}<span>بررسی</span>`) : '',
+            !terminal && v.phase !== 'confirming' ? actionButton('apc-refresh', 'check_status', v, `${icon('refresh', 'class="ico ico-leading"')}<span>بررسی پرداخت</span>`) : '',
             v.receipt_url ? actionButton('apc-receipt', 'send_receipt', v, `${icon('camera', 'class="ico ico-leading"')}<span>ارسال رسید</span>`) : '',
         ]));
         if (v.can_cancel) {
@@ -171,19 +135,12 @@ export function startAtlaspayCustom(view, orderId, opts = {}) {
                 actionButton('apc-cancel', 'cancel_transaction', v, `${icon('xCircle', 'class="ico ico-leading"')}<span>لغو تراکنش</span>`),
             ]));
         }
-        return `<div class="mt-md">${rows.join('')}</div>`;
+        return `<div class="tpc-actions">${rows.join('')}</div>`;
     }
 
     function timerBlock(v) {
         if (v.phase !== 'awaiting_payment' || !(v.deadline_at > 0)) return '';
-        return `
-            <div style="text-align:center">
-                <div class="watch-countdown mt-md" style="max-width:100%">
-                    <span class="glyph">${icon('hourglass', 'class="ico"')}</span>
-                    <span class="mono" id="apc-timer" dir="ltr" data-target="${v.deadline_at}">${fmtClock(remaining(v.deadline_at))}</span>
-                    <span class="muted" style="font-size:12px">باقی‌مانده تا پایان مهلت پرداخت</span>
-                </div>
-            </div>`;
+        return `<div class="tpc-timer-card">${icon('hourglass')}<div><b>مهلت پرداخت فاکتور</b><span>تا پایان فرصت واریز</span></div><strong id="apc-timer" dir="ltr" data-target="${v.deadline_at}">${fmtClock(remaining(v.deadline_at))}</strong></div>`;
     }
 
     function statusIcon(v) {
@@ -196,17 +153,18 @@ export function startAtlaspayCustom(view, orderId, opts = {}) {
         if (stopped || !data) return;
         const v = data;
         view.innerHTML = frame(`
-            <div style="text-align:center">
-                ${statusIcon(v)}
+            <div class="tpc-heading">
+                <span class="tpc-heading-icon">${statusIcon(v)}</span>
                 <h2 style="margin:8px 0 4px;font-size:18px;overflow-wrap:anywhere">${escapeHtml(v.gateway_title || '')}</h2>
                 <p class="muted" style="font-size:13px;white-space:pre-line" id="apc-status-text">${escapeHtml((v.messages && v.messages.status) || '')}</p>
             </div>
-            <div class="mt-md">${amountRows(v)}</div>
+            ${amountRows(v)}
             ${cardBlock(v)}
+            ${v.phase === 'awaiting_payment' ? `<div class="tpc-notices">${v.messages?.amount_warning ? `<p id="apc-amount-warning">${icon('alert')}<span>${escapeHtml(v.messages.amount_warning)}</span></p>` : ''}${v.messages?.card_only_warning ? `<p id="apc-card-only-warning">${icon('info')}<span>${escapeHtml(v.messages.card_only_warning)}</span></p>` : ''}</div>` : ''}
             ${timerBlock(v)}
             ${actionsBlock(v)}
-            ${v.messages && v.messages.receipt ? `<p class="muted mt-md" style="font-size:12px;line-height:1.8;white-space:pre-line">${escapeHtml(v.messages.receipt)}</p>` : ''}
-            <p class="muted mt-md" style="font-size:12px;text-align:center">شناسه پیگیری: <span class="mono gold" dir="ltr">${escapeHtml(v.tracking_code || orderId)}</span></p>`);
+            ${v.messages && v.messages.receipt ? `<p class="apc-receipt-note">${escapeHtml(v.messages.receipt)}</p>` : ''}
+            <p class="tpc-tracking">شناسه پیگیری: <span class="mono gold" dir="ltr">${escapeHtml(v.tracking_code || orderId)}</span></p>`);
         bind();
     }
 
@@ -316,7 +274,7 @@ export function startAtlaspayCustom(view, orderId, opts = {}) {
     function renderDone(statusObj) {
         const credited = fmtNum((statusObj && statusObj.amount) || (data && data.request_amount) || 0);
         view.innerHTML = frame(`
-            <div style="text-align:center;padding:10px 0">
+            <div class="payment-outcome" data-outcome="success">
                 <div style="font-size:42px;line-height:1;color:var(--green);margin:4px 0 10px">${icon('checkCircle', 'class="ico ico-xxl ico-success"')}</div>
                 <h2 style="margin:6px 0;font-size:18px">پرداخت با موفقیت تأیید شد</h2>
                 <p class="muted">${mode === 'direct_buy' ? 'سرویس شما فعال شد.' : `مبلغ ${credited} تومان به کیف پول شما اضافه شد.`}</p>
@@ -377,7 +335,7 @@ export function startAtlaspayCustom(view, orderId, opts = {}) {
             return;
         }
         view.innerHTML = frame(`
-            <div style="text-align:center;padding:10px 0">
+            <div class="payment-outcome" data-outcome="danger">
                 <div style="font-size:42px;line-height:1;color:var(--red);margin:4px 0 10px">${icon('xCircle', 'class="ico ico-xxl ico-warn"')}</div>
                 <h2 style="margin:6px 0;font-size:18px">${escapeHtml(failTitle(v.phase))}</h2>
                 <p class="muted" style="white-space:pre-line">${escapeHtml((v.messages && v.messages.status) || '')}</p>

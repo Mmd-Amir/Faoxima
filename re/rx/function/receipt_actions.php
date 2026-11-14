@@ -101,6 +101,12 @@ if (!function_exists('rxReceiptConfirm')) {
         if (in_array($status, ['reject', 'expire', 'cancelled'], true)) {
             return ['ok' => false, 'reason' => 'already_final', 'report' => $report];
         }
+        if (in_array($status, ['processing', 'reconciling'], true)) {
+            return ['ok' => false, 'reason' => 'processing', 'report' => $report];
+        }
+        if ($status === 'manual_review') {
+            return ['ok' => false, 'reason' => 'manual_review', 'report' => $report];
+        }
         if ($status !== 'waiting') {
             return ['ok' => false, 'reason' => 'not_waiting', 'report' => $report];
         }
@@ -139,6 +145,22 @@ if (!function_exists('rxReceiptConfirm')) {
         }
         if ($claimStatus === 'already_completed') {
             return ['ok' => false, 'reason' => 'already_paid', 'report' => $report];
+        }
+        if ($claimStatus === 'not_found') {
+            return ['ok' => false, 'reason' => 'not_found', 'report' => $report];
+        }
+        if (in_array($claimStatus, ['busy', 'requires_reconciliation'], true)) {
+            if (function_exists('rx_log_event')) {
+                rx_log_event('RECEIPT_CONFIRM_IN_PROGRESS', 'Confirm found the receipt still processing', [
+                    'id_order' => $report['id_order'],
+                    'actor_id' => $actorId,
+                    'claim' => $claimStatus,
+                ]);
+            }
+            return ['ok' => false, 'reason' => 'processing', 'report' => rxReceiptGet($orderId, false)];
+        }
+        if ($claimStatus === 'manual_review') {
+            return ['ok' => false, 'reason' => 'manual_review', 'report' => rxReceiptGet($orderId, false)];
         }
         if ($claimStatus !== 'claimed') {
             if (function_exists('rx_log_event')) {

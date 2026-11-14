@@ -6,10 +6,10 @@ import {
 import { hapticImpact, hapticNotify, showConfirm, getInitDataUnsafe } from '../telegram.js?v=0.0.52';
 import { getBuyDraft, setBuyDraft, clearBuyDraft } from '../state.js';
 import { icon } from '../icons.js?v=0.0.52';
-import { showVerifyPending } from '../card-verify.js?v=0.0.4';
+import { showVerifyPending } from '../card-verify.js?v=0.0.6';
 import {
-    fmtNum, renderMethodCard, handleInitResult, resolveWalletChoice, walletBreakdownHtml,
-} from '../payment-ui.js?v=0.0.67';
+    fmtNum, renderMethodCard, handleInitResult, resolveWalletChoice, walletBreakdownHtml, inlinePaymentSummaryHtml,
+} from '../payment-ui.js?v=0.0.73';
 
 
 let _successModulePromise = null;
@@ -19,7 +19,7 @@ function loadSuccessModule() {
     const ver = (cfg.version || cfg.cacheBust || Date.now()).toString();
     try {
         const url = new URL('./service-success.js', import.meta.url);
-        url.searchParams.set('v', ver);
+        url.searchParams.set('v', `${ver}-0.0.2`);
         _successModulePromise = import(url.href).catch((err) => {
             console.warn('[buy] dynamic import of service-success.js with cache-bust failed, retrying plain', err);
             _successModulePromise = null;
@@ -72,6 +72,13 @@ const STEPS = [
 ];
 
 const FA_NUMS = ['۱', '۲', '۳', '۴', '۵'];
+const STEP_DETAILS = [
+    { title: 'از اینجا، متصل شو.', text: 'موقعیت دلخواهت را انتخاب کن؛ بعد سرویس را متناسب با نیازت بساز.', ico: 'globe' },
+    { title: 'انتخابی برای تو.', text: 'دسته‌بندی دلخواهت را پیدا کن یا همهٔ سرویس‌ها را ببین.', ico: 'fileText' },
+    { title: 'مدت اشتراک تو.', text: 'مدت اشتراک را انتخاب کن تا سرویس‌های متناسب را ببینی.', ico: 'calendar' },
+    { title: 'پلن مناسب تو.', text: 'حجم، مدت و قیمت را مقایسه کن و پلن مناسب خودت را بردار.', ico: 'box' },
+    { title: 'یک قدم تا اتصال.', text: 'جزئیات انتخابت را بررسی کن و خرید را تکمیل کن.', ico: 'checkCircle' },
+];
 
 export async function buy(view) {
     const draft = getBuyDraft();
@@ -79,26 +86,22 @@ export async function buy(view) {
     let step = computeStep(draft);
 
     function render() {
+        const detail = STEP_DETAILS[step];
         view.innerHTML = `
-            <article class="card card-window card-bare">
-                <header class="card-window-bar">
-                    <span class="dots"><span></span><span></span><span></span></span>
-                    <span class="window-url">faoxima/buy</span>
+            <article class="buy-shell" aria-label="خرید سرویس">
+                <header class="buy-topline">
+                    <span class="buy-eyebrow">${icon('plus')} خرید سرویس</span>
+                    <span class="buy-step-count">مرحله ${FA_NUMS[step]} <span>از ${FA_NUMS[4]}</span></span>
                 </header>
-                <div class="card-body">
-                    <div class="buy-progress">
-                        <div class="buy-progress-top">
-                            <span class="buy-progress-label">${escapeHtml(STEPS[step].label)}</span>
-                            <span class="buy-progress-count">مرحله <b>${FA_NUMS[step]}</b> از ${FA_NUMS[STEPS.length - 1]}</span>
-                        </div>
-                        <div class="buy-progress-track">
-                            ${STEPS.map((s, i) => `
-                                <span class="buy-progress-seg ${i < step ? 'is-done' : ''} ${i === step ? 'is-active' : ''}"></span>
-                            `).join('')}
-                        </div>
-                    </div>
-                    <div id="buy-step-host"></div>
-                </div>
+                <ol class="buy-steps" aria-label="مراحل خرید">
+                    ${STEPS.map((s, i) => `<li class="${i < step ? 'is-done' : ''} ${i === step ? 'is-active' : ''}" ${i === step ? 'aria-current="step"' : ''}><span class="buy-step-dot">${i < step ? icon('check') : FA_NUMS[i]}</span><span>${escapeHtml(s.label)}</span></li>`).join('')}
+                </ol>
+                <section class="buy-hero">
+                    <div class="buy-hero-copy"><span class="buy-hero-kicker">${step === 4 ? 'بررسی و تأیید سفارش' : 'انتخاب ' + escapeHtml(STEPS[step].label)}</span><h1>${detail.title}</h1><p>${detail.text}</p></div>
+                    <div class="buy-orbit" aria-hidden="true"><span class="buy-orbit-ring"></span><span class="buy-orbit-core">${icon(detail.ico)}</span><span class="buy-orbit-spark">${icon('check')}</span></div>
+                </section>
+                ${draft.panel ? `<div class="buy-selection" aria-label="انتخاب‌های شما"><span>${icon('pin')} ${escapeHtml(draft.panel.name)}</span>${draft.timeDay ? `<span>${icon('calendar')} ${escapeHtml(fmtDays(draft.timeDay))}</span>` : ''}${draft.product ? `<span>${icon('box')} ${escapeHtml(fmtGb(draft.product.traffic_gb))}</span>` : ''}</div>` : ''}
+                <div id="buy-step-host" class="buy-content" data-step="${STEPS[step].key}"></div>
             </article>
         `;
 
@@ -153,8 +156,7 @@ export async function buy(view) {
 
     async function renderPanelStep(host) {
         host.innerHTML = `
-            <p class="section-title">انتخاب موقعیت</p>
-            <h2 class="section-headline">سرویس شما کجا ارائه شود؟</h2>
+            <div class="buy-list-heading"><h2>موقعیت‌های موجود</h2><span>برای ادامه، یک موقعیت انتخاب کن</span></div>
             <div id="panel-list" class="list mt-md">${skeletonList(4)}</div>
         `;
         try {
@@ -167,15 +169,17 @@ export async function buy(view) {
             }
             $list.innerHTML = list.map((p) => `
                 <button class="plan" data-id="${escapeHtml(p.id)}" data-custom="${p.is_custom ? '1' : '0'}" data-username="${p.is_username ? '1' : '0'}" data-username-required="${p.is_username_required ? '1' : '0'}" data-username-random="${p.is_username_random ? '1' : '0'}" data-note="${p.is_note ? '1' : '0'}" data-name="${escapeHtml(p.name)}">
+                    <span class="buy-location-icon" aria-hidden="true">${icon('globe')}</span>
                     <div class="plan-info">
                         <div class="plan-title">${escapeHtml(p.name)}</div>
                         <div class="plan-meta">
-                            ${p.is_custom ? `<span><span class="mono gold">~</span> حجم سفارشی</span>` : ''}
-                            ${p.is_username ? `<span><span class="mono gold">@</span> نام کاربری دلخواه${p.is_username_required ? ' (ضروری)' : ''}</span>` : ''}
+                            ${p.is_custom ? `<span>${icon('box')} حجم سفارشی</span>` : ''}
+                            ${p.is_username ? `<span>${icon('user')} نام کاربری دلخواه${p.is_username_required ? ' (ضروری)' : ''}</span>` : ''}
+                            ${!p.is_custom && !p.is_username ? '<span class="buy-location-caption">مشاهدهٔ پلن‌ها و تعرفه‌ها</span>' : ''}
                         </div>
                     </div>
                     <div class="plan-price">
-                        <span class="amt">${icon('select', 'class="ico ico-lg"')}</span>
+                        <span class="buy-card-arrow">${icon('arrowLeft')}</span>
                     </div>
                 </button>
             `).join('');
@@ -203,8 +207,7 @@ export async function buy(view) {
     async function renderCategoryStep(host) {
         host.innerHTML = `
             ${backRow('بازگشت')}
-            <p class="section-title">دسته‌بندی</p>
-            <h2 class="section-headline">یک دسته‌بندی انتخاب کنید</h2>
+            <div class="buy-list-heading"><h2>دسته‌بندی سرویس‌ها</h2><span>متناسب با استفادهٔ تو</span></div>
             <div id="cat-list" class="list mt-md">${skeletonList(3)}</div>
         `;
         wireBackBtn(host);
@@ -246,8 +249,7 @@ export async function buy(view) {
     async function renderTimeStep(host) {
         host.innerHTML = `
             ${backRow('بازگشت')}
-            <p class="section-title">مدت زمان</p>
-            <h2 class="section-headline">مدت زمان سرویس را انتخاب کنید</h2>
+            <div class="buy-list-heading"><h2>مدت اشتراک</h2><span>زمان مناسب را انتخاب کن</span></div>
             <div id="time-list" class="list mt-md">${skeletonList(3)}</div>
         `;
         wireBackBtn(host);
@@ -287,10 +289,9 @@ export async function buy(view) {
     async function renderProductStep(host) {
         host.innerHTML = `
             ${backRow('بازگشت')}
-            <p class="section-title">انتخاب سرویس</p>
-            <h2 class="section-headline">یکی از سرویس‌های زیر را انتخاب کنید</h2>
+            <div class="buy-list-heading"><h2>پلن‌های قابل انتخاب</h2><span>انتخاب کن و ادامه بده</span></div>
             ${draft.panel.is_custom ? `
-                <div class="row-spread mt-md mb-md">
+                <div class="buy-mode-switch mt-md mb-md">
                     <button class="chip is-active" data-mode="catalog">${icon('fileText')} کاتالوگ</button>
                     <button class="chip" data-mode="custom">${icon('box')} حجم سفارشی</button>
                 </div>
@@ -492,10 +493,9 @@ export async function buy(view) {
 
         host.innerHTML = `
             ${backRow('بازگشت')}
-            <p class="section-title">جمع‌بندی خرید</p>
-            <h2 class="section-headline">قبل از پرداخت بررسی کنید</h2>
+            <div class="buy-list-heading"><h2>خلاصهٔ سفارش</h2><span>جزئیات سرویس انتخابی تو</span></div>
 
-            <div class="card" style="padding:16px">
+            <div class="card buy-order-card" style="padding:16px">
                 <div class="kv"><span class="kv-label">${icon('pin')} موقعیت</span><span class="kv-value">${escapeHtml(draft.panel.name)}</span></div>
                 <div class="kv"><span class="kv-label">${icon('fileText')} سرویس</span><span class="kv-value">${escapeHtml(p.name)}</span></div>
                 <div class="kv"><span class="kv-label">${icon('box')} حجم</span><span class="kv-value">${escapeHtml(fmtGb(p.traffic_gb))}</span></div>
@@ -722,35 +722,8 @@ export async function buy(view) {
         const price = Number(pay.price || 0);
 
         $inline.innerHTML = `
-            <div class="card-section cart-info-card">
-                <div class="cart-banner">
-                    ${icon('wallet', 'class="ico ico-xxl ico-accent"')}
-                    <h3>پرداخت مبلغ کسری</h3>
-                    <p class="muted center" style="font-size:12px">
-                        موجودی شما برای خرید کامل کافی نیست. مبلغ کسری را با یکی از روش‌های زیر پرداخت کنید؛ پس از تأیید ادمین، سرویس به‌صورت خودکار ساخته خواهد شد.
-                    </p>
-                </div>
-
-                <div class="kv mt-md">
-                    <span class="kv-label">${icon('wallet')} موجودی فعلی</span>
-                    <span class="kv-value mono">${escapeHtml(fmtPrice(balance))}</span>
-                </div>
-                <div class="kv">
-                    <span class="kv-label">${icon('coin')} قیمت سرویس</span>
-                    <span class="kv-value mono">${escapeHtml(fmtPrice(price))}</span>
-                </div>
-                ${walletBreakdownHtml(pay.checkout)}
-                <div class="kv">
-                    <span class="kv-label">${icon('alert')} مبلغ قابل پرداخت</span>
-                    <span class="kv-value mono accent" style="font-size:18px;font-weight:700">${fmtNum(amountDue)} تومان</span>
-                </div>
-                ${username ? `
-                <div class="kv">
-                    <span class="kv-label">${icon('user')} نام کاربری سرویس</span>
-                    <span class="kv-value mono">${escapeHtml(username)}</span>
-                </div>` : ''}
-
-                <p class="section-title mt-md">${icon('creditCard')} انتخاب روش پرداخت</p>
+            <div class="direct-checkout">
+                ${inlinePaymentSummaryHtml(pay, { bannerHint: 'روش پرداخت را انتخاب کن؛ پس از تأیید پرداخت، سرویس به‌صورت خودکار ساخته می‌شود.' })}
                 <div class="payment-methods" id="inline-pay-list">
                     ${skeletonList(3)}
                 </div>
@@ -817,7 +790,7 @@ export async function buy(view) {
             const cryptoOfflineIds = ['crypto_offline', 'digitaltron'];
             if (method.kind === 'crypto_offline' || cryptoOfflineIds.includes(method.id)) {
                 try {
-                    const mod = await import( './crypto-offline.js');
+                    const mod = await import( './crypto-offline.js?v=3');
                     if (mod && typeof mod.renderCryptoOffline === 'function') {
                         mod.renderCryptoOffline(view, {
                             amount: amountDue,

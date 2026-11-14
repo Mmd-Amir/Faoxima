@@ -7,10 +7,10 @@ const REACTION_EMOJI = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 const mediaData = new WeakMap();
 
 function statusMeta(status, open) {
-    if (!open || status === 'close') return { text: 'بسته', cls: 'is-warn', ic: 'check' };
-    if (status === 'Unseen' || status === 'Customerresponse') return { text: 'در انتظار پاسخ', cls: 'is-active', ic: 'clock' };
-    if (status === 'Answered') return { text: 'پاسخ داده شد', cls: 'is-active', ic: 'check' };
-    return { text: 'باز', cls: 'is-active', ic: 'info' };
+    if (!open || status === 'close') return { text: 'بسته', cls: 'tk-status-closed', ic: 'check' };
+    if (status === 'Unseen' || status === 'Customerresponse') return { text: 'در انتظار پاسخ', cls: 'tk-status-waiting', ic: 'clock' };
+    if (status === 'Answered') return { text: 'پاسخ داده شد', cls: 'tk-status-answered', ic: 'check' };
+    return { text: 'باز', cls: 'tk-status-waiting', ic: 'info' };
 }
 
 function fmtJalaliParts(raw) {
@@ -144,7 +144,7 @@ function wireAddFile(wrapId, btnId) {
     function updateAddButton() {
         const count = wrap.querySelectorAll('.tk-file-input').length;
         btn.style.display = count >= 5 ? 'none' : '';
-        if (label) label.textContent = count > 0 ? 'افزودن فایل دیگر' : 'انتخاب عکس یا ویدیو';
+        if (label) label.textContent = count > 0 ? 'افزودن پیوست' : 'عکس یا ویدیو';
     }
 
     wrap.addEventListener('tk-slot-remove', updateAddButton);
@@ -177,16 +177,14 @@ function ticketRowHtml(t) {
     const title = t.subject && t.subject !== '' ? t.subject : t.department;
     const { date, time } = fmtJalaliParts(t.last_time);
     return `
-        <a href="#/tickets/${encodeURIComponent(t.tracking)}" class="list-item">
-            <div class="li-main">
+        <a href="#/tickets/${encodeURIComponent(t.tracking)}" class="tk-ticket-row">
+            <span class="tk-ticket-icon">${icon('fileText')}</span><div class="li-main">
                 <div class="li-title">${escapeHtml(title)}</div>
-                <div class="li-sub li-sub-stacked">
-                    <span class="li-sub-line">${escapeHtml(t.department)}</span>
-                    ${time ? `<span class="li-sub-line">${escapeHtml(time)}</span>` : ''}
-                    <span class="li-sub-line">${escapeHtml(date)}</span>
+                <div class="li-sub tk-ticket-meta"><span>${escapeHtml(t.department)}</span>
+                    <span>${escapeHtml(date)} ${escapeHtml(time)}</span>
                 </div>
             </div>
-            <span class="badge ${meta.cls}">${icon(meta.ic, 'class="ico"')} ${escapeHtml(meta.text)}</span>
+            <span class="badge tk-status ${meta.cls}">${icon(meta.ic, 'class="ico"')} ${escapeHtml(meta.text)}</span>
             <span class="li-action" aria-hidden="true">${icon('chevronLeft', 'class="ico"')}</span>
         </a>
     `;
@@ -198,13 +196,9 @@ export async function tickets(view) {
     let totalPages = 1;
 
     view.innerHTML = `
-        <article class="card card-window card-bare">
-            <header class="card-window-bar">
-                <span class="dots"><span></span><span></span><span></span></span>
-                <span class="window-url">faoxima/tickets</span>
-            </header>
-            <div class="card-body">
-                <p class="section-title">${icon('send')} تیکت‌های پشتیبانی</p>
+        <article class="support-page">
+            <div class="support-content">
+                <header class="support-hero"><span>${icon('shield')}</span><div><small>ارتباط با پشتیبانی</small><h1>کنارت هستیم.</h1><p>سؤال یا مشکلت را از همین‌جا پیگیری کن.</p></div></header><div class="tk-list-heading"><h2>گفتگوهای تو</h2><a href="#/tickets/new" class="btn btn-primary">${icon('plus')} تیکت جدید</a></div>
                 <div id="tk-list" class="list mt-sm">${skeletonList(4)}</div>
 
                 <div class="pager hidden" id="tk-pager">
@@ -213,10 +207,7 @@ export async function tickets(view) {
                     <button class="btn btn-ghost" id="tk-next">بعدی${icon('chevronLeft', 'class="ico ico-trailing"')}</button>
                 </div>
 
-                <a href="#/tickets/new" class="btn btn-primary btn-block mt-md">
-                    ${icon('plus', 'class="ico ico-leading"')}
-                    <span>تیکت جدید</span>
-                </a>
+
             </div>
         </article>
     `;
@@ -277,24 +268,20 @@ export async function ticketNew(view) {
 
     view.innerHTML = `
         <a href="#/tickets" class="page-back">${icon('chevronLeft', 'class="ico"')}<span>بازگشت</span></a>
-        <article class="card card-window card-bare">
-            <header class="card-window-bar">
-                <span class="dots"><span></span><span></span><span></span></span>
-                <span class="window-url">faoxima/tickets/new</span>
-            </header>
-            <div class="card-body">
-                <p class="section-title">${icon('plus')} تیکت جدید</p>
+        <article class="support-page">
+            <div class="support-content">
+                <header class="support-form-heading"><span>${icon('send')}</span><div><h1>تیکت جدید</h1><p>موضوع را کوتاه و مشکلت را واضح بنویس.</p></div></header>
                 <div class="form-row mt-sm">
-                    <label class="muted" style="font-size:12px;display:block;margin-bottom:4px">دپارتمان</label>
+                    <label for="tk-dep" class="muted" style="font-size:12px;display:block;margin-bottom:4px">بخش پشتیبانی</label>
                     <select id="tk-dep" style="width:100%;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:11px 12px;font:inherit"></select>
                 </div>
                 <div class="form-row mt-sm">
-                    <label class="muted" style="font-size:12px;display:block;margin-bottom:4px">موضوع</label>
+                    <label for="tk-subj" class="muted" style="font-size:12px;display:block;margin-bottom:4px">موضوع</label>
                     <input id="tk-subj" type="text" maxlength="120" placeholder="مثلاً: مشکل در اتصال" />
                 </div>
                 <div class="form-row mt-sm">
-                    <label class="muted" style="font-size:12px;display:block;margin-bottom:4px">متن پیام</label>
-                    <textarea id="tk-text" rows="4" maxlength="2000" placeholder="پیام خود را بنویسید..."></textarea>
+                    <label for="tk-text" class="muted" style="font-size:12px;display:block;margin-bottom:4px">متن پیام</label>
+                    <textarea id="tk-text" rows="3" maxlength="2000" placeholder="پیام خود را بنویسید..."></textarea>
                 </div>
                 <div class="form-row mt-sm">
                     <label class="muted" style="font-size:12px;display:block;margin-bottom:4px">پیوست (عکس یا ویدیو، تا ۵ مورد، اختیاری)</label>
@@ -362,12 +349,8 @@ export async function ticketDetail(view, encodedTracking) {
 
     view.innerHTML = `
         <a href="#/tickets" class="page-back">${icon('chevronLeft', 'class="ico"')}<span>بازگشت</span></a>
-        <article class="card card-window card-bare">
-            <header class="card-window-bar">
-                <span class="dots"><span></span><span></span><span></span></span>
-                <span class="window-url">faoxima/ticket</span>
-            </header>
-            <div class="card-body" id="tk-body">${skeletonList(4)}</div>
+        <article class="support-page">
+            <div class="support-content" id="tk-body">${skeletonList(4)}</div>
         </article>
     `;
 
@@ -451,10 +434,7 @@ export async function ticketDetail(view, encodedTracking) {
         const msgs = Array.isArray(data.messages) ? data.messages : [];
         const bubbles = msgs.map((m) => {
             const isAdmin = m.sender === 'admin';
-            const who = isAdmin ? '👨‍💻 پشتیبانی' : '👤 شما';
-            const align = isAdmin ? 'flex-start' : 'flex-end';
-            const bg = isAdmin ? 'var(--gold-soft)' : 'var(--surface-2)';
-            const bd = isAdmin ? 'var(--border-strong)' : 'var(--border)';
+            const who = isAdmin ? 'پشتیبانی' : 'شما';
             const mediaList = Array.isArray(m.media) ? m.media : [];
             const mediaHtml = mediaList.length
                 ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">` + mediaList.map((mm, mi) =>
@@ -480,26 +460,26 @@ export async function ticketDetail(view, encodedTracking) {
                 : '';
 
             const msgTimeParts = fmtJalaliParts(m.time);
-            const msgTimeLabel = msgTimeParts.time ? `${msgTimeParts.time} ${msgTimeParts.date}` : (m.time || '');
+            const msgTimeLabel = msgTimeParts.time || m.time || '';
 
             return `
-                <div class="tk-bubble-row" style="display:flex;justify-content:${align}" data-msg-id="${escapeHtml(String(m.id))}">
-                    <div class="tk-bubble-wrap" style="max-width:82%">
-                        <div class="tk-bubble" style="background:${bg};border:1px solid ${bd};border-radius:14px;padding:9px 12px">
+                <div class="tk-bubble-row ${isAdmin ? 'is-support' : 'is-self'}" data-msg-id="${escapeHtml(String(m.id))}">
+                    <div class="tk-bubble-wrap">
+                        <div class="tk-bubble">
                             <div class="muted" style="font-size:11px;margin-bottom:4px">${who}</div>
                             ${replyQuoteHtml}
                             ${bodyHtml}
                             ${mediaHtml}
                             <div class="muted mono" style="font-size:10.5px;margin-top:6px;text-align:end;display:flex;align-items:center;justify-content:flex-end;gap:4px">
-                                <span>${escapeHtml(msgTimeLabel)}</span>
+                                <span title="${escapeHtml(m.time || '')}">${escapeHtml(msgTimeLabel)}</span>
                                 ${receiptHtml}
                             </div>
                         </div>
                         ${reactionsHtml}
                         <div class="tk-msg-actions">
-                            ${isAdmin ? `<button type="button" class="tk-msg-action-btn" data-act="react" title="واکنش">🙂</button>` : ''}
-                            <button type="button" class="tk-msg-action-btn" data-act="reply" title="پاسخ">${icon('send', 'class="ico"')}</button>
-                            <button type="button" class="tk-msg-action-btn" data-act="copy" title="کپی">${icon('copy', 'class="ico"')}</button>
+                            ${isAdmin ? `<button type="button" class="tk-msg-action-btn" data-act="react" title="واکنش" aria-label="واکنش به پیام">🙂</button>` : ''}
+                            <button type="button" class="tk-msg-action-btn" data-act="reply" title="پاسخ" aria-label="پاسخ به پیام">${icon('send', 'class="ico"')}</button>
+                            <button type="button" class="tk-msg-action-btn" data-act="copy" title="کپی" aria-label="کپی پیام">${icon('copy', 'class="ico"')}</button>
                         </div>
                     </div>
                 </div>
@@ -507,40 +487,20 @@ export async function ticketDetail(view, encodedTracking) {
         }).join('');
 
         const replyBox = data.open
-            ? `
-                <div class="card-section">
-                    <p class="section-title">${icon('send')} پاسخ جدید</p>
-                    <div id="tk-reply-preview" class="tk-reply-preview hidden"></div>
-                    <div class="form-row mt-sm">
-                        <textarea id="tk-reply" rows="3" maxlength="2000" placeholder="پاسخ خود را بنویسید..."></textarea>
-                    </div>
-                    <div class="form-row mt-sm">
-                        <div id="tk-reply-file-wrap" class="tk-upload-wrap"></div>
-                        <button type="button" id="tk-reply-add-file" class="btn btn-ghost btn-block mt-sm">${icon('plus', 'class="ico ico-leading"')}<span class="tk-add-file-label">انتخاب عکس یا ویدیو</span></button>
-                    </div>
-                    <div class="row-spread mt-sm gap-sm stack-on-mobile">
-                        <button id="tk-reply-send" type="button" class="btn btn-primary btn-block" style="flex:1">
-                            ${icon('send', 'class="ico ico-leading"')}<span class="tk-reply-label">ارسال</span>
-                        </button>
-                        <button id="tk-close" type="button" class="btn btn-ghost btn-block" style="flex:1">
-                            ${icon('check', 'class="ico ico-leading"')}<span>بستن تیکت</span>
-                        </button>
-                    </div>
-                </div>
-            `
-            : `<div class="card-section"><p class="muted center" style="font-size:13px">🔒 این تیکت بسته است. تا زمانی که پشتیبانی پاسخ ندهد یا آن را باز نکند نمی‌توانید پیام بفرستید.</p></div>`;
+            ? `<section class="tk-composer"><div class="tk-composer-heading"><h3>پاسخ تو</h3><span>عکس یا ویدیو تا ۵ مورد</span></div><div id="tk-reply-preview" class="tk-reply-preview hidden"></div><label class="tk-sr-only" for="tk-reply">متن پاسخ</label><textarea id="tk-reply" rows="2" maxlength="2000" placeholder="پیامت را بنویس…"></textarea><div id="tk-reply-file-wrap" class="tk-upload-wrap"></div><div class="tk-composer-actions"><button type="button" id="tk-reply-add-file" class="btn btn-ghost">${icon('plus')}<span class="tk-add-file-label">پیوست</span></button><button id="tk-reply-send" type="button" class="btn btn-primary">${icon('send')}<span class="tk-reply-label">ارسال پاسخ</span></button></div><button id="tk-close" type="button" class="tk-close-link">${icon('check')} بستن تیکت</button></section>`
+            : `<div class="tk-closed-note">${icon('checkCircle')}<div><b>این گفتگو بسته شده</b><p>تا زمانی که پشتیبانی آن را باز نکند، امکان ارسال پاسخ نیست.</p></div></div>`;
 
         $body.innerHTML = `
-            <div class="row-spread">
+            <div class="tk-thread-heading">
                 <div>
                     <div class="muted mono" style="font-size:12px">#${escapeHtml(data.tracking)}</div>
                     <h2 style="margin:4px 0 0;font-size:18px;font-weight:700">${escapeHtml(data.subject && data.subject !== '' ? data.subject : data.department)}</h2>
                     <div class="muted" style="font-size:12px;margin-top:2px">${escapeHtml(data.department)}</div>
                 </div>
-                <span class="badge ${meta.cls}">${icon(meta.ic, 'class="ico"')} ${escapeHtml(meta.text)}</span>
+                <span class="badge tk-status ${meta.cls}">${icon(meta.ic, 'class="ico"')} ${escapeHtml(meta.text)}</span>
             </div>
-            <div class="card-section">
-                <div id="tk-msgs" style="max-height:55vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:2px">${bubbles || '<p class="muted center">پیامی نیست</p>'}</div>
+            <div class="tk-conversation">
+                <div id="tk-msgs">${bubbles || '<p class="muted center">پیامی نیست</p>'}</div>
             </div>
             ${replyBox}
         `;
@@ -600,7 +560,7 @@ export async function ticketDetail(view, encodedTracking) {
             picker.style.left = `${left}px`;
         }
 
-        $body.addEventListener('click', async (e) => {
+        $body.onclick = async (e) => {
             const actBtn = e.target.closest ? e.target.closest('.tk-msg-action-btn') : null;
             if (actBtn) {
                 const row = actBtn.closest('.tk-bubble-row');
@@ -652,7 +612,7 @@ export async function ticketDetail(view, encodedTracking) {
             if (!e.target.closest('.tk-reaction-picker') && !e.target.closest('.tk-msg-action-btn')) {
                 closeReactionPickers();
             }
-        });
+        };
 
         if (!document.body.dataset.tkPickerScrollWired) {
             document.body.dataset.tkPickerScrollWired = '1';

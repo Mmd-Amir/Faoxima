@@ -2,7 +2,7 @@ import { call } from '../api.js?v=0.0.53';
 import { escapeHtml, copyToClipboard, toast, blobToDataUrl } from '../utils.js?v=0.0.52';
 import { icon } from '../icons.js?v=0.0.52';
 import { hapticImpact, hapticNotify, showConfirm } from '../telegram.js?v=0.0.52';
-import { startGatewayWatch } from './gateway-watch.js';
+import { startGatewayWatch } from './gateway-watch.js?v=2';
 import { getToken } from '../state.js';
 
 
@@ -56,6 +56,10 @@ function loadSuccessModule() {
 }
 
 
+function cryptoHeading(title, stage = '') {
+    return `<header class="crypto-heading"><span class="crypto-heading-icon">${icon('globe')}</span><div><span class="pay-eyebrow">پرداخت با رمزارز${stage ? ' · ' + escapeHtml(stage) : ''}</span><h1>${escapeHtml(title)}</h1></div></header>`;
+}
+
 export function renderCryptoOffline(view, opts = {}) {
 
     const state = {
@@ -81,14 +85,10 @@ export function renderCryptoOffline(view, opts = {}) {
                 ${icon('chevronRight', 'class="ico"')}
                 <span>بازگشت</span>
             </a>
-            <article class="card card-window">
-                <header class="card-window-bar">
-                    <span class="dots"><span></span><span></span><span></span></span>
-                    <span class="window-url">faoxima/crypto/currency</span>
-                </header>
-                <div class="card-body">
-                    <p class="section-title">${exchangeIcon('ico-accent')} ارز آفلاین (هش‌چکر)</p>
-                    <h3 style="margin:4px 0 14px;font-size:17px">ارز موردنظر را انتخاب کنید</h3>
+            <article class="payment-flow crypto-page">
+                ${cryptoHeading('ارز و شبکه را انتخاب کن', '۱ از ۳')}
+                <div class="crypto-body">
+                    <p class="crypto-helper">ارز و شبکه‌ای را انتخاب کن که در کیف پولت در دسترس است.</p>
                     <div id="crypto-list" class="list mt-md">
                         <div class="skeleton skeleton-row"></div>
                         <div class="skeleton skeleton-row"></div>
@@ -143,8 +143,7 @@ export function renderCryptoOffline(view, opts = {}) {
             return `
             <button type="button" class="pay-card" data-code="${escapeHtml(c.code)}">
                 <span class="crypto-ico" style="color:${escapeHtml(tint)}">${visual}</span>
-                <span class="pay-label">${escapeHtml(c.name || c.code)}</span>
-                <span class="muted mono" style="font-size:11px">${escapeHtml(netLabel)}</span>
+                <span class="crypto-currency-copy"><b>${escapeHtml(c.name || c.code)}</b><small dir="ltr">${escapeHtml(netLabel)}</small></span>
                 ${icon('chevronLeft', 'class="ico pay-arrow"')}
             </button>`;
         }).join('');
@@ -166,12 +165,9 @@ export function renderCryptoOffline(view, opts = {}) {
                 ${icon('chevronRight', 'class="ico"')}
                 <span>بازگشت</span>
             </a>
-            <article class="card card-window">
-                <header class="card-window-bar">
-                    <span class="dots"><span></span><span></span><span></span></span>
-                    <span class="window-url">faoxima/crypto/invoice</span>
-                </header>
-                <div class="card-body">
+            <article class="payment-flow crypto-page">
+                ${cryptoHeading('در حال ساخت فاکتور…', '۲ از ۳')}
+                <div class="crypto-body">
                     <p class="section-title">${icon('wallet')} ساخت فاکتور…</p>
                     <div class="skeleton skeleton-row"></div>
                     <div class="skeleton skeleton-row"></div>
@@ -225,13 +221,10 @@ export function renderCryptoOffline(view, opts = {}) {
                 ${icon('chevronRight', 'class="ico"')}
                 <span>بازگشت</span>
             </a>
-            <article class="card card-window">
-                <header class="card-window-bar">
-                    <span class="dots"><span></span><span></span><span></span></span>
-                    <span class="window-url">faoxima/crypto/pay</span>
-                </header>
-                <div class="card-body">
-                    <p class="section-title">${isManual ? icon('wrench', 'class="ico ico-accent"') : exchangeIcon('ico-accent')} پرداخت ارز آفلاین — ${escapeHtml(state.currency.name)}${isManual ? ' (بررسی دستی)' : ''}</p>
+            <article class="payment-flow crypto-page">
+                ${cryptoHeading('جزئیات انتقال تو', '۲ از ۳')}
+                <div class="crypto-body">
+                    <p class="section-title">${isManual ? icon('wrench', 'class="ico ico-accent"') : exchangeIcon('ico-accent')} جزئیات پرداخت — ${escapeHtml(state.currency.name)}${isManual ? ' (بررسی دستی)' : ''}</p>
                     <p class="muted" style="font-size:13px">
                         مبلغ روبه‌رو را به آدرس زیر روی شبکه‌ی <b>${escapeHtml(inv.network)}</b> ارسال کنید.
                         مقدار دقیق رو با ۲ رقم اعشار از کیف‌پول یا صرافی ارسال کنید.
@@ -243,12 +236,14 @@ export function renderCryptoOffline(view, opts = {}) {
                             <div>این شبکه به‌صورت خودکار بررسی نمی‌شود. بعد از ارسال هش، باید <b>عکس رسید تراکنش</b> را نیز آپلود کنید و تایید نهایی توسط ادمین انجام می‌شود.</div>
                         </div>` : ''}
 
-                    ${_qrOn ? `<div class="qr-panel mt-md"><div class="qr-frame"><img id="crypto-qr-img" alt="QR" /></div></div>` : ''}
+                    <div class="crypto-network">${icon('globe')} شبکهٔ انتقال <strong dir="ltr">${escapeHtml(inv.network)}</strong></div>
 
                     <div class="sub-link-box wallet-big-box mt-md">
                         <div class="label">${icon('wallet')} <span>آدرس کیف‌پول دریافت‌کننده</span></div>
-                        <div class="wallet-big mono" id="copy-wallet" title="کلیک = کپی">${escapeHtml(inv.wallet_to)}</div>
+                        <button type="button" class="crypto-copy-value" id="copy-wallet" aria-label="کپی آدرس کیف پول"><span dir="ltr">${escapeHtml(inv.wallet_to)}</span>${icon('copy')}</button>
                     </div>
+
+                    ${_qrOn ? `<details class="crypto-qr-details"><summary>${icon('qrCode')} نمایش QR آدرس ${icon('chevronDown')}</summary><div class="qr-panel"><div class="qr-frame"><img id="crypto-qr-img" alt="QR آدرس کیف پول" /></div></div></details>` : ''}
 
                     <div class="kv mt-md">
                         <span class="kv-label">${icon('coin')} مبلغ قابل پرداخت</span>
@@ -257,7 +252,7 @@ export function renderCryptoOffline(view, opts = {}) {
 
                     <div class="sub-link-box mt-sm">
                         <div class="label">${icon('coin')} <span>مبلغ دقیق ${escapeHtml(state.currency.code)}</span></div>
-                        <div class="sub-link-value mono" id="copy-amount" style="font-size:18px;font-weight:700;color:var(--gold-bright);text-align:center" title="کلیک = کپی">${escapeHtml(inv.crypto_amount)}</div>
+                        <button type="button" class="crypto-copy-value crypto-exact-value" id="copy-amount" aria-label="کپی مبلغ دقیق رمزارز"><span dir="ltr">${escapeHtml(inv.crypto_amount)}</span>${icon('copy')}</button>
                         <div class="muted" style="font-size:12px;text-align:center;margin-top:4px">(معادل ${escapeHtml(Number(inv.amount_toman_final || inv.amount_toman || 0).toLocaleString('en-US'))} تومان)</div>
                     </div>
 
@@ -266,7 +261,7 @@ export function renderCryptoOffline(view, opts = {}) {
                             ${icon('alert', 'class="ico ico-leading"')}
                             <div>
                                 <b>توجه (memo):</b> برای شبکه‌ی ${escapeHtml(inv.network)}، حتماً <code>memo</code> زیر را در تراکنش بگنجانید — وگرنه تراکنش از دست می‌رود.
-                                <div class="sub-link-value mono mt-sm" id="copy-memo" title="کلیک = کپی">${escapeHtml(inv.wallet_memo)}</div>
+                                <button type="button" class="crypto-copy-value" id="copy-memo" aria-label="کپی memo"><span dir="ltr">${escapeHtml(inv.wallet_memo)}</span>${icon('copy')}</button>
                             </div>
                         </div>` : ''}
 
@@ -308,7 +303,7 @@ export function renderCryptoOffline(view, opts = {}) {
                 })
                 .then(blobToDataUrl)
                 .then((dataUrl) => { $qrImg.src = dataUrl; })
-                .catch(() => { const panel = $qrImg.closest('.qr-panel'); if (panel) panel.remove(); });
+                .catch(() => { const panel = $qrImg.closest('.crypto-qr-details'); if (panel) panel.remove(); });
         }
 
 
@@ -340,18 +335,15 @@ export function renderCryptoOffline(view, opts = {}) {
                 ${icon('chevronRight', 'class="ico"')}
                 <span>بازگشت</span>
             </a>
-            <article class="card card-window">
-                <header class="card-window-bar">
-                    <span class="dots"><span></span><span></span><span></span></span>
-                    <span class="window-url">faoxima/crypto/hash</span>
-                </header>
-                <div class="card-body">
+            <article class="payment-flow crypto-page">
+                ${cryptoHeading('آخرین قدم؛ ثبت تراکنش', '۳ از ۳')}
+                <div class="crypto-body">
                     <p class="section-title">${icon('fileText')} ارسال هش تراکنش</p>
                     <p class="muted" style="font-size:13px">هش تراکنش (Transaction Hash) یا لینک آن را ارسال کنید — نه آدرس کیف‌پول.</p>
 
                     <div class="form-row mt-md">
                         <label class="muted" style="font-size:12px">هش یا لینک تراکنش</label>
-                        <textarea id="hash-input" rows="3" placeholder="مثلاً: هش تراکنش یا لینک آن از اکسپلورر شبکه"></textarea>
+                        <textarea id="hash-input" rows="3" dir="ltr" spellcheck="false" aria-label="هش یا لینک تراکنش" placeholder="مثلاً: هش تراکنش یا لینک آن از اکسپلورر شبکه"></textarea>
                     </div>
 
                     <button type="button" class="btn btn-primary btn-block mt-md" id="hash-submit">
@@ -407,12 +399,9 @@ export function renderCryptoOffline(view, opts = {}) {
     function step5bReceiptUpload() {
         const inv = state.invoice;
         view.innerHTML = `
-            <article class="card card-window">
-                <header class="card-window-bar">
-                    <span class="dots"><span></span><span></span><span></span></span>
-                    <span class="window-url">faoxima/crypto/receipt</span>
-                </header>
-                <div class="card-body">
+            <article class="payment-flow crypto-page">
+                ${cryptoHeading('تصویر رسید تراکنش', '۳ از ۳')}
+                <div class="crypto-body">
                     <p class="section-title">${icon('wrench', 'class="ico ico-accent"')} بررسی دستی — ارسال رسید</p>
                     <p class="muted" style="font-size:13px">این شبکه به‌صورت خودکار بررسی نمی‌شود. برای ثبت درخواست بررسی توسط ادمین، عکس رسید تراکنش را آپلود کنید.</p>
 
@@ -509,12 +498,9 @@ export function renderCryptoOffline(view, opts = {}) {
     function step6ManualPending(message) {
         const inv = state.invoice;
         view.innerHTML = `
-            <article class="card card-window">
-                <header class="card-window-bar">
-                    <span class="dots"><span></span><span></span><span></span></span>
-                    <span class="window-url">faoxima/crypto/pending</span>
-                </header>
-                <div class="card-body" style="text-align:center;padding:22px">
+            <article class="payment-flow crypto-page payment-outcome" data-outcome="receipt">
+                ${cryptoHeading('در انتظار بررسی رسید', '')}
+                <div class="crypto-body" style="text-align:center;padding:22px">
                     <div style="font-size:42px;line-height:1;color:var(--gold-bright);margin:4px 0 10px">
                         ${icon('checkCircle', 'class="ico ico-xxl"')}
                     </div>
@@ -578,12 +564,9 @@ export function renderCryptoOffline(view, opts = {}) {
                 const ctaLabel = isPendingAction ? 'سرویس‌های من' : 'خرید سرویس';
 
                 view.innerHTML = `
-                    <article class="card card-window">
-                        <header class="card-window-bar">
-                            <span class="dots"><span></span><span></span><span></span></span>
-                            <span class="window-url">faoxima/crypto/done</span>
-                        </header>
-                        <div class="card-body" style="text-align:center;padding:22px">
+                    <article class="payment-flow crypto-page payment-outcome" data-outcome="success">
+                        ${cryptoHeading('پرداخت تکمیل شد', '')}
+                        <div class="crypto-body" style="text-align:center;padding:22px">
                             <div style="font-size:42px;line-height:1;color:var(--green);margin:4px 0 10px">
                                 ${icon('checkCircle', 'class="ico ico-xxl ico-success"')}
                             </div>
@@ -600,12 +583,9 @@ export function renderCryptoOffline(view, opts = {}) {
             onFail: (statusObj) => {
                 const reason = statusObj.reason || 'تراکنش تایید نشد';
                 view.innerHTML = `
-                    <article class="card card-window">
-                        <header class="card-window-bar">
-                            <span class="dots"><span></span><span></span><span></span></span>
-                            <span class="window-url">faoxima/crypto/fail</span>
-                        </header>
-                        <div class="card-body" style="text-align:center;padding:22px">
+                    <article class="payment-flow crypto-page payment-outcome" data-outcome="danger">
+                        ${cryptoHeading('نیاز به بررسی دوباره', '')}
+                        <div class="crypto-body" style="text-align:center;padding:22px">
                             <div style="font-size:42px;line-height:1;color:var(--red);margin:4px 0 10px">
                                 ${icon('xCircle', 'class="ico ico-xxl ico-warn"')}
                             </div>
@@ -625,12 +605,9 @@ export function renderCryptoOffline(view, opts = {}) {
             },
             onTimeout: () => {
                 view.innerHTML = `
-                    <article class="card card-window">
-                        <header class="card-window-bar">
-                            <span class="dots"><span></span><span></span><span></span></span>
-                            <span class="window-url">faoxima/crypto/timeout</span>
-                        </header>
-                        <div class="card-body" style="text-align:center;padding:22px">
+                    <article class="payment-flow crypto-page payment-outcome" data-outcome="warning">
+                        ${cryptoHeading('مهلت بررسی پایان یافت', '')}
+                        <div class="crypto-body" style="text-align:center;padding:22px">
                             <div style="font-size:42px;line-height:1;color:var(--yellow);margin:4px 0 10px">
                                 ${icon('clock', 'class="ico ico-xxl ico-warn"')}
                             </div>

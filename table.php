@@ -3740,7 +3740,14 @@ try {
     }
 
     try {
-        $connect->query("CREATE TABLE IF NOT EXISTS wallet_ledger (
+        $rxWalletHasPdo = isset($pdo) && $pdo instanceof PDO;
+        if ($rxWalletHasPdo && function_exists('rx_pf_wallet_ready')) {
+            if (!rx_pf_wallet_ready()) {
+                throw new RuntimeException('wallet_ledger schema reconciliation failed; inspect PAYMENT_FULFILLMENT_WALLET_SCHEMA_FAILED');
+            }
+            $rxWalletSchemaError = '';
+        } elseif (!$rxWalletHasPdo || !function_exists('rx_pf_wallet_ready')) {
+            $connect->query("CREATE TABLE IF NOT EXISTS wallet_ledger (
             id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             id_user VARCHAR(200) NOT NULL,
             direction ENUM('credit','debit') NOT NULL,
@@ -3756,17 +3763,14 @@ try {
             INDEX idx_wl_order (id_order),
             INDEX idx_wl_category (category)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-    } catch (Throwable $e) {
-        error_log('[table.php] wallet_ledger create: ' . $e->getMessage());
-    }
-
-    try {
-        $haveWlKey = $connect->query("SHOW COLUMNS FROM wallet_ledger LIKE 'fulfillment_key'");
-        if ($haveWlKey && $haveWlKey->num_rows === 0) {
-            $connect->query("ALTER TABLE wallet_ledger ADD COLUMN fulfillment_key VARCHAR(191) NULL, ADD UNIQUE KEY uniq_wl_fulfillment_key (fulfillment_key)");
+            $haveWlKey = $connect->query("SHOW COLUMNS FROM wallet_ledger LIKE 'fulfillment_key'");
+            if ($haveWlKey && $haveWlKey->num_rows === 0) {
+                $connect->query("ALTER TABLE wallet_ledger ADD COLUMN fulfillment_key VARCHAR(191) NULL, ADD UNIQUE KEY uniq_wl_fulfillment_key (fulfillment_key)");
+            }
         }
     } catch (Throwable $e) {
-        error_log('[table.php] wallet_ledger fulfillment_key: ' . $e->getMessage());
+        $rxWalletSchemaError = $e->getMessage();
+        error_log('[table.php] wallet_ledger create: ' . $e->getMessage());
     }
 
     try {
@@ -4226,5 +4230,9 @@ try {
     }
 } catch (Exception $rxSeedErr) {
     file_put_contents('error_log', '[table.php kb defaults cleanup] ' . $rxSeedErr->getMessage() . "\n", FILE_APPEND);
+}
+
+if (!empty($rxWalletSchemaError)) {
+    throw new RuntimeException('wallet_ledger upgrade failed: ' . $rxWalletSchemaError);
 }
 

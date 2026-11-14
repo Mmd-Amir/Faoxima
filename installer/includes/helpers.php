@@ -621,11 +621,11 @@ function rx_database_error_message(Throwable $error): string
 
 function rx_table_migrations_verify_ready(array $dbInfo, ?array &$diagnostics = null): bool
 {
-    $diagnostics = ['missing_tables' => [], 'missing_columns' => [], 'charset_columns' => [], 'database_error' => ''];
+    $diagnostics = ['missing_tables' => [], 'missing_columns' => [], 'charset_columns' => [], 'missing_indexes' => [], 'non_transactional_tables' => [], 'wallet_schema' => [], 'database_error' => ''];
     $requiredTables = [
         'user', 'setting', 'channels', 'marzban_panel', 'product', 'invoice',
         'Payment_report', 'textbot', 'shopSetting', 'support_message', 'crypto_wallets',
-        'processed_updates', 'cron_runtime_state',
+        'processed_updates', 'cron_runtime_state', 'wallet_ledger',
     ];
     $requiredColumns = [
         ['user', 'nav_state'],
@@ -642,6 +642,18 @@ function rx_table_migrations_verify_ready(array $dbInfo, ?array &$diagnostics = 
         ['product', 'ip_limit'],
         ['support_message', 'seen_by_admin'],
         ['crypto_wallets', 'verification_mode'],
+        ['wallet_ledger', 'id'],
+        ['wallet_ledger', 'id_user'],
+        ['wallet_ledger', 'direction'],
+        ['wallet_ledger', 'amount'],
+        ['wallet_ledger', 'balance_after'],
+        ['wallet_ledger', 'category'],
+        ['wallet_ledger', 'description'],
+        ['wallet_ledger', 'id_order'],
+        ['wallet_ledger', 'ref_table'],
+        ['wallet_ledger', 'ref_id'],
+        ['wallet_ledger', 'created_at'],
+        ['wallet_ledger', 'fulfillment_key'],
     ];
     try {
         $pdo = rx_database_connect($dbInfo);
@@ -679,11 +691,27 @@ function rx_table_migrations_verify_ready(array $dbInfo, ?array &$diagnostics = 
         foreach ($charsetQuery->fetchAll() as $row) {
             $diagnostics['charset_columns'][] = (string) $row['TABLE_NAME'] . '.' . (string) $row['COLUMN_NAME'] . ':' . (string) $row['CHARACTER_SET_NAME'];
         }
+
+        $walletUniqueIndex = $pdo->query("SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND LOWER(TABLE_NAME) = 'wallet_ledger' AND LOWER(COLUMN_NAME) = 'fulfillment_key' AND NON_UNIQUE = 0 LIMIT 1")->fetchColumn();
+        if ($walletUniqueIndex === false && !in_array('wallet_ledger', $diagnostics['missing_tables'], true)) {
+            $diagnostics['missing_indexes'][] = 'wallet_ledger.uniq_wl_fulfillment_key';
+        }
+        $walletEngine = $pdo->query("SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND LOWER(TABLE_NAME) = 'wallet_ledger' LIMIT 1")->fetchColumn();
+        if ($walletEngine !== false && strcasecmp((string) $walletEngine, 'InnoDB') !== 0) {
+            $diagnostics['non_transactional_tables'][] = 'wallet_ledger:' . (string) $walletEngine;
+        }
+        if (!in_array('wallet_ledger', $diagnostics['missing_tables'], true)) {
+            require_once dirname(__DIR__, 2) . '/re/rx/function/payment_fulfillment.php';
+            $walletSchema = rx_pf_wallet_schema_verify($pdo);
+            if (empty($walletSchema['ok'])) {
+                $diagnostics['wallet_schema'][] = (string) ($walletSchema['reason'] ?? 'wallet_ledger schema verification failed');
+            }
+        }
     } catch (Throwable $error) {
         $diagnostics['database_error'] = $error->getMessage();
         return false;
     }
-    return empty($diagnostics['missing_tables']) && empty($diagnostics['missing_columns']) && empty($diagnostics['charset_columns']);
+    return empty($diagnostics['missing_tables']) && empty($diagnostics['missing_columns']) && empty($diagnostics['charset_columns']) && empty($diagnostics['missing_indexes']) && empty($diagnostics['non_transactional_tables']) && empty($diagnostics['wallet_schema']);
 }
 
 function rx_execute_table_file(string $installerTableRunFile): array
@@ -734,7 +762,7 @@ function rx_run_table_migrations(string $rootDirectory, array $dbInfo): array
         if (!$execution['ok']) {
             $executionError = (string) $execution['message'];
         }
-        if (rx_table_migrations_verify_ready($dbInfo, $diagnostics)) {
+        if (rx_table_migrations_verify_ready($dbInfo, $diagnostics) && $execution['ok']) {
             return ['ok' => true, 'message' => ''];
         }
     }
@@ -746,6 +774,9 @@ function rx_run_table_migrations(string $rootDirectory, array $dbInfo): array
         'missing_tables' => 'جداول ایجادنشده',
         'missing_columns' => 'ستون‌های ایجادنشده',
         'charset_columns' => 'ستون‌های غیر utf8mb4',
+        'missing_indexes' => 'ایندکس‌های ایجادنشده',
+        'non_transactional_tables' => 'جداول غیر InnoDB',
+        'wallet_schema' => 'ساختار ناسازگار کیف پول',
     ];
     foreach ($labels as $key => $label) {
         if (!empty($diagnostics[$key])) {

@@ -46,23 +46,13 @@ if (!function_exists('rx_inlineButtonMapFile')) {
 if (!function_exists('rx_storeInlineButtonText')) {
     function rx_storeInlineButtonText($text) {
         $code = 'rxb_' . substr(hash('sha256', (string)$text), 0, 24);
-        $file = rx_inlineButtonMapFile();
-        $map = [];
-        if (is_file($file)) {
-            $decoded = json_decode((string)@file_get_contents($file), true);
-            if (is_array($decoded)) $map = $decoded;
-        }
-        $map[$code] = (string)$text;
-        @file_put_contents($file, json_encode($map, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), LOCK_EX);
-        return $code;
+        return rx_callbackMapStore(rx_inlineButtonMapFile(), $code, (string)$text) ? $code : 'start';
     }
 }
 if (!function_exists('rx_resolveInlineButtonText')) {
     function rx_resolveInlineButtonText($code) {
         if (!is_string($code) || strpos($code, 'rxb_') !== 0) return null;
-        $file = rx_inlineButtonMapFile();
-        if (!is_file($file)) return null;
-        $map = json_decode((string)@file_get_contents($file), true);
+        $map = rx_callbackMapRead(rx_inlineButtonMapFile());
         return is_array($map) && isset($map[$code]) ? (string)$map[$code] : null;
     }
 }

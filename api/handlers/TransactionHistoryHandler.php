@@ -30,17 +30,18 @@ final class TransactionHistoryHandler extends BaseHandler
     {
         $this->requireMethod('GET');
 
+        $days = FaoximaInput::intRange($this->data, 'days', 1, 365, 30);
         $userId = (string)($this->user['id'] ?? '');
         if ($userId === '') {
-            FaoximaResponse::ok(['items' => [], 'total' => 0, 'total_pages' => 0, 'page' => 1, 'limit' => 4]);
+            FaoximaResponse::ok(['items' => [], 'total' => 0, 'total_pages' => 0, 'page' => 1, 'limit' => 10]);
             return;
         }
 
-        $limit = FaoximaInput::intRange($this->data, 'limit', 1, 50, 4);
+        $limit = FaoximaInput::intRange($this->data, 'limit', 10, 50, 10);
         $page = FaoximaInput::intMin($this->data, 'page', 1, 1);
         $offset = ($page - 1) * $limit;
 
-        $params = [':u' => $userId, ':cutoff' => time() - (30 * 24 * 60 * 60)];
+        $params = [':u' => $userId, ':cutoff' => time() - ($days * 24 * 60 * 60)];
         $where = 'id_user = :u AND created_at >= FROM_UNIXTIME(:cutoff)';
 
         try {
@@ -87,6 +88,7 @@ final class TransactionHistoryHandler extends BaseHandler
             'items'       => $items,
             'total'       => $totalItems,
             'total_pages' => $totalPages,
+            'days'        => $days,
             'page'        => $page,
             'limit'       => $limit,
         ]);

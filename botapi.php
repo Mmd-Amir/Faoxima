@@ -698,6 +698,71 @@ function stripReplyStyleEmoji(string $text): string {
     return $text;
 }
 
+if (!function_exists('rx_callbackMapRead')) {
+    function rx_callbackMapRead($file): ?array {
+        $handle = @fopen((string) $file, 'r');
+        if ($handle === false) return null;
+        try {
+            if (!@flock($handle, LOCK_SH)) return null;
+            $raw = stream_get_contents($handle);
+            $map = is_string($raw) ? json_decode($raw, true) : null;
+            return is_array($map) ? $map : null;
+        } finally {
+            @flock($handle, LOCK_UN);
+            @fclose($handle);
+        }
+    }
+}
+if (!function_exists('rx_callbackMapStore')) {
+    function rx_callbackMapStore($file, $key, $value): bool {
+        $handle = @fopen((string) $file, 'c+');
+        if ($handle === false) {
+            error_log('[rx_callback_map] could not open ' . basename((string) $file));
+            return false;
+        }
+        $written = false;
+        try {
+            if (@flock($handle, LOCK_EX)) {
+                $raw = stream_get_contents($handle);
+                $map = is_string($raw) && trim($raw) === '' ? [] : (is_string($raw) ? json_decode($raw, true) : null);
+                if (is_array($map)) {
+                    if (isset($map[(string) $key]) && $map[(string) $key] === (string) $value) {
+                        $written = true;
+                    } else {
+                        $map[(string) $key] = (string) $value;
+                        $encoded = json_encode($map, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                        if (is_string($encoded) && @rewind($handle)) {
+                            $offset = 0;
+                            $length = strlen($encoded);
+                            while ($offset < $length) {
+                                $bytes = @fwrite($handle, substr($encoded, $offset));
+                                if ($bytes === false || $bytes === 0) break;
+                                $offset += $bytes;
+                            }
+                            $written = $offset === $length && @ftruncate($handle, $length) && @fflush($handle);
+                            if (!$written && @rewind($handle)) {
+                                $restoreOffset = 0;
+                                $restoreLength = strlen($raw);
+                                while ($restoreOffset < $restoreLength) {
+                                    $bytes = @fwrite($handle, substr($raw, $restoreOffset));
+                                    if ($bytes === false || $bytes === 0) break;
+                                    $restoreOffset += $bytes;
+                                }
+                                if ($restoreOffset === $restoreLength) @ftruncate($handle, $restoreLength);
+                                @fflush($handle);
+                            }
+                        }
+                    }
+                }
+            }
+        } finally {
+            @flock($handle, LOCK_UN);
+            @fclose($handle);
+        }
+        if (!$written) error_log('[rx_callback_map] write failed for ' . basename((string) $file));
+        return $written;
+    }
+}
 if (!function_exists('rx_adminPanelCallbackMapFile')) {
     function rx_adminPanelCallbackMapFile(): string {
         $base = defined('REFACTORED_LEGACY_ROOT') ? REFACTORED_LEGACY_ROOT : __DIR__;
@@ -709,15 +774,7 @@ if (!function_exists('rx_makeAdminPanelCallback')) {
         $short = 'apn:' . $text;
         if (strlen($short) <= 64) return $short;
         $code = 'apnh:' . substr(hash('sha256', $text), 0, 32);
-        $file = rx_adminPanelCallbackMapFile();
-        $map = [];
-        if (is_file($file)) {
-            $dec = json_decode((string) @file_get_contents($file), true);
-            if (is_array($dec)) $map = $dec;
-        }
-        $map[$code] = $text;
-        @file_put_contents($file, json_encode($map, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), LOCK_EX);
-        return $code;
+        return rx_callbackMapStore(rx_adminPanelCallbackMapFile(), $code, $text) ? $code : 'admin_back';
     }
 }
 if (!function_exists('rx_resolveAdminPanelCallback')) {
@@ -726,9 +783,7 @@ if (!function_exists('rx_resolveAdminPanelCallback')) {
             return substr($callbackData, 4);
         }
         if (strpos($callbackData, 'apnh:') === 0) {
-            $file = rx_adminPanelCallbackMapFile();
-            if (!is_file($file)) return null;
-            $map = json_decode((string) @file_get_contents($file), true);
+            $map = rx_callbackMapRead(rx_adminPanelCallbackMapFile());
             return (is_array($map) && isset($map[$callbackData])) ? (string)$map[$callbackData] : null;
         }
         return null;

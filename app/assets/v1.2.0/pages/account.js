@@ -2,6 +2,7 @@ import { call } from '../api.js?v=0.0.53';
 import { escapeHtml, fmtPrice, fmtNumber, skeletonList } from '../utils.js?v=0.0.52';
 import { setUser } from '../state.js?v=0.0.52';
 import { icon } from '../icons.js?v=0.0.52';
+import { getInitDataUnsafe } from '../telegram.js?v=0.0.52';
 
 function renderPendingBanner(pendingList) {
     const gateways = (pendingList || []).filter(p =>
@@ -9,15 +10,15 @@ function renderPendingBanner(pendingList) {
     );
     if (!gateways.length) return '';
     return gateways.map(p => `
-        <div class="callout mt-md" style="background:rgba(255,165,0,.09);border-color:rgba(255,165,0,.35);gap:10px">
-            ${icon('clock', 'style="width:20px;height:20px;color:#f59e0b;flex-shrink:0"')}
-            <div style="flex:1;min-width:0">
-                <p style="margin:0;font-weight:700;font-size:13px;color:#f59e0b">⏳ پرداخت در انتظار تأیید</p>
-                <p style="margin:4px 0 0;font-size:12px;color:var(--text-muted)">
-                    کد پیگیری: <span style="font-family:monospace;font-weight:600">${escapeHtml(p.order_id)}</span>
+        <div class="account-pending" role="status">
+            ${icon('clock')}
+            <div>
+                <b>پرداخت در انتظار تأیید</b>
+                <p>
+                    کد پیگیری: <bdi>${escapeHtml(p.order_id)}</bdi>
                 </p>
-                <p style="margin:2px 0 0;font-size:12px;color:var(--text-muted)">
-                    مبلغ: <b>${escapeHtml(fmtPrice(p.amount))}</b> تومان — در انتظار بررسی ادمین
+                <p>
+                    ${escapeHtml(fmtPrice(p.amount))} · در انتظار بررسی ادمین
                 </p>
             </div>
         </div>
@@ -26,12 +27,8 @@ function renderPendingBanner(pendingList) {
 
 export async function account(view) {
     view.innerHTML = `
-        <article class="card card-window card-bare">
-            <header class="card-window-bar">
-                <span class="dots"><span></span><span></span><span></span></span>
-                <span class="window-url">faoxima/account</span>
-            </header>
-            <div class="card-body" id="account-body">
+        <article class="account-page" aria-label="حساب کاربری">
+            <div id="account-body" class="account-content">
                 ${skeletonList(4)}
             </div>
         </article>
@@ -70,17 +67,34 @@ export async function account(view) {
         return;
     }
 
-    $body.innerHTML = `
-        <p class="section-title">${icon('user')} حساب کاربری</p>
+    const user = getInitDataUnsafe()?.user || {};
+    const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'کاربر';
+    const phone = String(info.phone || '').trim();
+    const hasPhone = phone !== '' && !/ارسال نشده|not.?set|none|null|^—$|^0$/i.test(phone);
 
-        <div class="wallet-hero mt-sm">
+    $body.innerHTML = `
+        <div class="account-page-heading">
+            <div><p class="account-eyebrow">فضای شخصی شما</p><h1>حساب کاربری</h1></div>
+            <a href="#/tickets" class="account-help" aria-label="پشتیبانی" title="پشتیبانی">${icon('shield')}</a>
+        </div>
+        <section class="account-profile" aria-label="پروفایل">
+            <div class="account-profile-copy">
+                <h2 dir="auto">${escapeHtml(name)}</h2>
+                <div class="account-profile-meta">
+                    ${user.username ? `<bdi class="account-profile-username">@${escapeHtml(user.username)}</bdi>` : ''}
+                </div>
+            </div>
+            <span class="account-avatar" aria-hidden="true">${escapeHtml(Array.from(name.trim())[0] || 'ک')}</span>
+            <span class="account-role" dir="auto">${escapeHtml(info.group_type || '—')}</span>
+        </section>
+
+        <section class="wallet-hero account-wallet" aria-label="کیف پول">
             <div class="wallet-hero-top">
-                ${icon('wallet', 'class="ico"')}
+                <span class="account-wallet-icon">${icon('wallet', 'class="ico"')}</span>
                 <span>موجودی کیف پول</span>
-                <span class="dot-online" aria-hidden="true"></span>
             </div>
             <div class="wallet-hero-amount">${escapeHtml(fmtPrice(info.balance))}</div>
-            <div class="wallet-hero-actions">
+            <div class="wallet-hero-actions account-wallet-actions">
                 <a href="#/recharge" class="wallet-hero-btn-primary">
                     ${icon('plus', 'class="ico"')}
                     <span>شارژ کیف پول</span>
@@ -89,54 +103,71 @@ export async function account(view) {
                     ${icon('transfer', 'class="ico"')}
                     <span>انتقال موجودی</span>
                 </a>
+                <a href="#/history" class="wallet-hero-btn-ghost account-wallet-history">
+                    ${icon('clock', 'class="ico"')}
+                    <span>تاریخچه تراکنش‌ها</span>
+                </a>
             </div>
+        </section>
+
+        <div class="account-metrics" aria-label="آمار حساب">
+            <a href="#/services" class="account-metric account-metric-services">
+                <span class="account-metric-icon">${icon('box')}</span>
+                <span class="account-metric-value">${escapeHtml(fmtNumber(info.count_order))}</span>
+                <span class="account-metric-label">سرویس‌های فعال</span>
+            </a>
+            <a href="#/history" class="account-metric account-metric-payments">
+                <span class="account-metric-icon">${icon('creditCard')}</span>
+                <span class="account-metric-value">${escapeHtml(fmtNumber(info.count_payment))}</span>
+                <span class="account-metric-label">پرداخت‌ها</span>
+            </a>
         </div>
 
-        <div class="stat-grid mt-md">
-            <div class="stat">
-                <div class="stat-label">${icon('crown')} نوع کاربری</div>
-                <div class="stat-value">${escapeHtml(info.group_type || '—')}</div>
+        <section class="account-details" aria-labelledby="account-details-title">
+            <h2 id="account-details-title">اطلاعات حساب</h2>
+            <div class="account-detail-row">
+                <span class="account-detail-icon">${icon('calendar')}</span>
+                <span class="account-detail-label">تاریخ عضویت</span>
+                <b class="account-detail-value"><bdi>${escapeHtml(info.time_join || '—')}</bdi></b>
             </div>
-            <div class="stat">
-                <div class="stat-label">${icon('box')} سرویس‌های فعال</div>
-                <div class="stat-value">${escapeHtml(fmtNumber(info.count_order))}</div>
+            <div class="account-detail-row">
+                <span class="account-detail-icon">${icon('phone')}</span>
+                <span class="account-detail-label">شماره تلفن</span>
+                <b class="account-detail-value${hasPhone ? '' : ' is-missing'}">${hasPhone ? `<bdi>${escapeHtml(phone)}</bdi>` : 'ثبت نشده'}</b>
             </div>
-            <div class="stat">
-                <div class="stat-label">${icon('creditCard')} پرداخت‌ها</div>
-                <div class="stat-value">${escapeHtml(fmtNumber(info.count_payment))}</div>
-            </div>
-            <div class="stat">
-                <div class="stat-label">${icon('calendar')} تاریخ عضویت</div>
-                <div class="stat-value">${escapeHtml(info.time_join || '—')}</div>
-            </div>
-        </div>
-
-        <div class="list mt-md">
-            <div class="list-item">
-                <div class="li-main">
-                    <div class="li-title">شماره تلفن</div>
-                    <div class="li-sub">${escapeHtml(info.phone || '—')}</div>
-                </div>
-                <span class="li-action" aria-hidden="true">${icon('phone', 'class="ico"')}</span>
-            </div>
-        </div>
+        </section>
 
         ${renderPendingBanner(pendingList)}
 
-        <div class="action-grid mt-md">
-            <a href="#/buy" class="action-tile">
-                ${icon('cart', 'class="ico ico-xl action-icon is-green"')}
-                <span>خرید سرویس</span>
+        <nav class="account-shortcuts" aria-label="خدمات حساب">
+            <a href="#/buy" class="account-shortcut account-shortcut-buy">
+                <span class="account-shortcut-icon">${icon('cart')}</span>
+                <span class="account-shortcut-copy"><b>خرید سرویس</b><small>انتخاب پلن و شروع یک اتصال تازه</small></span>
+                ${icon('chevronLeft', 'class="ico account-shortcut-arrow"')}
             </a>
-            <a href="#/services" class="action-tile">
-                ${icon('fileText', 'class="ico ico-xl action-icon is-yellow"')}
-                <span>سرویس‌های من</span>
+            <a href="#/services" class="account-shortcut account-shortcut-services">
+                <span class="account-shortcut-icon">${icon('fileText')}</span>
+                <span class="account-shortcut-copy"><b>سرویس‌های من</b><small>مشاهده، مدیریت و تمدید</small></span>
+                ${icon('chevronLeft', 'class="ico account-shortcut-arrow"')}
             </a>
-            <a href="#/tickets" class="action-tile">
-                ${icon('send', 'class="ico ico-xl action-icon is-orange"')}
-                <span>تیکت‌های پشتیبانی</span>
+            <a href="#/tickets" class="account-shortcut account-shortcut-support">
+                <span class="account-shortcut-icon">${icon('shield')}</span>
+                <span class="account-shortcut-copy"><b>پشتیبانی</b><small>ارسال تیکت و پیگیری درخواست‌ها</small></span>
+                ${icon('chevronLeft', 'class="ico account-shortcut-arrow"')}
             </a>
-        </div>
+        </nav>
     `;
+
+    try {
+        if (user.photo_url && new URL(user.photo_url).protocol === 'https:') {
+            const avatar = $body.querySelector('.account-avatar');
+            const photo = document.createElement('img');
+            photo.alt = '';
+            photo.referrerPolicy = 'no-referrer';
+            photo.decoding = 'async';
+            photo.addEventListener('load', () => avatar.replaceChildren(photo), { once: true });
+            photo.src = user.photo_url;
+        }
+    } catch (_) { }
 }
 

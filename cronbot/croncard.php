@@ -65,7 +65,7 @@ if (function_exists('rx_sbv_cron_run')) {
 $rxSbvExclude = (function_exists('rx_sbv_has_schema') && rx_sbv_has_schema()) ? " AND NOT EXISTS (SELECT 1 FROM card_sms_payment csp WHERE csp.id_order = Payment_report.id_order)" : "";
 list($rxW, $rxN) = function_exists('rx_cron_shard') ? rx_cron_shard() : [0, 1];
 $rxShard = ($rxN > 1) ? " AND MOD(id, $rxN) = $rxW " : "";
-$rxCroncardWindow = rx_pf_cron_window_sql();
+$rxCroncardWindow = rx_pf_cron_receipt_window_sql();
 $rxCroncardQueue = [];
 $rxWaitingLastId = 0;
 $rxCroncardStopped = false;
@@ -88,14 +88,14 @@ $paymentverify = select("PaySetting","ValuePay","NamePay","autoconfirmcart","sel
 $rxAutoConfirmEnabled = $paymentverify != "offauto" && ($setting['card_verify_status'] ?? 'offcardverify') !== 'oncardverify';
 if ($rxAutoConfirmEnabled) {
     $rxWaitingCursor = function_exists('rx_cron_invoice_cursor') ? rx_cron_invoice_cursor('croncard_waiting:' . $rxN . ':' . $rxW) : '';
-    $rxWaitingAgeClause = $trustModeOn ? '' : " AND at_updated IS NOT NULL AND at_updated >= ?";
+    $rxWaitingAgeClause = " AND at_updated IS NOT NULL";
     $rxWaitingSql = "SELECT * FROM Payment_report WHERE $rxCroncardWindow AND payment_Status = 'waiting' AND COALESCE(direct_payment_done, 0) = 0 AND (Payment_Method = 'cart to cart' OR Payment_Method = 'arze digital offline') AND bottype IS NULL AND NOT EXISTS (SELECT 1 FROM payment_fulfillment pf WHERE pf.id_order = Payment_report.id_order AND pf.state IN ('completed', 'manual_review'))$rxSbvExclude$rxShard" . $rxWaitingAgeClause . " AND id > ? ORDER BY id ASC LIMIT 50";
     $stmt = $pdo->prepare($rxWaitingSql);
-    $rxWaitingParams = $trustModeOn ? [$rxWaitingCursor] : [date('Y-m-d H:i:s', time() - 3600), $rxWaitingCursor];
+    $rxWaitingParams = [$rxWaitingCursor];
     $stmt->execute($rxWaitingParams);
     $rxWaitingRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     if (!$rxWaitingRows && $rxWaitingCursor !== '') {
-        $rxWaitingParams = $trustModeOn ? [''] : [date('Y-m-d H:i:s', time() - 3600), ''];
+        $rxWaitingParams = [''];
         $stmt->execute($rxWaitingParams);
         $rxWaitingRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
@@ -108,7 +108,6 @@ if ($rxAutoConfirmEnabled) {
         }
         if($row['at_updated'] == null)continue;
         $since_start = time() - strtotime($row['at_updated']);
-        if ($since_start >= 3600)continue;
         $Balance_id = select("user","*","id",$row['id_user'],"select");
         $userId = (string)$Balance_id['id'];
         if ($trustModeOn) {
@@ -118,29 +117,6 @@ if ($rxAutoConfirmEnabled) {
             if ($since_start <= $timecheck)continue;
         }
         $rxCroncardQueue[] = ['id' => (string) $row['id'], 'id_order' => (string) $row['id_order'], 'mode' => 'claim', 'balance_before' => $Balance_id['Balance'] ?? 0];
-    }
-    if (!$trustModeOn) {
-        $rxStaleCursor = function_exists('rx_cron_invoice_cursor') ? rx_cron_invoice_cursor('croncard_stale:' . $rxN . ':' . $rxW) : '';
-        $rxStaleStmt = $pdo->prepare("SELECT id, id_order, at_updated FROM Payment_report WHERE $rxCroncardWindow AND payment_Status = 'waiting' AND COALESCE(direct_payment_done, 0) = 0 AND (Payment_Method = 'cart to cart' OR Payment_Method = 'arze digital offline') AND bottype IS NULL AND at_updated IS NOT NULL AND at_updated < ?$rxSbvExclude$rxShard AND id > ? ORDER BY id ASC LIMIT 20");
-        $rxStaleStmt->execute([date('Y-m-d H:i:s', time() - 3600), $rxStaleCursor]);
-        $rxStaleRows = $rxStaleStmt->fetchAll(PDO::FETCH_ASSOC);
-        if (!$rxStaleRows && $rxStaleCursor !== '') {
-            $rxStaleStmt->execute([date('Y-m-d H:i:s', time() - 3600), '']);
-            $rxStaleRows = $rxStaleStmt->fetchAll(PDO::FETCH_ASSOC);
-        }
-        $rxStaleLastId = 0;
-        foreach ($rxStaleRows as $rxStaleRow) {
-            $rxStaleLastId = max($rxStaleLastId, (int) $rxStaleRow['id']);
-            if (function_exists('rx_log_event')) {
-                rx_log_event('CARD_PAYMENT_MANUAL_REVIEW', 'Waiting card payment exceeded the automatic confirmation window', [
-                    'id_order' => (string) $rxStaleRow['id_order'],
-                    'at_updated' => (string) $rxStaleRow['at_updated'],
-                ]);
-            }
-        }
-        if ($rxStaleLastId > 0 && function_exists('rx_cron_invoice_cursor')) {
-            rx_cron_invoice_cursor('croncard_stale:' . $rxN . ':' . $rxW, (string) $rxStaleLastId);
-        }
     }
 }
 foreach ($rxCroncardQueue as $rxJob) {
@@ -167,7 +143,6 @@ foreach ($rxCroncardQueue as $rxJob) {
                 'to' => 'processing',
                 'dec_not_confirmed' => 'تایید توسط ربات بدون بررسی',
                 'min_age' => $trustModeOn ? null : $timecheck,
-                'max_age' => 3600,
             ]);
             if (($claim['status'] ?? '') !== 'claimed') {
                 continue;

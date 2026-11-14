@@ -1,8 +1,9 @@
+import { bankDestinationHtml, paymentAmountHtml, paymentResultHtml } from '../payment-view.js?v=2';
 import { call, ApiError } from '../api.js?v=0.0.53';
 import { escapeHtml, fmtPrice, skeletonList, toast, copyToClipboard, wireAmountInput, amountValue, blobToDataUrl, rialCopyValue } from '../utils.js?v=0.0.53';
 import { hapticImpact, hapticNotify, isDesktopPlatform } from '../telegram.js?v=0.0.52';
 import { icon } from '../icons.js?v=0.0.52';
-import { isVerifyPayment, verifyAmountHtml, verifyReceiptNoteHtml, wireVerify, showVerifyPending } from '../card-verify.js?v=0.0.4';
+import { isVerifyPayment, verifyAmountHtml, verifyReceiptNoteHtml, wireVerify, showVerifyPending } from '../card-verify.js?v=0.0.6';
 
 function iconForMethod(m) {
     const id = String(m.id || '').toLowerCase();
@@ -54,20 +55,14 @@ export async function recharge(view) {
             <span>بازگشت</span>
         </a>
 
-        <article class="card card-window">
-            <header class="card-window-bar">
-                <span class="dots"><span></span><span></span><span></span></span>
-                <span class="window-url">faoxima/recharge</span>
+        <article class="recharge-page">
+            <header class="recharge-hero">
+                <span class="recharge-hero-icon">${icon('wallet')}</span>
+                <div><span class="pay-eyebrow">کیف پول تو</span><h1>آمادهٔ خرید بعدی.</h1><p>روش پرداخت را انتخاب کن و کیف پولت را شارژ کن.</p></div>
             </header>
-            <div class="card-body">
-                <p class="section-title">${icon('wallet')} شارژ کیف پول</p>
-                <h2 class="section-headline">یک روش پرداخت انتخاب کنید</h2>
-                <p class="muted center mb-md" style="font-size:13px">روش‌هایی که در ربات فعال شده‌اند، اینجا نمایش داده می‌شوند.</p>
-
                 <div id="recharge-host">
                     ${skeletonList(3)}
                 </div>
-            </div>
         </article>
     `;
 
@@ -102,25 +97,23 @@ export async function recharge(view) {
     const balance = Number(data.balance || 0);
 
     $host.innerHTML = `
-        <div class="kv">
-            <span class="kv-label">${icon('wallet')} موجودی فعلی</span>
-            <span class="kv-value accent" id="wallet-balance">${escapeHtml(fmtPrice(balance))}</span>
-        </div>
-        <div class="kv">
-            <span class="kv-label">${icon('chart')} بازه مجاز شارژ</span>
-            <span class="kv-value mono">${escapeHtml(fmtPrice(limits.min))} — ${escapeHtml(fmtPrice(limits.max))}</span>
+        <div class="recharge-balance">
+            <div class="recharge-balance-heading"><span>${icon('wallet')} موجودی کیف پول</span><span class="pay-eyebrow">تومان</span></div>
+            <strong id="wallet-balance">${escapeHtml(fmtPrice(balance))}</strong>
+            <div class="recharge-limits">${icon('chart')} <span>بازهٔ شارژ</span><b>${escapeHtml(fmtPrice(limits.min))} تا ${escapeHtml(fmtPrice(limits.max))}</b></div>
         </div>
 
-        <div class="card-section mt-md">
-            <p class="section-title">${icon('coin', 'class="ico ico-leading"')} کد هدیه</p>
-            <p class="muted" style="font-size:12px">اگر کد هدیه دارید، آن را وارد کنید تا مبلغ آن به کیف پول شما اضافه شود.</p>
+        <details class="recharge-gift">
+            <summary>${icon('coin')} کد هدیه داری؟ ${icon('chevronDown')}</summary>
+            <p class="muted" style="font-size:12px">کد را وارد کن تا مبلغ هدیه به کیف پولت اضافه شود.</p>
             <div class="form-row mt-sm" style="display:flex;gap:8px">
                 <input id="gift-code" type="text" inputmode="text" autocomplete="off"
-                       placeholder="کد هدیه" style="flex:1" />
-                <button id="gift-submit" type="button" class="btn btn-secondary">ثبت</button>
+                       aria-label="کد هدیه" placeholder="کد هدیه" style="flex:1" />
+                <button id="gift-submit" type="button" class="btn btn-primary">ثبت</button>
             </div>
-        </div>
+        </details>
 
+        <div class="pay-list-heading"><h2>روش پرداخت</h2><span>یک روش را برای ادامه انتخاب کن</span></div>
         <div class="payment-methods mt-md" id="pay-list">
             ${methods.map(renderMethodCard).join('')}
         </div>
@@ -280,7 +273,7 @@ function renderCryptoOfflineForm(view, limits, randomWallet) {
             return;
         }
         try {
-            const mod = await import( './crypto-offline.js');
+            const mod = await import( './crypto-offline.js?v=3');
             if (mod && typeof mod.renderCryptoOffline === 'function') {
                 mod.renderCryptoOffline(view, {
                     amount,
@@ -299,7 +292,7 @@ function renderMethodCard(m) {
     return `
         <button type="button" class="pay-card" data-method="${escapeHtml(m.id)}">
             ${methodVisualHtml(m, 'ico-accent')}
-            <span class="pay-label">${escapeHtml(stripEmoji(m.label))}</span>
+            <span class="pay-method-copy"><span class="pay-label">${escapeHtml(stripEmoji(m.label))}</span><small>${m.id === 'tonpay' ? 'واریز به کارت با بررسی خودکار' : String(m.id).startsWith('carttocart') ? 'واریز به کارت و ارسال رسید' : m.kind === 'crypto_offline' || m.id === 'digitaltron' ? 'واریز ارز دیجیتال' : 'ادامه از طریق این روش پرداخت'}</small></span>
             ${icon('chevronLeft', 'class="ico pay-arrow"')}
         </button>`;
 }
@@ -512,19 +505,19 @@ function handleInitResult(view, methodId, obj) {
 function renderCardSelectStep(d) {
     const cards = d.verified_cards || [];
     const rows = cards.map(l4 => `
-        <button type="button" class="btn btn-ghost btn-block mt-sm cv-select-btn" data-last4="${escapeHtml(l4)}"
+        <button type="button" class="btn btn-ghost btn-block mt-sm cv-select-btn" aria-pressed="false" data-last4="${escapeHtml(l4)}"
             style="display:flex;align-items:center;gap:10px;justify-content:flex-start;text-align:right">
             <span class="cv-radio" style="font-size:16px;min-width:20px">◯</span>
-            <span>💳 **** **** **** ${escapeHtml(l4)}</span>
+            <span class="identity-card-number" dir="ltr">**** **** **** ${escapeHtml(l4)}</span>
         </button>`).join('');
     return `
-        <div class="card-section cart-info-card" id="card-select-zone">
+        <div class="card-section cart-info-card payment-detail identity-page" id="card-select-zone">
             <div class="cart-banner">
                 ${icon('creditCard', 'class="ico ico-xxl ico-accent"')}
-                <h3>کارت‌به‌کارت — انتخاب کارت</h3>
+                <h3>با کدام کارت پرداخت می‌کنی؟</h3>
             </div>
             <div class="callout mt-md" style="flex-direction:column;align-items:flex-start;gap:8px">
-                <p style="margin:0;font-weight:600">💳 کارت‌های تاییدشده شما</p>
+                <p style="margin:0;font-weight:600">کارت‌های تأییدشدهٔ تو</p>
                 <p style="margin:0;font-size:12px;color:var(--text-muted)">یکی از کارت‌های زیر را انتخاب کنید یا با کارت جدید پرداخت کنید.</p>
             </div>
             ${rows}
@@ -536,7 +529,7 @@ function renderCardSelectStep(d) {
             </button>
             <button type="button" class="btn btn-ghost btn-block mt-sm" id="cv-new-card-btn">
                 ${icon('download', 'class="ico ico-leading"')}
-                <span>📸 احراز هویت با تصویر کارت جدید</span>
+                <span>تأیید کارت جدید</span>
             </button>
             <p class="muted mono mt-md" style="font-size:11px">کد پیگیری: ${escapeHtml(d.order_id)}</p>
         </div>`;
@@ -554,8 +547,9 @@ function wireCardSelectStep(view, d) {
                 b.style.color = '';
             });
             btn.querySelector('.cv-radio').textContent = '✓';
-            btn.style.borderColor = 'var(--accent-color, #5b9cf6)';
-            btn.style.color = 'var(--accent-color, #5b9cf6)';
+            view.querySelectorAll('.cv-select-btn').forEach(card => card.setAttribute('aria-pressed', card === btn ? 'true' : 'false'));
+            btn.style.borderColor = 'var(--accent)';
+            btn.style.color = 'var(--accent)';
             selectedLast4 = btn.dataset.last4;
             if ($continueBtn) {
                 $continueBtn.disabled = false;
@@ -619,54 +613,44 @@ function renderCardVerifyStep(d) {
     const formatted  = cardNumber.replace(/(\d{4})(?=\d)/g, '$1 ');
     const amount     = Number(d.amount || 0);
     return `
-        <div class="card-section cart-info-card" id="card-verify-zone">
+        <div class="card-section cart-info-card payment-detail identity-page" id="card-verify-zone">
             <div class="cart-banner">
                 ${icon('creditCard', 'class="ico ico-xxl ico-accent"')}
-                <h3>کارت‌به‌کارت — احراز هویت</h3>
+                <h3>تأیید کارت پرداخت</h3>
             </div>
 
             <div class="callout mt-md" style="flex-direction:column;align-items:flex-start;gap:10px">
-                <p style="margin:0;font-weight:600">⚠️ احراز هویت کارت به کارت فعال است</p>
-                <p style="margin:0">📸 تصویر کارت فیزیکی که با آن واریز می‌کنید را آپلود کنید.</p>
+                <p style="margin:0;font-weight:600">برای ادامه، کارت پرداخت را تأیید کن</p>
+                <p style="margin:0">تصویر کارت بانکی‌ای را انتخاب کن که با آن واریز می‌کنی؛ بعد ۴ رقم آخرش را وارد کن.</p>
             </div>
 
             <input type="file" id="card-photo-file" accept="image/*" style="display:none" />
 
-            <div id="card-photo-drop"
-                style="border:2px dashed var(--accent-color,#5b9cf6);border-radius:12px;padding:28px 16px;text-align:center;cursor:pointer;margin-top:14px;transition:background .2s"
-                onmouseover="this.style.background='rgba(91,156,246,.07)'" onmouseout="this.style.background=''">
-                ${icon('download', 'style="width:30px;height:30px;color:var(--accent-color,#5b9cf6)"')}
-                <p style="margin:8px 0 0;font-size:13px;font-weight:600">📸 آپلود تصویر کارت بانکی (فیزیکی)</p>
+            <div id="card-photo-drop" class="identity-upload" role="button" tabindex="0" aria-label="انتخاب تصویر کارت بانکی"
+                style="border:2px dashed var(--accent);border-radius:12px;padding:28px 16px;text-align:center;cursor:pointer;margin-top:14px;transition:background .2s"
+                >
+                ${icon('download', 'style="width:30px;height:30px;color:var(--accent)"')}
+                <p style="margin:8px 0 0;font-size:13px;font-weight:600">انتخاب تصویر کارت بانکی</p>
                 <p style="margin:4px 0 0;font-size:11px;color:var(--text-muted)">روی این ناحیه کلیک کنید</p>
             </div>
 
             <div class="mt-md">
-                <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">🔢 چهار رقم آخر کارت:</label>
-                <input type="tel" id="card-last4-input" maxlength="4" pattern="\\d{4}" inputmode="numeric"
+                <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">۴ رقم آخر کارت پرداخت</label>
+                <input type="tel" id="card-last4-input" maxlength="4" pattern="\\d{4}" inputmode="numeric" aria-label="چهار رقم آخر کارت پرداخت"
                     placeholder="مثال: ۱۲۳۴"
-                    style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1.5px solid var(--border-color);background:var(--surface-bg);color:var(--text-color);font-size:20px;text-align:center;letter-spacing:6px;font-weight:700" />
+                    style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--text);font-size:20px;text-align:center;letter-spacing:6px;font-weight:700" />
             </div>
 
             <div class="callout mt-sm" style="font-size:12px;color:var(--text-muted)">
                 جهت حفظ حریم خصوصی، می‌توانید به جز نام و ۴ رقم آخر کارت، مابقی اطلاعات را بپوشانید.
             </div>
 
-            <div id="card-dest-section" class="hidden" style="margin-top:16px;border-top:1px solid var(--border-color);padding-top:16px">
+            <div id="card-dest-section" class="hidden" style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
                 <div class="callout" style="background:rgba(76,175,80,.08)">
                     ${icon('checkCircle', 'style="width:18px;height:18px;color:#4caf50;flex-shrink:0"')}
                     <span style="font-weight:600;font-size:13px">اطلاعات واریز:</span>
                 </div>
-                <div class="kv mt-md">
-                    <span class="kv-label">شماره کارت</span>
-                    <span class="kv-value mono accent">${escapeHtml(formatted || '—')}</span>
-                </div>
-                <button type="button" class="btn btn-ghost btn-block mt-sm copy-btn-cart" data-copy="${escapeHtml(cardNumber)}">
-                    ${icon('copy', 'class="ico ico-leading"')}<span>کپی شماره کارت</span>
-                </button>
-                <div class="kv mt-md">
-                    <span class="kv-label">به نام</span>
-                    <span class="kv-value">${escapeHtml(d.name_card || '—')}</span>
-                </div>
+                ${bankDestinationHtml(formatted || '—', d.name_card, cardNumber)}
                 ${isVerifyPayment(d) ? verifyAmountHtml(d) : `<div class="kv mt-sm">
                     <span class="kv-label">مبلغ دقیق</span>
                     <span class="kv-value mono accent" style="font-size:18px;font-weight:700">${fmtNum(amount)} تومان</span>
@@ -700,6 +684,12 @@ function wireCardVerifyStep(view, d) {
     const $last4Input = view.querySelector('#card-last4-input');
     const $cardDest   = view.querySelector('#card-dest-section');
     if (!$file || !$last4Input || !$cardDest) return;
+    $drop?.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            $file.click();
+        }
+    });
 
     let receiptWired = false;
 
@@ -758,7 +748,6 @@ function renderCardToCard(d) {
     const cardLabel = (i) => 'کارت ' + (ordinals[i] || String(i + 1));
 
     const isDirect = d.display_mode === 'direct';
-    const amount = Number(d.amount || 0);
 
     let cards = Array.isArray(d.cards) ? d.cards.filter((c) => c && (c.number || c.last4)) : [];
     if (!cards.length) {
@@ -766,52 +755,12 @@ function renderCardToCard(d) {
     }
     const isMulti = isDirect && cards.length >= 2;
 
-    let cardBlock;
-    if (isMulti) {
-        const slots = cards.map((c, i) => {
-            const disp = fmtCard(c.number, c.last4);
-            const cp = copyVal(c.number, c.last4);
-            const label = cardLabel(i);
-            return `
-                ${i > 0 ? '<div class="dual-card-divider"></div>' : ''}
-                <div class="dual-card-slot">
-                    <p class="dual-card-label">${escapeHtml(label)}</p>
-                    <div class="kv">
-                        <span class="kv-label">شماره کارت</span>
-                        <span class="kv-value mono accent">${escapeHtml(disp)}</span>
-                    </div>
-                    <button type="button" class="btn btn-ghost btn-block mt-sm copy-btn-cart" data-copy="${escapeHtml(cp)}">
-                        ${icon('copy', 'class="ico ico-leading"')}
-                        <span>کپی ${escapeHtml(label)}</span>
-                    </button>
-                    <div class="kv mt-sm">
-                        <span class="kv-label">به نام</span>
-                        <span class="kv-value">${escapeHtml(c.name || '—')}</span>
-                    </div>
-                </div>`;
-        }).join('');
-        cardBlock = `<div class="dual-card-stack mt-md">${slots}</div>`;
-    } else {
-        const c = cards[0];
-        const disp = fmtCard(c.number, c.last4);
-        const cp = copyVal(c.number, c.last4);
-        cardBlock = `
-            <div class="kv mt-md">
-                <span class="kv-label">شماره کارت</span>
-                <span class="kv-value mono accent" id="card-num-display" data-copy="${escapeHtml(cp)}">${escapeHtml(disp)}</span>
-            </div>
-            <button type="button" class="btn btn-ghost btn-block mt-sm copy-btn-cart" data-copy="${escapeHtml(cp)}">
-                ${icon('copy', 'class="ico ico-leading"')}
-                <span>کپی کارت</span>
-            </button>
-            <div class="kv mt-md">
-                <span class="kv-label">به نام</span>
-                <span class="kv-value">${escapeHtml(c.name || '—')}</span>
-            </div>`;
-    }
+    const cardBlock = isMulti
+        ? `<div class="pay-bank-stack">${cards.map((c, i) => bankDestinationHtml(fmtCard(c.number, c.last4), c.name, copyVal(c.number, c.last4), cardLabel(i))).join('')}</div>`
+        : bankDestinationHtml(fmtCard(cards[0].number, cards[0].last4), cards[0].name, copyVal(cards[0].number, cards[0].last4), 'کارت مقصد', 'card-num-display');
 
     return `
-        <div class="card-section cart-info-card">
+        <div class="card-section cart-info-card payment-detail">
             <div class="cart-banner">
                 ${icon('creditCard', 'class="ico ico-xxl ico-accent"')}
                 <h3>کارت‌به‌کارت — اطلاعات واریز</h3>
@@ -821,14 +770,7 @@ function renderCardToCard(d) {
             ${cardBlock}
 
             ${isVerifyPayment(d) ? verifyAmountHtml(d) : `
-            <div class="kv mt-sm">
-                <span class="kv-label">مبلغ دقیق</span>
-                <span class="kv-value mono accent" style="font-size:18px;font-weight:700">${fmtNum(amount)} تومان</span>
-            </div>
-            <button type="button" class="btn btn-ghost btn-block mt-sm copy-btn-amount" data-copy="${rialCopyValue(d)}">
-                ${icon('copy', 'class="ico ico-leading"')}
-                <span>کپی مبلغ به ریال</span>
-            </button>
+            ${paymentAmountHtml(d)}
 
             ${d.auto_confirm ? `
                 <div class="callout mt-md">
@@ -989,19 +931,7 @@ function wireCardToCard(view, d, extraFields = {}) {
             hapticNotify('success');
             stopLeaveReset();
             const $result = view.querySelector('#pay-result-host');
-            $result.innerHTML = `
-                <div class="card-section">
-                    <div class="empty">
-                        ${icon('checkCircle', 'class="ico ico-xxl ico-success"')}
-                        <h3>رسید ارسال شد</h3>
-                        <p class="muted">${escapeHtml((envelope.obj && envelope.obj.message) || 'پس از تأیید ادمین، حساب شما شارژ می‌شود.')}</p>
-                        <p class="muted mono mt-sm" style="font-size:12px">کد پیگیری: ${escapeHtml(d.order_id)}</p>
-                        <a href="#/account" class="btn btn-primary mt-md">
-                            ${icon('user', 'class="ico ico-leading"')}
-                            <span>بازگشت به حساب</span>
-                        </a>
-                    </div>
-                </div>`;
+            $result.innerHTML = paymentResultHtml({ tone: 'receipt', title: 'رسیدت با موفقیت ارسال شد', text: envelope.obj?.message || 'رسید در انتظار بررسی است؛ پس از تأیید، کیف پولت شارژ می‌شود.', orderId: d.order_id, actions: [{ href: '#/account', label: 'بازگشت به حساب' }, { href: '#/', label: 'خانه' }] });
         } catch (err) {
             hapticNotify('error');
             toast(err.message || 'خطا در ارسال رسید', 'error', 5000);
@@ -1039,7 +969,7 @@ function openLink(url, opts) {
 
 async function startTonpayCustomForRecharge(view, obj) {
     try {
-        const mod = await import('./tonpay-custom.js?v=0.0.7');
+        const mod = await import('./tonpay-custom.js?v=0.0.10');
         mod.startTonpayCustom(view, String(obj.order_id || ''), {
             mode: 'recharge',
             initialView: obj.view || null,
@@ -1052,7 +982,7 @@ async function startTonpayCustomForRecharge(view, obj) {
 
 async function startAtlaspayCustomForRecharge(view, obj) {
     try {
-        const mod = await import('./atlaspay-custom.js?v=0.0.1');
+        const mod = await import('./atlaspay-custom.js?v=0.0.3');
         mod.startAtlaspayCustom(view, String(obj.order_id || ''), {
             mode: 'recharge',
             initialView: obj.view || null,
@@ -1066,7 +996,7 @@ async function startAtlaspayCustomForRecharge(view, obj) {
 async function startGatewayWatchForRecharge(view, methodId, obj) {
     if (obj.url) openLink(obj.url);
     try {
-        const mod = await import( './gateway-watch.js');
+        const mod = await import( './gateway-watch.js?v=2');
         if (!mod || typeof mod.startGatewayWatch !== 'function') {
             const $r = view.querySelector('#pay-result-host');
             if ($r) {
@@ -1097,7 +1027,7 @@ async function startGatewayWatchForRecharge(view, methodId, obj) {
             onSuccess: (st) => {
                 const amount = Number(st.amount || 0).toLocaleString('en-US');
                 view.innerHTML = `
-                    <article class="card card-window">
+                    <article class="payment-flow gateway-result payment-outcome" data-outcome="success">
                         <header class="card-window-bar">
                             <span class="dots"><span></span><span></span><span></span></span>
                             <span class="window-url">faoxima/recharge/done</span>
@@ -1118,7 +1048,7 @@ async function startGatewayWatchForRecharge(view, methodId, obj) {
             },
             onFail: (st) => {
                 view.innerHTML = `
-                    <article class="card card-window">
+                    <article class="payment-flow gateway-result payment-outcome" data-outcome="danger">
                         <header class="card-window-bar">
                             <span class="dots"><span></span><span></span><span></span></span>
                             <span class="window-url">faoxima/recharge/fail</span>
@@ -1139,7 +1069,7 @@ async function startGatewayWatchForRecharge(view, methodId, obj) {
             },
             onTimeout: () => {
                 view.innerHTML = `
-                    <article class="card card-window">
+                    <article class="payment-flow gateway-result payment-outcome" data-outcome="warning">
                         <header class="card-window-bar">
                             <span class="dots"><span></span><span></span><span></span></span>
                             <span class="window-url">faoxima/recharge/timeout</span>

@@ -13,7 +13,7 @@ export function applyBrand(brand) {
 
     const name = String(brand.name || '').trim() || 'Faoxima';
     const mark = String(brand.mark || '').trim() || (name.charAt(0) || 'F');
-    const title = String(brand.title || '').trim();
+    const title = String(brand.title || '').trim() || name;
     const state = String(brand.avatar_state || '').trim() || (brand.logo_url ? 'custom' : 'initials');
     let logoUrl = state === 'custom' ? String(brand.logo_url || '').trim() : '';
 
