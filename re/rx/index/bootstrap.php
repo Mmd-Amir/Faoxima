@@ -1306,58 +1306,39 @@ if ($text == "version") {
         update("user", "verify", "1", "id", $from_id);
     }
     step('home', $from_id);
-} elseif (($text !== '' && $text == $datatextbot['text_Purchased_services']) || $datain == "backorder" || $datain == "myservicesbtn" || $text == "/services") {
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :id_user AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold' OR status = 'disabled' OR status = 'disablebyadmin')");
+} elseif (($text !== '' && $text == $datatextbot['text_Purchased_services']) || $datain == "backorder" || $datain == "myservicesbtn" || $datain == "next_page" || $datain == "previous_page" || $text == "/services") {
+    $rxServiceStatuses = ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin'];
+    $rxServiceStatusSql = "status IN ('" . implode("','", $rxServiceStatuses) . "')";
+    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :id_user AND $rxServiceStatusSql");
     $stmt->bindParam(':id_user', $from_id);
     $stmt->execute();
     $invoices = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (is_null($invoices) && $setting['NotUser'] == "offnotuser") {
+    if ($invoices === false && $setting['NotUser'] == "offnotuser") {
         sendmessage($from_id, $textbotlang['users']['sell']['service_not_available'], null, 'html');
         return;
     }
     rx_section_media_enter('services', $from_id, $datain, $message_id, ['myservicesbtn'], ['myservicesbtn']);
 
-    $pages = 1;
-    update("user", "pagenumber", $pages, "id", $from_id);
-    $page = 1;
-    $items_per_page = 20;
-    $start_index = ($page - 1) * $items_per_page;
     $keyboardlists = [
         'inline_keyboard' => [],
     ];
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = '$from_id' AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold' OR status = 'disabled' OR status = 'disablebyadmin') ORDER BY time_sell DESC LIMIT $start_index, $items_per_page");
-    $stmt->execute();
-    $serviceRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    $rxLabelDup = rxServiceListUserDuplicateKeys($from_id, ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin'], $setting['statusnamecustom'] == 'onnamecustom');
-    if ($setting['statusnamecustom'] == 'onnamecustom') {
-        foreach ($serviceRows as $row) {
-            $data = "";
-            if ($row != null)
-                $data = " | {$row['note']}";
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, true) . $data . rxServiceListStatusSuffix($row) . "✨",
-                    'callback_data' => "quickview_" . $row['id_invoice']
-                ],
-            ];
+    $stmt = $pdo->prepare("SELECT name_product FROM invoice WHERE id_user = :id_user AND $rxServiceStatusSql GROUP BY name_product ORDER BY name_product ASC");
+    $stmt->execute([':id_user' => $from_id]);
+    $serviceProducts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($serviceProducts as $productRow) {
+        $rxProductValue = $productRow['name_product'];
+        $rxProductLabel = trim((string) $rxProductValue);
+        if ($rxProductLabel === '') {
+            $rxProductLabel = $textbotlang['users']['customsellvolume']['title'] ?? 'سرویس دلخواه';
         }
-    } else {
-        foreach ($serviceRows as $row) {
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, false) . rxServiceListStatusSuffix($row) . "✨",
-                    'callback_data' => "quickview_" . $row['id_invoice']
-                ],
-            ];
-        }
+        $rxProductKey = md5($rxProductValue === null ? 'NULL' : 'P:' . $rxProductValue);
+        $keyboardlists['inline_keyboard'][] = [
+            [
+                'text' => $rxProductLabel,
+                'callback_data' => 'myservicescat_' . $rxProductKey
+            ],
+        ];
     }
-    $pagination_buttons = [
-        [
-            'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page', '_rxcolor' => 'subscription_list:next'
-        ],
-        ['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice', '_rxcolor' => 'subscription_list:search']
-    ];
     $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
     $backuser = [
         rx_kb_style(['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'backuser'], 'backuser', $_rx_nav_s)
@@ -1365,142 +1346,114 @@ if ($text == "version") {
     if ($setting['NotUser'] == "onnotuser") {
         $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['page']['notusernameme'], 'callback_data' => 'notusernameme']];
     }
-    $keyboardlists['inline_keyboard'][] = $pagination_buttons;
+    $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice', '_rxcolor' => 'subscription_list:search']];
     $keyboardlists['inline_keyboard'][] = $backuser;
     $keyboard_json = json_encode($keyboardlists);
+    $rxProductListText = "🛍 سرویس‌های من\n\nبرای مشاهده نام‌های کاربری، محصول مورد نظر را انتخاب کنید.\n\n🔎 برای پیدا کردن سریع سرویس خود می‌توانید از دکمه جستجو سریع استفاده کنید.";
     if ($datain == "backorder" || $datain == "myservicesbtn") {
-        Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json);
+        Editmessagetext($from_id, $message_id, $rxProductListText, $keyboard_json);
     } else {
-        sendmessage($from_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json, 'html');
+        sendmessage($from_id, $rxProductListText, $keyboard_json, 'html');
     }
 
-
-} elseif ($datain == 'next_page') {
-    $numpage = select("invoice", "id_user", "id_user", $from_id, "count");
-    $page = $user['pagenumber'];
-    $items_per_page = 20;
-    $sum = $user['pagenumber'] * $items_per_page;
-    if ($sum > $numpage) {
-        $next_page = 1;
-    } else {
-        $next_page = $page + 1;
-    }
-    $start_index = ($next_page - 1) * $items_per_page;
-    $keyboardlists = [
-        'inline_keyboard' => [],
-    ];
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = '$from_id' AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold' OR status = 'disabled' OR status = 'disablebyadmin') ORDER BY time_sell DESC LIMIT $start_index, $items_per_page");
-    $stmt->execute();
-    $serviceRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    $rxLabelDup = rxServiceListUserDuplicateKeys($from_id, ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin'], $setting['statusnamecustom'] == 'onnamecustom');
-    if ($setting['statusnamecustom'] == 'onnamecustom') {
-        foreach ($serviceRows as $row) {
-            $data = "";
-            if ($row != null)
-                $data = " | {$row['note']}";
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, true) . $data . rxServiceListStatusSuffix($row) . "✨",
-                    'callback_data' => "quickview_" . $row['id_invoice']
-                ],
-            ];
-        }
-    } else {
-        foreach ($serviceRows as $row) {
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, false) . rxServiceListStatusSuffix($row) . "✨",
-                    'callback_data' => "quickview_" . $row['id_invoice']
-                ],
-            ];
+} elseif (preg_match('/^(myservicescat|next_page|previous_page)_([a-f0-9]{32})(?:_([0-9]{1,10}))?$/', (string) $datain, $dataget)) {
+    $rxProductHash = $dataget[2];
+    $rxRequestedPage = isset($dataget[3]) ? (int) $dataget[3] : 1;
+    $rxServiceStatuses = ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin'];
+    $rxServiceStatusSql = "status IN ('" . implode("','", $rxServiceStatuses) . "')";
+    $stmt = $pdo->prepare("SELECT name_product FROM invoice WHERE id_user = :id_user AND $rxServiceStatusSql GROUP BY name_product ORDER BY name_product ASC");
+    $stmt->execute([':id_user' => $from_id]);
+    $rxProductRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $rxSelectedProduct = null;
+    $rxSelectedFound = false;
+    foreach ($rxProductRows as $rxProductRow) {
+        $rxProductValue = $rxProductRow['name_product'];
+        $rxProductKey = md5($rxProductValue === null ? 'NULL' : 'P:' . $rxProductValue);
+        if ($rxProductKey === $rxProductHash) {
+            $rxSelectedProduct = $rxProductValue;
+            $rxSelectedFound = true;
+            break;
         }
     }
-    $pagination_buttons = [
-        [
-            'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page', '_rxcolor' => 'subscription_list:next'
-        ],
-        [
-            'text' => $textbotlang['users']['page']['previous'],
-            'callback_data' => 'previous_page', '_rxcolor' => 'subscription_list:previous'
-        ]
-    ];
     $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
     $backuser = [
         rx_kb_style(['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'backuser'], 'backuser', $_rx_nav_s)
     ];
-    $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice', '_rxcolor' => 'subscription_list:search']];
-    if ($setting['NotUser'] == "onnotuser") {
-        $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['page']['notusernameme'], 'callback_data' => 'notusernameme']];
+    if (!$rxSelectedFound) {
+        $rxUnavailableKeyboard = json_encode(['inline_keyboard' => [
+            [['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => 'myservicesbtn']],
+            $backuser
+        ]]);
+        Editmessagetext($from_id, $message_id, $datatextbot['dyn_errors_service_not_found'] ?? "❌ سرویس مورد نظر پیدا نشد.", $rxUnavailableKeyboard);
+        return;
     }
-    $keyboardlists['inline_keyboard'][] = $pagination_buttons;
-    $keyboardlists['inline_keyboard'][] = $backuser;
-    $keyboard_json = json_encode($keyboardlists);
-    update("user", "pagenumber", $next_page, "id", $from_id);
-    Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json);
-
-} elseif ($datain == 'previous_page') {
-    $numpage = select("invoice", "id_user", "id_user", $from_id, "count");
-    $page = $user['pagenumber'];
-    $items_per_page = 20;
-    $sum = $user['pagenumber'] * $items_per_page;
-    if ($sum > $numpage) {
-        $previous_page = 1;
-    } else {
-        $previous_page = $page - 1;
+    $rxProductWhere = $rxSelectedProduct === null ? "name_product IS NULL" : "name_product = :name_product";
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE id_user = :id_user AND $rxProductWhere AND $rxServiceStatusSql");
+    $rxCountParams = [':id_user' => $from_id];
+    if ($rxSelectedProduct !== null) {
+        $rxCountParams[':name_product'] = $rxSelectedProduct;
     }
-    $start_index = ($previous_page - 1) * $items_per_page;
+    $stmt->execute($rxCountParams);
+    $rxTotalServices = (int) $stmt->fetchColumn();
+    if ($rxTotalServices === 0) {
+        $rxUnavailableKeyboard = json_encode(['inline_keyboard' => [
+            [['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => 'myservicesbtn']],
+            $backuser
+        ]]);
+        Editmessagetext($from_id, $message_id, $datatextbot['dyn_errors_service_not_found'] ?? "❌ سرویس مورد نظر پیدا نشد.", $rxUnavailableKeyboard);
+        return;
+    }
+    $items_per_page = 5;
+    $rxTotalPages = max(1, (int) ceil($rxTotalServices / $items_per_page));
+    $page = max(1, min($rxRequestedPage, $rxTotalPages));
+    $start_index = ($page - 1) * $items_per_page;
+    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :id_user AND $rxProductWhere AND $rxServiceStatusSql ORDER BY time_sell DESC, id_invoice ASC LIMIT $start_index, $items_per_page");
+    $rxRowsParams = [':id_user' => $from_id];
+    if ($rxSelectedProduct !== null) {
+        $rxRowsParams[':name_product'] = $rxSelectedProduct;
+    }
+    $stmt->execute($rxRowsParams);
+    $serviceRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     $keyboardlists = [
         'inline_keyboard' => [],
     ];
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = '$from_id' AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold' OR status = 'disabled' OR status = 'disablebyadmin') ORDER BY time_sell DESC LIMIT $previous_page, $items_per_page");
-    $stmt->execute();
-    $serviceRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    $rxLabelDup = rxServiceListUserDuplicateKeys($from_id, ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin'], $setting['statusnamecustom'] == 'onnamecustom');
-    if ($setting['statusnamecustom'] == 'onnamecustom') {
-        foreach ($serviceRows as $row) {
-            $data = "";
-            if ($row != null)
-                $data = " | {$row['note']}";
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, true) . $data . rxServiceListStatusSuffix($row) . "✨",
-                    'callback_data' => "quickview_" . $row['id_invoice']
-                ],
-            ];
+    foreach ($serviceRows as $row) {
+        $data = "";
+        if ($setting['statusnamecustom'] == 'onnamecustom' && trim((string) ($row['note'] ?? '')) !== '') {
+            $data = " | {$row['note']}";
         }
-    } else {
-        foreach ($serviceRows as $row) {
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, false) . rxServiceListStatusSuffix($row) . "✨",
-                    'callback_data' => "quickview_" . $row['id_invoice']
-                ],
-            ];
-        }
+        $keyboardlists['inline_keyboard'][] = [
+            [
+                'text' => "✨" . (string) ($row['username'] ?? '') . $data . rxServiceListStatusSuffix($row) . "✨",
+                'callback_data' => "quickview_" . $row['id_invoice']
+            ],
+        ];
     }
-    $pagination_buttons = [
-        [
-            'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page', '_rxcolor' => 'subscription_list:next'
-        ],
-        [
+    $pagination_buttons = [];
+    if ($page > 1) {
+        $pagination_buttons[] = [
             'text' => $textbotlang['users']['page']['previous'],
-            'callback_data' => 'previous_page', '_rxcolor' => 'subscription_list:previous'
-        ]
-    ];
-    $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
-    $backuser = [
-        rx_kb_style(['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'backuser'], 'backuser', $_rx_nav_s)
-    ];
+            'callback_data' => 'previous_page_' . $rxProductHash . '_' . ($page - 1),
+            '_rxcolor' => 'subscription_list:previous'
+        ];
+    }
+    if ($page < $rxTotalPages) {
+        $pagination_buttons[] = [
+            'text' => $textbotlang['users']['page']['next'],
+            'callback_data' => 'next_page_' . $rxProductHash . '_' . ($page + 1),
+            '_rxcolor' => 'subscription_list:next'
+        ];
+    }
+    if (!empty($pagination_buttons)) {
+        $keyboardlists['inline_keyboard'][] = $pagination_buttons;
+    }
     $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice', '_rxcolor' => 'subscription_list:search']];
     if ($setting['NotUser'] == "onnotuser") {
         $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['page']['notusernameme'], 'callback_data' => 'notusernameme']];
     }
-    $keyboardlists['inline_keyboard'][] = $pagination_buttons;
+    $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => 'myservicesbtn']];
     $keyboardlists['inline_keyboard'][] = $backuser;
     $keyboard_json = json_encode($keyboardlists);
-    update("user", "pagenumber", $previous_page, "id", $from_id);
     Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json);
 
 } elseif ($datain == "notusernameme") {
