@@ -1028,7 +1028,7 @@ if ($text == "✅ قوانین را می پذیرم" or $datain == "acceptrule")
         $rxStartLanding = true;
     }
     deletemessage($from_id, $message_id);
-    sendmessage($from_id, $textbotlang['users']['Rules'], $keyboard, 'html');
+    sendmessage($from_id, $textbotlang['users']['Rules'], null, 'html');
     $confrim = true;
     update("user", "roll_Status", $confrim, "id", $from_id);
 }
