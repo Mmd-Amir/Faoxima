@@ -73,6 +73,34 @@ final class PaymentStatusHandler extends BaseHandler
             FaoximaResponse::notFound('Payment not found');
         }
 
+        if ($sbvView !== null && (string) ($report['id_user'] ?? '') === (string) $this->user['id']) {
+            $sbvPayment = rx_sbv_get($orderId);
+            if (is_array($sbvPayment) && (string) $sbvPayment['state'] === 'matched' && !empty($sbvPayment['deposit_id'])) {
+                try {
+                    $autoload = dirname(__DIR__, 2) . '/vendor/autoload.php';
+                    if (is_file($autoload)) {
+                        require_once $autoload;
+                    }
+                    rxEnsurePaymentRuntime();
+                    rxPaymentV2PrepareContext();
+                    rx_sbv_process_deposit((int) $sbvPayment['deposit_id'], dirname(__DIR__, 2) . '/images.jpg');
+                } catch (Throwable $e) {
+                    rx_sbv_log('SBV_STATUS_RECOVER_FAILED', $e->getMessage(), ['id_order' => $orderId]);
+                }
+                $report = FaoximaDb::fetchOne(
+                    'SELECT * FROM Payment_report WHERE id_order = :o AND id_user = :u LIMIT 1',
+                    [':o' => $orderId, ':u' => (string) $this->user['id']]
+                );
+                if ($report === null) {
+                    FaoximaResponse::notFound('Payment not found');
+                }
+                $sbvView = rx_sbv_public_view($orderId);
+                if (function_exists('rx_redis_del')) {
+                    rx_redis_del($rxPayCacheKey);
+                }
+            }
+        }
+
         if ((string) ($report['Payment_Method'] ?? '') === 'rialit' && function_exists('rialitPollThrottled')) {
             $fresh = rialitPollThrottled($orderId, (string) $this->user['id']);
             if (is_array($fresh)) {

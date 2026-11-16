@@ -1442,13 +1442,15 @@ try {
         bottype varchar(300) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
         message_id INT NULL,
         id_invoice varchar(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+        source varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
         card_photo_file_id varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
         card_last4 varchar(4) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
         report_chat_id varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
         report_message_id INT NULL,
         report_thread_id INT NULL,
         private_receipt_targets TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
-        direct_payment_done TINYINT(1) NULL)
+        direct_payment_done TINYINT(1) NULL,
+        KEY idx_paymentreport_source (source))
         ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
         if (!$result) {
             error_log("[table.php] table Payment_report: " . mysqli_error($connect));
@@ -1480,9 +1482,9 @@ try {
         $Check_filde = $connect->query("SHOW COLUMNS FROM Payment_report LIKE 'source'");
         if (mysqli_num_rows($Check_filde) != 1) {
             $connect->query("ALTER TABLE Payment_report ADD source VARCHAR(20) NULL");
-            $connect->query("ALTER TABLE Payment_report ADD INDEX idx_paymentreport_source (source)");
             echo "The source field was added ✅";
         }
+        rxSafeAddIndex($connect, "Payment_report", "idx_paymentreport_source", "source");
         $Check_filde = $connect->query("SHOW COLUMNS FROM Payment_report LIKE 'card_photo_file_id'");
         if (mysqli_num_rows($Check_filde) != 1) {
             $connect->query("ALTER TABLE Payment_report ADD card_photo_file_id VARCHAR(500) NULL");

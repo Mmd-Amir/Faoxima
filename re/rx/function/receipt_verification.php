@@ -30,6 +30,15 @@ if (!defined('RX_SBV_SCOPE')) {
 if (!defined('RX_SBV_MAX_BODY')) {
     define('RX_SBV_MAX_BODY', 65536);
 }
+if (!defined('RX_SBV_SUGGEST_RANGE_DEFAULT_TOMAN')) {
+    define('RX_SBV_SUGGEST_RANGE_DEFAULT_TOMAN', 1000);
+}
+if (!defined('RX_SBV_SUGGEST_RANGE_MIN_TOMAN')) {
+    define('RX_SBV_SUGGEST_RANGE_MIN_TOMAN', 0);
+}
+if (!defined('RX_SBV_SUGGEST_RANGE_MAX_TOMAN')) {
+    define('RX_SBV_SUGGEST_RANGE_MAX_TOMAN', 10000000);
+}
 
 if (!function_exists('rx_sbv_log')) {
     function rx_sbv_log(string $event, string $message, array $ctx = []): void
@@ -285,6 +294,25 @@ if (!function_exists('rx_sbv_set_lifetime_minutes')) {
             return false;
         }
         return rx_sbv_setting_set('sbv_lifetime_min', (string) $minutes);
+    }
+}
+
+if (!function_exists('rx_sbv_suggestion_range_toman')) {
+    function rx_sbv_suggestion_range_toman(): int
+    {
+        $raw = rx_sbv_setting_get('sbv_suggestion_range_toman', (string) RX_SBV_SUGGEST_RANGE_DEFAULT_TOMAN);
+        $toman = ctype_digit((string) $raw) ? (int) $raw : RX_SBV_SUGGEST_RANGE_DEFAULT_TOMAN;
+        return max(RX_SBV_SUGGEST_RANGE_MIN_TOMAN, min(RX_SBV_SUGGEST_RANGE_MAX_TOMAN, $toman));
+    }
+}
+
+if (!function_exists('rx_sbv_set_suggestion_range_toman')) {
+    function rx_sbv_set_suggestion_range_toman(int $toman): bool
+    {
+        if ($toman < RX_SBV_SUGGEST_RANGE_MIN_TOMAN || $toman > RX_SBV_SUGGEST_RANGE_MAX_TOMAN) {
+            return false;
+        }
+        return rx_sbv_setting_set('sbv_suggestion_range_toman', (string) $toman);
     }
 }
 
@@ -558,6 +586,7 @@ if (!function_exists('rx_sbv_prepare')) {
         if ($pdo === null) {
             return ['ok' => false, 'reason' => 'db_error'];
         }
+        rx_sbv_sweep();
         if (!rx_sbv_user_lock($userId)) {
             return ['ok' => false, 'reason' => 'busy'];
         }
@@ -888,6 +917,46 @@ if (!function_exists('rx_sbv_public_view')) {
     }
 }
 
+if (!function_exists('rx_sbv_expired_from_values')) {
+    function rx_sbv_expired_from_values(string $state, string $status, string $resolution, int $expiresAt, int $directDone = 0): bool
+    {
+        if ($status === 'paid' || $directDone === 1 || in_array($state, ['approved', 'credited'], true)) {
+            return false;
+        }
+        if (in_array($status, ['reject', 'cancelled'], true)) {
+            return false;
+        }
+        if ($state === 'closed' && in_array($resolution, ['rejected', 'rejected_blocked', 'cancelled', 'void', 'admin_credit', 'refunded'], true)) {
+            return false;
+        }
+        if ($status === 'expire') {
+            return true;
+        }
+        if ($state === 'closed') {
+            return $resolution === 'expired';
+        }
+        if (in_array($state, ['open', 'review', 'matched'], true) && $expiresAt > 0 && $expiresAt < time()) {
+            return in_array($status, ['', 'Unpaid', 'waiting', 'pending'], true);
+        }
+        return false;
+    }
+}
+
+if (!function_exists('rx_sbv_payment_is_expired')) {
+    function rx_sbv_payment_is_expired(array $csp, ?array $report = null): bool
+    {
+        $status = is_array($report) ? (string) ($report['payment_Status'] ?? '') : (string) ($csp['payment_Status'] ?? '');
+        $directDone = (int) ($csp['direct_payment_done'] ?? (is_array($report) ? ($report['direct_payment_done'] ?? 0) : 0));
+        return rx_sbv_expired_from_values(
+            (string) ($csp['state'] ?? ''),
+            $status,
+            (string) ($csp['resolution'] ?? ''),
+            (int) ($csp['expires_at'] ?? 0),
+            $directDone
+        );
+    }
+}
+
 if (!function_exists('rx_sbv_receipt_gate')) {
     function rx_sbv_receipt_gate(string $orderId): array
     {
@@ -1117,6 +1186,16 @@ if (!function_exists('rx_sbv_ingest')) {
         if ($body !== null && ($receivedMs !== null || $receivedAtRaw !== null)) {
             $fingerprint = hash('sha256', json_encode([$isTest ? 1 : 0, (string) $sender, $body, $receivedMs !== null ? (string) $receivedMs : (string) $receivedAtRaw], JSON_UNESCAPED_UNICODE));
         }
+        try {
+            $identityLocks = rx_sbv_identity_lock($eventId, $fingerprint);
+        } catch (Throwable $e) {
+            rx_sbv_log('SBV_IDENTITY_LOCK_FAILED', $e->getMessage());
+            return [503, ['ok' => false, 'error' => 'storage_unavailable']];
+        }
+        try {
+        if (rx_sbv_deleted_identity_exists($eventId, $fingerprint)) {
+            return [200, ['ok' => true, 'status' => 'deleted']];
+        }
         if ($isTest) {
             $state = 'test';
             $note = 'test_event';
@@ -1180,6 +1259,12 @@ if (!function_exists('rx_sbv_ingest')) {
             return [500, ['ok' => false, 'error' => 'storage_failed']];
         }
         return [200, ['ok' => true, 'status' => 'stored', 'id' => $id, 'state' => $state]];
+        } catch (Throwable $e) {
+            rx_sbv_log('SBV_IDENTITY_CHECK_FAILED', $e->getMessage());
+            return [503, ['ok' => false, 'error' => 'storage_unavailable']];
+        } finally {
+            rx_sbv_identity_unlock($identityLocks);
+        }
     }
 }
 
@@ -1214,7 +1299,7 @@ if (!function_exists('rx_sbv_match_deposit')) {
     function rx_sbv_match_deposit(int $depositId): string
     {
         try {
-            return rx_sbv_tx(function (PDO $pdo) use ($depositId) {
+            $result = rx_sbv_tx(function (PDO $pdo) use ($depositId) {
                 $now = time();
                 $stmt = $pdo->prepare("SELECT * FROM card_sms_deposit WHERE id = ? LIMIT 1 FOR UPDATE");
                 $stmt->execute([$depositId]);
@@ -1271,6 +1356,7 @@ if (!function_exists('rx_sbv_match_deposit')) {
                 $mark('matched', null, (string) $csp['id_order']);
                 return 'matched';
             });
+            return $result;
         } catch (Throwable $e) {
             rx_sbv_log('SBV_MATCH_FAILED', $e->getMessage(), ['deposit_id' => $depositId]);
             return 'error';
@@ -1318,27 +1404,221 @@ if (!function_exists('rx_sbv_cashback')) {
 }
 
 if (!function_exists('rx_sbv_report')) {
-    function rx_sbv_report(string $text): void
+    function rx_sbv_report(string $text, $keyboard = null, array $options = []): array
     {
         if (!function_exists('select') || !function_exists('telegram')) {
-            return;
+            return ['state' => 'failed', 'ok' => false, 'error' => 'telegram_unavailable'];
         }
         try {
             $setting = select('setting', '*');
             $channel = is_array($setting) ? trim((string) ($setting['Channel_Report'] ?? '')) : '';
             if ($channel === '') {
-                return;
+                return ['state' => 'failed', 'ok' => false, 'error' => 'report_channel_missing'];
             }
             $topic = select('topicid', 'idreport', 'report', 'paymentreport', 'select');
-            telegram('sendmessage', [
+            $payload = [
                 'chat_id' => $channel,
                 'message_thread_id' => is_array($topic) ? ($topic['idreport'] ?? null) : null,
                 'text' => $text,
                 'parse_mode' => 'HTML',
-            ]);
+            ];
+            if (!empty($options['no_network_retry'])) {
+                $payload['_rx_no_network_retry'] = true;
+            }
+            if ($keyboard !== null && $keyboard !== '') {
+                $payload['reply_markup'] = $keyboard;
+            }
         } catch (Throwable $e) {
             rx_sbv_log('SBV_REPORT_FAILED', $e->getMessage());
+            return ['state' => 'failed', 'ok' => false, 'error' => $e->getMessage()];
         }
+        try {
+            $response = telegram('sendmessage', $payload);
+        } catch (Throwable $e) {
+            rx_sbv_log('SBV_REPORT_FAILED', $e->getMessage());
+            return ['state' => 'uncertain', 'ok' => false, 'error' => $e->getMessage(), 'uncertain' => true];
+        }
+        if (!is_array($response)) {
+            return ['state' => 'uncertain', 'ok' => false, 'error' => 'invalid_telegram_response', 'uncertain' => true];
+        }
+        if (($response['ok'] ?? null) === true) {
+            $result = is_array($response['result'] ?? null) ? $response['result'] : [];
+            $chatId = $result['chat']['id'] ?? $channel;
+            $messageId = isset($result['message_id']) ? (int) $result['message_id'] : 0;
+            if ($messageId <= 0) {
+                return ['state' => 'uncertain', 'ok' => false, 'error' => 'missing_telegram_message_id', 'uncertain' => true];
+            }
+            return [
+                'state' => 'sent',
+                'ok' => true,
+                'chat_id' => (string) $chatId,
+                'message_id' => $messageId,
+                'response' => $response,
+            ];
+        }
+        $errorCode = (int) ($response['error_code'] ?? 0);
+        $error = (string) ($response['description'] ?? 'telegram_send_failed');
+        $definitiveFailure = ($response['ok'] ?? null) === false
+            && empty($response['_rx_invalid_response'])
+            && $errorCode >= 400 && $errorCode < 500;
+        $state = $definitiveFailure ? 'failed' : 'uncertain';
+        return [
+            'state' => $state,
+            'ok' => false,
+            'error' => $error,
+            'error_code' => $errorCode,
+            'uncertain' => $state === 'uncertain',
+            'response' => $response,
+        ];
+    }
+}
+
+if (!function_exists('rx_sbv_report_marker_fetch')) {
+    function rx_sbv_report_marker_fetch(PDO $pdo, string $action, ?int $depositId, ?string $orderId): ?array
+    {
+        try {
+            $stmt = $pdo->prepare("SELECT * FROM card_sms_audit WHERE action = ? AND deposit_id <=> ? AND id_order <=> ? ORDER BY id DESC LIMIT 1");
+            $stmt->execute([$action, $depositId, $orderId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $row === false ? null : $row;
+        } catch (Throwable $e) {
+            rx_sbv_log('SBV_REPORT_MARKER_READ_FAILED', $e->getMessage(), ['action' => $action, 'deposit_id' => $depositId]);
+            throw $e;
+        }
+    }
+}
+
+if (!function_exists('rx_sbv_report_marker_save')) {
+    function rx_sbv_report_marker_save(PDO $pdo, ?int $markerId, string $action, ?int $depositId, ?string $orderId, ?string $actor, array $data): ?int
+    {
+        $state = substr((string) ($data['state'] ?? 'failed'), 0, 40);
+        $reason = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR);
+        if ($reason === false) {
+            $reason = json_encode(['state' => $state], JSON_UNESCAPED_SLASHES);
+        }
+        $receivedRial = isset($data['received_rial']) && $data['received_rial'] !== null ? (int) $data['received_rial'] : null;
+        try {
+            if ($markerId !== null) {
+                $stmt = $pdo->prepare("UPDATE card_sms_audit SET outcome = ?, reason = ?, received_rial = COALESCE(?, received_rial) WHERE id = ?");
+                $stmt->execute([$state, $reason, $receivedRial, $markerId]);
+                return $markerId;
+            }
+            $stmt = $pdo->prepare(
+                "INSERT INTO card_sms_audit (id_order, deposit_id, actor, action, principal_toman, fee_toman, expected_rial, received_rial, credit_toman, outcome, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            );
+            $stmt->execute([
+                $orderId,
+                $depositId,
+                $actor,
+                $action,
+                isset($data['principal_toman']) ? (int) $data['principal_toman'] : null,
+                isset($data['fee_toman']) ? (int) $data['fee_toman'] : null,
+                isset($data['expected_rial']) ? (int) $data['expected_rial'] : null,
+                $receivedRial,
+                isset($data['credit_toman']) ? (int) $data['credit_toman'] : null,
+                $state,
+                $reason,
+                time(),
+            ]);
+            return (int) $pdo->lastInsertId();
+        } catch (Throwable $e) {
+            rx_sbv_log('SBV_REPORT_MARKER_WRITE_FAILED', $e->getMessage(), ['action' => $action, 'deposit_id' => $depositId]);
+            return null;
+        }
+    }
+}
+
+if (!function_exists('rx_sbv_deliver_tracked_report')) {
+    function rx_sbv_deliver_tracked_report(string $action, ?int $depositId, ?string $orderId, ?string $actor, string $text, $keyboard = null, array $meta = []): array
+    {
+        $pdo = rx_sbv_pdo();
+        if ($pdo === null) {
+            return ['state' => 'failed', 'ok' => false, 'error' => 'db_unavailable'];
+        }
+        $lockName = 'rx_sbv_rpt_' . md5($action . '|' . ($depositId ?? '') . '|' . ($orderId ?? ''));
+        $locked = false;
+        try {
+            $locked = (int) $pdo->query("SELECT GET_LOCK(" . $pdo->quote($lockName) . ", 0)")->fetchColumn() === 1;
+        } catch (Throwable $e) {
+            $locked = false;
+        }
+        if (!$locked) {
+            return ['state' => 'busy', 'ok' => false, 'error' => 'report_lock_busy'];
+        }
+        $markerId = null;
+        $attempts = 1;
+        $data = [];
+        try {
+            $marker = rx_sbv_report_marker_fetch($pdo, $action, $depositId, $orderId);
+            if (is_array($marker)) {
+                $decoded = json_decode((string) ($marker['reason'] ?? ''), true);
+                $existing = is_array($decoded) ? $decoded : [];
+                $markerState = (string) ($marker['outcome'] ?? ($existing['state'] ?? ''));
+                if ($markerState === 'sent') {
+                    return [
+                        'state' => 'sent',
+                        'ok' => true,
+                        'already_sent' => true,
+                        'chat_id' => (string) ($existing['chat_id'] ?? ''),
+                        'message_id' => (int) ($existing['message_id'] ?? 0),
+                        'marker_id' => (int) $marker['id'],
+                    ];
+                }
+                if ($markerState === 'sending' || $markerState === 'uncertain') {
+                    return [
+                        'state' => 'uncertain',
+                        'ok' => false,
+                        'uncertain' => true,
+                        'error' => (string) ($existing['error'] ?? 'delivery_uncertain'),
+                        'marker_id' => (int) $marker['id'],
+                    ];
+                }
+                if (!in_array($markerState, ['failed'], true)) {
+                    return [
+                        'state' => 'uncertain',
+                        'ok' => false,
+                        'uncertain' => true,
+                        'error' => 'legacy_delivery_unknown',
+                        'marker_id' => (int) $marker['id'],
+                    ];
+                }
+                $markerId = (int) $marker['id'];
+                $attempts = max(1, (int) ($existing['attempts'] ?? 0) + 1);
+            }
+            $data = array_merge($meta, [
+                'state' => 'sending',
+                'attempts' => $attempts,
+                'started_at' => time(),
+                'updated_at' => time(),
+                'action' => $action,
+                'deposit_id' => $depositId,
+                'order_id' => $orderId,
+                'text_hash' => hash('sha256', $text),
+            ]);
+            $markerId = rx_sbv_report_marker_save($pdo, $markerId, $action, $depositId, $orderId, $actor, $data);
+            if ($markerId === null) {
+                return ['state' => 'failed', 'ok' => false, 'error' => 'report_tracking_failed'];
+            }
+        } catch (Throwable $e) {
+            rx_sbv_log('SBV_REPORT_TRACKING_FAILED', $e->getMessage(), ['action' => $action, 'deposit_id' => $depositId]);
+            return ['state' => 'failed', 'ok' => false, 'error' => 'report_tracking_failed'];
+        } finally {
+            try {
+                $pdo->query("SELECT RELEASE_LOCK(" . $pdo->quote($lockName) . ")");
+            } catch (Throwable $e) {
+            }
+        }
+        $delivery = rx_sbv_report($text, $keyboard, ['no_network_retry' => true]);
+        $final = array_merge($data, [
+            'state' => (string) ($delivery['state'] ?? 'uncertain'),
+            'updated_at' => time(),
+            'chat_id' => $delivery['chat_id'] ?? null,
+            'message_id' => $delivery['message_id'] ?? null,
+            'error' => $delivery['error'] ?? null,
+            'error_code' => $delivery['error_code'] ?? null,
+        ]);
+        rx_sbv_report_marker_save($pdo, $markerId, $action, $depositId, $orderId, $actor, $final);
+        return array_merge($delivery, ['marker_id' => $markerId, 'attempts' => $attempts]);
     }
 }
 
@@ -1605,6 +1885,166 @@ if (!function_exists('rx_sbv_fulfillment_outcome')) {
     }
 }
 
+if (!function_exists('rx_sbv_recover_order')) {
+    function rx_sbv_recover_order(string $orderId, string $image): array
+    {
+        $out = ['status' => 'skip', 'order_id' => $orderId];
+        if ($orderId === '' || !function_exists('rx_pf_recover')) {
+            return $out;
+        }
+        try {
+            $recovered = rx_pf_recover($orderId);
+        } catch (Throwable $e) {
+            rx_sbv_log('SBV_RECOVER_FAILED', $e->getMessage(), ['id_order' => $orderId]);
+            $out['status'] = 'error';
+            return $out;
+        }
+        $status = (string) ($recovered['status'] ?? 'skip');
+        $out['recovery'] = $status;
+        if ($status === 'finalized') {
+            $csp = rx_sbv_get($orderId);
+            if ($csp !== null && (string) $csp['state'] === 'matched') {
+                rx_sbv_after_approval($orderId, 'auto', 'system', null, true);
+            }
+            $out['status'] = 'completed';
+            return $out;
+        }
+        if ($status !== 'claimed' && $status !== 'reconcile') {
+            if ($status === 'rejected' || $status === 'manual_review') {
+                $out['status'] = 'failed';
+            } elseif ($status === 'error') {
+                $out['status'] = 'error';
+            }
+            return $out;
+        }
+        $report = is_array($recovered['report'] ?? null) ? $recovered['report'] : (rx_sbv_payment_report($orderId) ?? []);
+        $run = rx_sbv_run_claimed($orderId, (string) ($recovered['token'] ?? ''), $image, rx_sbv_release_status($report, 'waiting'));
+        $out['settle'] = (string) ($run['settle'] ?? '');
+        if (!empty($run['finalized'])) {
+            $csp = rx_sbv_get($orderId);
+            if ($csp !== null && (string) $csp['state'] === 'matched') {
+                rx_sbv_after_approval($orderId, 'auto', 'system', null, true);
+            }
+            $out['status'] = 'completed';
+            return $out;
+        }
+        rx_sbv_hold_if_terminal($orderId, $run);
+        $out['status'] = 'processing';
+        return $out;
+    }
+}
+
+if (!function_exists('rx_sbv_process_deposit')) {
+    function rx_sbv_process_deposit(int $depositId, string $image): array
+    {
+        $out = ['status' => 'skipped', 'deposit_id' => $depositId, 'deposit_state' => null, 'order_id' => null];
+        if ($depositId <= 0) {
+            $out['status'] = 'missing';
+            return $out;
+        }
+        $deposit = rx_sbv_deposit($depositId);
+        if (!is_array($deposit)) {
+            $out['status'] = 'missing';
+            return $out;
+        }
+        $state = (string) ($deposit['state'] ?? '');
+        if ($state === 'pending') {
+            $match = rx_sbv_match_deposit($depositId);
+            $out['match'] = $match;
+            $deposit = rx_sbv_deposit($depositId);
+            if (!is_array($deposit)) {
+                $out['status'] = 'error';
+                return $out;
+            }
+            $state = (string) ($deposit['state'] ?? '');
+        }
+        $out['deposit_state'] = $state;
+        $orderId = trim((string) ($deposit['id_order'] ?? ''));
+        if ($orderId !== '') {
+            $out['order_id'] = $orderId;
+        }
+        if ($state === 'pending') {
+            $out['status'] = ($out['match'] ?? '') === 'error' ? 'error' : 'skipped';
+            return $out;
+        }
+        if (in_array($state, ['test', 'ignored'], true)) {
+            $out['status'] = 'ignored';
+            return $out;
+        }
+        if (in_array($state, ['unmatched', 'ambiguous', 'late'], true)) {
+            $out['status'] = $state;
+            try {
+                rx_sbv_report_unmatched_deposit($depositId);
+            } catch (Throwable $e) {
+                rx_sbv_log('SBV_REVIEW_REPORT_FAILED', $e->getMessage(), ['deposit_id' => $depositId]);
+            }
+            return $out;
+        }
+        if ($state === 'applied' || $state === 'reviewed_rejected' || $state === 'dismissed') {
+            $out['status'] = 'already_processed';
+            return $out;
+        }
+        if ($state !== 'matched') {
+            $out['status'] = 'skipped';
+            return $out;
+        }
+        if ($orderId === '' || !rx_sbv_is_verify_order($orderId)) {
+            $out['status'] = 'skipped';
+            return $out;
+        }
+        try {
+            $applied = rx_sbv_apply_matched($orderId, $image);
+        } catch (Throwable $e) {
+            rx_sbv_log('SBV_AUTO_APPLY_FAILED', $e->getMessage(), ['id_order' => $orderId, 'deposit_id' => $depositId]);
+            $applied = 'error';
+        }
+        $out['fulfillment'] = $applied;
+        $outcome = rx_sbv_fulfillment_outcome($orderId);
+        $kind = is_array($outcome) ? (string) ($outcome['outcome'] ?? '') : '';
+        if ($applied === 'finalized' || $kind === 'completed') {
+            $out['status'] = 'completed';
+            return $out;
+        }
+        if ($kind === 'failed') {
+            $out['status'] = 'failed';
+            return $out;
+        }
+        if ($kind === 'closed') {
+            $out['status'] = 'closed';
+            return $out;
+        }
+        if ($kind === 'refunded' || $kind === 'wallet_credit') {
+            $out['status'] = 'resolved';
+            return $out;
+        }
+        if (in_array($applied, ['claim_busy', 'claim_manual_review', 'claim_not_eligible'], true) && $kind !== 'processing') {
+            $out['status'] = $kind === '' ? 'error' : 'skipped';
+            return $out;
+        }
+        if ($kind === 'processing' || $applied === 'error' || strpos($applied, 'pending_') === 0 || $applied === 'claim_requires_reconciliation') {
+            try {
+                $recovery = rx_sbv_recover_order($orderId, $image);
+            } catch (Throwable $e) {
+                rx_sbv_log('SBV_RECOVER_FAILED', $e->getMessage(), ['id_order' => $orderId]);
+                $recovery = ['status' => 'error'];
+            }
+            $out['recovery'] = $recovery;
+            if (($recovery['status'] ?? '') === 'completed') {
+                $out['status'] = 'completed';
+                return $out;
+            }
+            if (($recovery['status'] ?? '') === 'failed') {
+                $out['status'] = 'failed';
+                return $out;
+            }
+            $out['status'] = ($recovery['status'] ?? '') === 'error' ? 'error' : 'processing';
+            return $out;
+        }
+        $out['status'] = $kind === 'pending' ? 'pending' : 'skipped';
+        return $out;
+    }
+}
+
 if (!function_exists('rx_sbv_sweep')) {
     function rx_sbv_sweep(int $limit = 200): int
     {
@@ -1806,6 +2246,10 @@ if (!function_exists('rx_sbv_confirm_guard')) {
         if ($csp === null) {
             return null;
         }
+        $report = rx_sbv_payment_report($orderId);
+        if (rx_sbv_payment_is_expired($csp, $report)) {
+            return trim($reason) !== '' ? null : 'verify_reason_required';
+        }
         if (trim($reason) !== '') {
             return null;
         }
@@ -1813,6 +2257,367 @@ if (!function_exists('rx_sbv_confirm_guard')) {
             return null;
         }
         return 'verify_reason_required';
+    }
+}
+
+if (!function_exists('rx_sbv_payment_reject_guard')) {
+    function rx_sbv_payment_reject_guard(string $orderId): ?string
+    {
+        $csp = rx_sbv_get($orderId);
+        if ($csp === null) {
+            return 'not_verify';
+        }
+        $report = rx_sbv_payment_report($orderId);
+        if (!is_array($report)) {
+            return 'not_found';
+        }
+        $status = (string) ($report['payment_Status'] ?? '');
+        if ($status === 'paid' || (int) ($report['direct_payment_done'] ?? 0) === 1) {
+            return 'already_paid';
+        }
+        if (in_array($status, ['processing', 'reconciling'], true)) {
+            return 'processing';
+        }
+        if (in_array($status, ['reject', 'cancelled'], true)) {
+            return 'already_final';
+        }
+        if (!in_array($status, ['Unpaid', 'waiting', 'expire'], true)) {
+            return 'not_eligible';
+        }
+        $state = (string) ($csp['state'] ?? '');
+        if (in_array($state, ['approved', 'credited'], true)) {
+            return 'already_paid';
+        }
+        $expired = rx_sbv_payment_is_expired($csp, $report);
+        if (!in_array($state, ['open', 'matched', 'review'], true) && !($state === 'closed' && $expired)) {
+            return 'not_eligible';
+        }
+        if (function_exists('rx_pf_fetch')) {
+            try {
+                $record = rx_pf_fetch($orderId);
+                if (is_array($record)) {
+                    $recordState = (string) ($record['state'] ?? '');
+                    if ($recordState === 'completed') {
+                        return 'already_paid';
+                    }
+                    if (in_array($recordState, ['claimed', 'applying', 'reconciling'], true) && (int) ($record['lease_expires_at'] ?? 0) > time()) {
+                        return 'processing';
+                    }
+                }
+            } catch (Throwable $e) {
+            }
+        }
+        return null;
+    }
+}
+
+if (!function_exists('rx_sbv_payment_link_guard')) {
+    function rx_sbv_payment_link_guard(string $orderId, int $depositId = 0): ?string
+    {
+        $csp = rx_sbv_get($orderId);
+        if ($csp === null) {
+            return 'order_not_verify';
+        }
+        $report = rx_sbv_payment_report($orderId);
+        if (!is_array($report)) {
+            return 'not_found';
+        }
+        $status = (string) ($report['payment_Status'] ?? '');
+        if ($status === 'paid' || (int) ($report['direct_payment_done'] ?? 0) === 1) {
+            return 'already_paid';
+        }
+        if (in_array($status, ['processing', 'reconciling'], true)) {
+            return 'processing';
+        }
+        $state = (string) ($csp['state'] ?? '');
+        $expired = rx_sbv_payment_is_expired($csp, $report);
+        if ($state !== 'open' && !($expired && in_array($state, ['review', 'closed'], true))) {
+            return 'order_state_' . $state;
+        }
+        if ($state === 'closed' && !$expired) {
+            return 'order_state_closed';
+        }
+        if (!$expired && (int) ($csp['expires_at'] ?? 0) < time()) {
+            return 'order_state_expired';
+        }
+        if ($csp['deposit_id'] !== null) {
+            return 'order_has_deposit';
+        }
+        $allowed = $expired ? ['Unpaid', 'waiting', 'pending', 'expire'] : ['Unpaid', 'waiting', 'pending'];
+        if (!in_array($status, $allowed, true)) {
+            return 'not_eligible';
+        }
+        return null;
+    }
+}
+
+if (!function_exists('rx_sbv_match_failure_label')) {
+    function rx_sbv_match_failure_label(string $state, string $note): string
+    {
+        $raw = trim($note);
+        $code = strpos($raw, ':') !== false ? substr($raw, 0, strpos($raw, ':')) : $raw;
+        $map = [
+            'no_matching_payment' => 'هیچ پرداخت فعالی با مبلغ دقیق این واریز پیدا نشد.',
+            'multiple_candidates' => 'چند پرداخت فعال با مبلغ دقیق این واریز وجود داشت؛ تطبیق خودکار برای جلوگیری از انتخاب اشتباه متوقف شد.',
+            'exact_amount_inactive_payment' => 'مبلغ دقیق با یک پرداخت غیرفعال یا خارج از مهلت برابر بود.',
+            'sms_predates_payment' => 'زمان پیامک بانکی پیش از ایجاد پرداخت متناظر است.',
+            'order_not_payable' => 'پرداخت متناظر دیگر در وضعیت قابل پرداخت نیست.',
+            'candidate_changed' => 'وضعیت پرداخت کاندید هنگام تطبیق هم‌زمان تغییر کرد.',
+            'invalid_amount' => 'مبلغ واریز نامعتبر یا صفر است.',
+            'not_eligible' => 'واریز برای تطبیق خودکار واجد شرایط نیست.',
+        ];
+        if (isset($map[$code])) {
+            return $map[$code];
+        }
+        if ($state === 'ambiguous') {
+            return 'چند پرداخت هم‌مبلغ فعال بود و انتخاب خودکار امن نیست.';
+        }
+        if ($state === 'late') {
+            return 'مبلغ واریز به یک پرداخت غیرفعال یا منقضی نزدیک است.';
+        }
+        return 'مبلغ یا زمان واریز با هیچ پرداخت فعالی تطبیق خودکار پیدا نکرد.';
+    }
+}
+
+if (!function_exists('rx_sbv_report_candidates')) {
+    function rx_sbv_report_candidates(int $depositId, int $limit = 8, int $page = 0, ?string $orderId = null): array
+    {
+        $deposit = rx_sbv_deposit($depositId);
+        $pdo = rx_sbv_pdo();
+        if (!is_array($deposit) || $pdo === null || $deposit['amount_rial'] === null) {
+            return ['ok' => false, 'rows' => [], 'active' => [], 'expired' => [], 'has_more' => false];
+        }
+        $orderId = $orderId !== null ? trim($orderId) : '';
+        $amountRial = (int) $deposit['amount_rial'];
+        if ($amountRial <= 0) {
+            return ['ok' => true, 'rows' => [], 'active' => [], 'expired' => [], 'has_more' => false];
+        }
+        $amountToman = intdiv($amountRial, 10);
+        $storedAt = (int) $deposit['stored_at'];
+        $eventAt = $storedAt;
+        $receivedMs = $deposit['received_at_ms'] !== null ? (int) $deposit['received_at_ms'] : 0;
+        if ($receivedMs > 0) {
+            $eventSec = intdiv($receivedMs, 1000);
+            if ($eventSec > 0 && $eventSec <= $storedAt + RX_SBV_DEVICE_SKEW && $eventSec >= $storedAt - 604800) {
+                $eventAt = $eventSec;
+            }
+        }
+        $rangeToman = rx_sbv_suggestion_range_toman();
+        $rangeRial = $rangeToman * 10;
+        $principalLow = max(0, $amountToman - $rangeToman);
+        $principalHigh = $amountToman + $rangeToman;
+        $payableLow = max(0, $amountRial - $rangeRial);
+        $payableHigh = $amountRial + $rangeRial;
+        $from = $eventAt - 86400;
+        $to = $eventAt;
+        $limit = max(1, min(30, $limit));
+        $page = max(0, $page);
+        $now = time();
+        try {
+            $base = " FROM card_sms_payment csp
+                   JOIN Payment_report pr ON pr.id_order = csp.id_order
+                   LEFT JOIN user u ON u.id = csp.id_user
+                  WHERE csp.deposit_id IS NULL
+                    AND csp.state IN ('open', 'review', 'closed')
+                    AND (csp.state <> 'closed' OR csp.resolution IS NULL OR csp.resolution = '' OR csp.resolution = 'expired')
+                    AND pr.payment_Status IN ('Unpaid', 'waiting', 'pending', 'expire')
+                    AND COALESCE(pr.direct_payment_done, 0) = 0
+                    AND csp.created_at BETWEEN ? AND ?
+                    AND (csp.principal_toman BETWEEN ? AND ? OR csp.payable_rial BETWEEN ? AND ?)
+                    AND NOT EXISTS (SELECT 1 FROM payment_fulfillment pf WHERE pf.id_order = csp.id_order AND (pf.state = 'completed' OR (pf.state IN ('claimed', 'applying', 'reconciling') AND COALESCE(pf.lease_expires_at, 0) > ?)))";
+            if ($orderId !== '') {
+                $base .= " AND csp.id_order = ?";
+            }
+            $params = [$from, $to, $principalLow, $principalHigh, $payableLow, $payableHigh, $now];
+            if ($orderId !== '') {
+                $params[] = $orderId;
+            }
+            $count = $pdo->prepare('SELECT COUNT(*)' . $base);
+            $count->execute($params);
+            $total = (int) $count->fetchColumn();
+            $pages = max(1, (int) ceil($total / $limit));
+            $page = min($page, $pages - 1);
+            $expiredRank = "CASE WHEN pr.payment_Status = 'expire' OR (csp.state = 'closed' AND csp.resolution = 'expired') OR (csp.state IN ('open', 'review', 'matched') AND csp.expires_at > 0 AND csp.expires_at < " . $now . ") THEN 1 ELSE 0 END";
+            $stmt = $pdo->prepare(
+                "SELECT csp.*, pr.payment_Status AS report_status, pr.id_invoice AS report_invoice, pr.time AS report_time, pr.source AS report_source, COALESCE(pr.direct_payment_done, 0) AS report_direct_done, u.username, u.namecustom"
+                . $base . " ORDER BY " . $expiredRank . " ASC, CASE WHEN csp.principal_toman = ? THEN 0 WHEN csp.payable_rial = ? THEN 1 ELSE 2 END, LEAST(ABS(CAST(csp.principal_toman AS SIGNED) - CAST(? AS SIGNED)), ABS(CAST(csp.payable_rial AS SIGNED) - CAST(? AS SIGNED)) / 10) ASC, ABS(CAST(csp.created_at AS SIGNED) - CAST(? AS SIGNED)) ASC, csp.id DESC LIMIT " . $limit . " OFFSET " . ($page * $limit)
+            );
+            $stmt->execute(array_merge($params, [$amountToman, $amountRial, $amountToman, $amountRial, $eventAt]));
+            $all = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $hasMore = $page + 1 < $pages;
+            $active = [];
+            $expired = [];
+            foreach ($all as $row) {
+                $rowExpired = rx_sbv_expired_from_values(
+                    (string) ($row['state'] ?? ''),
+                    (string) ($row['report_status'] ?? ''),
+                    (string) ($row['resolution'] ?? ''),
+                    (int) ($row['expires_at'] ?? 0),
+                    (int) ($row['report_direct_done'] ?? 0)
+                );
+                $row['candidate_expired'] = $rowExpired ? 1 : 0;
+                if ($rowExpired) {
+                    $expired[] = $row;
+                } else {
+                    $active[] = $row;
+                }
+            }
+            return ['ok' => true, 'rows' => array_merge($active, $expired), 'active' => $active, 'expired' => $expired, 'has_more' => $hasMore, 'total' => $total, 'page' => $page, 'pages' => $pages];
+        } catch (Throwable $e) {
+            rx_sbv_log('SBV_CANDIDATE_SCAN_FAILED', $e->getMessage(), ['deposit_id' => $depositId]);
+            return ['ok' => false, 'rows' => [], 'active' => [], 'expired' => [], 'has_more' => false];
+        }
+    }
+}
+
+if (!function_exists('rx_sbv_candidate_line')) {
+    function rx_sbv_candidate_line(array $candidate, int $number, ?int $amountRial): string
+    {
+        $expired = !empty($candidate['candidate_expired']);
+        $status = $expired ? 'منقضی‌شده — احتمال ضعیف‌تر؛ فقط بررسی دستی' : rx_sbv_status_label((string) ($candidate['report_status'] ?? ''));
+        $name = trim((string) ($candidate['namecustom'] ?? ''));
+        if ($name === 'none') {
+            $name = '';
+        }
+        $username = trim((string) ($candidate['username'] ?? ''));
+        $display = $name !== '' ? $name : ($username !== '' ? '@' . $username : 'بدون نام');
+        $source = (string) ($candidate['report_source'] ?? '') === 'miniapp' ? 'مینی‌اپ' : 'ربات';
+        $diff = $amountRial === null ? null : $amountRial - (int) $candidate['payable_rial'];
+        $diffLabel = $diff === null ? '—' : (rx_sbv_money(intdiv(abs($diff), 10)) . ' تومان ' . ($diff < 0 ? 'کمتر' : ($diff > 0 ? 'بیشتر' : 'بدون اختلاف')));
+        $amountToman = $amountRial === null ? 0 : intdiv($amountRial, 10);
+        $explain = '';
+        if ($amountRial !== null && (int) $candidate['principal_toman'] === $amountToman && (int) $candidate['payable_rial'] > $amountRial) {
+            $explain = 'پرداخت احتمالی با اصل مبلغ برابر است؛ کارمزد شناسایی در واریز لحاظ نشده است.';
+        } elseif ($diff !== null && $diff < 0) {
+            $explain = 'مبلغ واریز از مبلغ مورد انتظار کمتر است.';
+        } elseif ($diff !== null && $diff > 0) {
+            $explain = 'مبلغ واریز از مبلغ مورد انتظار بیشتر است.';
+        } else {
+            $explain = 'مبلغ واریز با مبلغ مورد انتظار برابر است.';
+        }
+        return "<b>" . $number . ") سفارش <code>" . rx_sbv_h($candidate['id_order']) . "</code></b>\n"
+            . "👤 <code>" . rx_sbv_h($candidate['id_user']) . "</code> | " . rx_sbv_h($display) . "\n"
+            . "📦 " . rx_sbv_h(rx_sbv_invoice_label((string) ($candidate['report_invoice'] ?? ''))) . " | منبع: " . rx_sbv_h($source) . "\n"
+            . "💰 اصل: " . rx_sbv_money($candidate['principal_toman']) . " تومان | کارمزد: " . rx_sbv_money($candidate['fee_toman']) . " تومان\n"
+            . "✅ مبلغ مورد انتظار: " . rx_sbv_money(intdiv((int) $candidate['payable_rial'], 10)) . " تومان\n"
+            . "📥 مبلغ واریز: " . ($amountRial !== null ? rx_sbv_money($amountToman) . ' تومان' : '—') . "\n"
+            . "➖ اختلاف: " . rx_sbv_h($diffLabel) . "\n"
+            . "📅 ایجاد: " . rx_sbv_h(rx_sbv_clock((int) $candidate['created_at'], true)) . " | مهلت: " . rx_sbv_h(rx_sbv_clock((int) $candidate['expires_at'], true)) . "\n"
+            . "📌 وضعیت: " . rx_sbv_h($status) . "\n"
+            . "💡 " . rx_sbv_h($explain);
+    }
+}
+
+if (!function_exists('rx_sbv_report_unmatched_deposit')) {
+    function rx_sbv_report_unmatched_deposit(int $depositId): bool
+    {
+        $deposit = rx_sbv_deposit($depositId);
+        $pdo = rx_sbv_pdo();
+        if (!is_array($deposit) || $pdo === null || !in_array((string) $deposit['state'], ['unmatched', 'ambiguous', 'late'], true)) {
+            return false;
+        }
+        try {
+            $marker = rx_sbv_report_marker_fetch($pdo, 'deposit_review_report', $depositId, null);
+        } catch (Throwable $e) {
+            return false;
+        }
+        if (is_array($marker)) {
+            $markerData = json_decode((string) ($marker['reason'] ?? ''), true);
+            $markerData = is_array($markerData) ? $markerData : [];
+            $markerState = (string) ($marker['outcome'] ?? ($markerData['state'] ?? ''));
+            if ($markerState === 'sent') {
+                return true;
+            }
+            if ($markerState !== 'failed') {
+                return false;
+            }
+        }
+        $lockName = 'rx_sbv_report_' . $depositId;
+        $locked = false;
+        $text = null;
+        $keyboard = null;
+        try {
+            $locked = (int) $pdo->query("SELECT GET_LOCK(" . $pdo->quote($lockName) . ", 0)")->fetchColumn() === 1;
+        } catch (Throwable $e) {
+            $locked = false;
+        }
+        if (!$locked) {
+            return false;
+        }
+        try {
+            $freshDeposit = rx_sbv_deposit($depositId);
+            if (!is_array($freshDeposit) || !in_array((string) $freshDeposit['state'], ['unmatched', 'ambiguous', 'late'], true)) {
+                return false;
+            }
+            $deposit = $freshDeposit;
+            $candidateResult = rx_sbv_report_candidates($depositId, 30);
+            $activeCandidates = (array) ($candidateResult['active'] ?? []);
+            $expiredCandidates = (array) ($candidateResult['expired'] ?? []);
+            $candidateSearchOk = !empty($candidateResult['ok']);
+            $candidateHasMore = !empty($candidateResult['has_more']) || count($activeCandidates) > 3 || count($expiredCandidates) > 2;
+            $amountRial = $deposit['amount_rial'] !== null ? (int) $deposit['amount_rial'] : null;
+            $text = "⚠️ <b>واریز نیازمند بررسی ادمین</b>\n\n"
+                . "<blockquote>🆔 شناسه واریز: <code>" . (int) $deposit['id'] . "</code>\n"
+                . "💵 مبلغ دریافتی: " . rx_sbv_h(rx_sbv_toman_from_rial($amountRial)) . "\n"
+                . "🏦 بانک: " . rx_sbv_h($deposit['bank'] ?? '—') . "\n"
+                . "🕒 زمان دریافت: " . rx_sbv_h((string) ($deposit['received_at_raw'] ?? '—')) . "\n"
+                . "🕒 ثبت در سرور: " . rx_sbv_h(rx_sbv_clock((int) $deposit['stored_at'], true)) . "\n"
+                . "👤 صاحب واریز: هنوز مشخص نیست\n"
+                . "📌 وضعیت: منتظر بررسی ادمین\n"
+                . "🧩 دلیل عدم تطبیق خودکار: " . rx_sbv_h(rx_sbv_match_failure_label((string) $deposit['state'], (string) ($deposit['note'] ?? ''))) . "</blockquote>\n";
+            if (!$candidateSearchOk) {
+                $text .= "\n🔍 جست‌وجوی پیشنهاد پرداخت با خطا مواجه شد. این واریز به هیچ کاربری نسبت داده نمی‌شود و بررسی دستی لازم است.";
+            } elseif ($activeCandidates || $expiredCandidates) {
+                $text .= "\n🔍 <b>پرداخت‌های احتمالی — صاحب واریز هنوز تأیید نشده است</b>\n";
+                $shown = 0;
+                if ($activeCandidates) {
+                    $text .= "\n<b>پرداخت‌های فعال / در انتظار</b>\n";
+                    foreach (array_slice($activeCandidates, 0, 3) as $candidate) {
+                        $shown++;
+                        $text .= "\n" . rx_sbv_candidate_line($candidate, $shown, $amountRial) . "\n";
+                    }
+                }
+                if ($expiredCandidates) {
+                    $text .= "\n<b>پرداخت‌های منقضی‌شده — احتمال ضعیف‌تر؛ نیازمند بررسی ادمین</b>\n";
+                    foreach (array_slice($expiredCandidates, 0, 2) as $candidate) {
+                        $shown++;
+                        $text .= "\n" . rx_sbv_candidate_line($candidate, $shown, $amountRial) . "\n";
+                    }
+                }
+                if ($candidateHasMore) {
+                    $text .= "\nℹ️ تعداد بیشتری پرداخت احتمالی وجود دارد. از «جزئیات واریز ← پرداخت‌های احتمالی» همه موارد را در پنل خصوصی بررسی کنید.";
+                }
+                $text .= "\n⚠️ این موارد فقط پیشنهاد هستند و هیچ پرداخت یا کاربری به‌صورت خودکار متصل، تأیید یا رد نمی‌شود.";
+            } else {
+                $text .= "\n🔍 جست‌وجوی پیشنهاد انجام شد اما هیچ پرداخت فعال یا منقضی‌شده‌ای با مبلغ و زمان نزدیک پیدا نشد.";
+            }
+            $text .= "\n\n📌 تصمیم نهایی فقط با بررسی ادمین ثبت می‌شود.";
+            $keyboard = json_encode(['inline_keyboard' => [
+                [['text' => '🔗 اتصال به پرداخت', 'callback_data' => 'sbv_dl_' . (int) $deposit['id']]],
+                [['text' => '🔍 پرداخت‌های احتمالی', 'callback_data' => 'sbv_ds_' . (int) $deposit['id']]],
+                [['text' => '🗑 حذف واریز', 'callback_data' => 'sbv_dd_' . (int) $deposit['id']]],
+                [['text' => '🔎 جزئیات واریز', 'callback_data' => 'sbv_d_' . (int) $deposit['id']]],
+                [['text' => '📥 صف بررسی', 'callback_data' => 'sbv_q_0']],
+            ]], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $e) {
+            rx_sbv_log('SBV_REVIEW_REPORT_FAILED', $e->getMessage(), ['deposit_id' => $depositId]);
+            $text = null;
+            $keyboard = null;
+        } finally {
+            try {
+                $pdo->query("SELECT RELEASE_LOCK(" . $pdo->quote($lockName) . ")");
+            } catch (Throwable $e) {
+            }
+        }
+        if ($text === null) {
+            return false;
+        }
+        $delivery = rx_sbv_deliver_tracked_report('deposit_review_report', $depositId, null, 'system', $text, $keyboard, [
+            'received_rial' => $amountRial,
+            'deposit_state' => (string) $deposit['state'],
+            'reason' => (string) ($deposit['note'] ?? ''),
+        ]);
+        return (string) ($delivery['state'] ?? '') === 'sent';
     }
 }
 
@@ -1886,10 +2691,18 @@ if (!function_exists('rx_sbv_admin_approve')) {
         if ($before === null) {
             return ['ok' => false, 'reason' => 'not_found'];
         }
+        $expiredPayment = rx_sbv_payment_is_expired($csp, $before);
+        if ((string) $csp['state'] === 'closed' && !$expiredPayment) {
+            return ['ok' => false, 'reason' => 'not_eligible'];
+        }
         $status = (string) $before['payment_Status'];
         if ($status === 'waiting' && function_exists('rxReceiptConfirm')) {
             $res = rxReceiptConfirm($orderId, ['actor_id' => $actor, 'actor_label' => $actor, 'override_reason' => $reason]);
-            return $res['ok'] ? ['ok' => true] : ['ok' => false, 'reason' => (string) ($res['reason'] ?? 'error')];
+            if (empty($res['ok'])) {
+                return ['ok' => false, 'reason' => (string) ($res['reason'] ?? 'error')];
+            }
+            $outcome = rx_sbv_fulfillment_outcome($orderId);
+            return ['ok' => true, 'outcome' => is_array($outcome) ? (string) ($outcome['outcome'] ?? '') : ''];
         }
         if (!in_array($status, ['Unpaid', 'expire'], true)) {
             return ['ok' => false, 'reason' => $status === 'paid' ? 'already_paid' : 'not_eligible'];
@@ -1908,38 +2721,72 @@ if (!function_exists('rx_sbv_admin_approve')) {
         }
         $resolution = $csp['received_rial'] === null ? 'admin_unverified' : ((int) $csp['received_rial'] < (int) $csp['payable_rial'] ? 'admin_shortfall' : 'admin_approved');
         rx_sbv_after_approval($orderId, $resolution, $actor, $reason !== '' ? $reason : null, true);
-        return ['ok' => true];
+        $outcome = rx_sbv_fulfillment_outcome($orderId);
+        return ['ok' => true, 'outcome' => is_array($outcome) ? (string) ($outcome['outcome'] ?? '') : ''];
     }
 }
 
 if (!function_exists('rx_sbv_admin_set_received')) {
-    function rx_sbv_admin_set_received(string $orderId, string $actor, int $receivedToman): array
+    function rx_sbv_admin_set_received(string $orderId, string $actor, int $receivedToman, string $reason = ''): array
     {
         if ($receivedToman < 0 || $receivedToman > 100000000000) {
             return ['ok' => false, 'reason' => 'invalid_amount'];
         }
-        $csp = rx_sbv_get($orderId);
-        if ($csp === null) {
-            return ['ok' => false, 'reason' => 'not_verify'];
+        if (trim($reason) === '') {
+            return ['ok' => false, 'reason' => 'reason_required'];
         }
-        if (in_array((string) $csp['state'], ['approved', 'credited'], true)) {
-            return ['ok' => false, 'reason' => 'already_paid'];
-        }
-        $pdo = rx_sbv_pdo();
         try {
-            $pdo->prepare("UPDATE card_sms_payment SET received_rial = ?, updated_at = ? WHERE id_order = ? AND state NOT IN ('approved', 'credited', 'matched')")
-                ->execute([$receivedToman * 10, time(), $orderId]);
+            $out = rx_sbv_tx(function (PDO $pdo) use ($orderId, $actor, $receivedToman, $reason) {
+                $now = time();
+                $c = $pdo->prepare("SELECT * FROM card_sms_payment WHERE id_order = ? LIMIT 1 FOR UPDATE");
+                $c->execute([$orderId]);
+                $csp = $c->fetch(PDO::FETCH_ASSOC);
+                if ($csp === false) {
+                    return ['ok' => false, 'reason' => 'not_verify'];
+                }
+                $p = $pdo->prepare("SELECT * FROM Payment_report WHERE id_order = ? ORDER BY id ASC LIMIT 1 FOR UPDATE");
+                $p->execute([$orderId]);
+                $report = $p->fetch(PDO::FETCH_ASSOC);
+                if ($report === false) {
+                    return ['ok' => false, 'reason' => 'not_found'];
+                }
+                $status = (string) ($report['payment_Status'] ?? '');
+                if ($status === 'paid' || (int) ($report['direct_payment_done'] ?? 0) === 1 || in_array((string) $csp['state'], ['approved', 'credited'], true)) {
+                    return ['ok' => false, 'reason' => 'already_paid'];
+                }
+                if (in_array($status, ['processing', 'reconciling'], true)) {
+                    return ['ok' => false, 'reason' => 'processing'];
+                }
+                if (!in_array($status, ['Unpaid', 'waiting', 'expire'], true)) {
+                    return ['ok' => false, 'reason' => 'not_eligible'];
+                }
+                if (in_array((string) $csp['state'], ['matched', 'void'], true)) {
+                    return ['ok' => false, 'reason' => 'not_eligible'];
+                }
+                $upd = $pdo->prepare("UPDATE card_sms_payment SET received_rial = ?, updated_at = ? WHERE id = ? AND state NOT IN ('approved', 'credited', 'matched', 'void')");
+                $upd->execute([$receivedToman * 10, $now, (int) $csp['id']]);
+                if ($upd->rowCount() !== 1) {
+                    return ['ok' => false, 'reason' => 'not_eligible'];
+                }
+                $pdo->prepare("INSERT INTO card_sms_audit (id_order, deposit_id, actor, action, principal_toman, fee_toman, expected_rial, received_rial, credit_toman, outcome, reason, created_at) VALUES (?, ?, ?, 'manual_received_correction', ?, ?, ?, ?, NULL, 'corrected', ?, ?)")
+                    ->execute([
+                        $orderId,
+                        $csp['deposit_id'] !== null ? (int) $csp['deposit_id'] : null,
+                        $actor,
+                        (int) $csp['principal_toman'],
+                        (int) $csp['fee_toman'],
+                        (int) $csp['payable_rial'],
+                        $receivedToman * 10,
+                        $reason,
+                        $now,
+                    ]);
+                return ['ok' => true, 'previous_rial' => $csp['received_rial'] !== null ? (int) $csp['received_rial'] : null, 'received_rial' => $receivedToman * 10];
+            });
         } catch (Throwable $e) {
+            rx_sbv_log('SBV_RECEIVED_CORRECTION_FAILED', $e->getMessage(), ['id_order' => $orderId]);
             return ['ok' => false, 'reason' => 'db_error'];
         }
-        rx_sbv_audit($orderId, $csp['deposit_id'] !== null ? (int) $csp['deposit_id'] : null, $actor, 'manual_received', [
-            'principal_toman' => (int) $csp['principal_toman'],
-            'fee_toman' => (int) $csp['fee_toman'],
-            'expected_rial' => (int) $csp['payable_rial'],
-            'received_rial' => $receivedToman * 10,
-            'outcome' => 'recorded',
-        ]);
-        return ['ok' => true];
+        return $out;
     }
 }
 
@@ -1961,7 +2808,7 @@ if (!function_exists('rx_sbv_admin_credit')) {
             return ['ok' => false, 'reason' => 'received_required'];
         }
         $receivedToman = intdiv((int) $summary['received_rial'], 10);
-        $credit = $receivedToman - (int) $csp['fee_toman'];
+        $credit = $receivedToman;
         if ($credit <= 0) {
             return ['ok' => false, 'reason' => 'nothing_to_credit'];
         }
@@ -2008,14 +2855,14 @@ if (!function_exists('rx_sbv_admin_credit')) {
             'reason' => $reason,
         ]);
         if (function_exists('sendmessage')) {
-            sendmessage($report['id_user'], "💎 کاربر عزیز، پرداخت کارت‌به‌کارت شما با کد پیگیری <code>" . htmlspecialchars($orderId, ENT_QUOTES, 'UTF-8') . "</code> بررسی شد و مبلغ " . rx_sbv_money($credit) . " تومان به کیف پول شما اضافه گردید.\nℹ️ کارمزد شناسایی (" . rx_sbv_money($csp['fee_toman']) . " تومان) جزو اعتبار کیف پول نیست.", null, 'HTML');
+            sendmessage($report['id_user'], "💎 کاربر عزیز، پرداخت کارت‌به‌کارت شما با کد پیگیری <code>" . htmlspecialchars($orderId, ENT_QUOTES, 'UTF-8') . "</code> بررسی شد و کل مبلغ دریافتی یعنی " . rx_sbv_money($credit) . " تومان به کیف پول شما اضافه گردید.\nℹ️ این یک تصمیم دستی ادمین است و کارمزد شناسایی از مبلغ واریز کسر نشده است.", null, 'HTML');
         }
         $text = "✅ پرداخت با بررسی به‌صورت شارژ کیف پول تسویه شد.\n\n"
             . "<blockquote>کد پیگیری : <code>" . htmlspecialchars($orderId, ENT_QUOTES, 'UTF-8') . "</code></blockquote>\n"
             . "<blockquote>👤 کاربر : <code>" . htmlspecialchars((string) $report['id_user'], ENT_QUOTES, 'UTF-8') . "</code></blockquote>\n"
             . "<blockquote>📥 مبلغ دریافتی : " . rx_sbv_money($receivedToman) . " تومان</blockquote>\n"
-            . "<blockquote>🏷 کارمزد شناسایی : " . rx_sbv_money($csp['fee_toman']) . " تومان</blockquote>\n"
-            . "<blockquote>💼 واریز به کیف پول : " . rx_sbv_money($credit) . " تومان</blockquote>\n"
+            . "<blockquote>🏷 کارمزد شناسایی : " . rx_sbv_money($csp['fee_toman']) . " تومان (در این تصمیم دستی کسر نشد)</blockquote>\n"
+            . "<blockquote>💼 واریز کامل به کیف پول : " . rx_sbv_money($credit) . " تومان</blockquote>\n"
             . "<blockquote>✍️ دلیل : " . htmlspecialchars($reason, ENT_QUOTES, 'UTF-8') . "</blockquote>\n"
             . "<blockquote>👤 ادمین : <code>" . htmlspecialchars($actor, ENT_QUOTES, 'UTF-8') . "</code></blockquote>";
         $fresh = rx_sbv_payment_report($orderId);
@@ -2052,66 +2899,719 @@ if (!function_exists('rx_sbv_unlink_deposit')) {
     }
 }
 
+if (!function_exists('rx_sbv_identity_lock')) {
+    function rx_sbv_identity_lock(string $eventId, ?string $fingerprint): array
+    {
+        $pdo = rx_sbv_pdo();
+        if ($pdo === null || $eventId === '') {
+            throw new RuntimeException('identity_storage_unavailable');
+        }
+        $names = ['rx_sbv_id_' . substr(hash('sha256', 'event:' . $eventId), 0, 48)];
+        if ($fingerprint !== null && $fingerprint !== '') {
+            $names[] = 'rx_sbv_id_' . substr(hash('sha256', 'sms:' . $fingerprint), 0, 48);
+        }
+        sort($names, SORT_STRING);
+        $locked = [];
+        try {
+            foreach ($names as $name) {
+                $stmt = $pdo->prepare('SELECT GET_LOCK(?, 5)');
+                $stmt->execute([$name]);
+                if ((int) $stmt->fetchColumn() !== 1) {
+                    throw new RuntimeException('identity_lock_busy');
+                }
+                $locked[] = $name;
+            }
+        } catch (Throwable $e) {
+            rx_sbv_identity_unlock($locked);
+            throw $e;
+        }
+        return $locked;
+    }
+}
+
+if (!function_exists('rx_sbv_identity_unlock')) {
+    function rx_sbv_identity_unlock(array $names): void
+    {
+        $pdo = rx_sbv_pdo();
+        if ($pdo === null) {
+            return;
+        }
+        foreach (array_reverse($names) as $name) {
+            try {
+                $stmt = $pdo->prepare('SELECT RELEASE_LOCK(?)');
+                $stmt->execute([$name]);
+            } catch (Throwable $e) {
+                rx_sbv_log('SBV_IDENTITY_UNLOCK_FAILED', $e->getMessage());
+            }
+        }
+    }
+}
+
+if (!function_exists('rx_sbv_deleted_identity_exists')) {
+    function rx_sbv_deleted_identity_exists(string $eventId, ?string $fingerprint): bool
+    {
+        $pdo = rx_sbv_pdo();
+        if ($pdo === null || $eventId === '') {
+            throw new RuntimeException('identity_storage_unavailable');
+        }
+        try {
+            if ($fingerprint !== null && $fingerprint !== '') {
+                $stmt = $pdo->prepare("SELECT id FROM card_sms_audit WHERE action = 'deposit_deleted' AND (id_order = ? OR reason LIKE ?) LIMIT 1");
+                $stmt->execute([$eventId, '%"fingerprint":"' . $fingerprint . '"%']);
+            } else {
+                $stmt = $pdo->prepare("SELECT id FROM card_sms_audit WHERE action = 'deposit_deleted' AND id_order = ? LIMIT 1");
+                $stmt->execute([$eventId]);
+            }
+            return $stmt->fetchColumn() !== false;
+        } catch (Throwable $e) {
+            rx_sbv_log('SBV_DELETED_IDENTITY_READ_FAILED', $e->getMessage());
+            throw $e;
+        }
+    }
+}
+
+if (!function_exists('rx_sbv_delete_deposit')) {
+    function rx_sbv_delete_deposit(int $depositId, string $actor): array
+    {
+        if ($depositId <= 0) {
+            return ['ok' => false, 'reason' => 'deposit_not_found'];
+        }
+        $identityLocks = [];
+        try {
+            $identityDeposit = rx_sbv_deposit($depositId);
+            if ($identityDeposit === null) {
+                return ['ok' => false, 'reason' => 'deposit_not_found'];
+            }
+            $identityLocks = rx_sbv_identity_lock((string) $identityDeposit['event_id'], $identityDeposit['fingerprint'] !== null ? (string) $identityDeposit['fingerprint'] : null);
+            $out = rx_sbv_tx(function (PDO $pdo) use ($depositId, $actor) {
+                $now = time();
+                $d = $pdo->prepare("SELECT * FROM card_sms_deposit WHERE id = ? LIMIT 1 FOR UPDATE");
+                $d->execute([$depositId]);
+                $deposit = $d->fetch(PDO::FETCH_ASSOC);
+                if ($deposit === false) {
+                    return ['ok' => false, 'reason' => 'deposit_not_found'];
+                }
+                if ((int) $deposit['is_test'] === 1 || (int) $deposit['is_deposit'] !== 1) {
+                    return ['ok' => false, 'reason' => 'deposit_not_eligible'];
+                }
+                if (!in_array((string) $deposit['state'], ['unmatched', 'ambiguous', 'late'], true)) {
+                    return ['ok' => false, 'reason' => 'deposit_state_' . (string) $deposit['state']];
+                }
+                $linkedOrder = trim((string) ($deposit['id_order'] ?? ''));
+                if ($linkedOrder !== '') {
+                    return ['ok' => false, 'reason' => 'deposit_linked'];
+                }
+                $c = $pdo->prepare("SELECT id_order FROM card_sms_payment WHERE deposit_id = ? LIMIT 1 FOR UPDATE");
+                $c->execute([$depositId]);
+                if ($c->fetchColumn() !== false) {
+                    return ['ok' => false, 'reason' => 'deposit_linked'];
+                }
+                $eventId = (string) ($deposit['event_id'] ?? '');
+                $fingerprint = $deposit['fingerprint'] !== null ? (string) $deposit['fingerprint'] : null;
+                $reason = json_encode([
+                    'event_id' => $eventId,
+                    'fingerprint' => $fingerprint,
+                    'deleted_at' => $now,
+                    'admin_id' => $actor,
+                    'amount_rial' => $deposit['amount_rial'] !== null ? (int) $deposit['amount_rial'] : null,
+                    'bank' => (string) ($deposit['bank'] ?? ''),
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $ins = $pdo->prepare("INSERT INTO card_sms_audit (id_order, deposit_id, actor, action, principal_toman, fee_toman, expected_rial, received_rial, credit_toman, outcome, reason, created_at) VALUES (?, ?, ?, 'deposit_deleted', NULL, NULL, NULL, ?, NULL, 'deleted', ?, ?)");
+                $ins->execute([
+                    $eventId,
+                    $depositId,
+                    $actor,
+                    $deposit['amount_rial'] !== null ? (int) $deposit['amount_rial'] : null,
+                    is_string($reason) ? $reason : null,
+                    $now,
+                ]);
+                $del = $pdo->prepare("DELETE FROM card_sms_deposit WHERE id = ? AND state IN ('unmatched', 'ambiguous', 'late') AND (id_order IS NULL OR id_order = '')");
+                $del->execute([$depositId]);
+                if ($del->rowCount() !== 1) {
+                    throw new RuntimeException('sbv_delete:state_changed');
+                }
+                return ['ok' => true, 'deposit_id' => $depositId];
+            });
+        } catch (Throwable $e) {
+            $message = $e->getMessage();
+            if (strpos($message, 'sbv_delete:') === 0) {
+                return ['ok' => false, 'reason' => substr($message, 11)];
+            }
+            rx_sbv_log('SBV_DEPOSIT_DELETE_FAILED', $message, ['deposit_id' => $depositId]);
+            return ['ok' => false, 'reason' => 'db_error'];
+        } finally {
+            rx_sbv_identity_unlock($identityLocks);
+        }
+        return $out;
+    }
+}
+
+if (!function_exists('rx_sbv_expired_payment_delete_guard')) {
+    function rx_sbv_expired_payment_delete_guard(string $orderId, ?array $csp = null, ?array $report = null, ?int $depositId = null): ?string
+    {
+        $orderId = trim($orderId);
+        if ($orderId === '') {
+            return 'invalid_order';
+        }
+        $csp = $csp ?? rx_sbv_get($orderId);
+        if (!is_array($csp)) {
+            return 'not_found';
+        }
+        $report = $report ?? rx_sbv_payment_report($orderId);
+        if (!is_array($report)) {
+            return 'not_found';
+        }
+        $status = (string) ($report['payment_Status'] ?? '');
+        if ($status === 'paid' || (int) ($report['direct_payment_done'] ?? 0) === 1) {
+            return 'already_paid';
+        }
+        if (in_array($status, ['reject', 'cancelled'], true)) {
+            return 'already_final';
+        }
+        if (!in_array($status, ['Unpaid', 'waiting', 'expire'], true)) {
+            return 'not_eligible';
+        }
+        $state = (string) ($csp['state'] ?? '');
+        if (in_array($state, ['approved', 'credited'], true)) {
+            return 'already_paid';
+        }
+        if ($csp['deposit_id'] !== null) {
+            return 'order_has_deposit';
+        }
+        if (!rx_sbv_payment_is_expired($csp, $report)) {
+            return 'not_expired';
+        }
+        if ($depositId !== null) {
+            if ($depositId <= 0) {
+                return 'deposit_not_found';
+            }
+            $candidateResult = rx_sbv_report_candidates($depositId, 1, 0, $orderId);
+            if (empty($candidateResult['ok'])) {
+                return 'candidate_check_failed';
+            }
+            $candidateFound = false;
+            foreach ((array) ($candidateResult['rows'] ?? []) as $candidateRow) {
+                if ((string) ($candidateRow['id_order'] ?? '') === $orderId) {
+                    $candidateFound = true;
+                    break;
+                }
+            }
+            if (!$candidateFound) {
+                return 'order_not_candidate';
+            }
+        }
+        if (function_exists('rx_pf_fetch')) {
+            try {
+                $record = rx_pf_fetch($orderId);
+                if (is_array($record)) {
+                    $recordState = (string) ($record['state'] ?? '');
+                    if ($recordState === 'completed') {
+                        return 'already_paid';
+                    }
+                    if (in_array($recordState, ['claimed', 'applying', 'reconciling'], true) && (int) ($record['lease_expires_at'] ?? 0) > time()) {
+                        return 'processing';
+                    }
+                }
+            } catch (Throwable $e) {
+            }
+        }
+        return null;
+    }
+}
+
+if (!function_exists('rx_sbv_admin_delete_expired_payment')) {
+    function rx_sbv_admin_delete_expired_payment(string $orderId, string $actor, ?int $depositId = null): array
+    {
+        $orderId = trim($orderId);
+        $actor = trim($actor);
+        if ($orderId === '') {
+            return ['ok' => false, 'reason' => 'invalid_order'];
+        }
+        if ($actor === '') {
+            return ['ok' => false, 'reason' => 'not_authorized'];
+        }
+        try {
+            $out = rx_sbv_tx(function (PDO $pdo) use ($orderId, $actor, $depositId) {
+                $now = time();
+                $fail = function (string $reason) {
+                    throw new RuntimeException('sbv_expdel:' . $reason);
+                };
+                $s = $pdo->prepare("SELECT * FROM card_sms_payment WHERE id_order = ? LIMIT 1 FOR UPDATE");
+                $s->execute([$orderId]);
+                $csp = $s->fetch(PDO::FETCH_ASSOC);
+                if (!is_array($csp)) {
+                    return ['ok' => false, 'reason' => 'not_found'];
+                }
+                $r = $pdo->prepare("SELECT * FROM Payment_report WHERE id_order = ? ORDER BY id ASC LIMIT 1 FOR UPDATE");
+                $r->execute([$orderId]);
+                $report = $r->fetch(PDO::FETCH_ASSOC);
+                if (!is_array($report)) {
+                    return ['ok' => false, 'reason' => 'not_found'];
+                }
+                $guard = rx_sbv_expired_payment_delete_guard($orderId, $csp, $report, $depositId);
+                if ($guard !== null) {
+                    if ($guard === 'already_final' && (string) ($report['payment_Status'] ?? '') === 'cancelled') {
+                        return ['ok' => true, 'already_removed' => true, 'order_id' => $orderId, 'user_id' => (string) ($report['id_user'] ?? '')];
+                    }
+                    return ['ok' => false, 'reason' => $guard];
+                }
+                try {
+                    $f = $pdo->prepare("SELECT state, lease_expires_at FROM payment_fulfillment WHERE id_order = ? LIMIT 1 FOR UPDATE");
+                    $f->execute([$orderId]);
+                    $fulfillment = $f->fetch(PDO::FETCH_ASSOC);
+                    if (is_array($fulfillment)) {
+                        $fState = (string) ($fulfillment['state'] ?? '');
+                        if ($fState === 'completed') {
+                            return ['ok' => false, 'reason' => 'already_paid'];
+                        }
+                        if (in_array($fState, ['claimed', 'applying', 'reconciling'], true) && (int) ($fulfillment['lease_expires_at'] ?? 0) > $now) {
+                            return ['ok' => false, 'reason' => 'processing'];
+                        }
+                    }
+                } catch (Throwable $e) {
+                    $fail('fulfillment_check_failed');
+                }
+                $marker = substr('expired_deleted:' . $actor, 0, 190);
+                $upd = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'cancelled', dec_not_confirmed = ?, at_updated = ? WHERE id_order = ? AND payment_Status IN ('Unpaid', 'waiting', 'expire') AND COALESCE(direct_payment_done, 0) = 0");
+                $upd->execute([$marker, date('Y/m/d H:i:s', $now), $orderId]);
+                if ($upd->rowCount() < 1) {
+                    $fail('race_lost');
+                }
+                $cspUpdate = $pdo->prepare("UPDATE card_sms_payment SET state = 'closed', resolution = 'cancelled', resolved_by = ?, resolved_at = ?, resolution_note = ?, updated_at = ? WHERE id = ? AND deposit_id IS NULL");
+                $cspUpdate->execute([$actor, $now, 'expired_payment_deleted', $now, (int) $csp['id']]);
+                if ($cspUpdate->rowCount() !== 1) {
+                    $fail('race_lost');
+                }
+                rx_sbv_release_amount($pdo, $csp, false);
+                try {
+                    $pdo->prepare("INSERT INTO card_sms_audit (id_order, deposit_id, actor, action, principal_toman, fee_toman, expected_rial, received_rial, credit_toman, outcome, reason, created_at) VALUES (?, ?, ?, 'admin_delete_expired', ?, ?, ?, ?, NULL, 'cancelled', ?, ?)")
+                        ->execute([
+                            $orderId,
+                            $depositId,
+                            $actor,
+                            (int) $csp['principal_toman'],
+                            (int) $csp['fee_toman'],
+                            (int) $csp['payable_rial'],
+                            $csp['received_rial'] !== null ? (int) $csp['received_rial'] : null,
+                            'expired_payment_deleted',
+                            $now,
+                        ]);
+                } catch (Throwable $e) {
+                    $fail('audit_failed');
+                }
+                return ['ok' => true, 'order_id' => $orderId, 'user_id' => (string) ($report['id_user'] ?? ''), 'deposit_id' => $depositId];
+            });
+        } catch (Throwable $e) {
+            $message = $e->getMessage();
+            if (strpos($message, 'sbv_expdel:') === 0) {
+                return ['ok' => false, 'reason' => substr($message, 11)];
+            }
+            rx_sbv_log('SBV_EXPIRED_PAYMENT_DELETE_FAILED', $message, ['id_order' => $orderId]);
+            return ['ok' => false, 'reason' => 'db_error'];
+        }
+        if (empty($out['ok'])) {
+            return $out;
+        }
+        if (function_exists('clearSelectCache')) {
+            clearSelectCache('Payment_report');
+        }
+        if (function_exists('rx_redis_del')) {
+            rx_redis_del('faoxima:paystatus:' . $orderId . ':' . (string) ($out['user_id'] ?? ''));
+        }
+        if (function_exists('rx_ck_release_for_order')) {
+            try {
+                rx_ck_release_for_order($orderId, 'cancelled', 'exp_deleted');
+            } catch (Throwable $e) {
+            }
+        }
+        return $out;
+    }
+}
+
+if (!function_exists('rx_sbv_rejection_audit_row')) {
+    function rx_sbv_rejection_audit_row(string $orderId, ?int $depositId): ?array
+    {
+        $pdo = rx_sbv_pdo();
+        if ($pdo === null) {
+            return null;
+        }
+        try {
+            $stmt = $pdo->prepare("SELECT * FROM card_sms_audit WHERE id_order = ? AND deposit_id <=> ? AND action IN ('admin_reject', 'admin_reject_block') ORDER BY id DESC LIMIT 1");
+            $stmt->execute([$orderId, $depositId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $row === false ? null : $row;
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+}
+
+if (!function_exists('rx_sbv_rejection_audit_find')) {
+    function rx_sbv_rejection_audit_find(string $orderId, ?int $preferredDepositId = null): ?array
+    {
+        $pdo = rx_sbv_pdo();
+        if ($pdo === null) {
+            return null;
+        }
+        try {
+            $stmt = $pdo->prepare("SELECT * FROM card_sms_audit WHERE id_order = ? AND action IN ('admin_reject', 'admin_reject_block') ORDER BY id DESC LIMIT 10");
+            $stmt->execute([$orderId]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            return null;
+        }
+        $fallback = null;
+        foreach ($rows as $row) {
+            $depositId = $row['deposit_id'] !== null ? (int) $row['deposit_id'] : null;
+            if ($preferredDepositId !== null) {
+                if ($depositId === $preferredDepositId) {
+                    return $row;
+                }
+                continue;
+            }
+            if ($depositId !== null) {
+                return $row;
+            }
+            if ($fallback === null) {
+                $fallback = $row;
+            }
+        }
+        return $preferredDepositId === null ? $fallback : null;
+    }
+}
+
+if (!function_exists('rx_sbv_rejection_report_payload')) {
+    function rx_sbv_rejection_report_payload(string $orderId, ?int $depositId, string $actor, string $reason, int $decisionAt): ?array
+    {
+        $csp = rx_sbv_get($orderId);
+        $report = rx_sbv_payment_report($orderId);
+        if ($csp === null || !is_array($report)) {
+            return null;
+        }
+        $deposit = $depositId !== null ? rx_sbv_deposit($depositId) : null;
+        $receivedRial = $csp['received_rial'] !== null ? (int) $csp['received_rial'] : (is_array($deposit) && $deposit['amount_rial'] !== null ? (int) $deposit['amount_rial'] : null);
+        $user = function_exists('select') ? select('user', '*', 'id', $report['id_user'], 'select', ['cache' => false]) : null;
+        $name = is_array($user) ? trim((string) ($user['first_name'] ?? '')) : '';
+        $username = is_array($user) ? trim((string) ($user['username'] ?? '')) : '';
+        $text = "❌ <b>رد درخواست پرداخت کارت‌به‌کارت</b>\n\n"
+            . "<blockquote>🛒 کد پیگیری: <code>" . htmlspecialchars($orderId, ENT_QUOTES, 'UTF-8') . "</code>\n"
+            . "👤 کاربر: " . htmlspecialchars($name !== '' ? $name : ($username !== '' ? '@' . $username : 'بدون نام'), ENT_QUOTES, 'UTF-8') . " (<code>" . htmlspecialchars((string) $report['id_user'], ENT_QUOTES, 'UTF-8') . "</code>)\n"
+            . "👤 ادمین: <code>" . htmlspecialchars($actor, ENT_QUOTES, 'UTF-8') . "</code>\n"
+            . "🆔 شناسه واریز: " . ($depositId !== null ? '<code>' . $depositId . '</code>' : '—') . "\n"
+            . "💰 اصل مبلغ: " . rx_sbv_money($csp['principal_toman']) . " تومان\n"
+            . "🏷 کارمزد شناسایی: " . rx_sbv_money($csp['fee_toman']) . " تومان\n"
+            . "✅ مبلغ مورد انتظار: " . rx_sbv_money(intdiv((int) $csp['payable_rial'], 10)) . " تومان\n"
+            . "📥 مبلغ دریافتی: " . ($receivedRial !== null ? rx_sbv_money(intdiv($receivedRial, 10)) . ' تومان' : 'ثبت نشده') . "\n"
+            . "✍️ دلیل: " . htmlspecialchars($reason, ENT_QUOTES, 'UTF-8') . "\n"
+            . "🕒 زمان تصمیم: " . rx_sbv_clock($decisionAt, true) . "\n"
+            . "📌 تصمیم: رد درخواست پرداخت؛ رکورد واریز بانکی حفظ شد و وجهی بازگشت یا به کیف پول اضافه نشد.</blockquote>";
+        $kbRows = [[['text' => '🔎 مشاهده سفارش', 'callback_data' => 'sbv_oo_' . $orderId]]];
+        if ($depositId !== null) {
+            $kbRows[] = [['text' => '📨 جزئیات واریز', 'callback_data' => 'sbv_d_' . $depositId]];
+        }
+        $keyboard = json_encode(['inline_keyboard' => $kbRows], JSON_UNESCAPED_UNICODE);
+        return [
+            'text' => $text,
+            'keyboard' => is_string($keyboard) ? $keyboard : null,
+            'meta' => [
+                'principal_toman' => (int) $csp['principal_toman'],
+                'fee_toman' => (int) $csp['fee_toman'],
+                'expected_rial' => (int) $csp['payable_rial'],
+                'received_rial' => $receivedRial,
+                'credit_toman' => null,
+                'customer_id' => (string) $report['id_user'],
+                'order_id' => $orderId,
+                'deposit_id' => $depositId,
+                'admin_id' => $actor,
+                'reason' => $reason,
+                'decision_at' => $decisionAt,
+            ],
+        ];
+    }
+}
+
+if (!function_exists('rx_sbv_send_rejection_report')) {
+    function rx_sbv_send_rejection_report(string $orderId, ?int $depositId, string $actor, string $reason, int $decisionAt): array
+    {
+        try {
+            $payload = rx_sbv_rejection_report_payload($orderId, $depositId, $actor, $reason, $decisionAt);
+        } catch (Throwable $e) {
+            rx_sbv_log('SBV_REJECTION_REPORT_BUILD_FAILED', $e->getMessage(), ['id_order' => $orderId, 'deposit_id' => $depositId]);
+            return ['state' => 'failed', 'ok' => false, 'error' => 'rejection_report_build_failed'];
+        }
+        if ($payload === null) {
+            return ['state' => 'failed', 'ok' => false, 'error' => 'rejection_report_data_unavailable'];
+        }
+        try {
+            return rx_sbv_deliver_tracked_report('admin_reject_report', $depositId, $orderId, $actor, (string) $payload['text'], $payload['keyboard'] ?? null, (array) ($payload['meta'] ?? []));
+        } catch (Throwable $e) {
+            rx_sbv_log('SBV_REJECTION_REPORT_DELIVERY_FAILED', $e->getMessage(), ['id_order' => $orderId, 'deposit_id' => $depositId]);
+            return ['state' => 'failed', 'ok' => false, 'error' => 'rejection_report_delivery_failed'];
+        }
+    }
+}
+
 if (!function_exists('rx_sbv_admin_reject')) {
-    function rx_sbv_admin_reject(string $orderId, string $actor, string $reason, bool $block): array
+    function rx_sbv_admin_reject(string $orderId, string $actor, string $reason, bool $block, ?int $expectedDepositId = null): array
     {
         if (trim($reason) === '') {
             return ['ok' => false, 'reason' => 'reason_required'];
         }
-        $csp = rx_sbv_get($orderId);
-        if ($csp === null) {
-            return ['ok' => false, 'reason' => 'not_verify'];
+        $pdo = rx_sbv_pdo();
+        if ($pdo === null) {
+            return ['ok' => false, 'reason' => 'db_error'];
         }
-        if (in_array((string) $csp['state'], ['approved', 'credited'], true)) {
-            return ['ok' => false, 'reason' => 'already_paid'];
-        }
-        if (!function_exists('rxReceiptReject')) {
-            return ['ok' => false, 'reason' => 'unavailable'];
-        }
-        $res = rxReceiptReject($orderId, $reason, ['actor_id' => $actor, 'actor_label' => $actor]);
-        if (empty($res['ok'])) {
-            return ['ok' => false, 'reason' => (string) ($res['reason'] ?? 'error')];
-        }
-        $report = is_array($res['report'] ?? null) ? $res['report'] : rx_sbv_payment_report($orderId);
-        rx_sbv_unlink_deposit($orderId, 'unlinked_after_reject:' . $orderId);
-        try {
-            rx_sbv_tx(function (PDO $pdo) use ($orderId, $block, $actor, $reason) {
-                $s = $pdo->prepare("SELECT * FROM card_sms_payment WHERE id_order = ? LIMIT 1 FOR UPDATE");
-                $s->execute([$orderId]);
-                $csp = $s->fetch(PDO::FETCH_ASSOC);
-                if ($csp === false || !in_array((string) $csp['state'], ['open', 'matched'], true)) {
-                    return;
-                }
-                $now = time();
-                $pdo->prepare("UPDATE card_sms_payment SET state = 'closed', resolution = ?, resolved_by = ?, resolved_at = ?, resolution_note = ?, updated_at = ? WHERE id = ?")
-                    ->execute([$block ? 'rejected_blocked' : 'rejected', $actor, $now, $reason, $now, (int) $csp['id']]);
-                rx_sbv_release_amount($pdo, $csp, false);
-            });
-        } catch (Throwable $e) {
-            rx_sbv_log('SBV_REJECT_CLOSE_FAILED', $e->getMessage(), ['id_order' => $orderId]);
-        }
-        $blocked = false;
-        if ($block && is_array($report)) {
-            $pdo = rx_sbv_pdo();
-            try {
-                $pdo->prepare("UPDATE user SET User_Status = 'block', description_blocking = ? WHERE id = ?")->execute([$reason, (string) $report['id_user']]);
-                $blocked = true;
-                if (function_exists('clearSelectCache')) {
-                    clearSelectCache('user');
-                }
-            } catch (Throwable $e) {
-                rx_sbv_log('SBV_BLOCK_FAILED', $e->getMessage(), ['id_order' => $orderId]);
+        $retryPreferred = $expectedDepositId;
+        if ($retryPreferred === null) {
+            $cspHead = rx_sbv_get($orderId);
+            if (is_array($cspHead) && $cspHead['deposit_id'] !== null) {
+                $retryPreferred = (int) $cspHead['deposit_id'];
             }
         }
-        rx_sbv_audit($orderId, null, $actor, $block ? 'admin_reject_block' : 'admin_reject', [
-            'principal_toman' => (int) $csp['principal_toman'],
-            'fee_toman' => (int) $csp['fee_toman'],
-            'expected_rial' => (int) $csp['payable_rial'],
-            'received_rial' => $csp['received_rial'] !== null ? (int) $csp['received_rial'] : null,
-            'outcome' => $block ? ($blocked ? 'rejected_blocked' : 'rejected_block_failed') : 'rejected',
-            'reason' => $reason,
-        ]);
-        return ['ok' => true, 'blocked' => $blocked];
+        $existingAudit = rx_sbv_rejection_audit_find($orderId, $retryPreferred);
+        if ($existingAudit !== null) {
+            $auditDepositId = $existingAudit['deposit_id'] !== null ? (int) $existingAudit['deposit_id'] : null;
+            $retryDepositId = $auditDepositId !== null ? $auditDepositId : $retryPreferred;
+            $existingReport = rx_sbv_payment_report($orderId);
+            if (is_array($existingReport) && (string) ($existingReport['payment_Status'] ?? '') === 'reject') {
+                $storedReason = trim((string) ($existingAudit['reason'] ?? ''));
+                $storedActor = trim((string) ($existingAudit['actor'] ?? ''));
+                $decisionAt = (int) ($existingAudit['created_at'] ?? time());
+                if ($retryDepositId !== null) {
+                    try {
+                        $pdo->prepare("UPDATE card_sms_deposit SET state = 'reviewed_rejected', id_order = ?, note = ?, reviewed_by = ?, reviewed_at = ?, updated_at = ? WHERE id = ? AND state IN ('unmatched', 'ambiguous', 'late', 'linked', 'matched') AND (id_order IS NULL OR id_order = '' OR id_order = ?)")
+                            ->execute([$orderId, $storedReason !== '' ? $storedReason : $reason, $storedActor !== '' ? $storedActor : $actor, $decisionAt, time(), $retryDepositId, $orderId]);
+                        $auditReceived = $existingAudit['received_rial'] !== null ? (int) $existingAudit['received_rial'] : null;
+                        $pdo->prepare("UPDATE card_sms_payment SET deposit_id = ?, received_rial = COALESCE(received_rial, ?), updated_at = ? WHERE id_order = ? AND (deposit_id IS NULL OR deposit_id = ?)")
+                            ->execute([$retryDepositId, $auditReceived, time(), $orderId, $retryDepositId]);
+                    } catch (Throwable $e) {
+                        rx_sbv_log('SBV_REJECT_DEPOSIT_RECONCILE_FAILED', $e->getMessage(), ['id_order' => $orderId, 'deposit_id' => $retryDepositId]);
+                    }
+                }
+                $delivery = rx_sbv_send_rejection_report($orderId, $retryDepositId, $storedActor !== '' ? $storedActor : $actor, $storedReason !== '' ? $storedReason : $reason, $decisionAt);
+                return [
+                    'ok' => true,
+                    'already_rejected' => true,
+                    'blocked' => false,
+                    'notified' => false,
+                    'deposit_id' => $retryDepositId,
+                    'report_state' => (string) ($delivery['state'] ?? 'failed'),
+                    'report' => $delivery,
+                ];
+            }
+        }
+        $guard = rx_sbv_payment_reject_guard($orderId);
+        if ($guard !== null) {
+            return ['ok' => false, 'reason' => $guard];
+        }
+        $depositHint = $expectedDepositId;
+        if ($depositHint === null) {
+            $hintCsp = rx_sbv_get($orderId);
+            if (is_array($hintCsp) && $hintCsp['deposit_id'] !== null) {
+                $depositHint = (int) $hintCsp['deposit_id'];
+            }
+        }
+        $now = time();
+        $blocked = false;
+        try {
+            $out = rx_sbv_tx(function (PDO $pdo) use ($orderId, $actor, $reason, $block, $expectedDepositId, $depositHint, $now, &$blocked) {
+                $fail = function (string $reason) {
+                    throw new RuntimeException('sbv_reject:' . $reason);
+                };
+                $deposit = null;
+                $depositId = $expectedDepositId !== null ? $expectedDepositId : $depositHint;
+                $depositLoaded = false;
+                $loadDeposit = function () use ($pdo, &$deposit, &$depositId, &$depositLoaded, $orderId, $fail) {
+                    if ($depositId === null) {
+                        return;
+                    }
+                    if (!$depositLoaded) {
+                        $d = $pdo->prepare("SELECT * FROM card_sms_deposit WHERE id = ? LIMIT 1 FOR UPDATE");
+                        $d->execute([$depositId]);
+                        $deposit = $d->fetch(PDO::FETCH_ASSOC);
+                        $depositLoaded = true;
+                        if ($deposit === false) {
+                            $fail('deposit_not_found');
+                        }
+                    }
+                    $depositState = (string) $deposit['state'];
+                    if ((int) $deposit['is_test'] === 1 || (int) $deposit['is_deposit'] !== 1 || $deposit['amount_rial'] === null) {
+                        $fail('deposit_not_eligible');
+                    }
+                    if (!in_array($depositState, ['unmatched', 'ambiguous', 'late', 'linked', 'matched'], true)) {
+                        $fail('deposit_state_' . $depositState);
+                    }
+                    $depositOrder = trim((string) ($deposit['id_order'] ?? ''));
+                    if ($depositOrder !== '' && $depositOrder !== $orderId) {
+                        $fail('deposit_reassigned');
+                    }
+                    $other = $pdo->prepare("SELECT id_order FROM card_sms_payment WHERE deposit_id = ? AND id_order <> ? LIMIT 1");
+                    $other->execute([$depositId, $orderId]);
+                    if ($other->fetchColumn() !== false) {
+                        $fail('deposit_reassigned');
+                    }
+                };
+                if ($depositId !== null) {
+                    $loadDeposit();
+                }
+                $p = $pdo->prepare("SELECT * FROM Payment_report WHERE id_order = ? ORDER BY id ASC LIMIT 1 FOR UPDATE");
+                $p->execute([$orderId]);
+                $pr = $p->fetch(PDO::FETCH_ASSOC);
+                if ($pr === false) {
+                    $fail('not_found');
+                }
+                $payStatus = (string) ($pr['payment_Status'] ?? '');
+                if ($payStatus === 'paid' || (int) ($pr['direct_payment_done'] ?? 0) === 1) {
+                    $fail('already_paid');
+                }
+                if (in_array($payStatus, ['processing', 'reconciling'], true)) {
+                    $fail('processing');
+                }
+                if (in_array($payStatus, ['reject', 'cancelled'], true)) {
+                    $fail('already_final');
+                }
+                if (!in_array($payStatus, ['Unpaid', 'waiting', 'expire'], true)) {
+                    $fail('not_eligible');
+                }
+                $c = $pdo->prepare("SELECT * FROM card_sms_payment WHERE id_order = ? LIMIT 1 FOR UPDATE");
+                $c->execute([$orderId]);
+                $csp = $c->fetch(PDO::FETCH_ASSOC);
+                if ($csp === false) {
+                    $fail('not_verify');
+                }
+                $expired = rx_sbv_payment_is_expired($csp, $pr);
+                $cspState = (string) $csp['state'];
+                if (!in_array($cspState, ['open', 'matched', 'review'], true) && !($cspState === 'closed' && $expired)) {
+                    $fail('not_eligible');
+                }
+                $cspDepositId = $csp['deposit_id'] !== null ? (int) $csp['deposit_id'] : null;
+                if ($expectedDepositId !== null) {
+                    if ($cspDepositId !== null && $cspDepositId !== $expectedDepositId) {
+                        $fail('order_has_deposit');
+                    }
+                    $depositId = $expectedDepositId;
+                } else {
+                    if ($cspDepositId !== $depositHint) {
+                        $fail('deposit_state_changed');
+                    }
+                    $depositId = $cspDepositId;
+                }
+                try {
+                    $f = $pdo->prepare("SELECT state, lease_expires_at FROM payment_fulfillment WHERE id_order = ? LIMIT 1 FOR UPDATE");
+                    $f->execute([$orderId]);
+                    $fulfillment = $f->fetch(PDO::FETCH_ASSOC);
+                    if (is_array($fulfillment)) {
+                        $fulfillmentState = (string) ($fulfillment['state'] ?? '');
+                        if ($fulfillmentState === 'completed') {
+                            $fail('already_paid');
+                        }
+                        if (in_array($fulfillmentState, ['claimed', 'applying', 'reconciling'], true) && (int) ($fulfillment['lease_expires_at'] ?? 0) > $now) {
+                            $fail('processing');
+                        }
+                    }
+                } catch (RuntimeException $e) {
+                    throw $e;
+                } catch (Throwable $e) {
+                }
+                $stmt = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'reject', dec_not_confirmed = ? WHERE id_order = ? AND payment_Status IN ('Unpaid', 'waiting', 'expire') AND COALESCE(direct_payment_done, 0) = 0");
+                $stmt->execute([$reason, $orderId]);
+                if ($stmt->rowCount() !== 1) {
+                    $fail('race_lost');
+                }
+                $resolution = $block ? 'rejected_blocked' : 'rejected';
+                $depositReceivedRial = $csp['received_rial'] !== null ? (int) $csp['received_rial'] : ($depositId !== null && is_array($deposit) && $deposit['amount_rial'] !== null ? (int) $deposit['amount_rial'] : null);
+                if ($depositId !== null) {
+                    $cspUpdate = $pdo->prepare("UPDATE card_sms_payment SET state = 'closed', resolution = ?, resolved_by = ?, resolved_at = ?, resolution_note = ?, deposit_id = ?, received_rial = ?, updated_at = ? WHERE id = ?");
+                    $cspUpdate->execute([$resolution, $actor, $now, $reason, $depositId, $depositReceivedRial, $now, (int) $csp['id']]);
+                } else {
+                    $cspUpdate = $pdo->prepare("UPDATE card_sms_payment SET state = 'closed', resolution = ?, resolved_by = ?, resolved_at = ?, resolution_note = ?, deposit_id = NULL, updated_at = ? WHERE id = ?");
+                    $cspUpdate->execute([$resolution, $actor, $now, $reason, $now, (int) $csp['id']]);
+                }
+                if ($cspUpdate->rowCount() !== 1) {
+                    $fail('payment_state_changed');
+                }
+                if ($depositId !== null) {
+                    $dst = $pdo->prepare("UPDATE card_sms_deposit SET state = 'reviewed_rejected', id_order = ?, note = ?, reviewed_by = ?, reviewed_at = ?, updated_at = ? WHERE id = ? AND state IN ('unmatched', 'ambiguous', 'late', 'linked', 'matched') AND (id_order IS NULL OR id_order = '' OR id_order = ?)");
+                    $dst->execute([$orderId, $reason, $actor, $now, $now, $depositId, $orderId]);
+                    if ($dst->rowCount() !== 1) {
+                        $fail('deposit_state_changed');
+                    }
+                }
+                rx_sbv_release_amount($pdo, $csp, false);
+                if ($block) {
+                    try {
+                        $pdo->prepare("UPDATE user SET User_Status = 'block', description_blocking = ? WHERE id = ?")->execute([$reason, (string) $pr['id_user']]);
+                        $blocked = true;
+                    } catch (Throwable $e) {
+                        $blocked = false;
+                        rx_sbv_log('SBV_BLOCK_FAILED', $e->getMessage(), ['id_order' => $orderId]);
+                    }
+                }
+                $receivedRial = $depositId !== null ? $depositReceivedRial : ($csp['received_rial'] !== null ? (int) $csp['received_rial'] : (is_array($deposit) && $deposit['amount_rial'] !== null ? (int) $deposit['amount_rial'] : null));
+                try {
+                    $pdo->prepare("INSERT INTO card_sms_audit (id_order, deposit_id, actor, action, principal_toman, fee_toman, expected_rial, received_rial, credit_toman, outcome, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+                        ->execute([
+                            $orderId,
+                            $depositId,
+                            $actor,
+                            $block ? 'admin_reject_block' : 'admin_reject',
+                            (int) $csp['principal_toman'],
+                            (int) $csp['fee_toman'],
+                            (int) $csp['payable_rial'],
+                            $receivedRial,
+                            null,
+                            $block ? ($blocked ? 'rejected_blocked' : 'rejected_block_failed') : 'rejected',
+                            $reason,
+                            $now,
+                        ]);
+                } catch (Throwable $e) {
+                    $fail('audit_failed');
+                }
+                $pr['payment_Status'] = 'reject';
+                $pr['dec_not_confirmed'] = $reason;
+                return ['ok' => true, 'report' => $pr, 'csp' => $csp, 'deposit_id' => $depositId, 'decision_at' => $now];
+            });
+        } catch (Throwable $e) {
+            $message = $e->getMessage();
+            if (strpos($message, 'sbv_reject:') === 0) {
+                return ['ok' => false, 'reason' => substr($message, 11)];
+            }
+            rx_sbv_log('SBV_REJECT_FAILED', $message, ['id_order' => $orderId, 'deposit_id' => $expectedDepositId]);
+            return ['ok' => false, 'reason' => 'db_error'];
+        }
+        if (empty($out['ok']) || !is_array($out['report'] ?? null)) {
+            return ['ok' => false, 'reason' => (string) ($out['reason'] ?? 'error')];
+        }
+        $report = $out['report'];
+        $depositId = isset($out['deposit_id']) ? (int) $out['deposit_id'] : null;
+        $decisionAt = (int) ($out['decision_at'] ?? $now);
+        if (function_exists('clearSelectCache')) {
+            clearSelectCache('Payment_report');
+            if ($blocked) {
+                clearSelectCache('user');
+            }
+        }
+        if (function_exists('rx_redis_del')) {
+            rx_redis_del('faoxima:paystatus:' . $orderId . ':' . (string) $report['id_user']);
+        }
+        $notified = false;
+        if (function_exists('rxReceiptRejectSideEffects')) {
+            try {
+                $side = rxReceiptRejectSideEffects($report, $orderId, $reason, $actor, false, true);
+                $notified = !empty($side['notified']);
+            } catch (Throwable $e) {
+                rx_sbv_log('SBV_REJECT_NOTIFY_FAILED', $e->getMessage(), ['id_order' => $orderId]);
+            }
+        }
+        $delivery = rx_sbv_send_rejection_report($orderId, $depositId, $actor, $reason, $decisionAt);
+        return [
+            'ok' => true,
+            'blocked' => $blocked,
+            'notified' => $notified,
+            'deposit_id' => $depositId,
+            'report_state' => (string) ($delivery['state'] ?? 'failed'),
+            'report' => $delivery,
+        ];
     }
 }
 
@@ -2133,17 +3633,60 @@ if (!function_exists('rx_sbv_link')) {
                 if ((int) $dep['is_test'] === 1 || (int) $dep['is_deposit'] !== 1 || $dep['amount_rial'] === null) {
                     return ['ok' => false, 'reason' => 'deposit_not_eligible'];
                 }
+                $p = $pdo->prepare("SELECT * FROM Payment_report WHERE id_order = ? ORDER BY id ASC LIMIT 1 FOR UPDATE");
+                $p->execute([$orderId]);
+                $pr = $p->fetch(PDO::FETCH_ASSOC);
+                if ($pr === false) {
+                    return ['ok' => false, 'reason' => 'not_found'];
+                }
+                $payStatus = (string) ($pr['payment_Status'] ?? '');
+                if ($payStatus === 'paid' || (int) ($pr['direct_payment_done'] ?? 0) === 1) {
+                    return ['ok' => false, 'reason' => 'already_paid'];
+                }
+                if (in_array($payStatus, ['processing', 'reconciling'], true)) {
+                    return ['ok' => false, 'reason' => 'processing'];
+                }
                 $c = $pdo->prepare("SELECT * FROM card_sms_payment WHERE id_order = ? LIMIT 1 FOR UPDATE");
                 $c->execute([$orderId]);
                 $csp = $c->fetch(PDO::FETCH_ASSOC);
                 if ($csp === false) {
                     return ['ok' => false, 'reason' => 'order_not_verify'];
                 }
-                if (in_array((string) $csp['state'], ['approved', 'credited', 'void'], true)) {
-                    return ['ok' => false, 'reason' => 'order_state_' . (string) $csp['state']];
+                $expired = rx_sbv_payment_is_expired($csp, $pr);
+                $cspState = (string) $csp['state'];
+                if ($cspState !== 'open' && !($expired && in_array($cspState, ['review', 'closed'], true))) {
+                    return ['ok' => false, 'reason' => 'order_state_' . $cspState];
+                }
+                if ($cspState === 'closed' && !$expired) {
+                    return ['ok' => false, 'reason' => 'order_state_closed'];
+                }
+                if (!$expired && (int) ($csp['expires_at'] ?? 0) < time()) {
+                    return ['ok' => false, 'reason' => 'order_state_expired'];
+                }
+                $allowedStatuses = $expired ? ['Unpaid', 'waiting', 'pending', 'expire'] : ['Unpaid', 'waiting', 'pending'];
+                if (!in_array($payStatus, $allowedStatuses, true)) {
+                    return ['ok' => false, 'reason' => 'not_eligible'];
                 }
                 if ($csp['deposit_id'] !== null) {
                     return ['ok' => false, 'reason' => 'order_has_deposit'];
+                }
+                if ((string) $csp['id_user'] !== (string) ($pr['id_user'] ?? '')) {
+                    return ['ok' => false, 'reason' => 'not_eligible'];
+                }
+                try {
+                    $f = $pdo->prepare("SELECT state, lease_expires_at FROM payment_fulfillment WHERE id_order = ? LIMIT 1 FOR UPDATE");
+                    $f->execute([$orderId]);
+                    $fulfillment = $f->fetch(PDO::FETCH_ASSOC);
+                    if (is_array($fulfillment)) {
+                        $fulfillmentState = (string) ($fulfillment['state'] ?? '');
+                        if ($fulfillmentState === 'completed') {
+                            return ['ok' => false, 'reason' => 'already_paid'];
+                        }
+                        if (in_array($fulfillmentState, ['claimed', 'applying', 'reconciling'], true) && (int) ($fulfillment['lease_expires_at'] ?? 0) > time()) {
+                            return ['ok' => false, 'reason' => 'processing'];
+                        }
+                    }
+                } catch (Throwable $e) {
                 }
                 $pdo->prepare("UPDATE card_sms_payment SET deposit_id = ?, received_rial = ?, updated_at = ? WHERE id = ?")
                     ->execute([$depositId, (int) $dep['amount_rial'], $now, (int) $csp['id']]);
@@ -2163,6 +3706,9 @@ if (!function_exists('rx_sbv_link')) {
                 'received_rial' => (int) $out['deposit']['amount_rial'],
                 'outcome' => 'linked',
             ]);
+            if (function_exists('rx_redis_del')) {
+                rx_redis_del('faoxima:paystatus:' . $orderId . ':' . (string) $out['csp']['id_user']);
+            }
         }
         return $out;
     }

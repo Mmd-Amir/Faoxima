@@ -363,6 +363,7 @@ function rx_parse_telegram_response($rawResponse, $httpCode)
         return [
             'ok' => false,
             'error_code' => $httpCode,
+            '_rx_invalid_response' => true,
             'description' => 'Invalid response received from Telegram.'
         ];
     }

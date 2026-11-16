@@ -58,10 +58,6 @@ foreach ($datatxtbot as $item) {
         $datatextbot[$item['id_text']] = $item['text'];
     }
 }
-if (function_exists('rx_sbv_cron_run')) {
-    $textbotlang = languagechange('../text.json');
-    rx_sbv_cron_run('../images.jpg');
-}
 $rxSbvExclude = (function_exists('rx_sbv_has_schema') && rx_sbv_has_schema()) ? " AND NOT EXISTS (SELECT 1 FROM card_sms_payment csp WHERE csp.id_order = Payment_report.id_order)" : "";
 list($rxW, $rxN) = function_exists('rx_cron_shard') ? rx_cron_shard() : [0, 1];
 $rxShard = ($rxN > 1) ? " AND MOD(id, $rxN) = $rxW " : "";

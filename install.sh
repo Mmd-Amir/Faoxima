@@ -1290,6 +1290,7 @@ verify_tables_created() {
         "setting:banner_start_status"
         "invoice:invalidated_at"
         "Payment_report:atlaspay_order_id"
+        "Payment_report:source"
         "marzban_panel:xui_api_mode"
         "marzban_panel:ip_limit_guard"
         "product:ip_limit"

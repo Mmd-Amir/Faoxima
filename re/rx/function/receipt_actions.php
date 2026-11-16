@@ -76,6 +76,44 @@ if (!function_exists('rxReceiptSyncTelegram')) {
     }
 }
 
+if (!function_exists('rxReceiptRejectSideEffects')) {
+    function rxReceiptRejectSideEffects(array $finalReport, string $orderId, string $reason, string $actorLabel = '', bool $skipTelegramSync = false, bool $notifyUser = true): array
+    {
+        $reasonEsc = htmlspecialchars($reason, ENT_QUOTES, 'UTF-8');
+        if (!$skipTelegramSync) {
+            $textConfirmed = "❌ رسید پرداخت رد شد.\n\n"
+                . "اطلاعات :\n"
+                . "<blockquote>💸 روش پرداخت : " . (string) ($finalReport['Payment_Method'] ?? '') . "</blockquote>\n"
+                . "<blockquote>👤آیدی عددی  ادمین رد کننده : " . htmlspecialchars($actorLabel, ENT_QUOTES, 'UTF-8') . "</blockquote>\n"
+                . "<blockquote>💰 مبلغ پرداخت : " . (function_exists('rxFormatToman') ? rxFormatToman($finalReport['price'] ?? 0) : number_format((int) ($finalReport['price'] ?? 0))) . "</blockquote>\n"
+                . "<blockquote>دلیل رد کردن : {$reasonEsc}</blockquote>\n"
+                . "<blockquote>👤 ایدی عددی کاربر: " . (string) ($finalReport['id_user'] ?? '') . "</blockquote>";
+            rxReceiptSyncTelegram($finalReport, $textConfirmed, null);
+        }
+
+        $notified = false;
+        if ($notifyUser && function_exists('sendmessage')) {
+            $textReject = "❌ کاربر گرامی، درخواست پرداخت شما رد شد.\n"
+                . "✍️ دلیل: {$reasonEsc}\n"
+                . "🛒 کد پیگیری پرداخت: {$orderId}\n"
+                . "ℹ️ این تصمیم درباره درخواست پرداخت است؛ به‌تنهایی به معنی دریافت، تأیید یا بازگشت وجه نیست.";
+            $targetUserId = $finalReport['id_user'] ?? null;
+            if ($targetUserId) {
+                try {
+                    $notifyResult = sendmessage($targetUserId, $textReject, null, 'HTML');
+                    $notified = is_array($notifyResult) ? !empty($notifyResult['ok']) : $notifyResult !== null;
+                } catch (Throwable $e) {
+                    $notified = false;
+                    if (function_exists('rx_log_event')) {
+                        rx_log_event('RECEIPT_REJECT_NOTIFY_FAILED', $e->getMessage(), ['id_order' => $orderId]);
+                    }
+                }
+            }
+        }
+        return ['notified' => $notified];
+    }
+}
+
 if (!function_exists('rxReceiptConfirm')) {
     function rxReceiptConfirm(string $orderId, array $ctx = []): array
     {
@@ -319,13 +357,15 @@ if (!function_exists('rxReceiptReject')) {
         if ($status === 'reject' || $status === 'paid') {
             return ['ok' => false, 'reason' => 'already_final', 'report' => $report];
         }
-        if ($status !== 'waiting') {
-            return ['ok' => false, 'reason' => 'not_waiting', 'report' => $report];
+        $allowedStatuses = !empty($ctx['allow_unpaid']) ? ['waiting', 'Unpaid'] : ['waiting'];
+        if (!in_array($status, $allowedStatuses, true)) {
+            return ['ok' => false, 'reason' => $status === 'Unpaid' ? 'not_eligible' : 'not_waiting', 'report' => $report];
         }
 
-        $rejectStmt = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'reject' WHERE id_order = :id_order AND payment_Status = 'waiting'");
-        $rejectStmt->bindValue(':id_order', $orderId, PDO::PARAM_STR);
-        $rejectStmt->execute();
+        $statusPlaceholders = implode(', ', array_fill(0, count($allowedStatuses), '?'));
+        $rejectStmt = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'reject', dec_not_confirmed = ? WHERE id_order = ? AND payment_Status IN ($statusPlaceholders) AND COALESCE(direct_payment_done, 0) = 0");
+        $params = array_merge([$reason, $orderId], $allowedStatuses);
+        $rejectStmt->execute($params);
         if ($rejectStmt->rowCount() !== 1) {
             if (function_exists('rx_log_event')) {
                 rx_log_event('RECEIPT_REJECT_RACE', 'Reject raced with another actor; dropping duplicate', [
@@ -336,36 +376,15 @@ if (!function_exists('rxReceiptReject')) {
             return ['ok' => false, 'reason' => 'race_lost', 'report' => rxReceiptGet($orderId, false)];
         }
 
-        if (function_exists('update')) {
-            update('Payment_report', 'dec_not_confirmed', $reason, 'id_order', $orderId);
-        }
         if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
 
         $finalReport = rxReceiptGet($orderId, false);
-        $reasonEsc = htmlspecialchars($reason, ENT_QUOTES, 'UTF-8');
-
-        if (!$skipTelegramSync) {
-            $textConfirmed = "❌ رسید پرداخت رد شد.\n\n"
-                . "اطلاعات :\n"
-                . "<blockquote>💸 روش پرداخت : {$finalReport['Payment_Method']}</blockquote>\n"
-                . "<blockquote>👤آیدی عددی  ادمین رد کننده : " . htmlspecialchars((string)$actorLabel, ENT_QUOTES, 'UTF-8') . "</blockquote>\n"
-                . "<blockquote>💰 مبلغ پرداخت : " . (function_exists('rxFormatToman') ? rxFormatToman($finalReport['price']) : number_format((int)$finalReport['price'])) . "</blockquote>\n"
-                . "<blockquote>دلیل رد کردن : {$reasonEsc}</blockquote>\n"
-                . "<blockquote>👤 ایدی عددی کاربر: {$finalReport['id_user']}</blockquote>";
-            rxReceiptSyncTelegram($finalReport, $textConfirmed, null);
+        if (function_exists('rx_redis_del')) {
+            rx_redis_del('faoxima:paystatus:' . $orderId . ':' . (string) ($finalReport['id_user'] ?? ''));
         }
+        $side = rxReceiptRejectSideEffects($finalReport, $orderId, $reason, $actorLabel, $skipTelegramSync, $notifyUser);
 
-        if ($notifyUser && function_exists('sendmessage')) {
-            $textReject = "❌ کاربر گرامی پرداخت شما به دلیل زیر رد گردید.\n"
-                . "✍️ {$reason}\n"
-                . "🛒 کد پیگیری پرداخت: {$orderId}\n                ";
-            $targetUserId = $finalReport['id_user'] ?? null;
-            if ($targetUserId) {
-                sendmessage($targetUserId, $textReject, null, 'HTML');
-            }
-        }
-
-        return ['ok' => true, 'report' => $finalReport];
+        return ['ok' => true, 'report' => $finalReport, 'notified' => !empty($side['notified'])];
     }
 }
 

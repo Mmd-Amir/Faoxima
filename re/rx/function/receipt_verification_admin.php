@@ -67,6 +67,7 @@ if (!function_exists('rx_sbv_deposit_state_label')) {
             'ambiguous' => 'مبهم (چند پرداخت هم‌مبلغ)',
             'late' => 'دیرهنگام / پرداخت غیرفعال',
             'linked' => 'متصل‌شده توسط ادمین',
+            'reviewed_rejected' => 'بررسی‌شده — درخواست پرداخت رد شد',
             'dismissed' => 'بایگانی‌شده',
             'ignored' => 'غیرقابل‌استفاده (برداشت)',
             'test' => 'آزمایشی',
@@ -127,6 +128,7 @@ if (!function_exists('rx_sbv_settings_view')) {
         $text .= "⏳ مهلت هر پرداخت: " . rx_sbv_lifetime_minutes() . " دقیقه (حداقل " . RX_SBV_LIFETIME_MIN_MINUTES . ")\n"
             . "📤 ارسال رسید: " . intdiv(RX_SBV_RECEIPT_DELAY, 60) . " دقیقه پس از ایجاد پرداخت\n"
             . "🏷 کارمزد شناسایی: " . RX_SBV_FEE_MIN . " تا " . RX_SBV_FEE_MAX . " تومان (جزو شارژ/سفارش نیست)\n"
+            . "🔍 محدوده پیشنهاد پرداخت: ±" . number_format(rx_sbv_suggestion_range_toman()) . " تومان\n"
             . "♻️ استفاده مجدد از یک مبلغ: حداقل " . intdiv(RX_SBV_REUSE_COOLDOWN, 3600) . " ساعت پس از بسته‌شدن پرداخت\n"
             . "📥 واریزهای نیازمند بررسی: " . (int) $queue['total'] . "\n\n"
             . "ℹ️ غیرفعال‌سازی فقط ساخت پرداخت‌های جدید با این روش را متوقف می‌کند؛ پرداخت‌های قبلی همچنان بررسی می‌شوند و کلید تغییر نمی‌کند.";
@@ -142,6 +144,7 @@ if (!function_exists('rx_sbv_settings_view')) {
             $rows[] = [['text' => '♻️ ساخت کلید جدید', 'callback_data' => 'sbv_rg']];
         }
         $rows[] = [['text' => '⏳ مهلت پرداخت', 'callback_data' => 'sbv_lf']];
+        $rows[] = [['text' => '🎯 محدوده پیشنهادها', 'callback_data' => 'sbv_sgr']];
         $rows[] = [['text' => '📥 واریزهای تطبیق‌نیافته', 'callback_data' => 'sbv_q_0']];
         $rows[] = [['text' => '🔄 بروزرسانی', 'callback_data' => 'sbv_home']];
         $rows[] = [['text' => '🔙 بازگشت', 'callback_data' => 'cart_back']];
@@ -200,6 +203,7 @@ if (!function_exists('rx_sbv_order_view')) {
         $status = (string) ($pr['payment_Status'] ?? '');
         $state = (string) $csp['state'];
         $final = in_array($state, ['approved', 'credited'], true) || $status === 'paid';
+        $expired = rx_sbv_payment_is_expired($csp, $pr);
         $user = function_exists('select') && !empty($pr['id_user']) ? select('user', '*', 'id', $pr['id_user'], 'select') : null;
         $received = $sum['received_rial'];
         $diff = $sum['diff_rial'];
@@ -207,7 +211,7 @@ if (!function_exists('rx_sbv_order_view')) {
             . "🛒 کد سفارش: <code>" . rx_sbv_h($orderId) . "</code>\n"
             . "👤 کاربر: <code>" . rx_sbv_h($csp['id_user']) . "</code>" . (is_array($user) && !empty($user['username']) ? " (@" . rx_sbv_h($user['username']) . ")" : '') . "\n"
             . "📦 نوع: " . rx_sbv_h(rx_sbv_invoice_label((string) ($pr['id_invoice'] ?? ''))) . "\n"
-            . "💳 وضعیت پرداخت: " . rx_sbv_h(rx_sbv_status_label($status)) . "\n"
+            . "💳 وضعیت پرداخت: " . rx_sbv_h($expired ? 'منقضی‌شده (نیازمند بررسی ادمین)' : rx_sbv_status_label($status)) . "\n"
             . "🔐 وضعیت تطبیق: " . rx_sbv_h(rx_sbv_state_label($state)) . "\n\n"
             . "<blockquote>💰 اصل مبلغ (شارژ/سفارش): " . rx_sbv_money($csp['principal_toman']) . " تومان\n"
             . "🏷 کارمزد شناسایی: " . rx_sbv_money($csp['fee_toman']) . " تومان\n"
@@ -223,30 +227,29 @@ if (!function_exists('rx_sbv_order_view')) {
         if ((string) ($csp['resolution'] ?? '') !== '') {
             $text .= "\n📝 نتیجه: " . rx_sbv_h($csp['resolution']) . ((string) ($csp['resolved_by'] ?? '') !== '' ? " — ادمین " . rx_sbv_h($csp['resolved_by']) : '') . ((string) ($csp['resolution_note'] ?? '') !== '' ? "\n✍️ " . rx_sbv_h($csp['resolution_note']) : '') . "\n";
         }
+        $terminalDecision = $final || in_array($status, ['reject', 'cancelled'], true) || (in_array($state, ['closed', 'void'], true) && !$expired);
         $rows = [];
-        if (!$final && $state !== 'matched') {
-            if (in_array($status, ['Unpaid', 'waiting', 'expire'], true)) {
-                $rows[] = [['text' => '✅ تأیید پرداخت / تحویل سفارش', 'callback_data' => 'sbv_oa_' . $orderId]];
+        if (!$terminalDecision && $state !== 'matched') {
+            if (in_array($status, ['Unpaid', 'waiting', 'expire'], true) && !$final) {
+                $rows[] = [['text' => '✅ تحویل کامل سفارش / تأیید شارژ', 'callback_data' => 'sbv_oa_' . $orderId]];
             }
-            if ($status === 'waiting') {
-                $rows[] = [
-                    ['text' => '❌ رد رسید', 'callback_data' => 'sbv_or_' . $orderId],
-                    ['text' => '🚫 رد و مسدودسازی', 'callback_data' => 'sbv_ob_' . $orderId],
-                ];
+            if (!$final && (in_array($status, ['Unpaid', 'waiting', 'expire'], true) || $expired)) {
+                $rows[] = [['text' => '❌ رد پرداخت', 'callback_data' => 'sbv_or_' . $orderId]];
             }
-            $r = [['text' => '✍️ ثبت مبلغ دریافتی (تومان)', 'callback_data' => 'sbv_om_' . $orderId]];
+            $r = [['text' => '✍️ ویرایش مبلغ دریافتی', 'callback_data' => 'sbv_om_' . $orderId]];
             if ($csp['deposit_id'] === null) {
                 $r[] = ['text' => '🔗 اتصال واریز', 'callback_data' => 'sbv_ol_' . $orderId];
             }
             $rows[] = $r;
-            if ($received !== null && intdiv($received, 10) - (int) $csp['fee_toman'] > 0 && in_array($status, ['Unpaid', 'waiting', 'expire', 'cancelled', 'reject'], true)) {
-                $rows[] = [['text' => '💼 واریز ' . rx_sbv_money(intdiv($received, 10) - (int) $csp['fee_toman']) . ' تومان به کیف پول', 'callback_data' => 'sbv_oc_' . $orderId]];
+            if ($received !== null && intdiv($received, 10) > 0 && in_array($status, ['Unpaid', 'waiting', 'expire'], true)) {
+                $rows[] = [['text' => '💼 واریز کامل ' . rx_sbv_money(intdiv($received, 10)) . ' تومان به کیف پول', 'callback_data' => 'sbv_oc_' . $orderId]];
             }
         }
         if (!empty($csp['id_user'])) {
             $rows[] = [['text' => '⚙️ مدیریت کاربر', 'callback_data' => 'manageuser_' . $csp['id_user']]];
         }
         $rows[] = [['text' => '🔄 بروزرسانی', 'callback_data' => 'sbv_oo_' . $orderId]];
+        $rows[] = [['text' => '🔙 بازگشت', 'callback_data' => 'sbv_q_0']];
         return ['text' => $text, 'keyboard' => rx_sbv_kb($rows)];
     }
 }
@@ -291,11 +294,13 @@ if (!function_exists('rx_sbv_deposit_view')) {
         }
         $rows = [];
         $state = (string) $dep['state'];
+        $hasOrder = (string) ($dep['id_order'] ?? '') !== '' && rx_sbv_cb_ok((string) $dep['id_order']);
         if (in_array($state, ['unmatched', 'ambiguous', 'late'], true)) {
             $rows[] = [['text' => '🔗 اتصال به پرداخت', 'callback_data' => 'sbv_dl_' . $depositId]];
-            $rows[] = [['text' => '🗂 بایگانی (بررسی شد)', 'callback_data' => 'sbv_dx_' . $depositId]];
+            $rows[] = [['text' => '🔍 پرداخت‌های احتمالی', 'callback_data' => 'sbv_ds_' . $depositId]];
+            $rows[] = [['text' => '🗑 حذف واریز', 'callback_data' => 'sbv_dd_' . $depositId]];
         }
-        if ((string) ($dep['id_order'] ?? '') !== '' && rx_sbv_cb_ok((string) $dep['id_order'])) {
+        if ($hasOrder) {
             $rows[] = [['text' => '🔎 مشاهده سفارش', 'callback_data' => 'sbv_oo_' . $dep['id_order']]];
         }
         $rows[] = [['text' => '🔙 بازگشت', 'callback_data' => 'sbv_q_0']];
@@ -304,7 +309,7 @@ if (!function_exists('rx_sbv_deposit_view')) {
 }
 
 if (!function_exists('rx_sbv_link_preview')) {
-    function rx_sbv_link_preview(int $depositId, string $orderId): ?array
+    function rx_sbv_link_preview(int $depositId, string $orderId, ?string $cancelCallback = null): ?array
     {
         $dep = rx_sbv_deposit($depositId);
         $sum = rx_sbv_order_summary($orderId);
@@ -315,22 +320,32 @@ if (!function_exists('rx_sbv_link_preview')) {
         $pr = is_array($sum['report']) ? $sum['report'] : [];
         $received = $dep['amount_rial'] !== null ? (int) $dep['amount_rial'] : null;
         $diff = $received === null ? null : $received - (int) $csp['payable_rial'];
+        $guard = rx_sbv_payment_link_guard($orderId, $depositId);
+        $expired = rx_sbv_payment_is_expired($csp, $pr);
+        $linkUser = rx_sbv_admin_user((int) $csp['id_user']);
+        $linkName = is_array($linkUser) ? trim((string) ($linkUser['first_name'] ?? '')) : '';
+        $linkUsername = is_array($linkUser) ? trim((string) ($linkUser['username'] ?? '')) : '';
+        $linkWho = $linkName !== '' ? $linkName : ($linkUsername !== '' ? '@' . $linkUsername : 'بدون نام');
         $text = "🔗 <b>تأیید اتصال واریز به پرداخت</b>\n\n"
-            . "🛒 سفارش: <code>" . rx_sbv_h($orderId) . "</code> | 👤 کاربر: <code>" . rx_sbv_h($csp['id_user']) . "</code>\n"
+            . "🛒 سفارش: <code>" . rx_sbv_h($orderId) . "</code> | 👤 کاربر: " . rx_sbv_h($linkWho) . " (<code>" . rx_sbv_h($csp['id_user']) . "</code>)\n"
             . "📦 نوع: " . rx_sbv_h(rx_sbv_invoice_label((string) ($pr['id_invoice'] ?? ''))) . "\n"
-            . "💳 وضعیت پرداخت: " . rx_sbv_h(rx_sbv_status_label((string) ($pr['payment_Status'] ?? ''))) . " | تطبیق: " . rx_sbv_h(rx_sbv_state_label((string) $csp['state'])) . "\n"
+            . "💳 وضعیت پرداخت: " . rx_sbv_h($expired ? 'منقضی‌شده (نیازمند تصمیم ادمین)' : rx_sbv_status_label((string) ($pr['payment_Status'] ?? ''))) . " | تطبیق: " . rx_sbv_h(rx_sbv_state_label((string) $csp['state'])) . "\n"
             . "<blockquote>💰 اصل مبلغ: " . rx_sbv_money($csp['principal_toman']) . " تومان\n"
             . "🏷 کارمزد شناسایی: " . rx_sbv_money($csp['fee_toman']) . " تومان\n"
             . "✅ مبلغ مورد انتظار: " . rx_sbv_h(rx_sbv_toman_from_rial((int) $csp['payable_rial'])) . "\n"
             . "📥 مبلغ واریز: " . rx_sbv_h(rx_sbv_toman_from_rial($received)) . "\n"
-            . "➖ اختلاف: " . ($diff === null ? '—' : rx_sbv_h(($diff > 0 ? '+' : ($diff < 0 ? '−' : '')) . rx_sbv_toman_from_rial(abs($diff)))) . "\n"
+            . "➖ اختلاف: " . rx_sbv_h(rx_sbv_admin_diff_label($diff)) . "\n"
             . "🕒 ایجاد پرداخت: " . rx_sbv_h(rx_sbv_clock((int) $csp['created_at'], true)) . " | مهلت: " . rx_sbv_h(rx_sbv_clock((int) $csp['expires_at'], true)) . "</blockquote>\n"
             . rx_sbv_deposit_lines($dep) . "\n\n"
             . "⚠️ اتصال به‌تنهایی پرداخت را تأیید نمی‌کند؛ پس از اتصال، نتیجه را از پنل سفارش انتخاب کنید.";
-        $rows = [
-            [['text' => '✅ تأیید اتصال', 'callback_data' => 'sbv_lk_' . $depositId . '_' . $orderId]],
-            [['text' => '❌ انصراف', 'callback_data' => 'sbv_cancel']],
-        ];
+        if ($guard !== null) {
+            $text .= "\n\n🚫 اکنون امکان اتصال وجود ندارد: " . rx_sbv_error_text($guard);
+        }
+        $rows = [];
+        if ($guard === null) {
+            $rows[] = [['text' => '✅ تأیید اتصال', 'callback_data' => 'sbv_lk_' . $depositId . '_' . $orderId]];
+        }
+        $rows[] = [['text' => '❌ انصراف', 'callback_data' => ($cancelCallback !== null && $cancelCallback !== '') ? $cancelCallback : 'sbv_cancel']];
         return ['text' => $text, 'keyboard' => rx_sbv_kb($rows)];
     }
 }
@@ -342,18 +357,38 @@ if (!function_exists('rx_sbv_error_text')) {
             'verify_reason_required' => 'برای این تصمیم مالی ثبت دلیل الزامی است.',
             'reason_required' => 'ثبت دلیل الزامی است.',
             'already_paid' => 'این پرداخت قبلاً تسویه شده است.',
+            'not_found' => 'پرداخت یا سفارش مورد نظر یافت نشد.',
+            'not_verify' => 'این پرداخت با روش «تأیید رسید با بررسی» ایجاد نشده است.',
+            'unavailable' => 'سامانه رد پرداخت در حال حاضر در دسترس نیست.',
             'not_eligible' => 'وضعیت فعلی پرداخت اجازه این اقدام را نمی‌دهد.',
+            'processing' => 'این پرداخت در حال پردازش یا تطبیق است و اکنون قابل رد نیست.',
             'not_waiting' => 'رسید در وضعیت «در انتظار بررسی» نیست.',
             'race_lost' => 'وضعیت پرداخت هم‌زمان توسط عامل دیگری تغییر کرد.',
             'already_final' => 'این پرداخت قبلاً نهایی شده است.',
+            'invalid_user_id' => 'شناسه کاربر باید یک عدد معتبر باشد.',
+            'user_not_found' => 'کاربری با این شناسه یافت نشد.',
+            'no_eligible_payment' => 'هیچ درخواست پرداخت ForApp واجد شرایطی برای این کاربر پیدا نشد.',
+            'selection_changed' => 'فهرست یا وضعیت پرداخت‌ها تغییر کرده است؛ لطفاً دوباره انتخاب کنید.',
             'received_required' => 'ابتدا مبلغ دریافتی را ثبت یا واریز را متصل کنید.',
             'nothing_to_credit' => 'مبلغ دریافتی پس از کسر کارمزد شناسایی مثبت نیست.',
             'purchase_receipts_pending' => 'ابتدا رسیدهای خرید یا تمدید این کاربر را بررسی کنید.',
             'deposit_not_found' => 'واریز یافت نشد.',
+            'deposit_linked' => 'این واریز به سفارش یا پرداخت متصل است و حذف آن مجاز نیست.',
+            'deposit_reassigned' => 'این واریز به پرداخت دیگری متصل یا بازتخصیص شده است.',
+            'deposit_state_changed' => 'وضعیت واریز هنگام تأیید نهایی تغییر کرده است؛ عملیات انجام نشد.',
+            'payment_state_changed' => 'وضعیت پرداخت هنگام تأیید نهایی تغییر کرده است؛ عملیات انجام نشد.',
+            'audit_failed' => 'ثبت سابقه تصمیم ادمین ناموفق بود؛ هیچ تغییری اعمال نشد.',
+            'db_error' => 'خطای پایگاه داده؛ عملیات انجام نشد.',
             'order_not_verify' => 'این سفارش با روش «تأیید رسید با بررسی» ایجاد نشده است.',
             'order_has_deposit' => 'این سفارش از قبل به واریز دیگری متصل است.',
             'deposit_not_eligible' => 'این رکورد واریز قابل اتصال نیست.',
             'invalid_amount' => 'مبلغ نامعتبر است.',
+            'invalid_order' => 'شناسه پرداخت نامعتبر است.',
+            'not_expired' => 'این پرداخت هنوز منقضی نشده است و حذف آن مجاز نیست.',
+            'not_authorized' => 'اجازه انجام این عملیات را ندارید.',
+            'order_not_candidate' => 'این پرداخت برای این واریز در فهرست پیشنهادهای فعلی نیست.',
+            'candidate_check_failed' => 'بررسی تطبیق این پرداخت با واریز ناموفق بود؛ هیچ تغییری انجام نشد.',
+            'fulfillment_check_failed' => 'بررسی وضعیت تسویه پرداخت ناموفق بود؛ هیچ تغییری انجام نشد.',
         ];
         if (isset($map[$reason])) {
             return $map[$reason];
@@ -365,6 +400,552 @@ if (!function_exists('rx_sbv_error_text')) {
             return 'عملیات تکمیل نشد (' . $reason . '). وضعیت پرداخت تغییر نکرد یا برای بررسی مجدد نگه داشته شد.';
         }
         return 'خطا: ' . $reason;
+    }
+}
+
+if (!function_exists('rx_sbv_admin_diff_label')) {
+    function rx_sbv_admin_diff_label(?int $diffRial): string
+    {
+        if ($diffRial === null) {
+            return '—';
+        }
+        if ($diffRial === 0) {
+            return 'بدون اختلاف';
+        }
+        return rx_sbv_money(intdiv(abs($diffRial), 10)) . ' تومان ' . ($diffRial < 0 ? 'کمتر' : 'بیشتر');
+    }
+}
+
+if (!function_exists('rx_sbv_admin_approval_message')) {
+    function rx_sbv_admin_approval_message(array $res): string
+    {
+        $outcome = (string) ($res['outcome'] ?? '');
+        if ($outcome === 'refunded') {
+            return '✅ پرداخت تأیید شد، اما سفارش قابل تحویل نبود و اصل مبلغ طبق مسیر پشتیبانی‌شده به کیف پول بازگشت. سرویس تحویل نشد.';
+        }
+        if ($outcome === 'wallet_credit') {
+            return '✅ پرداخت تأیید شد، اما سفارش قابل تحویل نبود و مبلغ طبق مسیر پشتیبانی‌شده به کیف پول واریز شد. سرویس تحویل نشد.';
+        }
+        if ($outcome === 'completed' || $outcome === 'paid') {
+            return '✅ پرداخت تأیید و سفارش تسویه شد.';
+        }
+        return '✅ پرداخت تأیید شد؛ نتیجه نهایی سفارش را از جزئیات پرداخت بررسی کنید.';
+    }
+}
+
+if (!function_exists('rx_sbv_admin_delete_confirm_view')) {
+    function rx_sbv_admin_delete_confirm_view(int $depositId, ?string $cancelCallback = null): array
+    {
+        $deposit = rx_sbv_deposit($depositId);
+        if (!is_array($deposit)) {
+            return ['text' => '❌ واریز یافت نشد.', 'keyboard' => rx_sbv_kb($cancelCallback ? [[['text' => '❌ انصراف', 'callback_data' => $cancelCallback]]] : [])];
+        }
+        $deletable = in_array((string) $deposit['state'], ['unmatched', 'ambiguous', 'late'], true) && trim((string) ($deposit['id_order'] ?? '')) === '';
+        $text = "🗑 <b>حذف دائمی واریز</b>\n\n"
+            . "<blockquote>🆔 شناسه واریز: <code>" . (int) $deposit['id'] . "</code>\n"
+            . "💵 مبلغ: " . rx_sbv_h(rx_sbv_toman_from_rial($deposit['amount_rial'] !== null ? (int) $deposit['amount_rial'] : null)) . "\n"
+            . "🏦 بانک: " . rx_sbv_h($deposit['bank'] ?? '—') . "\n"
+            . "🕒 زمان دریافت: " . rx_sbv_h((string) ($deposit['received_at_raw'] ?? '—')) . "\n"
+            . "🕒 ثبت در سرور: " . rx_sbv_h(rx_sbv_clock((int) $deposit['stored_at'], true)) . "</blockquote>\n\n"
+            . "⚠️ این اقدام رکورد واریز و payload پیامک ذخیره‌شده را برای همیشه از دیتابیس حذف می‌کند و قابل بازگشت نیست.";
+        if (!$deletable) {
+            $text .= "\n\n🚫 این واریز در وضعیت قابل حذف نیست.";
+        }
+        $rows = [];
+        if ($deletable) {
+            $rows[] = [['text' => '🗑 تأیید حذف دائمی', 'callback_data' => 'sbv_ddx_' . $depositId]];
+        }
+        $rows[] = [['text' => '❌ انصراف', 'callback_data' => $cancelCallback !== null && $cancelCallback !== '' ? $cancelCallback : 'sbv_d_' . $depositId]];
+        return ['text' => $text, 'keyboard' => rx_sbv_kb($rows)];
+    }
+}
+
+if (!function_exists('rx_sbv_admin_candidate_view')) {
+    function rx_sbv_admin_candidate_view(int $depositId, int $page = 0, bool $allowDelete = false): array
+    {
+        $deposit = rx_sbv_deposit($depositId);
+        if (!is_array($deposit)) {
+            return ['text' => '❌ واریز یافت نشد.', 'keyboard' => rx_sbv_kb([[['text' => '📥 صف بررسی', 'callback_data' => 'sbv_q_0']]])];
+        }
+        $amountRial = $deposit['amount_rial'] !== null ? (int) $deposit['amount_rial'] : null;
+        $per = 5;
+        $result = rx_sbv_report_candidates($depositId, $per, $page);
+        $page = (int) ($result['page'] ?? 0);
+        $pages = (int) ($result['pages'] ?? 1);
+        $active = (array) ($result['active'] ?? []);
+        $expired = (array) ($result['expired'] ?? []);
+        $deleteRows = [];
+        $text = "🔍 <b>پرداخت‌های احتمالی — صاحب واریز هنوز تأیید نشده است</b>\n\n"
+            . "<blockquote>🆔 شناسه واریز: <code>" . (int) $deposit['id'] . "</code>\n"
+            . "💵 مبلغ دریافتی: " . rx_sbv_h(rx_sbv_toman_from_rial($amountRial)) . "</blockquote>\n";
+        if (empty($result['ok'])) {
+            $text .= "\n❌ جست‌وجوی پیشنهاد پرداخت با خطا مواجه شد. این نتیجه به معنی نبود پرداخت احتمالی نیست.";
+        } elseif (!$active && !$expired) {
+            $text .= "\n✅ جست‌وجو انجام شد اما هیچ پرداخت فعال یا منقضی‌شده‌ای با مبلغ و زمان نزدیک پیدا نشد.";
+        } else {
+            $shown = $page * $per;
+            if ($active) {
+                $text .= "\n<b>پرداخت‌های فعال / در انتظار</b>\n";
+                foreach ($active as $candidate) {
+                    $shown++;
+                    $text .= "\n" . rx_sbv_candidate_line($candidate, $shown, $amountRial) . "\n";
+                }
+            }
+            if ($expired) {
+                $text .= "\n<b>پرداخت‌های منقضی‌شده — احتمال ضعیف‌تر؛ نیازمند بررسی ادمین</b>\n";
+                foreach ($expired as $candidate) {
+                    $shown++;
+                    $text .= "\n" . rx_sbv_candidate_line($candidate, $shown, $amountRial) . "\n";
+                    if ($allowDelete) {
+                        $candidateOrderId = trim((string) ($candidate['id_order'] ?? ''));
+                        $candidateStatus = (string) ($candidate['report_status'] ?? '');
+                        $candidateDirect = (int) ($candidate['report_direct_done'] ?? 0);
+                        if ($candidateOrderId !== '' && in_array($candidateStatus, ['Unpaid', 'waiting', 'expire'], true) && $candidateDirect === 0 && $candidate['deposit_id'] === null) {
+                            $deleteRows[] = [['text' => '🗑 حذف پرداخت منقضی ' . $shown . ' — ' . $candidateOrderId, 'callback_data' => 'sbv_ed_' . $depositId . '_' . $page . '_' . $candidateOrderId]];
+                        }
+                    }
+                }
+            }
+            if ($deleteRows) {
+                $text .= "\n🗑 حذف هر پرداخت منقضی فقط از طریق دکمه همان مورد انجام می‌شود.";
+            }
+            $text .= "\nصفحه " . ($page + 1) . " از " . $pages . " | تعداد کل: " . (int) ($result['total'] ?? 0);
+            $text .= "\n⚠️ پیشنهادها قطعی نیستند و هیچ اتصال، تأیید یا رد خودکاری انجام نمی‌شود.";
+        }
+        $rows = [];
+        $nav = [];
+        if (!empty($result['ok']) && $page > 0) {
+            $nav[] = ['text' => '◀️ قبلی', 'callback_data' => 'sbv_ds_' . $depositId . '_' . ($page - 1)];
+        }
+        if (!empty($result['ok']) && $page + 1 < $pages) {
+            $nav[] = ['text' => 'بعدی ▶️', 'callback_data' => 'sbv_ds_' . $depositId . '_' . ($page + 1)];
+        }
+        if ($nav) {
+            $rows[] = $nav;
+        }
+        if ($deleteRows) {
+            $rows = array_merge($rows, $deleteRows);
+        }
+        $rows = array_merge($rows, [
+            [['text' => '🔄 بروزرسانی پیشنهادها', 'callback_data' => 'sbv_ds_' . $depositId . '_' . $page]],
+            [['text' => '🔗 اتصال به پرداخت', 'callback_data' => 'sbv_dl_' . $depositId]],
+            [['text' => '🗑 حذف واریز', 'callback_data' => 'sbv_dd_' . $depositId]],
+            [['text' => '🔎 جزئیات واریز', 'callback_data' => 'sbv_d_' . $depositId]],
+        ]);
+        return ['text' => $text, 'keyboard' => rx_sbv_kb($rows)];
+    }
+}
+
+if (!function_exists('rx_sbv_admin_delete_expired_confirm_view')) {
+    function rx_sbv_admin_delete_expired_confirm_view(string $orderId, int $depositId, int $page = 0): array
+    {
+        $page = max(0, $page);
+        $orderId = trim($orderId);
+        $back = [['text' => '🔙 بازگشت به پیشنهادها', 'callback_data' => 'sbv_ds_' . $depositId . '_' . $page]];
+        $summary = $orderId !== '' ? rx_sbv_order_summary($orderId) : null;
+        if ($summary === null) {
+            return [
+                'text' => "❌ <b>پرداخت یافت نشد</b>\n\nشناسه سفارش: <code>" . rx_sbv_h($orderId) . "</code>",
+                'keyboard' => rx_sbv_kb([$back]),
+            ];
+        }
+        $csp = $summary['csp'];
+        $report = is_array($summary['report']) ? $summary['report'] : null;
+        $guard = rx_sbv_expired_payment_delete_guard($orderId, $csp, $report, $depositId);
+        if ($guard !== null) {
+            return [
+                'text' => "❌ <b>حذف پرداخت منقضی انجام نمی‌شود</b>\n\n"
+                    . "🛒 سفارش: <code>" . rx_sbv_h($orderId) . "</code>\n"
+                    . "📌 وضعیت: " . rx_sbv_h(rx_sbv_status_label((string) (is_array($report) ? ($report['payment_Status'] ?? '') : ''))) . "\n\n"
+                    . rx_sbv_h(rx_sbv_error_text($guard)),
+                'keyboard' => rx_sbv_kb([$back]),
+            ];
+        }
+        $text = "🗑 <b>تأیید حذف پرداخت منقضی</b>\n\n"
+            . "🛒 سفارش: <code>" . rx_sbv_h($orderId) . "</code>\n"
+            . "👤 کاربر: <code>" . rx_sbv_h($csp['id_user']) . "</code>\n"
+            . "💰 مبلغ مورد انتظار: " . rx_sbv_money(intdiv((int) $csp['payable_rial'], 10)) . " تومان\n"
+            . "📅 ایجاد: " . rx_sbv_h(rx_sbv_clock((int) $csp['created_at'], true)) . "\n"
+            . "⏳ مهلت: " . rx_sbv_h(rx_sbv_clock((int) $csp['expires_at'], true)) . "\n"
+            . "📌 وضعیت: " . rx_sbv_h(rx_sbv_status_label((string) ($report['payment_Status'] ?? ''))) . "\n\n"
+            . "ℹ️ فقط همین پرداخت منقضی از فهرست پیشنهادها حذف و به‌صورت لغوشده بسته می‌شود. حساب کاربر، فاکتورها و سایر پرداخت‌ها تغییر نمی‌کنند.";
+        $rows = [
+            [['text' => '✅ حذف پرداخت منقضی', 'callback_data' => 'sbv_edx_' . $depositId . '_' . $page . '_' . $orderId]],
+            $back,
+        ];
+        return ['text' => $text, 'keyboard' => rx_sbv_kb($rows)];
+    }
+}
+
+if (!function_exists('rx_sbv_admin_credit_confirm_view')) {
+    function rx_sbv_admin_credit_confirm_view(string $orderId, string $reason, ?string $cancelCallback = null): array
+    {
+        $sum = rx_sbv_order_summary($orderId);
+        if ($sum === null) {
+            return ['text' => '❌ پرداخت یافت نشد.', 'keyboard' => rx_sbv_kb($cancelCallback ? [[['text' => '❌ انصراف', 'callback_data' => $cancelCallback]]] : [])];
+        }
+        $csp = $sum['csp'];
+        $credit = $sum['received_rial'] !== null ? intdiv((int) $sum['received_rial'], 10) : 0;
+        $text = "💼 <b>تأیید واریز کامل مبلغ دریافتی به کیف پول</b>\n\n"
+            . "🛒 سفارش: <code>" . rx_sbv_h($orderId) . "</code> | 👤 کاربر: <code>" . rx_sbv_h($csp['id_user']) . "</code>\n"
+            . "<blockquote>📥 مبلغ دریافتی: " . rx_sbv_money($credit) . " تومان\n"
+            . "🏷 کارمزد شناسایی اصلی: " . rx_sbv_money($csp['fee_toman']) . " تومان\n"
+            . "💼 مبلغ واریز به کیف پول: " . rx_sbv_money($credit) . " تومان\n"
+            . "✍️ دلیل: " . rx_sbv_h($reason) . "</blockquote>\n\n"
+            . "ℹ️ در این تصمیم دستی، کل مبلغ دریافتی به کیف پول اضافه می‌شود و کارمزد شناسایی کسر نمی‌گردد. سفارش تحویل نخواهد شد.";
+        $rows = [];
+        if ($credit > 0) {
+            $rows[] = [['text' => '✅ تأیید واریز ' . rx_sbv_money($credit) . ' تومان', 'callback_data' => 'sbv_ccc']];
+        }
+        if ($cancelCallback !== null && $cancelCallback !== '') {
+            $rows[] = [['text' => '❌ انصراف', 'callback_data' => $cancelCallback]];
+        }
+        return ['text' => $text, 'keyboard' => rx_sbv_kb($rows)];
+    }
+}
+
+if (!function_exists('rx_sbv_admin_amount_confirm_view')) {
+    function rx_sbv_admin_amount_confirm_view(string $orderId, int $newToman, string $reason, ?string $cancelCallback = null): array
+    {
+        $sum = rx_sbv_order_summary($orderId);
+        if ($sum === null) {
+            return ['text' => '❌ پرداخت یافت نشد.', 'keyboard' => rx_sbv_kb($cancelCallback ? [[['text' => '❌ انصراف', 'callback_data' => $cancelCallback]]] : [])];
+        }
+        $csp = $sum['csp'];
+        $old = $sum['received_rial'] !== null ? intdiv((int) $sum['received_rial'], 10) : 0;
+        $diff = $newToman - $old;
+        $text = "✍️ <b>تأیید ویرایش مبلغ دریافتی</b>\n\n"
+            . "🛒 سفارش: <code>" . rx_sbv_h($orderId) . "</code>\n"
+            . "👤 کاربر: <code>" . rx_sbv_h($csp['id_user']) . "</code>\n"
+            . "<blockquote>مبلغ قبلی: " . rx_sbv_money($old) . " تومان\n"
+            . "مبلغ اصلاح‌شده: " . rx_sbv_money($newToman) . " تومان\n"
+            . "اختلاف: " . rx_sbv_h(rx_sbv_admin_diff_label($diff * 10)) . "\n"
+            . "✍️ دلیل: " . rx_sbv_h($reason) . "</blockquote>\n\n"
+            . "ℹ️ این ویرایش فقط مبلغ مؤثر را اصلاح می‌کند و به‌تنهایی کیف پول را شارژ یا سفارش را تحویل نمی‌دهد. مبلغ اصلی پیامک بانکی حفظ می‌شود.";
+        $rows = [[['text' => '✅ تأیید اصلاح مبلغ', 'callback_data' => 'sbv_amc']]];
+        if ($cancelCallback !== null && $cancelCallback !== '') {
+            $rows[] = [['text' => '❌ انصراف', 'callback_data' => $cancelCallback]];
+        }
+        return ['text' => $text, 'keyboard' => rx_sbv_kb($rows)];
+    }
+}
+
+if (!function_exists('rx_sbv_admin_approval_confirm_view')) {
+    function rx_sbv_admin_approval_confirm_view(string $orderId, string $reason, ?string $cancelCallback = null): array
+    {
+        $sum = rx_sbv_order_summary($orderId);
+        if ($sum === null) {
+            return ['text' => '❌ پرداخت یافت نشد.', 'keyboard' => rx_sbv_kb($cancelCallback ? [[['text' => '❌ انصراف', 'callback_data' => $cancelCallback]]] : [])];
+        }
+        $csp = $sum['csp'];
+        $report = is_array($sum['report']) ? $sum['report'] : [];
+        $expired = rx_sbv_payment_is_expired($csp, $report);
+        $received = $sum['received_rial'];
+        $diff = $sum['diff_rial'];
+        $text = "✅ <b>تأیید نهایی تحویل کامل سفارش / شارژ</b>\n\n"
+            . "🛒 سفارش: <code>" . rx_sbv_h($orderId) . "</code>\n"
+            . "👤 کاربر: <code>" . rx_sbv_h($csp['id_user']) . "</code>\n"
+            . "📦 نوع: " . rx_sbv_h(rx_sbv_invoice_label((string) ($report['id_invoice'] ?? ''))) . "\n"
+            . "<blockquote>✅ مبلغ مورد انتظار: " . rx_sbv_money(intdiv((int) $csp['payable_rial'], 10)) . " تومان\n"
+            . "📥 مبلغ دریافتی: " . ($received !== null ? rx_sbv_money(intdiv($received, 10)) . ' تومان' : 'ثبت نشده') . "\n"
+            . "➖ اختلاف: " . rx_sbv_h(rx_sbv_admin_diff_label($diff)) . "\n"
+            . "⏳ وضعیت: " . rx_sbv_h($expired ? 'منقضی‌شده' : rx_sbv_status_label((string) ($report['payment_Status'] ?? ''))) . "\n"
+            . "✍️ دلیل: " . rx_sbv_h($reason) . "</blockquote>\n\n"
+            . "⚠️ با تأیید، مسیر موجود تحویل/تسویه اجرا می‌شود. اگر سفارش قابل تحویل نباشد، نتیجه واقعی پشتیبانی‌شده نمایش داده می‌شود.";
+        $rows = [[['text' => '✅ تأیید نهایی و تحویل', 'callback_data' => 'sbv_aac']]];
+        if ($cancelCallback !== null && $cancelCallback !== '') {
+            $rows[] = [['text' => '❌ انصراف', 'callback_data' => $cancelCallback]];
+        }
+        return ['text' => $text, 'keyboard' => rx_sbv_kb($rows)];
+    }
+}
+
+if (!function_exists('rx_sbv_admin_reject_order_confirm_view')) {
+    function rx_sbv_admin_reject_order_confirm_view(string $orderId, string $reason, ?string $cancelCallback = null): array
+    {
+        $sum = rx_sbv_order_summary($orderId);
+        if ($sum === null) {
+            return ['text' => '❌ پرداخت یافت نشد.', 'keyboard' => rx_sbv_kb($cancelCallback ? [[['text' => '❌ انصراف', 'callback_data' => $cancelCallback]]] : [])];
+        }
+        $csp = $sum['csp'];
+        $report = is_array($sum['report']) ? $sum['report'] : [];
+        $text = "❌ <b>تأیید نهایی رد درخواست پرداخت</b>\n\n"
+            . "🛒 سفارش: <code>" . rx_sbv_h($orderId) . "</code>\n"
+            . "👤 کاربر: <code>" . rx_sbv_h($csp['id_user']) . "</code>\n"
+            . "📦 نوع: " . rx_sbv_h(rx_sbv_invoice_label((string) ($report['id_invoice'] ?? ''))) . "\n"
+            . "<blockquote>✅ مبلغ مورد انتظار: " . rx_sbv_money(intdiv((int) $csp['payable_rial'], 10)) . " تومان\n"
+            . "📥 مبلغ دریافتی: " . rx_sbv_h(rx_sbv_toman_from_rial($sum['received_rial'])) . "\n"
+            . "✍️ دلیل: " . rx_sbv_h($reason) . "</blockquote>\n\n"
+            . "ℹ️ رکورد واریز بانکی در صورت وجود حفظ می‌شود؛ وجهی بازگشت یا به کیف پول اضافه نمی‌شود و سفارش تحویل نمی‌شود.";
+        $rows = [[['text' => '✅ تأیید نهایی رد پرداخت', 'callback_data' => 'sbv_rc']]];
+        if ($cancelCallback !== null && $cancelCallback !== '') {
+            $rows[] = [['text' => '❌ انصراف', 'callback_data' => $cancelCallback]];
+        }
+        return ['text' => $text, 'keyboard' => rx_sbv_kb($rows)];
+    }
+}
+
+if (!function_exists('rx_sbv_admin_choice_expired')) {
+    function rx_sbv_admin_choice_expired(array $row): bool
+    {
+        return rx_sbv_expired_from_values(
+            (string) ($row['state'] ?? ''),
+            (string) ($row['report_status'] ?? ''),
+            (string) ($row['resolution'] ?? ''),
+            (int) ($row['expires_at'] ?? 0),
+            (int) ($row['report_direct_done'] ?? 0)
+        );
+    }
+}
+
+if (!function_exists('rx_sbv_admin_choice_status_label')) {
+    function rx_sbv_admin_choice_status_label(array $row): string
+    {
+        if (rx_sbv_admin_choice_expired($row)) {
+            return 'منقضی‌شده';
+        }
+        $status = (string) ($row['report_status'] ?? '');
+        $map = [
+            'Unpaid' => 'در انتظار پرداخت',
+            'waiting' => 'در انتظار بررسی',
+            'expire' => 'منقضی‌شده',
+            'processing' => 'در حال پردازش',
+            'reconciling' => 'در حال تطبیق',
+            'manual_review' => 'نیازمند بررسی',
+        ];
+        return $map[$status] ?? rx_sbv_status_label($status);
+    }
+}
+
+if (!function_exists('rx_sbv_admin_user')) {
+    function rx_sbv_admin_user(int $userId): ?array
+    {
+        if ($userId <= 0) {
+            return null;
+        }
+        $pdo = rx_sbv_pdo();
+        if ($pdo !== null) {
+            try {
+                $stmt = $pdo->prepare("SELECT * FROM user WHERE id = ? LIMIT 1");
+                $stmt->execute([(string) $userId]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row !== false) {
+                    return $row;
+                }
+                return null;
+            } catch (Throwable $e) {
+                return null;
+            }
+        }
+        if (function_exists('select')) {
+            $row = select('user', '*', 'id', (string) $userId, 'select', ['cache' => false]);
+            return is_array($row) ? $row : null;
+        }
+        return null;
+    }
+}
+
+if (!function_exists('rx_sbv_admin_payment_choices')) {
+    function rx_sbv_admin_payment_choices(int $userId, int $page, int $per = 5, bool $allowReview = false): array
+    {
+        $pdo = rx_sbv_pdo();
+        if ($pdo === null || $userId <= 0) {
+            return ['rows' => [], 'total' => 0, 'page' => 0, 'pages' => 1, 'per' => $per];
+        }
+        $per = max(1, min(5, $per));
+        $page = max(0, $page);
+        $offset = $page * $per;
+        $now = time();
+        $closedExpired = "(csp.state = 'closed' AND (csp.resolution = 'expired' OR (pr.payment_Status = 'expire' AND (csp.resolution IS NULL OR csp.resolution = '' OR csp.resolution = 'expired'))))";
+        $eligibleState = $allowReview
+            ? "(csp.state IN ('open', 'review') OR $closedExpired)"
+            : "(csp.state = 'open' OR (csp.state = 'review' AND (pr.payment_Status = 'expire' OR csp.expires_at < ?)) OR $closedExpired)";
+        $base = " FROM card_sms_payment csp
+                  JOIN Payment_report pr ON pr.id_order = csp.id_order
+                 WHERE csp.id_user = ?
+                   AND csp.deposit_id IS NULL
+                   AND $eligibleState
+                   AND pr.payment_Status IN ('Unpaid', 'waiting', 'expire')
+                   AND COALESCE(pr.direct_payment_done, 0) = 0
+                   AND NOT EXISTS (SELECT 1 FROM payment_fulfillment pf WHERE pf.id_order = csp.id_order AND (pf.state = 'completed' OR (pf.state IN ('claimed', 'applying', 'reconciling') AND COALESCE(pf.lease_expires_at, 0) > ?)))";
+        $params = [(string) $userId];
+        if (!$allowReview) {
+            $params[] = $now;
+        }
+        $params[] = $now;
+        try {
+            $count = $pdo->prepare("SELECT COUNT(*)" . $base);
+            $count->execute($params);
+            $total = (int) $count->fetchColumn();
+            $pages = max(1, (int) ceil($total / $per));
+            if ($page >= $pages) {
+                $page = $pages - 1;
+                $offset = $page * $per;
+            }
+            $stmt = $pdo->prepare("SELECT csp.*, pr.payment_Status AS report_status, pr.id_invoice AS report_invoice, pr.time AS report_time, pr.source AS report_source, COALESCE(pr.direct_payment_done, 0) AS report_direct_done" . $base . " ORDER BY csp.created_at DESC, csp.id DESC LIMIT " . $per . " OFFSET " . $offset);
+            $stmt->execute($params);
+            return ['rows' => $stmt->fetchAll(PDO::FETCH_ASSOC), 'total' => $total, 'page' => $page, 'pages' => $pages, 'per' => $per];
+        } catch (Throwable $e) {
+            rx_sbv_log('SBV_ADMIN_CHOICES_FAILED', $e->getMessage(), ['id_user' => $userId]);
+            return ['rows' => [], 'total' => 0, 'page' => 0, 'pages' => 1, 'per' => $per];
+        }
+    }
+}
+
+if (!function_exists('rx_sbv_admin_choice_line')) {
+    function rx_sbv_admin_choice_line(array $row, int $number, ?int $depositRial): string
+    {
+        $diff = $depositRial === null ? null : $depositRial - (int) $row['payable_rial'];
+        $source = (string) ($row['report_source'] ?? '') === 'miniapp' ? 'مینی‌اپ' : 'ربات';
+        $statusLabel = rx_sbv_admin_choice_status_label($row);
+        return "<b>" . $number . ") سفارش <code>" . rx_sbv_h($row['id_order']) . "</code></b>\n"
+            . "📦 نوع: " . rx_sbv_h(rx_sbv_invoice_label((string) ($row['report_invoice'] ?? ''))) . " | منبع: " . rx_sbv_h($source) . "\n"
+            . "📅 ایجاد: " . rx_sbv_h(rx_sbv_clock((int) $row['created_at'], true)) . " | وضعیت: " . rx_sbv_h($statusLabel) . "\n"
+            . "⏳ مهلت: " . rx_sbv_h(rx_sbv_clock((int) $row['expires_at'], true)) . "\n"
+            . "💰 اصل: " . rx_sbv_money($row['principal_toman']) . " | کارمزد: " . rx_sbv_money($row['fee_toman']) . " | انتظار: " . rx_sbv_money(intdiv((int) $row['payable_rial'], 10)) . " تومان\n"
+            . "📥 واریز: " . ($depositRial !== null ? rx_sbv_money(intdiv($depositRial, 10)) . ' تومان' : '—') . " | اختلاف: " . rx_sbv_h(rx_sbv_admin_diff_label($diff));
+    }
+}
+
+if (!function_exists('rx_sbv_admin_payment_choices_view')) {
+    function rx_sbv_admin_payment_choices_view(int $userId, int $depositId, int $page, string $mode, ?string $cancelCallback = null): array
+    {
+        $deposit = rx_sbv_deposit($depositId);
+        $user = rx_sbv_admin_user($userId);
+        $cancelRow = $cancelCallback !== null && $cancelCallback !== '' ? [['text' => '❌ لغو', 'callback_data' => $cancelCallback]] : null;
+        if (!is_array($deposit)) {
+            return ['text' => '❌ واریز یافت نشد.', 'keyboard' => rx_sbv_kb(array_filter([$cancelRow]))];
+        }
+        if (!is_array($user)) {
+            return ['text' => '❌ ' . rx_sbv_error_text('user_not_found'), 'keyboard' => rx_sbv_kb(array_filter([$cancelRow]))];
+        }
+        $received = $deposit['amount_rial'] !== null ? (int) $deposit['amount_rial'] : null;
+        $name = trim((string) ($user['first_name'] ?? ''));
+        $username = trim((string) ($user['username'] ?? ''));
+        $who = $name !== '' ? $name : ($username !== '' ? '@' . $username : 'بدون نام');
+        $choices = rx_sbv_admin_payment_choices($userId, $page, 5, $mode === 'reject');
+        $page = (int) $choices['page'];
+        $prefix = $mode === 'reject' ? 'sbv_rsel_' : 'sbv_lsel_';
+        $pagePrefix = $mode === 'reject' ? 'sbv_rpg_' : 'sbv_lpg_';
+        $title = $mode === 'reject' ? 'انتخاب پرداخت برای رد' : 'انتخاب پرداخت برای اتصال';
+        $text = "👤 <b>" . rx_sbv_h($who) . "</b> (<code>" . rx_sbv_h($user['id']) . "</code>)\n"
+            . "📥 واریز <code>#" . (int) $deposit['id'] . "</code> | " . rx_sbv_h(rx_sbv_toman_from_rial($received)) . "\n"
+            . "🔎 <b>" . rx_sbv_h($title) . "</b>\n\n";
+        if ((int) $choices['total'] === 0) {
+            $text .= "هیچ درخواست پرداخت ForApp واجد شرایطی برای این کاربر پیدا نشد.\n"
+                . "پرداخت‌های منقضی‌شده و تسویه‌نشده در صورت وجود نمایش داده می‌شوند؛ پرداخت‌های تکمیل‌شده، متصل‌شده به واریز دیگر، در حال پردازش، ردشده، لغوشده، یا در وضعیت غیرقابل‌اتکا نمایش داده نمی‌شوند.";
+            $kbRows = [];
+            if ($cancelRow !== null) {
+                $kbRows[] = $cancelRow;
+            }
+            return ['text' => $text, 'keyboard' => rx_sbv_kb($kbRows)];
+        }
+        $index = 0;
+        foreach ($choices['rows'] as $row) {
+            $index++;
+            $text .= rx_sbv_admin_choice_line($row, $index, $received) . "\n\n";
+        }
+        $text .= "صفحه " . ($page + 1) . " از " . (int) $choices['pages'] . "\n"
+            . "ℹ️ فهرست فقط پیشنهاد است؛ اتصال یا رد پس از انتخاب و تأیید نهایی انجام می‌شود.";
+        $rows = [];
+        foreach ($choices['rows'] as $row) {
+            $rows[] = [[
+                'text' => '💰 ' . rx_sbv_money(intdiv((int) $row['payable_rial'], 10)) . ' تومان | ' . rx_sbv_admin_choice_status_label($row),
+                'callback_data' => $prefix . $row['id_order'],
+            ]];
+        }
+        $nav = [];
+        if ($page > 0) {
+            $nav[] = ['text' => '◀️ قبلی', 'callback_data' => $pagePrefix . ($page - 1)];
+        }
+        if ($page + 1 < (int) $choices['pages']) {
+            $nav[] = ['text' => 'بعدی ▶️', 'callback_data' => $pagePrefix . ($page + 1)];
+        }
+        if ($nav) {
+            $rows[] = $nav;
+        }
+        if ($cancelRow !== null) {
+            $rows[] = $cancelRow;
+        }
+        return ['text' => $text, 'keyboard' => rx_sbv_kb($rows)];
+    }
+}
+
+if (!function_exists('rx_sbv_admin_reject_preview')) {
+    function rx_sbv_admin_reject_preview(int $depositId, string $orderId, ?string $cancelCallback = null): ?array
+    {
+        $deposit = rx_sbv_deposit($depositId);
+        $summary = rx_sbv_order_summary($orderId);
+        if (!is_array($deposit) || $summary === null || !rx_sbv_cb_ok($orderId)) {
+            return null;
+        }
+        $csp = $summary['csp'];
+        if ($csp['deposit_id'] !== null && (int) $csp['deposit_id'] !== $depositId) {
+            return null;
+        }
+        $report = is_array($summary['report']) ? $summary['report'] : [];
+        $user = rx_sbv_admin_user((int) $csp['id_user']);
+        $name = is_array($user) ? trim((string) ($user['first_name'] ?? '')) : '';
+        $username = is_array($user) ? trim((string) ($user['username'] ?? '')) : '';
+        $who = $name !== '' ? $name : ($username !== '' ? '@' . $username : 'بدون نام');
+        $guard = rx_sbv_payment_reject_guard($orderId);
+        $expired = rx_sbv_payment_is_expired($csp, $report);
+        $text = "❌ <b>تأیید رد درخواست پرداخت</b>\n\n"
+            . "👤 کاربر: " . rx_sbv_h($who) . " (<code>" . rx_sbv_h($csp['id_user']) . "</code>)\n"
+            . "🛒 سفارش: <code>" . rx_sbv_h($orderId) . "</code>\n"
+            . "📦 نوع: " . rx_sbv_h(rx_sbv_invoice_label((string) ($report['id_invoice'] ?? ''))) . "\n"
+            . "💳 وضعیت پرداخت: " . rx_sbv_h($expired ? 'منقضی‌شده (نیازمند تصمیم ادمین)' : rx_sbv_status_label((string) ($report['payment_Status'] ?? ''))) . " | تطبیق: " . rx_sbv_h(rx_sbv_state_label((string) $csp['state'])) . "\n\n"
+            . "<blockquote>💰 اصل مبلغ: " . rx_sbv_money($csp['principal_toman']) . " تومان\n"
+            . "🏷 کارمزد شناسایی: " . rx_sbv_money($csp['fee_toman']) . " تومان\n"
+            . "✅ مبلغ مورد انتظار: " . rx_sbv_money(intdiv((int) $csp['payable_rial'], 10)) . " تومان\n"
+            . "📥 مبلغ واریز: " . rx_sbv_h(rx_sbv_toman_from_rial($deposit['amount_rial'] !== null ? (int) $deposit['amount_rial'] : null)) . "\n"
+            . "➖ اختلاف: " . rx_sbv_h(rx_sbv_admin_diff_label($deposit['amount_rial'] !== null ? (int) $deposit['amount_rial'] - (int) $csp['payable_rial'] : null)) . "</blockquote>\n\n"
+            . "ℹ️ این اقدام فقط درخواست پرداخت را رد می‌کند. رکورد واریز بانکی حفظ می‌شود و وجهی بازگشت، کیف پول شارژ، سرویس حذف یا کاربر مسدود نمی‌شود.";
+        if ($guard !== null) {
+            $text .= "\n\n🚫 امکان رد این پرداخت وجود ندارد: " . rx_sbv_error_text($guard);
+        }
+        $rows = [];
+        if ($guard === null) {
+            $rows[] = [['text' => '✍️ ثبت دلیل و ادامه', 'callback_data' => 'sbv_rr']];
+        }
+        if ($cancelCallback !== null && $cancelCallback !== '') {
+            $rows[] = [['text' => '❌ انصراف', 'callback_data' => $cancelCallback]];
+        }
+        return ['text' => $text, 'keyboard' => rx_sbv_kb($rows)];
+    }
+}
+
+if (!function_exists('rx_sbv_admin_reject_confirm_view')) {
+    function rx_sbv_admin_reject_confirm_view(int $depositId, string $orderId, string $reason, ?string $cancelCallback = null): array
+    {
+        $deposit = rx_sbv_deposit($depositId);
+        $summary = rx_sbv_order_summary($orderId);
+        if (!is_array($deposit) || $summary === null) {
+            return ['text' => '❌ واریز یا پرداخت یافت نشد.', 'keyboard' => rx_sbv_kb($cancelCallback !== null ? [[['text' => '❌ انصراف', 'callback_data' => $cancelCallback]]] : [])];
+        }
+        $csp = $summary['csp'];
+        $report = is_array($summary['report']) ? $summary['report'] : [];
+        $guard = rx_sbv_payment_reject_guard($orderId);
+        $text = "⚠️ <b>تأیید نهایی رد پرداخت</b>\n\n"
+            . "🛒 سفارش: <code>" . rx_sbv_h($orderId) . "</code>\n"
+            . "👤 کاربر: <code>" . rx_sbv_h($csp['id_user']) . "</code>\n"
+            . "📦 نوع: " . rx_sbv_h(rx_sbv_invoice_label((string) ($report['id_invoice'] ?? ''))) . "\n"
+            . "📥 واریز: " . rx_sbv_h(rx_sbv_toman_from_rial($deposit['amount_rial'] !== null ? (int) $deposit['amount_rial'] : null)) . "\n"
+            . "✅ مبلغ مورد انتظار: " . rx_sbv_money(intdiv((int) $csp['payable_rial'], 10)) . " تومان\n"
+            . "➖ اختلاف: " . rx_sbv_h(rx_sbv_admin_diff_label($deposit['amount_rial'] !== null ? (int) $deposit['amount_rial'] - (int) $csp['payable_rial'] : null)) . "\n"
+            . "✍️ دلیل: " . rx_sbv_h($reason) . "\n\n"
+            . "با تأیید، درخواست پرداخت رد می‌شود و به کاربر اطلاع داده می‌شود. واریز بانکی حذف یا بازگشت داده نمی‌شود.";
+        if ($guard !== null) {
+            $text .= "\n\n🚫 اکنون امکان رد وجود ندارد: " . rx_sbv_error_text($guard);
+        }
+        $rows = [];
+        if ($guard === null) {
+            $rows[] = [['text' => '✅ تأیید نهایی رد پرداخت', 'callback_data' => 'sbv_rc']];
+        }
+        if ($cancelCallback !== null && $cancelCallback !== '') {
+            $rows[] = [['text' => '❌ انصراف', 'callback_data' => $cancelCallback]];
+        }
+        return ['text' => $text, 'keyboard' => rx_sbv_kb($rows)];
     }
 }
 
@@ -390,8 +971,23 @@ if (!function_exists('rx_sbv_admin_handle')) {
         $step = (string) ($user['step'] ?? '');
         $isMessage = isset($update['message']) && !isset($update['callback_query']);
         $msgText = $isMessage ? trim((string) ($update['message']['text'] ?? '')) : '';
-        $answer = function (string $msg = '', bool $alert = false) use ($cbq) {
-            if ($cbq !== '' && function_exists('telegram')) {
+        $callbackMessage = is_array($update['callback_query']['message'] ?? null) ? $update['callback_query']['message'] : [];
+        $sourceChatId = (string) ($callbackMessage['chat']['id'] ?? '');
+        $sourceChatType = (string) ($callbackMessage['chat']['type'] ?? '');
+        $sourceThreadId = (int) ($callbackMessage['message_thread_id'] ?? 0);
+        $isGroupSource = !$isMessage && in_array($sourceChatType, ['group', 'supergroup', 'channel'], true) && $sourceChatId !== '';
+        if ($isGroupSource) {
+            $GLOBALS['rx_sbv_panel_source'] = [
+                'chat_id' => $sourceChatId,
+                'message_id' => $messageId,
+                'thread_id' => $sourceThreadId,
+                'type' => $sourceChatType,
+            ];
+        }
+        $ackSent = false;
+        $answer = function (string $msg = '', bool $alert = false) use ($cbq, &$ackSent) {
+            if ($cbq !== '' && !$ackSent && function_exists('telegram')) {
+                $ackSent = true;
                 $p = ['callback_query_id' => $cbq, 'cache_time' => 0];
                 if ($msg !== '') {
                     $p['text'] = function_exists('mb_substr') ? mb_substr($msg, 0, 190, 'UTF-8') : substr($msg, 0, 190);
@@ -400,16 +996,66 @@ if (!function_exists('rx_sbv_admin_handle')) {
                 telegram('answerCallbackQuery', $p);
             }
         };
-        $show = function (array $view, bool $fresh = false) use ($fromId, $answer) {
-            if ($fresh) {
-                $answer();
-                sendmessage($fromId, $view['text'], $view['keyboard'], 'HTML');
+        $panelKey = 'sbv_panel_' . $fromId;
+        $panelId = (int) rx_sbv_setting_get($panelKey, '0');
+        $retirePanel = function (int $retiredId) use ($fromId) {
+            if ($retiredId <= 0) {
                 return;
             }
-            nm_adminInstantReply($fromId, $view['text'], $view['keyboard'], 'HTML');
+            try {
+                telegram('editMessageReplyMarkup', [
+                    'chat_id' => $fromId,
+                    'message_id' => $retiredId,
+                    'reply_markup' => rx_sbv_kb([]),
+                ]);
+            } catch (Throwable $e) {
+                rx_sbv_log('SBV_PANEL_RETIRE_FAILED', $e->getMessage());
+            }
         };
-        $say = function (string $msg, ?string $kb = null) use ($fromId) {
-            sendmessage($fromId, $msg, $kb, 'HTML');
+        if (!$isMessage && !$isGroupSource && $sourceChatType === 'private' && $sourceChatId === $fromId && $messageId > 0 && (strpos($datain, 'sbv_') === 0 || $datain === 'cart_smsverify')) {
+            if ($panelId !== $messageId) {
+                $retirePanel($panelId);
+            }
+            $panelId = $messageId;
+            rx_sbv_setting_set($panelKey, (string) $panelId);
+        }
+        $show = function (array $view, bool $fresh = false) use ($fromId, $answer, $isGroupSource, $panelKey, &$panelId, $retirePanel) {
+            $keyboard = $view['keyboard'] ?? null;
+            if (!$isGroupSource && $panelId > 0 && function_exists('Editmessagetext')) {
+                $answer();
+                try {
+                    $edited = Editmessagetext($fromId, $panelId, $view['text'], $keyboard, 'HTML');
+                } catch (Throwable $e) {
+                    $edited = null;
+                }
+                $editDesc = is_array($edited) ? strtolower((string) ($edited['description'] ?? '')) : '';
+                if ((is_array($edited) && !empty($edited['ok'])) || strpos($editDesc, 'message is not modified') !== false) {
+                    return $edited;
+                }
+            }
+            $sent = sendmessage($fromId, $view['text'], $keyboard, 'HTML');
+            if (is_array($sent) && !empty($sent['ok'])) {
+                if (!empty($sent['result']['message_id'])) {
+                    $replacementId = (int) $sent['result']['message_id'];
+                    if ($panelId !== $replacementId) {
+                        $retirePanel($panelId);
+                    }
+                    $panelId = $replacementId;
+                    rx_sbv_setting_set($panelKey, (string) $panelId);
+                }
+                if ($isGroupSource) {
+                    $answer('📩 پنل مدیریت این بخش به پی‌وی شما ارسال شد؛ برای ادامه بررسی وارد گفت‌وگوی خصوصی ربات شوید.', true);
+                }
+            } elseif ($isGroupSource) {
+                $answer('❌ ارسال پنل به پی‌وی انجام نشد؛ ابتدا ربات را در پی‌وی Start کنید و دوباره بزنید.', true);
+            }
+            if (!$isGroupSource) {
+                $answer();
+            }
+            return $sent;
+        };
+        $say = function (string $msg, ?string $kb = null) use ($show) {
+            return $show(['text' => $msg, 'keyboard' => $kb]);
         };
         $storedRaw = (string) ($user['Processing_value_one'] ?? '');
         $sep = strrpos($storedRaw, '#~');
@@ -424,6 +1070,7 @@ if (!function_exists('rx_sbv_admin_handle')) {
             update('user', 'Processing_value_one', $payload . '#~' . $nonce, 'id', $fromId);
             step($s, $fromId);
             $cancelKb = $cancelKbFor($nonce);
+            return $nonce;
         };
         $clearStep = function () use ($fromId) {
             step('home', $fromId);
@@ -459,6 +1106,24 @@ if (!function_exists('rx_sbv_admin_handle')) {
                     $say("✅ مهلت پرداخت‌های جدید ذخیره شد. پرداخت‌های قبلی مهلت ثبت‌شده خود را حفظ می‌کنند.\n\n" . $v['text'], $v['keyboard']);
                     return true;
                 }
+                if ($step === 'sbv_suggestion_range') {
+                    if (!$isAdmin) {
+                        $clearStep();
+                        return true;
+                    }
+                    $n = preg_replace('/[\s,٬،\x{00A0}]+/u', '', rx_sbv_digits($msgText));
+                    if ($n === null) {
+                        $n = '';
+                    }
+                    if (!ctype_digit($n) || !rx_sbv_set_suggestion_range_toman((int) $n)) {
+                        $say('❌ عدد صحیح بین ' . RX_SBV_SUGGEST_RANGE_MIN_TOMAN . ' و ' . RX_SBV_SUGGEST_RANGE_MAX_TOMAN . ' تومان وارد کنید.', $cancelKb);
+                        return true;
+                    }
+                    $clearStep();
+                    $v = rx_sbv_settings_view();
+                    $say("✅ محدوده پیشنهاد پرداخت ذخیره شد: ±" . number_format((int) $n) . " تومان\n\n" . $v['text'], $v['keyboard']);
+                    return true;
+                }
                 if ($step === 'sbv_amount') {
                     $n = rx_sbv_digits($msgText);
                     $n = str_replace([',', '٬', ' '], '', $n);
@@ -466,27 +1131,84 @@ if (!function_exists('rx_sbv_admin_handle')) {
                         $say('❌ مبلغ دریافتی را فقط به‌صورت عدد صحیح و به تومان وارد کنید.', $cancelKb);
                         return true;
                     }
-                    $clearStep();
-                    $res = rx_sbv_admin_set_received($payload, $fromId, (int) $n);
-                    if (empty($res['ok'])) {
-                        $say('❌ ' . rx_sbv_error_text((string) $res['reason']));
-                        return true;
-                    }
-                    $v = rx_sbv_order_view($payload);
-                    if ($v !== null) {
-                        $say("✅ مبلغ دریافتی ثبت شد. اکنون یکی از نتایج را انتخاب کنید:\n• «تأیید پرداخت / تحویل سفارش» سفارش اصلی را کامل تسویه می‌کند (پذیرش کسری/مازاد).\n• «واریز به کیف پول» فقط مبلغ دریافتی منهای کارمزد را به کیف پول اضافه می‌کند.\n\n" . $v['text'], $v['keyboard']);
-                    }
+                    $nonce = $setStep('sbv_amount_reason', $payload . '|' . (int) $n);
+                    $say('✍️ دلیل اصلاح مبلغ دریافتی را بنویسید. مبلغ اصلی پیامک بانکی حفظ می‌شود و این ویرایش به‌تنهایی کیف پول را شارژ یا سفارش را تحویل نمی‌کند.', $cancelKb);
                     return true;
                 }
-                if ($step === 'sbv_linkord') {
-                    $orderId = preg_replace('/\s+/', '', $msgText);
-                    $clearStep();
-                    $p = rx_sbv_link_preview((int) $payload, (string) $orderId);
-                    if ($p === null) {
-                        $say('❌ سفارش یا واریز یافت نشد یا سفارش با روش «تأیید رسید با بررسی» ایجاد نشده است.');
+                if ($step === 'sbv_amount_reason') {
+                    $parts = explode('|', $payload, 2);
+                    $orderId = (string) ($parts[0] ?? '');
+                    $newToman = (int) ($parts[1] ?? 0);
+                    $reason = function_exists('mb_substr') ? mb_substr(trim($msgText), 0, 500, 'UTF-8') : substr(trim($msgText), 0, 500);
+                    if ($reason === '' || $orderId === '' || $newToman <= 0) {
+                        $say('❌ ثبت دلیل اصلاح مبلغ الزامی است.', $cancelKb);
                         return true;
                     }
-                    $say($p['text'], $p['keyboard']);
+                    $nonce = $setStep('sbv_amount_confirm', $orderId . '|' . $newToman . '|' . base64_encode($reason));
+                    $v = rx_sbv_admin_amount_confirm_view($orderId, $newToman, $reason, 'sbv_cancel_' . $nonce);
+                    $say($v['text'], $v['keyboard']);
+                    return true;
+                }
+                if ($step === 'sbv_amount_confirm') {
+                    $say('برای ثبت نهایی یا انصراف از دکمه‌های همین پیام استفاده کنید.', $cancelKb);
+                    return true;
+                }
+                if ($step === 'sbv_reject_user') {
+                    $uidRaw = preg_replace('/[\s,٬]/u', '', rx_sbv_digits($msgText));
+                    if (!ctype_digit($uidRaw) || $uidRaw === '' || strlen($uidRaw) > 20 || (int) $uidRaw <= 0) {
+                        $say('❌ ' . rx_sbv_error_text('invalid_user_id') . ' شناسه عددی تلگرام را دوباره ارسال کنید.', $cancelKb);
+                        return true;
+                    }
+                    $userId = (int) $uidRaw;
+                    if (rx_sbv_admin_user($userId) === null) {
+                        $say('❌ ' . rx_sbv_error_text('user_not_found') . ' شناسه دیگری را ارسال کنید.', $cancelKb);
+                        return true;
+                    }
+                    $nonce = $setStep('sbv_reject_pay', $payload . '|' . $userId . '|0');
+                    $v = rx_sbv_admin_payment_choices_view($userId, (int) $payload, 0, 'reject', 'sbv_cancel_' . $nonce);
+                    $say($v['text'], $v['keyboard']);
+                    return true;
+                }
+                if ($step === 'sbv_reject_pay' || $step === 'sbv_reject_ready') {
+                    $say('برای ادامه از دکمه‌های همین پیام استفاده کنید یا عملیات را لغو کنید.', $cancelKb);
+                    return true;
+                }
+                if ($step === 'sbv_reject_reason') {
+                    $parts = explode('|', $payload, 2);
+                    $depositId = (int) ($parts[0] ?? 0);
+                    $orderId = (string) ($parts[1] ?? '');
+                    $reason = function_exists('mb_substr') ? mb_substr(trim($msgText), 0, 500, 'UTF-8') : substr(trim($msgText), 0, 500);
+                    if ($reason === '') {
+                        $say('❌ ثبت دلیل رد پرداخت الزامی است.', $cancelKb);
+                        return true;
+                    }
+                    $nonce = $setStep('sbv_reject_confirm', $depositId . '|' . $orderId . '|' . base64_encode($reason));
+                    $v = rx_sbv_admin_reject_confirm_view($depositId, $orderId, $reason, 'sbv_cancel_' . $nonce);
+                    $say($v['text'], $v['keyboard']);
+                    return true;
+                }
+                if ($step === 'sbv_reject_confirm' || $step === 'sbv_approve_confirm' || $step === 'sbv_credit_confirm') {
+                    $say('برای ثبت نهایی یا انصراف از دکمه‌های همین پیام استفاده کنید.', $cancelKb);
+                    return true;
+                }
+                if ($step === 'sbv_link_user') {
+                    $uidRaw = preg_replace('/[\s,٬]/u', '', rx_sbv_digits($msgText));
+                    if (!ctype_digit($uidRaw) || $uidRaw === '' || strlen($uidRaw) > 20 || (int) $uidRaw <= 0) {
+                        $say('❌ ' . rx_sbv_error_text('invalid_user_id') . ' شناسه عددی تلگرام را دوباره ارسال کنید.', $cancelKb);
+                        return true;
+                    }
+                    $userId = (int) $uidRaw;
+                    if (rx_sbv_admin_user($userId) === null) {
+                        $say('❌ ' . rx_sbv_error_text('user_not_found') . ' شناسه دیگری را ارسال کنید.', $cancelKb);
+                        return true;
+                    }
+                    $nonce = $setStep('sbv_link_pay', $payload . '|' . $userId . '|0');
+                    $v = rx_sbv_admin_payment_choices_view($userId, (int) $payload, 0, 'link', 'sbv_cancel_' . $nonce);
+                    $say($v['text'], $v['keyboard']);
+                    return true;
+                }
+                if ($step === 'sbv_link_pay' || $step === 'sbv_link_confirm') {
+                    $say('برای ادامه از دکمه‌های همین پیام استفاده کنید یا عملیات را لغو کنید.', $cancelKb);
                     return true;
                 }
                 if ($step === 'sbv_linkdep') {
@@ -509,29 +1231,45 @@ if (!function_exists('rx_sbv_admin_handle')) {
                     $parts = explode('|', $payload, 2);
                     $action = $parts[0] ?? '';
                     $target = $parts[1] ?? '';
-                    $reason = function_exists('mb_substr') ? mb_substr($msgText, 0, 500, 'UTF-8') : substr($msgText, 0, 500);
-                    $clearStep();
+                    $reason = function_exists('mb_substr') ? mb_substr(trim($msgText), 0, 500, 'UTF-8') : substr(trim($msgText), 0, 500);
+                    if ($reason === '') {
+                        $say('❌ ثبت دلیل برای این تصمیم مالی الزامی است.', $cancelKb);
+                        return true;
+                    }
                     if ($action === 'approve') {
-                        $res = rx_sbv_admin_approve($target, $fromId, $reason);
-                        $say(!empty($res['ok']) ? '✅ پرداخت تأیید و سفارش تسویه شد.' : '❌ ' . rx_sbv_error_text((string) $res['reason']));
-                    } elseif ($action === 'credit') {
-                        $res = rx_sbv_admin_credit($target, $fromId, $reason);
-                        $say(!empty($res['ok']) ? '✅ مبلغ ' . rx_sbv_money($res['credit']) . ' تومان به کیف پول کاربر اضافه شد و پرداخت تسویه شد.' : '❌ ' . rx_sbv_error_text((string) $res['reason']));
-                    } elseif ($action === 'reject' || $action === 'block') {
-                        $res = rx_sbv_admin_reject($target, $fromId, $reason, $action === 'block');
-                        if (!empty($res['ok'])) {
-                            $say($action === 'block' ? ($res['blocked'] ? '✅ رسید رد و کاربر مسدود شد. سوابق واریز حفظ شد.' : '⚠️ رسید رد شد اما مسدودسازی کاربر ناموفق بود.') : '✅ رسید رد شد. سوابق واریز حفظ شد.');
-                        } else {
-                            $say('❌ ' . rx_sbv_error_text((string) $res['reason']));
-                        }
+                        $nonce = $setStep('sbv_approve_confirm', $target . '|' . base64_encode($reason));
+                        $v = rx_sbv_admin_approval_confirm_view($target, $reason, 'sbv_cancel_' . $nonce);
+                        $say($v['text'], $v['keyboard']);
+                        return true;
+                    }
+                    if ($action === 'credit') {
+                        $nonce = $setStep('sbv_credit_confirm', $target . '|' . base64_encode($reason));
+                        $v = rx_sbv_admin_credit_confirm_view($target, $reason, 'sbv_cancel_' . $nonce);
+                        $say($v['text'], $v['keyboard']);
+                        return true;
+                    }
+                    if ($action === 'reject') {
+                        $targetCsp = rx_sbv_get($target);
+                        $depositId = is_array($targetCsp) && $targetCsp['deposit_id'] !== null ? (int) $targetCsp['deposit_id'] : 0;
+                        $nonce = $setStep('sbv_reject_confirm', $depositId . '|' . $target . '|' . base64_encode($reason));
+                        $v = $depositId > 0
+                            ? rx_sbv_admin_reject_confirm_view($depositId, $target, $reason, 'sbv_cancel_' . $nonce)
+                            : rx_sbv_admin_reject_order_confirm_view($target, $reason, 'sbv_cancel_' . $nonce);
+                        $say($v['text'], $v['keyboard']);
+                        return true;
+                    }
+                    $clearStep();
+                    if ($action === 'block') {
+                        $res = rx_sbv_admin_reject($target, $fromId, $reason, true);
+                        $say(!empty($res['ok']) ? ($res['blocked'] ? '✅ رسید رد و کاربر مسدود شد. سوابق واریز حفظ شد.' : '⚠️ رسید رد شد اما مسدودسازی کاربر ناموفق بود.') : '❌ ' . rx_sbv_error_text((string) ($res['reason'] ?? 'error')));
                     } elseif ($action === 'dismiss') {
                         $res = rx_sbv_dismiss((int) $target, $fromId, $reason);
-                        $say(!empty($res['ok']) ? '✅ واریز بایگانی شد (رکورد حذف نمی‌شود).' : '❌ ' . rx_sbv_error_text((string) $res['reason']));
+                        $say(!empty($res['ok']) ? '✅ واریز بایگانی شد (رکورد حذف نمی‌شود).' : '❌ ' . rx_sbv_error_text((string) ($res['reason'] ?? 'error')));
                     }
                     if ($action !== 'dismiss' && rx_sbv_cb_ok($target)) {
                         $v = rx_sbv_order_view($target);
                         if ($v !== null) {
-                            $say($v['text'], $v['keyboard']);
+                            $show($v, true);
                         }
                     }
                     return true;
@@ -583,7 +1321,7 @@ if (!function_exists('rx_sbv_admin_handle')) {
             }
             return true;
         }
-        if (in_array($datain, ['sbv_home', 'sbv_on', 'sbv_off', 'sbv_rg', 'sbv_rgy', 'sbv_lf'], true) && !$isAdmin) {
+        if (in_array($datain, ['sbv_home', 'sbv_on', 'sbv_off', 'sbv_rg', 'sbv_rgy', 'sbv_lf', 'sbv_sgr'], true) && !$isAdmin) {
             $answer('این بخش فقط برای مدیر کل در دسترس است.', true);
             return true;
         }
@@ -632,6 +1370,12 @@ if (!function_exists('rx_sbv_admin_handle')) {
             $say('⏳ مهلت پرداخت‌های جدید را به دقیقه وارد کنید (حداقل ' . RX_SBV_LIFETIME_MIN_MINUTES . ' و حداکثر ' . RX_SBV_LIFETIME_MAX_MINUTES . ').\nمقدار فعلی: ' . rx_sbv_lifetime_minutes() . ' دقیقه', $cancelKb);
             return true;
         }
+        if ($datain === 'sbv_sgr') {
+            $answer();
+            $setStep('sbv_suggestion_range', '');
+            $say('🎯 محدوده پیشنهاد پرداخت را به تومان وارد کنید (حداقل ' . RX_SBV_SUGGEST_RANGE_MIN_TOMAN . ' و حداکثر ' . RX_SBV_SUGGEST_RANGE_MAX_TOMAN . ').\nمقدار فعلی: ' . number_format(rx_sbv_suggestion_range_toman()) . ' تومان', $cancelKb);
+            return true;
+        }
         if (preg_match('/^sbv_q_(\d+)$/', $datain, $m)) {
             $show(rx_sbv_queue_view((int) $m[1]));
             return true;
@@ -646,15 +1390,336 @@ if (!function_exists('rx_sbv_admin_handle')) {
             return true;
         }
         if (preg_match('/^sbv_dl_(\d+)$/', $datain, $m)) {
-            $answer();
-            $setStep('sbv_linkord', $m[1]);
-            $say('🔗 کد پیگیری سفارشی را که این واریز (#' . (int) $m[1] . ') باید به آن متصل شود ارسال کنید:', $cancelKb);
+            if (!$isGroupSource) {
+                $answer();
+            }
+            $nonce = $setStep('sbv_link_user', (string) (int) $m[1]);
+            $say('🔗 شناسه عددی تلگرام کاربری را که این واریز (#' . (int) $m[1] . ') باید به پرداختش متصل شود ارسال کنید:', $cancelKb);
             return true;
         }
         if (preg_match('/^sbv_dx_(\d+)$/', $datain, $m)) {
+            $answer('اقدام بایگانی حذف شده است؛ برای حذف واریز تطبیق‌نیافته از «حذف واریز» استفاده کنید.', true);
+            return true;
+        }
+        if (preg_match('/^sbv_ds_(\d+)(?:_(\d+))?$/', $datain, $m)) {
+            $show(rx_sbv_admin_candidate_view((int) $m[1], (int) ($m[2] ?? 0), $isAdmin));
+            return true;
+        }
+        if (preg_match('/^sbv_ed_(\d+)_(\d+)_(.+)$/', $datain, $m)) {
+            if (!$isAdmin) {
+                $answer('فقط مدیر اصلی مجاز به حذف پرداخت منقضی است.', true);
+                return true;
+            }
+            $show(rx_sbv_admin_delete_expired_confirm_view(trim((string) $m[3]), (int) $m[1], (int) $m[2]));
+            return true;
+        }
+        if (preg_match('/^sbv_edx_(\d+)_(\d+)_(.+)$/', $datain, $m)) {
+            if (!$isAdmin) {
+                $answer('فقط مدیر اصلی مجاز به حذف پرداخت منقضی است.', true);
+                return true;
+            }
+            $depositId = (int) $m[1];
+            $page = max(0, (int) $m[2]);
+            $orderId = trim((string) $m[3]);
+            $res = rx_sbv_admin_delete_expired_payment($orderId, $fromId, $depositId);
+            $v = rx_sbv_admin_candidate_view($depositId, $page, true);
+            if (!empty($res['ok'])) {
+                $msg = !empty($res['already_removed'])
+                    ? "ℹ️ پرداخت <code>" . rx_sbv_h($orderId) . "</code> قبلاً از فهرست حذف شده بود."
+                    : "✅ پرداخت منقضی <code>" . rx_sbv_h($orderId) . "</code> حذف شد.";
+            } else {
+                $reason = (string) ($res['reason'] ?? 'error');
+                $msg = "❌ " . rx_sbv_h(rx_sbv_error_text($reason));
+                $answer("❌ " . rx_sbv_error_text($reason), true);
+            }
+            $v['text'] = $msg . "\n\n" . $v['text'];
+            $show($v);
+            return true;
+        }
+        if (preg_match('/^sbv_dd_(\d+)$/', $datain, $m) || preg_match('/^sbv_dr_(\d+)$/', $datain, $m)) {
+            $depositId = (int) $m[1];
+            $v = rx_sbv_admin_delete_confirm_view($depositId, 'sbv_d_' . $depositId);
+            $show($v);
+            return true;
+        }
+        if (preg_match('/^sbv_ddx_(\d+)$/', $datain, $m)) {
+            $depositId = (int) $m[1];
+            $res = rx_sbv_delete_deposit($depositId, $fromId);
+            if (empty($res['ok'])) {
+                $err = '❌ ' . rx_sbv_error_text((string) ($res['reason'] ?? 'error'));
+                if ($isGroupSource) {
+                    $answer($err, true);
+                } else {
+                    $v = rx_sbv_deposit_view($depositId);
+                    if ($v !== null) {
+                        $v['text'] = $err . "\n\n" . $v['text'];
+                        $show($v);
+                    } else {
+                        $show(['text' => $err, 'keyboard' => rx_sbv_kb([[['text' => '📥 صف بررسی', 'callback_data' => 'sbv_q_0']]])]);
+                    }
+                }
+                return true;
+            }
+            $q = rx_sbv_queue_view(0);
+            $q['text'] = "✅ واریز <code>#" . $depositId . "</code> برای همیشه حذف شد و از صف بررسی خارج شد.\n\n" . $q['text'];
+            $show($q);
+            return true;
+        }
+        if (preg_match('/^sbv_rpg_(\d+)$/', $datain, $m)) {
+            if ($step !== 'sbv_reject_pay') {
+                $answer('این فهرست دیگر فعال نیست.', true);
+                return true;
+            }
+            $parts = explode('|', $storedPayload);
+            if (count($parts) < 3) {
+                $answer('این فهرست دیگر فعال نیست.', true);
+                return true;
+            }
+            $nonce = $setStep('sbv_reject_pay', (int) $parts[0] . '|' . (int) $parts[1] . '|' . (int) $m[1]);
+            $v = rx_sbv_admin_payment_choices_view((int) $parts[1], (int) $parts[0], (int) $m[1], 'reject', 'sbv_cancel_' . $nonce);
+            $show($v);
+            return true;
+        }
+        if (preg_match('/^sbv_lpg_(\d+)$/', $datain, $m)) {
+            if ($step !== 'sbv_link_pay') {
+                $answer('این فهرست دیگر فعال نیست.', true);
+                return true;
+            }
+            $parts = explode('|', $storedPayload);
+            if (count($parts) < 3) {
+                $answer('این فهرست دیگر فعال نیست.', true);
+                return true;
+            }
+            $nonce = $setStep('sbv_link_pay', (int) $parts[0] . '|' . (int) $parts[1] . '|' . (int) $m[1]);
+            $v = rx_sbv_admin_payment_choices_view((int) $parts[1], (int) $parts[0], (int) $m[1], 'link', 'sbv_cancel_' . $nonce);
+            $show($v);
+            return true;
+        }
+        if (preg_match('/^sbv_rsel_(\w+)$/', $datain, $m)) {
+            if ($step !== 'sbv_reject_pay') {
+                $answer('این فهرست دیگر فعال نیست.', true);
+                return true;
+            }
+            $parts = explode('|', $storedPayload);
+            if (count($parts) < 3) {
+                $answer('این فهرست دیگر فعال نیست.', true);
+                return true;
+            }
+            $orderId = (string) $m[1];
+            $selected = rx_sbv_get($orderId);
+            if ($selected === null || (string) $selected['id_user'] !== (string) $parts[1]) {
+                $answer(rx_sbv_error_text('selection_changed'), true);
+                $nonce = $setStep('sbv_reject_pay', (int) $parts[0] . '|' . (int) $parts[1] . '|' . (int) $parts[2]);
+                $v = rx_sbv_admin_payment_choices_view((int) $parts[1], (int) $parts[0], (int) $parts[2], 'reject', 'sbv_cancel_' . $nonce);
+                $show($v);
+                return true;
+            }
+            $nonce = $setStep('sbv_reject_ready', (int) $parts[0] . '|' . $orderId);
+            $v = rx_sbv_admin_reject_preview((int) $parts[0], $orderId, 'sbv_cancel_' . $nonce);
+            if ($v === null) {
+                $answer('پرداخت انتخاب‌شده دیگر قابل بررسی نیست.', true);
+                return true;
+            }
+            $show($v);
+            return true;
+        }
+        if (preg_match('/^sbv_lsel_(\w+)$/', $datain, $m)) {
+            if ($step !== 'sbv_link_pay') {
+                $answer('این فهرست دیگر فعال نیست.', true);
+                return true;
+            }
+            $parts = explode('|', $storedPayload);
+            if (count($parts) < 3) {
+                $answer('این فهرست دیگر فعال نیست.', true);
+                return true;
+            }
+            $orderId = (string) $m[1];
+            $selected = rx_sbv_get($orderId);
+            if ($selected === null || (string) $selected['id_user'] !== (string) $parts[1]) {
+                $answer(rx_sbv_error_text('selection_changed'), true);
+                $nonce = $setStep('sbv_link_pay', (int) $parts[0] . '|' . (int) $parts[1] . '|' . (int) $parts[2]);
+                $v = rx_sbv_admin_payment_choices_view((int) $parts[1], (int) $parts[0], (int) $parts[2], 'link', 'sbv_cancel_' . $nonce);
+                $show($v);
+                return true;
+            }
+            $guard = rx_sbv_payment_link_guard($orderId, (int) $parts[0]);
+            if ($guard !== null) {
+                $answer(rx_sbv_error_text($guard), true);
+                $nonce = $setStep('sbv_link_pay', (int) $parts[0] . '|' . (int) $parts[1] . '|' . (int) $parts[2]);
+                $v = rx_sbv_admin_payment_choices_view((int) $parts[1], (int) $parts[0], (int) $parts[2], 'link', 'sbv_cancel_' . $nonce);
+                $show($v);
+                return true;
+            }
+            $nonce = $setStep('sbv_link_confirm', (int) $parts[0] . '|' . $orderId);
+            $p = rx_sbv_link_preview((int) $parts[0], $orderId, 'sbv_cancel_' . $nonce);
+            if ($p === null) {
+                $answer('پرداخت یا واریز انتخاب‌شده دیگر قابل بررسی نیست.', true);
+                return true;
+            }
+            $say($p['text'], $p['keyboard']);
+            return true;
+        }
+        if ($datain === 'sbv_rr') {
+            if ($step !== 'sbv_reject_ready') {
+                $answer('این درخواست دیگر فعال نیست.', true);
+                return true;
+            }
+            $parts = explode('|', $storedPayload, 2);
+            $depositId = (int) ($parts[0] ?? 0);
+            $orderId = (string) ($parts[1] ?? '');
             $answer();
-            $setStep('sbv_reason', 'dismiss|' . (int) $m[1]);
-            $say('🗂 دلیل بایگانی واریز #' . (int) $m[1] . ' را بنویسید (رکورد حذف نمی‌شود):', $cancelKb);
+            $nonce = $setStep('sbv_reject_reason', $depositId . '|' . $orderId);
+            $say('✍️ دلیل رد درخواست پرداخت سفارش <code>' . rx_sbv_h($orderId) . '</code> را بنویسید. این دلیل برای مشتری و گزارش مالی ثبت می‌شود.', $cancelKb);
+            return true;
+        }
+        if ($datain === 'sbv_aac') {
+            if ($step !== 'sbv_approve_confirm') {
+                $answer('این درخواست دیگر فعال نیست.', true);
+                return true;
+            }
+            $parts = explode('|', $storedPayload, 2);
+            $orderId = (string) ($parts[0] ?? '');
+            $reason = isset($parts[1]) ? base64_decode((string) $parts[1], true) : '';
+            if ($orderId === '' || $reason === false || rx_sbv_confirm_guard($orderId, $reason) !== null) {
+                $clearStep();
+                $answer('دلیل تأیید معتبر نیست.', true);
+                return true;
+            }
+            $answer();
+            $res = rx_sbv_admin_approve($orderId, $fromId, $reason);
+            $clearStep();
+            $note = !empty($res['ok']) ? rx_sbv_admin_approval_message($res) : '❌ ' . rx_sbv_error_text((string) ($res['reason'] ?? 'error'));
+            $v = rx_sbv_order_view($orderId);
+            if ($v !== null) {
+                $v['text'] = $note . "\n\n" . $v['text'];
+                $show($v);
+            } else {
+                $say($note);
+            }
+            return true;
+        }
+        if ($datain === 'sbv_ccc') {
+            if ($step !== 'sbv_credit_confirm') {
+                $answer('این درخواست دیگر فعال نیست.', true);
+                return true;
+            }
+            $parts = explode('|', $storedPayload, 2);
+            $orderId = (string) ($parts[0] ?? '');
+            $reason = isset($parts[1]) ? base64_decode((string) $parts[1], true) : '';
+            if ($orderId === '' || $reason === false || trim($reason) === '') {
+                $clearStep();
+                $answer('دلیل تأیید معتبر نیست.', true);
+                return true;
+            }
+            $answer();
+            $res = rx_sbv_admin_credit($orderId, $fromId, $reason);
+            $clearStep();
+            $note = !empty($res['ok'])
+                ? '✅ کل مبلغ ' . rx_sbv_money((int) ($res['credit'] ?? 0)) . ' تومان به کیف پول کاربر اضافه شد؛ کارمزد شناسایی کسر نشد.'
+                : '❌ ' . rx_sbv_error_text((string) ($res['reason'] ?? 'error'));
+            $v = rx_sbv_order_view($orderId);
+            if ($v !== null) {
+                $v['text'] = $note . "\n\n" . $v['text'];
+                $show($v);
+            } else {
+                $say($note);
+            }
+            return true;
+        }
+        if ($datain === 'sbv_amc') {
+            if ($step !== 'sbv_amount_confirm') {
+                $answer('این درخواست دیگر فعال نیست.', true);
+                return true;
+            }
+            $parts = explode('|', $storedPayload, 3);
+            $orderId = (string) ($parts[0] ?? '');
+            $newToman = (int) ($parts[1] ?? 0);
+            $reason = isset($parts[2]) ? base64_decode((string) $parts[2], true) : '';
+            if ($orderId === '' || $newToman <= 0 || $reason === false || trim($reason) === '') {
+                $clearStep();
+                $answer('اطلاعات اصلاح مبلغ معتبر نیست.', true);
+                return true;
+            }
+            $answer();
+            $res = rx_sbv_admin_set_received($orderId, $fromId, $newToman, $reason);
+            $clearStep();
+            $note = !empty($res['ok'])
+                ? '✅ مبلغ دریافتی به ' . rx_sbv_money($newToman) . ' تومان اصلاح شد. این اقدام به‌تنهایی کیف پول را شارژ یا سفارش را تحویل نکرد.'
+                : '❌ ' . rx_sbv_error_text((string) ($res['reason'] ?? 'error'));
+            $v = rx_sbv_order_view($orderId);
+            if ($v !== null) {
+                $v['text'] = $note . "\n\n" . $v['text'];
+                $show($v);
+            } else {
+                $say($note);
+            }
+            return true;
+        }
+        if ($datain === 'sbv_rc') {
+            if ($step !== 'sbv_reject_confirm') {
+                $answer('این درخواست دیگر فعال نیست یا قبلاً ثبت شده است.', true);
+                return true;
+            }
+            $parts = explode('|', $storedPayload, 3);
+            $depositId = (int) ($parts[0] ?? 0);
+            $orderId = (string) ($parts[1] ?? '');
+            $reason = isset($parts[2]) ? base64_decode((string) $parts[2], true) : '';
+            if ($reason === false || trim($reason) === '') {
+                $clearStep();
+                $answer('دلیل رد پرداخت معتبر نیست.', true);
+                return true;
+            }
+            $answer();
+            $res = rx_sbv_admin_reject($orderId, $fromId, $reason, false, $depositId > 0 ? $depositId : null);
+            if (empty($res['ok'])) {
+                $clearStep();
+                $err = '❌ ' . rx_sbv_error_text((string) ($res['reason'] ?? 'error'));
+                $v = rx_sbv_order_view($orderId);
+                if ($v !== null) {
+                    $v['text'] = $err . "\n\n" . $v['text'];
+                    $show($v);
+                } else {
+                    $say($err);
+                }
+                return true;
+            }
+            $alreadyRejected = !empty($res['already_rejected']);
+            $reportState = (string) ($res['report_state'] ?? 'failed');
+            if ($reportState !== 'failed' && $reportState !== 'busy') {
+                $clearStep();
+            }
+            $msg = $alreadyRejected
+                ? "ℹ️ این پرداخت قبلاً رد شده بود و عملیات رد یا اعلان مجدد تکرار نشد."
+                : "✅ درخواست پرداخت رد شد. رکورد واریز بانکی حفظ شد و هیچ وجهی بازگشت یا به کیف پول اضافه نشد.";
+            if (!$alreadyRejected) {
+                if (empty($res['notified'])) {
+                    $msg .= "\n⚠️ ارسال پیام خصوصی به مشتری تأیید نشد؛ وضعیت پرداخت و دلیل برای مینی‌اپ ثبت شده است.";
+                } else {
+                    $msg .= "\n📩 پیام رد پرداخت برای مشتری ارسال شد.";
+                }
+            }
+            if ($reportState === 'sent') {
+                $msg .= "\n📣 گزارش مالی در موضوع گزارش پرداخت ثبت شد.";
+            } elseif ($reportState === 'failed' || $reportState === 'busy') {
+                $msg .= "\n⚠️ ارسال گزارش مالی تأیید نشد. دکمه «تلاش مجدد ارسال گزارش» را بزنید؛ فقط گزارش ارسال می‌شود و رد پرداخت یا اعلان مشتری تکرار نمی‌شود.";
+            } elseif ($reportState === 'uncertain') {
+                $msg .= "\n⚠️ وضعیت ارسال گزارش مالی نامشخص است. برای جلوگیری از ارسال تکراری، تلاش خودکار انجام نمی‌شود؛ لطفاً موضوع گزارش پرداخت را بررسی کنید.";
+            } else {
+                $msg .= "\n⚠️ گزارش مالی هنوز ارسال نشده است؛ لطفاً دوباره تأیید کنید.";
+            }
+            $v = rx_sbv_order_view($orderId);
+            if ($v !== null) {
+                $v['text'] = $msg . "\n\n" . $v['text'];
+                if ($reportState === 'failed' || $reportState === 'busy') {
+                    $v['keyboard'] = rx_sbv_kb([
+                        [['text' => '🔁 تلاش مجدد ارسال گزارش', 'callback_data' => 'sbv_rc']],
+                        [['text' => '🔙 بازگشت', 'callback_data' => 'sbv_q_0']],
+                    ]);
+                }
+                $show($v);
+            } else {
+                $say($msg);
+            }
             return true;
         }
         if (preg_match('/^sbv_lk_(\d+)_(\w+)$/', $datain, $m)) {
@@ -663,6 +1728,7 @@ if (!function_exists('rx_sbv_admin_handle')) {
                 $answer('❌ ' . rx_sbv_error_text((string) $res['reason']), true);
                 return true;
             }
+            $clearStep();
             $v = rx_sbv_order_view($m[2]);
             if ($v !== null) {
                 $v['text'] = "✅ واریز متصل شد. نتیجه را انتخاب کنید.\n\n" . $v['text'];
@@ -676,16 +1742,21 @@ if (!function_exists('rx_sbv_admin_handle')) {
         }
         if (preg_match('/^sbv_oa_(\w+)$/', $datain, $m)) {
             $orderId = $m[1];
-            if (rx_sbv_confirm_guard($orderId, '') === null && rx_sbv_get($orderId) !== null) {
+            $approveCsp = rx_sbv_get($orderId);
+            $approveReport = rx_sbv_payment_report($orderId);
+            $approveExpired = is_array($approveCsp) && rx_sbv_payment_is_expired($approveCsp, $approveReport);
+            if (rx_sbv_confirm_guard($orderId, '') === null && $approveCsp !== null) {
                 $answer();
-                $res = rx_sbv_admin_approve($orderId, $fromId, '');
-                $say(!empty($res['ok']) ? '✅ واریز دقیق تطبیق داشت؛ پرداخت تأیید و سفارش تسویه شد.' : '❌ ' . rx_sbv_error_text((string) $res['reason']));
-                $orderView($orderId, true);
+                $nonce = $setStep('sbv_approve_confirm', $orderId . '|' . base64_encode(''));
+                $v = rx_sbv_admin_approval_confirm_view($orderId, '', 'sbv_cancel_' . $nonce);
+                $show($v);
                 return true;
             }
             $answer();
             $setStep('sbv_reason', 'approve|' . $orderId);
-            $say("✍️ هیچ واریز دقیقاً منطبقی برای این سفارش ثبت نشده است. تأیید کامل یک تصمیم مالی دستی است (مثلاً پذیرش کسری).\n\nدلیل تأیید را بنویسید:", $cancelKb);
+            $say($approveExpired
+                ? "⏳ این پرداخت منقضی شده است. تأیید دستی فقط با تصمیم صریح ادمین و ثبت دلیل انجام می‌شود.\n\nدلیل تأیید را بنویسید:"
+                : "✍️ هیچ واریز دقیقاً منطبقی برای این سفارش ثبت نشده است. تأیید کامل یک تصمیم مالی دستی است (مثلاً پذیرش کسری).\n\nدلیل تأیید را بنویسید:", $cancelKb);
             return true;
         }
         if (preg_match('/^sbv_(or|ob)_(\w+)$/', $datain, $m)) {
@@ -697,13 +1768,13 @@ if (!function_exists('rx_sbv_admin_handle')) {
         if (preg_match('/^sbv_om_(\w+)$/', $datain, $m)) {
             $answer();
             $setStep('sbv_amount', $m[1]);
-            $say("✍️ مبلغی را که واقعاً به حساب واریز شده به <b>تومان</b> وارد کنید (عدد صحیح).\nاین مبلغ فقط به‌عنوان «مبلغ دریافتی» ثبت می‌شود و به‌تنهایی چیزی را تسویه نمی‌کند.", $cancelKb);
+            $say("✍️ مبلغ دریافتی اصلاح‌شده را به <b>تومان</b> وارد کنید (عدد صحیح).\nاین مبلغ فقط به‌عنوان مبلغ مؤثر ثبت می‌شود و به‌تنهایی کیف پول را شارژ یا سفارش را تحویل نمی‌کند.", $cancelKb);
             return true;
         }
         if (preg_match('/^sbv_oc_(\w+)$/', $datain, $m)) {
             $answer();
             $setStep('sbv_reason', 'credit|' . $m[1]);
-            $say('💼 دلیل تسویه این پرداخت به‌صورت شارژ کیف پول (به‌جای تحویل سفارش) را بنویسید:', $cancelKb);
+            $say('💼 دلیل واریز کامل مبلغ دریافتی به کیف پول (بدون کسر کارمزد شناسایی و بدون تحویل سفارش) را بنویسید:', $cancelKb);
             return true;
         }
         if (preg_match('/^sbv_ol_(\w+)$/', $datain, $m)) {
