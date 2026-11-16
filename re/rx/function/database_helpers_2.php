@@ -2765,7 +2765,7 @@ function cubepayPayableAmount($amount_toman)
         : $amount + (int) round($fee);
 }
 
-function cubepayCreatePayment($order_id, $amount_toman, $customer_user_id = null, $description = '')
+function cubepayCreatePayment($order_id, $amount_toman, $customer_user_id = null, $description = '', $inlineInBot = false)
 {
     global $domainhosts;
 
@@ -2784,6 +2784,10 @@ function cubepayCreatePayment($order_id, $amount_toman, $customer_user_id = null
         'callback_url' => $callbackUrl,
         'redirect_after_payment' => false,
     ];
+
+    if ($inlineInBot === true) {
+        $requestPayload['inline_card'] = true;
+    }
 
     // Forward the buyer ID already supplied by the bot or authenticated API caller.
     $buyerId = (is_int($customer_user_id) || is_string($customer_user_id))
@@ -2827,17 +2831,189 @@ function cubepayCreatePayment($order_id, $amount_toman, $customer_user_id = null
         'payment_link' => (string) $decoded['pay_page_url'],
     ];
 
-    // مسیرِ کارتی: کیوب‌پی اطلاعات کارتِ همین فاکتور و تنظیمِ show_card_in_bot
-    // فروشنده را هم برمی‌گرداند. اگر هم کارت و هم ارز دیجیتال فعال باشد، در این
-    // لحظه هنوز کارتی اختصاص نیافته (مشتری انتخاب نکرده) و این بلوک رد می‌شود.
-    if (!empty($decoded['card']['number'])) {
+    if (isset($decoded['card']) && is_array($decoded['card'])) {
         $normalized['card'] = $decoded['card'];
-        $normalized['pay_amount_toman'] = (int) ($decoded['pay_amount_toman'] ?? 0);
-        $normalized['expires_in_minutes'] = (int) ($decoded['expires_in_minutes'] ?? 30);
+    }
+    if (array_key_exists('pay_amount_toman', $decoded) && is_scalar($decoded['pay_amount_toman'])) {
+        $normalized['pay_amount_toman'] = $decoded['pay_amount_toman'];
+    }
+    if (array_key_exists('pay_amount_rial', $decoded) && is_scalar($decoded['pay_amount_rial'])) {
+        $normalized['pay_amount_rial'] = $decoded['pay_amount_rial'];
+    }
+    if (array_key_exists('expires_in_minutes', $decoded) && is_scalar($decoded['expires_in_minutes'])) {
+        $normalized['expires_in_minutes'] = (int) $decoded['expires_in_minutes'];
+    }
+    if (array_key_exists('show_card_in_bot', $decoded)) {
         $normalized['show_card_in_bot'] = !empty($decoded['show_card_in_bot']);
+    }
+    if (isset($decoded['crypto_payment_url']) && is_string($decoded['crypto_payment_url'])) {
+        $cryptoUrl = trim($decoded['crypto_payment_url']);
+        $cryptoParts = parse_url($cryptoUrl);
+        if (
+            $cryptoUrl !== ''
+            && filter_var($cryptoUrl, FILTER_VALIDATE_URL)
+            && is_array($cryptoParts)
+            && ($cryptoParts['scheme'] ?? '') === 'https'
+            && strtolower($cryptoParts['host'] ?? '') === 'cubevps.ir'
+            && !isset($cryptoParts['user'])
+            && !isset($cryptoParts['pass'])
+            && !isset($cryptoParts['port'])
+        ) {
+            $normalized['crypto_payment_url'] = $cryptoUrl;
+        }
     }
 
     return $normalized;
+}
+
+function cubepayBotInvoice($orderId, $baseToman, array $payment, $paymentLabel)
+{
+    $escape = static fn($value) => htmlspecialchars(
+        (string) $value,
+        ENT_QUOTES | ENT_SUBSTITUTE,
+        'UTF-8'
+    );
+
+    $paymentLink = (string) ($payment['payment_link'] ?? '');
+    $inline = !empty($payment['show_card_in_bot']);
+    $rial = 0;
+    $hasExactRial = false;
+    $rialMalformed = false;
+
+    if (
+        array_key_exists('pay_amount_rial', $payment)
+        && $payment['pay_amount_rial'] !== null
+        && trim((string) $payment['pay_amount_rial']) !== ''
+    ) {
+        $rawRial = trim((string) $payment['pay_amount_rial']);
+        if (preg_match('/\A[1-9][0-9]{0,17}\z/D', $rawRial)) {
+            $rial = (int) $rawRial;
+            $hasExactRial = true;
+        } else {
+            $rialMalformed = true;
+        }
+    }
+
+    if (!$hasExactRial && !$rialMalformed && array_key_exists('pay_amount_toman', $payment)) {
+        $rawToman = trim((string) $payment['pay_amount_toman']);
+        if (preg_match('/\A[1-9][0-9]{0,15}\z/D', $rawToman)) {
+            $rial = (int) $rawToman * 10;
+            $hasExactRial = true;
+        }
+    }
+
+    $cardNumber = '';
+    $cardHolder = '';
+    if ($inline) {
+        $card = isset($payment['card']) && is_array($payment['card']) ? $payment['card'] : [];
+        $rawNumber = isset($card['number']) && is_scalar($card['number'])
+            ? trim((string) $card['number']) : '';
+        $normalizedNumber = preg_replace('/[\s\-]+/', '', $rawNumber);
+        if (
+            is_string($normalizedNumber)
+            && preg_match('/\A[0-9]{16}\z/D', $normalizedNumber)
+            && $hasExactRial
+            && $rial > 0
+        ) {
+            $cardNumber = $normalizedNumber;
+            $cardHolder = isset($card['holder']) && is_scalar($card['holder'])
+                ? trim((string) $card['holder']) : '';
+        } else {
+            $inline = false;
+        }
+    }
+
+    $minutes = 0;
+    if (isset($payment['expires_in_minutes']) && is_scalar($payment['expires_in_minutes'])) {
+        $rawMinutes = trim((string) $payment['expires_in_minutes']);
+        if (preg_match('/\A[1-9][0-9]{0,4}\z/D', $rawMinutes)) {
+            $minutes = (int) $rawMinutes;
+        }
+    }
+
+    if ($inline) {
+        $tomanText = number_format(intdiv($rial, 10), 0, '.', ',')
+            . ($rial % 10 ? '.' . ($rial % 10) : '');
+        $rialText = number_format($rial, 0, '.', ',');
+
+        $lines = [];
+        $lines[] = '✅ فاکتور پرداخت شما';
+        $lines[] = '';
+        $lines[] = '🧾 شماره سفارش: <code>' . $escape($orderId) . '</code>';
+        $lines[] = '';
+        $lines[] = '💳 پرداخت کارت‌به‌کارت';
+        $lines[] = '';
+        $lines[] = '🔢 شماره کارت:';
+        $lines[] = '<code>' . $cardNumber . '</code>';
+        $lines[] = '';
+        if ($cardHolder !== '') {
+            $lines[] = '👤 به نام: ' . $escape($cardHolder);
+            $lines[] = '';
+        }
+        $lines[] = '⚠️ مبلغ دقیق به تومان: <code>' . $tomanText . '</code>';
+        $lines[] = '⚠️ مبلغ دقیق به ریال: <code>' . $rialText . '</code>';
+        $lines[] = '';
+        if ($minutes > 0) {
+            $lines[] = '⏳ مهلت پرداخت: ' . $minutes . ' دقیقه';
+            $lines[] = '';
+        }
+        $lines[] = 'مبلغ را دقیقاً مطابق واحد انتخاب‌شده';
+        $lines[] = 'در برنامه بانکی وارد کنید.';
+        $lines[] = '';
+        $lines[] = 'تأیید خودکار با همین مبلغ انجام می‌شود.';
+        $text = implode("\n", $lines);
+    } else {
+        $pricetoman = number_format((int) $baseToman, 0);
+        $text = "✅ تراکنش شما ایجاد شد
+
+🛒 کد پیگیری:  <code>" . $escape($orderId) . "</code>
+💲 مبلغ تراکنش به تومان  : <code>$pricetoman</code>
+
+💢 لطفا به این نکات قبل از پرداخت توجه کنید 👇
+
+🔹 تراکنش تا ۳۰ دقیقه اعتبار و پس از آن در صورت پرداخت تایید نخواهد شد .
+
+✅ در صورت مشکل میتوانید با پشتیبانی در ارتباط باشید";
+    }
+
+    $buttons = [];
+    if ($inline && !empty($payment['crypto_payment_url']) && is_string($payment['crypto_payment_url'])) {
+        $cryptoUrl = trim($payment['crypto_payment_url']);
+        $parts = parse_url($cryptoUrl);
+
+        if (
+            filter_var($cryptoUrl, FILTER_VALIDATE_URL)
+            && is_array($parts)
+            && ($parts['scheme'] ?? '') === 'https'
+            && strtolower($parts['host'] ?? '') === 'cubevps.ir'
+            && !isset($parts['user'])
+            && !isset($parts['pass'])
+            && !isset($parts['port'])
+        ) {
+            $buttons[] = [
+                [
+                    'text' => '💎 پرداخت با کریپتو',
+                    'url' => $cryptoUrl
+                ]
+            ];
+        }
+    }
+
+    $buttons[] = [
+        [
+            'text' => (string) $paymentLabel,
+            'url' => $paymentLink
+        ]
+    ];
+
+    $keyboard = json_encode([
+        'inline_keyboard' => $buttons
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    return [
+        'text' => $text,
+        'reply_markup' => $keyboard
+    ];
 }
 
 function cubepayCheckOrderStatus($order_id)
