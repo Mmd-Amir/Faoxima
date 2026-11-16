@@ -3175,6 +3175,123 @@ function abangatewayCreatePayment($order_id, $amount_toman, $user_id = null)
         'success' => true,
         'authority' => $authority,
         'pay_url' => $payUrl,
+        'card_in_bot' => !empty($data['card_in_bot']),
+        'card' => is_array($data['card'] ?? null)
+            ? $data['card']
+            : [],
+        'payable_rial' => (int) ($data['payable_rial'] ?? 0),
+        'payable_toman' => (int) ($data['payable_toman'] ?? 0),
+        'minutes_left' => (int) ($data['minutes_left'] ?? 0),
+    ];
+}
+
+function abangatewayCardInvoice(array $pay, $order_id)
+{
+    if (empty($pay['card_in_bot'])) {
+        return null;
+    }
+
+    $card = is_array($pay['card'] ?? null) ? $pay['card'] : [];
+    $number = preg_replace('/\D+/', '', trim((string) ($card['number'] ?? '')));
+    if ($number === null || strlen($number) !== 16) {
+        return null;
+    }
+
+    $holder = trim((string) ($card['holder'] ?? ''));
+    if ($holder === '') {
+        return null;
+    }
+    $bank = trim((string) ($card['bank'] ?? ''));
+
+    $rial = (int) ($pay['payable_rial'] ?? 0);
+    $toman = (int) ($pay['payable_toman'] ?? 0);
+    if ($rial <= 0 || $toman <= 0 || $rial !== $toman * 10) {
+        return null;
+    }
+
+    $minutes = (int) ($pay['minutes_left'] ?? 0);
+    if ($minutes <= 0) {
+        return null;
+    }
+
+    $payUrl = trim((string) ($pay['pay_url'] ?? ''));
+    $parts = parse_url($payUrl);
+    if (
+        !is_array($parts) ||
+        strtolower((string) ($parts['scheme'] ?? '')) !== 'https' ||
+        empty($parts['host'])
+    ) {
+        return null;
+    }
+
+    global $textbotlang;
+
+    $order = htmlspecialchars((string) $order_id, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $holderEsc = htmlspecialchars($holder, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $bankEsc = htmlspecialchars($bank, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+    $defaultTemplate = "✅ تراکنش شما ایجاد شد\n\n"
+        . "🛒 کد پیگیری: {order}\n\n"
+        . "💳 شماره کارت:\n{card}\n\n"
+        . "👤 به نام: {holder}\n\n"
+        . "{bank}"
+        . "💰 مبلغ دقیق: {amount} تومان\n"
+        . "به ریال: {rial}\n"
+        . "به تومان: {toman}\n\n"
+        . "⏳ مهلت پرداخت: {minutes} دقیقه\n\n"
+        . "⚠️ دقیقاً همین مبلغ را کارت به کارت کنید، نه بیشتر و نه کمتر؛ تأیید خودکار با همین عدد انجام می‌شود.\n\n"
+        . "بعد از واریز نیازی به ارسال رسید نیست. نتیجه پرداخت از طریق ربات اطلاع‌رسانی خواهد شد.\n\n"
+        . "💡 در صورت تمایل می‌توانید از دکمه پرداخت برای ورود به صفحه پرداخت استفاده کنید.";
+
+    $template = faoxima_textbot_get('dyn_abangateway_card_invoice', $defaultTemplate);
+
+    $text = faoxima_render_text($template, [
+        'order' => '<code>' . $order . '</code>',
+        'card' => '<code>' . $number . '</code>',
+        'holder' => $holderEsc,
+        'bank' => $bankEsc !== '' ? "🏦 بانک: " . $bankEsc . "\n\n" : '',
+        'amount' => '<code>' . $toman . '</code>',
+        'rial' => '<code>' . $rial . '</code>',
+        'toman' => '<code>' . $toman . '</code>',
+        'minutes' => (string) $minutes,
+    ]);
+
+    $keyboard = json_encode([
+        'inline_keyboard' => [
+            [
+                [
+                    'text' => faoxima_textbot_get('dyn_abangateway_copy_card', '📋 کپی شماره کارت'),
+                    'copy_text' => [
+                        'text' => $number
+                    ]
+                ]
+            ],
+            [
+                [
+                    'text' => faoxima_textbot_get('dyn_abangateway_copy_rial', '📋 کپی مبلغ به ریال'),
+                    'copy_text' => [
+                        'text' => (string) $rial
+                    ]
+                ],
+                [
+                    'text' => faoxima_textbot_get('dyn_abangateway_copy_toman', '📋 کپی مبلغ به تومان'),
+                    'copy_text' => [
+                        'text' => (string) $toman
+                    ]
+                ]
+            ],
+            [
+                [
+                    'text' => $textbotlang['users']['Balance']['payments'] ?? 'پرداخت',
+                    'url' => $payUrl
+                ]
+            ]
+        ]
+    ], JSON_UNESCAPED_UNICODE);
+
+    return [
+        'text' => $text,
+        'keyboard' => $keyboard,
     ];
 }
 

@@ -7,6 +7,31 @@ if (!function_exists('rxReceiptScopeSql')) {
     }
 }
 
+if (!function_exists('rxForappScopeSql')) {
+    function rxForappScopeSql(string $alias = 'Payment_report'): string
+    {
+        if (function_exists('rx_sbv_has_schema') && !rx_sbv_has_schema()) {
+            return '1 = 0';
+        }
+        $alias = preg_replace('/[^A-Za-z0-9_]/', '', $alias);
+        if ($alias === '') {
+            $alias = 'Payment_report';
+        }
+        return "EXISTS (SELECT 1 FROM card_sms_payment csp_scope WHERE csp_scope.id_order = {$alias}.id_order)";
+    }
+}
+
+if (!function_exists('rxReceiptListScopeSql')) {
+    function rxReceiptListScopeSql(): string
+    {
+        $scope = rxReceiptScopeSql();
+        if (function_exists('rx_sbv_has_schema') && !rx_sbv_has_schema()) {
+            return $scope;
+        }
+        return $scope . ' AND NOT ' . rxForappScopeSql('Payment_report');
+    }
+}
+
 if (!function_exists('rxReceiptGet')) {
     function rxReceiptGet(string $orderId, bool $useCache = true)
     {

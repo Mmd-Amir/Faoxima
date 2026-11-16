@@ -42,6 +42,10 @@ fx_csrf_guard();
 
 if (isset($_GET['media']) && $_GET['media'] !== '') {
     $mediaOrder = (string) $_GET['media'];
+    if (function_exists('rx_sbv_is_verify_order') && rx_sbv_is_verify_order($mediaOrder)) {
+        http_response_code(404);
+        exit;
+    }
     $mediaReport = rxReceiptGet($mediaOrder, false);
     if (!$mediaReport) {
         http_response_code(404);
@@ -115,6 +119,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_rx_action'])) {
 
     if ($rxOrderId === '') {
         $rxFlash = ['type' => 'err', 'text' => 'درخواست نامعتبر است.'];
+    } elseif (function_exists('rx_sbv_is_verify_order') && rx_sbv_is_verify_order($rxOrderId)) {
+        $rxFlash = ['type' => 'err', 'text' => 'این پرداخت از نوع فوراپ است و باید از بخش فوراپ مدیریت شود.'];
     } elseif ($rxAction === 'confirm') {
         $res = rxReceiptConfirm($rxOrderId, ['actor_label' => $rxActorLabel, 'override_reason' => trim((string) ($_POST['reason'] ?? ''))]);
         if ($res['ok']) {
@@ -186,7 +192,7 @@ $rxType = fx_extra_text_param('otype', 40);
 if (!isset($rxTypeOptions[$rxType])) $rxType = '';
 $rxExtraKeep = array_merge(fx_amount_filter_keep($rxAf), ['otype' => $rxType !== '' ? $rxType : null]);
 
-$rxWhereSql = rxReceiptScopeSql();
+$rxWhereSql = rxReceiptListScopeSql();
 $rxWhereParams = [];
 if ($rxQ !== '') {
     $rxLike = '%' . $rxQ . '%';
@@ -238,11 +244,11 @@ $rxListStmt->bindValue(':offset', $rxPg['offset'], PDO::PARAM_INT);
 $rxListStmt->execute();
 $rxRows = $rxListStmt->fetchAll(PDO::FETCH_ASSOC);
 
-$rxPendingCount = (int) $pdo->query("SELECT COUNT(*) FROM Payment_report WHERE " . rxReceiptScopeSql() . " AND payment_Status = 'waiting'")->fetchColumn();
+$rxPendingCount = (int) $pdo->query("SELECT COUNT(*) FROM Payment_report WHERE " . rxReceiptListScopeSql() . " AND payment_Status = 'waiting'")->fetchColumn();
 
 $rxTodayStart = strtotime(date('Y-m-d 00:00:00'));
 $rxConfirmedTodayStmt = $pdo->prepare(
-    "SELECT COUNT(*), COALESCE(SUM(price),0) FROM Payment_report WHERE " . rxReceiptScopeSql() . " AND payment_Status = 'paid' "
+    "SELECT COUNT(*), COALESCE(SUM(price),0) FROM Payment_report WHERE " . rxReceiptListScopeSql() . " AND payment_Status = 'paid' "
     . "AND ((`time` REGEXP '^[0-9]+$' AND CAST(`time` AS UNSIGNED) >= :t1) OR (`time` NOT REGEXP '^[0-9]+$' AND STR_TO_DATE(REPLACE(`time`, '/', '-'), '%Y-%m-%d %H:%i:%s') >= FROM_UNIXTIME(:t2)))"
 );
 $rxConfirmedTodayStmt->execute([':t1' => $rxTodayStart, ':t2' => $rxTodayStart]);
@@ -251,7 +257,7 @@ $rxConfirmedTodayCount = (int) ($rxConfirmedTodayRow[0] ?? 0);
 $rxConfirmedTodayAmount = (int) ($rxConfirmedTodayRow[1] ?? 0);
 
 $rxRejectedTodayStmt = $pdo->prepare(
-    "SELECT COUNT(*) FROM Payment_report WHERE " . rxReceiptScopeSql() . " AND payment_Status = 'reject' "
+    "SELECT COUNT(*) FROM Payment_report WHERE " . rxReceiptListScopeSql() . " AND payment_Status = 'reject' "
     . "AND ((`time` REGEXP '^[0-9]+$' AND CAST(`time` AS UNSIGNED) >= :t1) OR (`time` NOT REGEXP '^[0-9]+$' AND STR_TO_DATE(REPLACE(`time`, '/', '-'), '%Y-%m-%d %H:%i:%s') >= FROM_UNIXTIME(:t2)))"
 );
 $rxRejectedTodayStmt->execute([':t1' => $rxTodayStart, ':t2' => $rxTodayStart]);

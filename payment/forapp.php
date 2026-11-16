@@ -28,51 +28,73 @@ if (!function_exists('rx_sbv_ingest')) {
     forapp_respond(503, ['ok' => false, 'error' => 'unavailable']);
 }
 
-if (!class_exists(\Faoxima\Payment\Sbv\SbvWebhookProvider::class)) {
-    // Autoloader not refreshed (missing `composer dump-autoload`).
-    forapp_respond(503, ['ok' => false, 'error' => 'unavailable']);
-}
-
-// Oversized bodies are truncated (as before) so the ingest layer rejects them
-// instead of the process exhausting memory.
-$maxBody = defined('RX_SBV_MAX_BODY') ? (int) RX_SBV_MAX_BODY : 1048576;
-if ($maxBody <= 0) {
-    $maxBody = 1048576;
-}
-
-$raw = file_get_contents('php://input', false, null, 0, $maxBody + 1);
+$raw = file_get_contents('php://input', false, null, 0, RX_SBV_MAX_BODY + 1);
 if (!is_string($raw) || $raw === '') {
     forapp_respond(400, ['ok' => false, 'error' => 'empty_body']);
 }
 
-$headers = [];
-foreach ($_SERVER as $key => $value) {
-    if (is_string($key) && is_string($value) && str_starts_with($key, 'HTTP_')) {
-        $headers[strtolower(str_replace('_', '-', substr($key, 5)))] = $value;
+[$code, $body] = rx_sbv_ingest(rx_sbv_header('X-API-Key'), rx_sbv_header('Idempotency-Key'), $raw);
+
+if ($code === 200 && isset($body['id']) && is_numeric($body['id'])) {
+    $rxSbvDepositId = (int) $body['id'];
+    try {
+        $rxSbvDeposit = rx_sbv_deposit($rxSbvDepositId);
+    } catch (Throwable $e) {
+        rx_sbv_log('SBV_WEBHOOK_LOOKUP_FAILED', $e->getMessage(), ['deposit_id' => $rxSbvDepositId]);
+        $body['ok'] = false;
+        $body['retryable'] = true;
+        $body['payment'] = ['status' => 'error', 'deposit_id' => $rxSbvDepositId];
+        forapp_respond(503, $body);
+    }
+    $rxSbvState = is_array($rxSbvDeposit) ? (string) ($rxSbvDeposit['state'] ?? '') : '';
+    if ($rxSbvState === 'pending' || $rxSbvState === 'matched') {
+        try {
+            if (!class_exists('ManagePanel', false) && is_file(__DIR__ . '/../panels.php')) {
+                require_once __DIR__ . '/../panels.php';
+            }
+            if (is_file(__DIR__ . '/../keyboard.php')) {
+                require_once __DIR__ . '/../keyboard.php';
+            }
+            if (is_file(__DIR__ . '/../jdf.php')) {
+                require_once __DIR__ . '/../jdf.php';
+            }
+            if (is_file(__DIR__ . '/../vendor/autoload.php')) {
+                require_once __DIR__ . '/../vendor/autoload.php';
+            }
+            if (class_exists('ManagePanel', false)) {
+                $ManagePanel = new ManagePanel();
+            }
+            if (function_exists('rxEnsurePaymentRuntime')) {
+                rxEnsurePaymentRuntime();
+            }
+            if (function_exists('rxPaymentV2PrepareContext')) {
+                rxPaymentV2PrepareContext();
+            }
+        } catch (Throwable $e) {
+            if (function_exists('rx_sbv_log')) {
+                rx_sbv_log('SBV_RUNTIME_INIT_FAILED', $e->getMessage(), ['deposit_id' => $rxSbvDepositId]);
+            }
+            $body['ok'] = false;
+            $body['retryable'] = true;
+            $body['payment'] = ['status' => 'error', 'deposit_id' => $rxSbvDepositId];
+            forapp_respond(503, $body);
+        }
+    }
+    if (function_exists('rx_sbv_process_deposit')) {
+        try {
+            $body['payment'] = rx_sbv_process_deposit($rxSbvDepositId, dirname(__DIR__) . '/images.jpg');
+        } catch (Throwable $e) {
+            if (function_exists('rx_sbv_log')) {
+                rx_sbv_log('SBV_WEBHOOK_PROCESS_FAILED', $e->getMessage(), ['deposit_id' => $rxSbvDepositId]);
+            }
+            $body['payment'] = ['status' => 'error', 'deposit_id' => $rxSbvDepositId, 'deposit_state' => $rxSbvState];
+        }
+    }
+    if (!isset($body['payment']) || !in_array((string) ($body['payment']['status'] ?? ''), ['completed', 'already_processed', 'ignored', 'unmatched', 'ambiguous', 'late', 'failed', 'closed', 'resolved'], true)) {
+        $code = 503;
+        $body['ok'] = false;
+        $body['retryable'] = true;
     }
 }
 
-$request = new \Faoxima\Payment\WebhookRequest(
-    $raw,
-    $headers,
-    (string) ($_SERVER['REQUEST_METHOD'] ?? 'POST'),
-    (string) ($_SERVER['REMOTE_ADDR'] ?? '')
-);
-
-$provider = new \Faoxima\Payment\Sbv\SbvWebhookProvider(
-    new \Faoxima\Payment\Legacy\LegacySbvGateway(),
-    new \Faoxima\Payment\Legacy\LegacySbvRuntime(dirname(__DIR__)),
-    new \Faoxima\Payment\Legacy\LegacyWebhookLog('sbv'),
-    dirname(__DIR__) . '/images.jpg'
-);
-
-try {
-    $response = $provider->handleWebhook($request);
-} catch (Throwable $e) {
-    if (function_exists('rx_sbv_log')) {
-        rx_sbv_log('SBV_WEBHOOK_FATAL', $e->getMessage());
-    }
-    forapp_respond(503, ['ok' => false, 'error' => 'error', 'retryable' => true]);
-}
-
-forapp_respond($response->status, $response->body);
+forapp_respond($code, $body);

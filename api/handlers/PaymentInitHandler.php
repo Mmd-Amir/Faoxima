@@ -1276,6 +1276,28 @@ final class PaymentInitHandler extends BaseHandler
 
         update('Payment_report', 'dec_not_confirmed', (string) $pay['authority'], 'id_order', $orderId);
 
+        try {
+            $cardInvoice = abangatewayCardInvoice($pay, $orderId);
+            if ($cardInvoice !== null) {
+                $sent = sendmessage(
+                    $this->user['id'],
+                    $cardInvoice['text'],
+                    $cardInvoice['keyboard'],
+                    'HTML'
+                );
+
+                if (
+                    is_array($sent) &&
+                    !empty($sent['ok']) &&
+                    !empty($sent['result']['message_id'])
+                ) {
+                    updatePaymentMessageId($sent, $orderId);
+                }
+            }
+        } catch (Throwable $e) {
+            FaoximaLogger::userFacing('abangateway card message delivery failed', ['err' => $e->getMessage()]);
+        }
+
         FaoximaResponse::ok([
             'kind'     => 'url',
             'url'      => (string) $pay['pay_url'],

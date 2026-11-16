@@ -115,9 +115,16 @@ if (isset($pdo) && $pdo instanceof PDO) {
 $__hdr_tickets_unseen = ($__hdr_ticket_latest > $__hdr_ticket_seen) ? 1 : 0;
 $__hdr_notif_total = $__hdr_new_orders + $__hdr_open_tickets;
 $__hdr_pending_receipts = 0;
+$__hdr_forapp_pending = 0;
 if (isset($pdo) && $pdo instanceof PDO) {
     try {
-        $__hdr_pending_receipts = (int)$pdo->query("SELECT COUNT(*) FROM Payment_report WHERE Payment_Method = 'cart to cart' AND payment_Status = 'waiting'")->fetchColumn();
+        $__hdr_receipt_scope = function_exists('rxReceiptListScopeSql') ? rxReceiptListScopeSql() : "Payment_Method = 'cart to cart'";
+        $__hdr_pending_receipts = (int)$pdo->query("SELECT COUNT(*) FROM Payment_report WHERE " . $__hdr_receipt_scope . " AND payment_Status = 'waiting'")->fetchColumn();
+    } catch (\Throwable $e) {}
+    try {
+        if (function_exists('rx_sbv_has_schema') && rx_sbv_has_schema()) {
+            $__hdr_forapp_pending = (int)$pdo->query("SELECT COUNT(*) FROM card_sms_payment csp JOIN Payment_report pr ON pr.id_order = csp.id_order WHERE pr.payment_Status = 'waiting'")->fetchColumn();
+        }
     } catch (\Throwable $e) {}
 }
 ?>
@@ -513,6 +520,7 @@ if (isset($pdo) && $pdo instanceof PDO) {
             <li><a href="users.php"><span class="menu-symbol"><?php echo icon('users', 'svg-icon'); ?></span><span>کاربران</span><?php if ($__hdr_users_label !== ''): ?><span class="menu-badge"><?php echo htmlspecialchars($__hdr_users_label, ENT_QUOTES, 'UTF-8'); ?></span><?php endif; ?></a></li>
             <li><a href="tickets.php"><span class="menu-symbol"><?php echo icon('message', 'svg-icon'); ?></span><span>تیکت‌ها</span><?php if (!empty($__hdr_open_tickets)): ?><span class="menu-badge"><?php echo htmlspecialchars((string)$__hdr_open_tickets, ENT_QUOTES, 'UTF-8'); ?></span><?php endif; ?></a></li>
             <li><a href="reports.php"><span class="menu-symbol"><?php echo icon('chart-bar', 'svg-icon'); ?></span><span>گزارش‌ها</span></a></li>
+            <li><a href="forapp.php"><span class="menu-symbol"><?php echo icon('credit-card', 'svg-icon'); ?></span><span>فوراپ</span><?php if ($__hdr_forapp_pending > 0): ?><span class="menu-badge"><?php echo htmlspecialchars((string)$__hdr_forapp_pending, ENT_QUOTES, 'UTF-8'); ?></span><?php endif; ?></a></li>
         </ul>
 
         <div class="sidebar-section-label">مدیریت</div>

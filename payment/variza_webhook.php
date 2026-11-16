@@ -44,29 +44,105 @@ function variza_webhook_log(string $type, string $message, array $context = []):
 }
 
 // Raw body is what the HMAC is over — never use $_POST here.
-// All verification and settlement now lives in VarizaWebhookProvider; this
-// file only builds the request and emits the provider's response.
-if (!class_exists(\Faoxima\Payment\Variza\VarizaWebhookProvider::class)) {
-    // Autoloader not refreshed (missing `composer dump-autoload`). Answer 5xx
-    // so Variza retries instead of silently dropping a paid invoice.
-    variza_webhook_log('VARIZA_BOOTSTRAP_FAILED', 'VarizaWebhookProvider is not autoloadable');
+$raw = file_get_contents('php://input');
+if ($raw === false || $raw === '') {
+    variza_webhook_respond(400, 'empty body');
+}
+
+$sigHeader = (string) ($_SERVER['HTTP_X_WEBHOOK_SIGNATURE'] ?? '');
+if ($sigHeader === '' && function_exists('getallheaders')) {
+    foreach (getallheaders() as $k => $v) {
+        if (strtolower((string) $k) === 'x-webhook-signature') {
+            $sigHeader = (string) $v;
+            break;
+        }
+    }
+}
+
+$secretRow = select('PaySetting', 'ValuePay', 'NamePay', 'variza_webhook_secret', 'select');
+$secret = is_array($secretRow) ? trim((string) ($secretRow['ValuePay'] ?? '')) : '';
+if ($secret === '' || $secret === '0') {
+    variza_webhook_log('VARIZA_NOT_CONFIGURED', 'webhook_secret not configured');
     variza_webhook_respond(500, 'not configured');
 }
 
-$request = \Faoxima\Payment\WebhookRequest::fromGlobals();
+$provided = $sigHeader;
+if (str_starts_with($provided, 'sha256=')) {
+    $provided = substr($provided, 7);
+}
 
-$provider = new \Faoxima\Payment\Variza\VarizaWebhookProvider(
-    new \Faoxima\Payment\Legacy\LegacySettings(),
-    new \Faoxima\Payment\Legacy\LegacyPaymentReports(),
-    new \Faoxima\Payment\Legacy\LegacyPaymentSettlement(),
-    new \Faoxima\Payment\Legacy\LegacyWebhookLog('variza')
-);
+$expected = hash_hmac('sha256', $raw, $secret);
+if ($provided === '' || !hash_equals($expected, $provided)) {
+    variza_webhook_log('VARIZA_BAD_SIG', 'signature mismatch', [
+        'remote_ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+    ]);
+    variza_webhook_respond(401, 'invalid signature');
+}
+
+$data = json_decode($raw, true);
+if (!is_array($data)) {
+    variza_webhook_respond(400, 'invalid json');
+}
+
+if (($data['event'] ?? '') !== 'payment.paid') {
+    variza_webhook_respond(200, 'ignored');
+}
+
+$slug = (string) ($data['slug'] ?? '');
+$amount = (int) ($data['amount'] ?? 0);
+// attempt_code available as $data['attempt_code'] for audit if needed.
+
+if ($slug === '') {
+    variza_webhook_respond(400, 'missing slug');
+}
+
+// Variza stores slug in dec_not_confirmed (like nowpayment invoice_id).
+$payment = select("Payment_report", "*", "dec_not_confirmed", $slug, "select");
+if (!$payment) {
+    // Fallback: some installs may have slug in id_invoice; try there too.
+    $payment = select("Payment_report", "*", "id_invoice", $slug, "select");
+}
+if (!$payment) {
+    variza_webhook_log('VARIZA_UNKNOWN_SLUG', 'no Payment_report matched slug', ['slug' => $slug]);
+    variza_webhook_respond(404, 'order not found');
+}
+
+// Already settled — idempotent. Variza retries up to 5 times.
+if (($payment['payment_Status'] ?? '') === 'paid' && (int)($payment['direct_payment_done'] ?? 0) === 1) {
+    variza_webhook_respond(200, 'already paid');
+}
+
+// Amount check — both in Toman. Variza reports final_amount which is the base
+// amount plus a small random identifier, so it is always >= what was billed.
+$billed = (int) ($payment['price'] ?? 0);
+if ($amount < $billed) {
+    variza_webhook_log('VARIZA_AMOUNT_MISMATCH', 'gateway reported less than billed', [
+        'slug' => $slug,
+        'billed' => $billed,
+        'got' => $amount,
+    ]);
+    variza_webhook_respond(400, 'amount mismatch');
+}
+
+$orderId = (string) $payment['id_order'];
 
 try {
-    $response = $provider->handleWebhook($request);
+    $result = payment_confirm_paid($orderId, 'chashbackvariza', [
+        'method' => 'واریزا 💳',
+        'extra_lines' => [
+            '🔗 شناسه پرداخت واریزا: ' . $slug,
+        ],
+    ]);
 } catch (Throwable $e) {
-    variza_webhook_log('VARIZA_PROVIDER_FAILED', $e->getMessage());
+    variza_webhook_log('VARIZA_CONFIRM_FAILED', 'payment_confirm_paid threw', [
+        'order_id' => $orderId,
+        'error' => $e->getMessage(),
+    ]);
     variza_webhook_respond(500, 'delivery failed');
 }
 
-variza_webhook_respond($response->status, (string) ($response->body['status'] ?? 'error'));
+if (empty($result['ok'])) {
+    variza_webhook_respond(200, (string) ($result['reason'] ?? 'noop'));
+}
+
+variza_webhook_respond(200, 'ok');

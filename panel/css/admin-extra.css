@@ -773,3 +773,128 @@
     gap: var(--space-3);
     background: linear-gradient(180deg, transparent, var(--bg-body) 45%);
 }
+
+.forapp-page .receipt-summary-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.forapp-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+}
+
+.forapp-action {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    background: var(--surface-2);
+    min-width: 0;
+}
+
+.forapp-action__title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.forapp-action .form-control {
+    width: 100%;
+    font-size: 12.5px;
+}
+
+.forapp-action textarea.form-control {
+    min-height: 64px;
+}
+
+.forapp-action .btn {
+    width: 100%;
+    justify-content: center;
+}
+
+.forapp-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-soft);
+}
+
+.forapp-deposit-body {
+    max-height: 130px;
+    overflow: auto;
+    padding: 8px 10px;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.9;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.forapp-candidate-note {
+    margin: 12px 0 0;
+    color: var(--text-dim);
+    font-size: 11.5px;
+    line-height: 1.9;
+}
+
+.forapp-detail-section {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-soft);
+}
+
+.forapp-detail-section__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 10px;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+@media (max-width: 1200px) {
+    .forapp-page .receipt-summary-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .forapp-page .receipt-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 480px) {
+    .forapp-page .receipt-summary-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.forapp-page .badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    max-width: 100%;
+    padding: 4px 9px;
+    border-width: 1px;
+    border-style: solid;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1.45;
+    white-space: nowrap;
+    vertical-align: middle;
+}

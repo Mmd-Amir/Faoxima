@@ -5332,8 +5332,41 @@ $textonebuy
                 }
             }
         }
-        $message_id = sendmessage($from_id, $textabangatewaypay, $paymentkeyboard, 'HTML');
-        updatePaymentMessageId($message_id, $randomString);
+        $cardInvoice = abangatewayCardInvoice(
+            $payment,
+            $randomString
+        );
+
+        $message_id = null;
+
+        if ($cardInvoice !== null) {
+            $message_id = sendmessage(
+                $from_id,
+                $cardInvoice['text'],
+                $cardInvoice['keyboard'],
+                'HTML'
+            );
+        }
+
+        if (!is_array($message_id) || empty($message_id['ok'])) {
+            $message_id = sendmessage(
+                $from_id,
+                $textabangatewaypay,
+                $paymentkeyboard,
+                'HTML'
+            );
+        }
+
+        if (
+            is_array($message_id) &&
+            !empty($message_id['ok']) &&
+            !empty($message_id['result']['message_id'])
+        ) {
+            updatePaymentMessageId(
+                $message_id,
+                $randomString
+            );
+        }
     } elseif ($datain == "digitaltron") {
 
         $mainbalancedigitaltron = select("PaySetting", "ValuePay", "NamePay", "minbalancedigitaltron", "select")['ValuePay'];
