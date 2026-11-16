@@ -309,7 +309,7 @@ if (!function_exists('rx_sbv_deposit_view')) {
 }
 
 if (!function_exists('rx_sbv_link_preview')) {
-    function rx_sbv_link_preview(int $depositId, string $orderId, ?string $cancelCallback = null): ?array
+    function rx_sbv_link_preview(int $depositId, string $orderId, ?string $cancelCallback = null, ?string $confirmCallback = null): ?array
     {
         $dep = rx_sbv_deposit($depositId);
         $sum = rx_sbv_order_summary($orderId);
@@ -343,9 +343,95 @@ if (!function_exists('rx_sbv_link_preview')) {
         }
         $rows = [];
         if ($guard === null) {
-            $rows[] = [['text' => '✅ تأیید اتصال', 'callback_data' => 'sbv_lk_' . $depositId . '_' . $orderId]];
+            $rows[] = [['text' => '✅ تأیید اتصال', 'callback_data' => ($confirmCallback !== null && $confirmCallback !== '') ? $confirmCallback : 'sbv_lk_' . $depositId . '_' . $orderId]];
         }
         $rows[] = [['text' => '❌ انصراف', 'callback_data' => ($cancelCallback !== null && $cancelCallback !== '') ? $cancelCallback : 'sbv_cancel']];
+        return ['text' => $text, 'keyboard' => rx_sbv_kb($rows)];
+    }
+}
+
+if (!function_exists('rx_sbv_admin_order_deposits_view')) {
+    function rx_sbv_admin_order_deposits_view(string $orderId, int $page = 0): array
+    {
+        $orderId = trim($orderId);
+        $page = max(0, $page);
+        $back = [['text' => '🔙 بازگشت به بررسی پرداخت', 'callback_data' => 'sbv_oo_' . $orderId]];
+        $summary = rx_sbv_order_summary($orderId);
+        if ($summary === null || !rx_sbv_cb_ok($orderId)) {
+            return ['text' => '❌ پرداخت یا سفارش مورد نظر یافت نشد.', 'keyboard' => rx_sbv_kb([])];
+        }
+        $csp = $summary['csp'];
+        $report = is_array($summary['report']) ? $summary['report'] : [];
+        $expired = rx_sbv_payment_is_expired($csp, $report);
+        $user = rx_sbv_admin_user((int) $csp['id_user']);
+        $name = is_array($user) ? trim((string) ($user['first_name'] ?? '')) : '';
+        $username = is_array($user) ? trim((string) ($user['username'] ?? '')) : '';
+        $who = $name !== '' ? $name : ($username !== '' ? '@' . $username : 'بدون نام');
+        $text = "🔗 <b>انتخاب واریز بانکی برای اتصال</b>\n\n"
+            . "🛒 سفارش: <code>" . rx_sbv_h($orderId) . "</code> | 👤 کاربر: " . rx_sbv_h($who) . " (<code>" . rx_sbv_h($csp['id_user']) . "</code>)\n"
+            . "📦 نوع: " . rx_sbv_h(rx_sbv_invoice_label((string) ($report['id_invoice'] ?? ''))) . "\n"
+            . "💳 وضعیت پرداخت: " . rx_sbv_h($expired ? 'منقضی‌شده (نیازمند تصمیم ادمین)' : rx_sbv_status_label((string) ($report['payment_Status'] ?? ''))) . " | تطبیق: " . rx_sbv_h(rx_sbv_state_label((string) $csp['state'])) . "\n"
+            . "<blockquote>✅ مبلغ مورد انتظار: " . rx_sbv_h(rx_sbv_toman_from_rial((int) $csp['payable_rial'])) . "\n"
+            . "💰 اصل مبلغ: " . rx_sbv_money($csp['principal_toman']) . " تومان\n"
+            . "🎯 محدوده پیشنهاد: ±" . rx_sbv_money(rx_sbv_suggestion_range_toman()) . " تومان\n"
+            . "🕒 ایجاد پرداخت: " . rx_sbv_h(rx_sbv_clock((int) $csp['created_at'], true)) . "</blockquote>\n";
+        $guard = rx_sbv_payment_link_guard($orderId);
+        if ($guard !== null) {
+            $text .= "\n🚫 اکنون امکان اتصال وجود ندارد: " . rx_sbv_h(rx_sbv_error_text($guard));
+            return ['text' => $text, 'keyboard' => rx_sbv_kb([$back])];
+        }
+        $per = 5;
+        $result = rx_sbv_order_deposit_candidates($orderId, $per, $page);
+        $page = (int) ($result['page'] ?? 0);
+        $pages = (int) ($result['pages'] ?? 1);
+        $total = (int) ($result['total'] ?? 0);
+        $rows = [];
+        if (empty($result['ok'])) {
+            $text .= "\n❌ جست‌وجوی واریزهای بانکی با خطا مواجه شد. این نتیجه به معنی نبود واریز احتمالی نیست؛ دوباره تلاش کنید.";
+        } elseif (empty($result['rows'])) {
+            $text .= "\n📭 هنوز هیچ واریز بانکی متناظری برای این پرداخت ثبت نشده است.\n"
+                . "اگر کاربر پرداخت را انجام داده اما پیامک بانکی هنوز به سیستم نرسیده باشد، رسید در وضعیت در انتظار بررسی باقی می‌ماند و به‌صورت خودکار تأیید یا رد نمی‌شود.\n"
+                . "پس از رسیدن پیامک بانکی، دکمه «🔄 بررسی مجدد واریزها» را بزنید. تأیید، رد و اصلاح مبلغ دستی همچنان از صفحه بررسی پرداخت در دسترس است.\n"
+                . "صفحه 1 از 1 | تعداد کل: 0";
+        } else {
+            $shown = $page * $per;
+            foreach ($result['rows'] as $dep) {
+                $shown++;
+                $amountRial = (int) $dep['amount_rial'];
+                $eventAt = (int) $dep['stored_at'];
+                $ms = $dep['received_at_ms'] !== null ? (int) $dep['received_at_ms'] : 0;
+                if ($ms > 0) {
+                    $sec = intdiv($ms, 1000);
+                    if ($sec > 0 && $sec <= $eventAt + RX_SBV_DEVICE_SKEW && $sec >= $eventAt - 604800) {
+                        $eventAt = $sec;
+                    }
+                }
+                $diff = $amountRial - (int) $csp['payable_rial'];
+                $text .= "\n<b>" . $shown . ") واریز <code>#" . (int) $dep['id'] . "</code></b>\n"
+                    . "💵 مبلغ دریافتی: " . rx_sbv_h(rx_sbv_toman_from_rial($amountRial)) . "\n"
+                    . "🕒 زمان واریز: " . rx_sbv_h(rx_sbv_clock($eventAt, true)) . "\n"
+                    . "🏦 بانک: " . rx_sbv_h($dep['bank'] ?? '—') . " | فرستنده: " . rx_sbv_h($dep['sender'] ?? '—') . "\n"
+                    . "📌 وضعیت: " . rx_sbv_h(rx_sbv_deposit_state_label((string) $dep['state'])) . " | اختلاف: " . rx_sbv_h(rx_sbv_admin_diff_label($diff)) . "\n";
+                $rows[] = [[
+                    'text' => '💵 ' . rx_sbv_money(intdiv($amountRial, 10)) . ' تومان | ' . rx_sbv_clock($eventAt) . ' | #' . (int) $dep['id'],
+                    'callback_data' => 'sbv_olc_' . (int) $dep['id'] . '_' . $orderId,
+                ]];
+            }
+            $text .= "\nصفحه " . ($page + 1) . " از " . $pages . " | تعداد کل: " . $total;
+            $text .= "\nℹ️ این واریزها فقط پیشنهاد هستند؛ اتصال پس از تأیید نهایی انجام می‌شود و به‌تنهایی پرداخت را تأیید نمی‌کند.";
+            $nav = [];
+            if ($page > 0) {
+                $nav[] = ['text' => '◀️ قبلی', 'callback_data' => 'sbv_ols_' . ($page - 1) . '_' . $orderId];
+            }
+            if ($page + 1 < $pages) {
+                $nav[] = ['text' => 'بعدی ▶️', 'callback_data' => 'sbv_ols_' . ($page + 1) . '_' . $orderId];
+            }
+            if ($nav) {
+                $rows[] = $nav;
+            }
+        }
+        $rows[] = [['text' => '🔄 بررسی مجدد واریزها', 'callback_data' => 'sbv_ol_' . $orderId]];
+        $rows[] = $back;
         return ['text' => $text, 'keyboard' => rx_sbv_kb($rows)];
     }
 }
@@ -1211,22 +1297,6 @@ if (!function_exists('rx_sbv_admin_handle')) {
                     $say('برای ادامه از دکمه‌های همین پیام استفاده کنید یا عملیات را لغو کنید.', $cancelKb);
                     return true;
                 }
-                if ($step === 'sbv_linkdep') {
-                    $n = rx_sbv_digits($msgText);
-                    $n = ltrim(trim($n), '#');
-                    $clearStep();
-                    if (!ctype_digit($n)) {
-                        $say('❌ شناسه واریز باید عدد باشد.');
-                        return true;
-                    }
-                    $p = rx_sbv_link_preview((int) $n, $payload);
-                    if ($p === null) {
-                        $say('❌ واریز یا سفارش یافت نشد.');
-                        return true;
-                    }
-                    $say($p['text'], $p['keyboard']);
-                    return true;
-                }
                 if ($step === 'sbv_reason') {
                     $parts = explode('|', $payload, 2);
                     $action = $parts[0] ?? '';
@@ -1777,10 +1847,93 @@ if (!function_exists('rx_sbv_admin_handle')) {
             $say('💼 دلیل واریز کامل مبلغ دریافتی به کیف پول (بدون کسر کارمزد شناسایی و بدون تحویل سفارش) را بنویسید:', $cancelKb);
             return true;
         }
+        if (preg_match('/^sbv_ols_(\d+)_(\w+)$/', $datain, $m)) {
+            $answer();
+            $show(rx_sbv_admin_order_deposits_view((string) $m[2], (int) $m[1]));
+            return true;
+        }
+        if (preg_match('/^sbv_olv_(\d+)_(\w+)$/', $datain, $m)) {
+            $depositId = (int) $m[1];
+            $orderId = (string) $m[2];
+            if (!rx_sbv_cb_ok($orderId) || $depositId <= 0) {
+                $answer('سفارش یا واریز انتخاب‌شده نامعتبر است.', true);
+                return true;
+            }
+            $candidate = rx_sbv_order_deposit_candidates($orderId, 1, 0, $depositId);
+            if (!empty($candidate['blocked'])) {
+                $answer(rx_sbv_error_text((string) $candidate['blocked']), true);
+                $show(rx_sbv_admin_order_deposits_view($orderId));
+                return true;
+            }
+            $found = false;
+            foreach ((array) ($candidate['rows'] ?? []) as $candidateRow) {
+                if ((int) ($candidateRow['id'] ?? 0) === $depositId) {
+                    $found = true;
+                    break;
+                }
+            }
+            if (empty($candidate['ok']) || !$found) {
+                $answer('شرایط تطبیق این واریز تغییر کرده است؛ لطفاً از فهرست به‌روز واریز را انتخاب کنید.', true);
+                $show(rx_sbv_admin_order_deposits_view($orderId));
+                return true;
+            }
+            $res = rx_sbv_link($depositId, $orderId, $fromId);
+            if (empty($res['ok'])) {
+                $answer('❌ ' . rx_sbv_error_text((string) ($res['reason'] ?? 'error')), true);
+                return true;
+            }
+            $clearStep();
+            $v = rx_sbv_order_view($orderId);
+            if ($v !== null) {
+                $v['text'] = "✅ واریز متصل شد. نتیجه را انتخاب کنید.\n\n" . $v['text'];
+                $show($v);
+            }
+            return true;
+        }
+        if (preg_match('/^sbv_olc_(\d+)_(\w+)$/', $datain, $m)) {
+            $depositId = (int) $m[1];
+            $orderId = (string) $m[2];
+            if (!rx_sbv_cb_ok($orderId) || $depositId <= 0) {
+                $answer('سفارش یا واریز انتخاب‌شده نامعتبر است.', true);
+                return true;
+            }
+            $candidate = rx_sbv_order_deposit_candidates($orderId, 1, 0, $depositId);
+            if (!empty($candidate['blocked'])) {
+                $answer(rx_sbv_error_text((string) $candidate['blocked']), true);
+                $show(rx_sbv_admin_order_deposits_view($orderId));
+                return true;
+            }
+            $found = false;
+            foreach ((array) ($candidate['rows'] ?? []) as $candidateRow) {
+                if ((int) ($candidateRow['id'] ?? 0) === $depositId) {
+                    $found = true;
+                    break;
+                }
+            }
+            if (empty($candidate['ok']) || !$found) {
+                $answer('این واریز دیگر در فهرست پیشنهادهای این پرداخت نیست یا قبلاً مصرف شده است.', true);
+                $show(rx_sbv_admin_order_deposits_view($orderId));
+                return true;
+            }
+            $guard = rx_sbv_payment_link_guard($orderId, $depositId);
+            if ($guard !== null) {
+                $answer(rx_sbv_error_text($guard), true);
+                $show(rx_sbv_admin_order_deposits_view($orderId));
+                return true;
+            }
+            $preview = rx_sbv_link_preview($depositId, $orderId, 'sbv_ol_' . $orderId, 'sbv_olv_' . $depositId . '_' . $orderId);
+            if ($preview === null) {
+                $answer('واریز یا پرداخت انتخاب‌شده دیگر قابل بررسی نیست.', true);
+                $show(rx_sbv_admin_order_deposits_view($orderId));
+                return true;
+            }
+            $answer();
+            $show($preview);
+            return true;
+        }
         if (preg_match('/^sbv_ol_(\w+)$/', $datain, $m)) {
             $answer();
-            $setStep('sbv_linkdep', $m[1]);
-            $say('🔗 شناسه واریز (عدد نمایش‌داده‌شده در صف واریزهای تطبیق‌نیافته) را ارسال کنید:', $cancelKb);
+            $show(rx_sbv_admin_order_deposits_view($m[1]));
             return true;
         }
         $answer();

@@ -2470,6 +2470,76 @@ if (!function_exists('rx_sbv_report_candidates')) {
     }
 }
 
+if (!function_exists('rx_sbv_order_deposit_candidates')) {
+    function rx_sbv_order_deposit_candidates(string $orderId, int $limit = 5, int $page = 0, ?int $depositId = null): array
+    {
+        $orderId = trim($orderId);
+        $per = max(1, min(5, $limit));
+        $empty = ['ok' => false, 'rows' => [], 'has_more' => false, 'total' => 0, 'page' => 0, 'pages' => 1, 'per' => $per];
+        if ($orderId === '') {
+            return $empty;
+        }
+        $summary = rx_sbv_order_summary($orderId);
+        $pdo = rx_sbv_pdo();
+        if ($summary === null || $pdo === null) {
+            return $empty;
+        }
+        $guard = rx_sbv_payment_link_guard($orderId);
+        if ($guard !== null) {
+            $empty['ok'] = true;
+            $empty['blocked'] = $guard;
+            return $empty;
+        }
+        $csp = $summary['csp'];
+        $rangeToman = rx_sbv_suggestion_range_toman();
+        $rangeRial = $rangeToman * 10;
+        $payable = (int) $csp['payable_rial'];
+        $principal = (int) $csp['principal_toman'];
+        $createdAt = (int) $csp['created_at'];
+        $eventExpr = "CASE WHEN d.received_at_ms IS NOT NULL AND d.received_at_ms > 0 AND (d.received_at_ms / 1000) <= d.stored_at + " . RX_SBV_DEVICE_SKEW . " AND (d.received_at_ms / 1000) >= d.stored_at - 604800 THEN (d.received_at_ms / 1000) ELSE d.stored_at END";
+        $base = " FROM card_sms_deposit d
+                  WHERE d.state IN ('unmatched', 'ambiguous', 'late')
+                    AND d.is_test = 0
+                    AND d.is_deposit = 1
+                    AND d.amount_rial IS NOT NULL
+                    AND d.amount_rial > 0
+                    AND NOT EXISTS (SELECT 1 FROM card_sms_payment csp2 WHERE csp2.deposit_id = d.id)
+                    AND (d.amount_rial BETWEEN ? AND ? OR d.amount_rial BETWEEN ? AND ?)
+                    AND " . $eventExpr . " BETWEEN ? AND ?";
+        if ($depositId !== null) {
+            $base .= " AND d.id = ?";
+        }
+        $params = [
+            max(0, $payable - $rangeRial),
+            $payable + $rangeRial,
+            max(0, ($principal - $rangeToman) * 10),
+            ($principal + $rangeToman) * 10,
+            $createdAt,
+            $createdAt + 86400,
+        ];
+        if ($depositId !== null) {
+            $params[] = $depositId;
+        }
+        $page = max(0, $page);
+        try {
+            $count = $pdo->prepare('SELECT COUNT(*)' . $base);
+            $count->execute($params);
+            $total = (int) $count->fetchColumn();
+            $pages = max(1, (int) ceil($total / $per));
+            $page = min($page, $pages - 1);
+            $stmt = $pdo->prepare(
+                "SELECT d.*" . $base . " ORDER BY CASE WHEN d.amount_rial = ? THEN 0 ELSE 1 END, ABS(CAST(d.amount_rial AS SIGNED) - CAST(? AS SIGNED)) ASC, " . $eventExpr . " ASC, d.id DESC LIMIT " . $per . " OFFSET " . ($page * $per)
+            );
+            $stmt->execute(array_merge($params, [$payable, $payable]));
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            return ['ok' => true, 'rows' => $rows, 'has_more' => $page + 1 < $pages, 'total' => $total, 'page' => $page, 'pages' => $pages, 'per' => $per];
+        } catch (Throwable $e) {
+            rx_sbv_log('SBV_ORDER_DEPOSIT_SCAN_FAILED', $e->getMessage(), ['id_order' => $orderId]);
+            return $empty;
+        }
+    }
+}
+
 if (!function_exists('rx_sbv_candidate_line')) {
     function rx_sbv_candidate_line(array $candidate, int $number, ?int $amountRial): string
     {
