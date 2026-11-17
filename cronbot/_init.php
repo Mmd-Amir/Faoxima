@@ -84,11 +84,26 @@ if (!function_exists('rx_cron_time_up')) {
 }
 
 
+if (!function_exists('rx_cron_db_slot_dir')) {
+    function rx_cron_db_slot_dir(): ?string
+    {
+        $dir = __DIR__ . DIRECTORY_SEPARATOR . '.runtime' . DIRECTORY_SEPARATOR . 'dbslots';
+        if (@is_dir($dir)) {
+            return $dir;
+        }
+        if (@mkdir($dir, 0775, true) || @is_dir($dir)) {
+            return $dir;
+        }
+        return null;
+    }
+}
+
 if (!function_exists('rx_cron_db_slot')) {
 
 
     function rx_cron_db_slot(?int $budget = null): bool
     {
+        static $reported = false;
         try {
             if ($budget === null) {
                 $p = function_exists('rx_cron_read_profile') ? rx_cron_read_profile() : [];
@@ -96,34 +111,49 @@ if (!function_exists('rx_cron_db_slot')) {
             }
             $budget = max(1, min(64, (int) $budget));
 
-            $dir = rx_cron_runtime_dir() . DIRECTORY_SEPARATOR . 'dbslots';
-            if (!@is_dir($dir) && !@mkdir($dir, 0775, true) && !@is_dir($dir)) {
-                return true;
+            $dir = rx_cron_db_slot_dir();
+            if ($dir === null) {
+                if (!$reported) {
+                    $reported = true;
+                    @error_log('[cron] database slot control unavailable: init_failed');
+                }
+                return false;
             }
 
-            static $held = [];
+            $busy = false;
+            $openFailed = false;
             for ($i = 0; $i < $budget; $i++) {
                 $slotFile = $dir . DIRECTORY_SEPARATOR . 'slot_' . $i . '.lock';
                 $fh = @fopen($slotFile, 'c');
                 if ($fh === false) {
+                    $openFailed = true;
                     continue;
                 }
                 if (@flock($fh, LOCK_EX | LOCK_NB)) {
                     @ftruncate($fh, 0);
                     @fwrite($fh, getmypid() . '|' . date('Y-m-d H:i:s'));
                     @fflush($fh);
-                    $held[] = $fh;
                     register_shutdown_function(static function () use ($fh) {
                         @flock($fh, LOCK_UN);
                         @fclose($fh);
                     });
                     return true;
                 }
+                $busy = true;
                 @fclose($fh);
+            }
+
+            if ($openFailed && !$busy && !$reported) {
+                $reported = true;
+                @error_log('[cron] database slot control unavailable: open_failed');
             }
             return false;
         } catch (\Throwable $e) {
-            return true;
+            if (!$reported) {
+                $reported = true;
+                @error_log('[cron] database slot control error: ' . $e->getMessage());
+            }
+            return false;
         }
     }
 }
@@ -209,9 +239,9 @@ if (!function_exists('rx_cron_boot')) {
 
         if ($useDbSlot && function_exists('rx_cron_db_slot') && !rx_cron_db_slot()) {
             if (function_exists('rx_cron_task_defer')) {
-                rx_cron_task_defer('db_slot_unavailable', 90);
+                rx_cron_task_defer('db_slot_unavailable', 45);
             } elseif (function_exists('rx_cron_task_defer_request')) {
-                rx_cron_task_defer_request('db_slot_unavailable', 90);
+                rx_cron_task_defer_request('db_slot_unavailable', 45);
             }
             exit;
         }

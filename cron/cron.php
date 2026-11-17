@@ -318,7 +318,7 @@ $shouldRun = static function (string $jobKey, array $schedule, int $minute, int 
 
 
 $dispatchAsync = static function (array $tasks, bool $useLoopback) use ($rxInternalAuthToken): array {
-    $result = ['success' => [], 'failed' => []];
+    $result = ['success' => [], 'failed' => [], 'uncertain' => []];
     if (empty($tasks)) {
         return $result;
     }
@@ -393,13 +393,24 @@ $dispatchAsync = static function (array $tasks, bool $useLoopback) use ($rxInter
 
     foreach ($handles as $item) {
         $ch = $item['handle'];
-        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $err  = curl_error($ch);
-        $isFail = ($err !== '' || $code < 200 || $code >= 400);
-        if ($isFail) {
+        $code  = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $errno = (int) curl_errno($ch);
+        $err   = curl_error($ch);
+        $conclusive = [CURLE_URL_MALFORMAT, CURLE_COULDNT_RESOLVE_PROXY, CURLE_COULDNT_RESOLVE_HOST, CURLE_COULDNT_CONNECT];
+        if ($err !== '') {
+            if (in_array($errno, $conclusive, true)) {
+                $result['failed'][] = $item['task'];
+            } else {
+                $result['uncertain'][] = $item['task'];
+            }
+        } elseif ($code >= 200 && $code < 300) {
+            $result['success'][] = $item['task'];
+        } elseif ($code === 408 || $code === 429 || $code >= 500) {
+            $result['uncertain'][] = $item['task'];
+        } elseif ($code >= 300 && $code < 600) {
             $result['failed'][] = $item['task'];
         } else {
-            $result['success'][] = $item['task'];
+            $result['uncertain'][] = $item['task'];
         }
         curl_multi_remove_handle($multi, $ch);
         curl_close($ch);
@@ -586,13 +597,13 @@ $rxMarkJobRun = static function (PDO $pdo, string $key, int $occurrence, array &
 
 $rxDispatchHttpTasks = static function (array $tasks, bool $useLoopback) use ($dispatchAsync, $rxDetectLoopback): array {
     if (empty($tasks)) {
-        return ['success' => [], 'failed' => []];
+        return ['success' => [], 'failed' => [], 'uncertain' => []];
     }
 
     if ($useLoopback) {
         $loopback = $rxDetectLoopback();
         if (!is_array($loopback)) {
-            return ['success' => [], 'failed' => $tasks];
+            return ['success' => [], 'failed' => $tasks, 'uncertain' => []];
         }
         foreach ($tasks as $index => $task) {
             $parts = parse_url((string) ($task['url'] ?? ''));
@@ -859,7 +870,7 @@ $rxTaskStarted = static function (string $taskKey) use ($pdo, $rxTaskDispatchLea
     } catch (Throwable $e) {
         return false;
     }
-    return in_array($state, ['running', 'completed', 'failed', 'uncertain'], true);
+    return in_array($state, ['running', 'completed', 'failed'], true);
 };
 
 $rxDispatchTask = static function (array $task) use ($rxIsCli, $rxSharedProfile, $buildCronUrl, $rxDispatchHttpTasks, $rxDispatchCli, $rxTaskStarted): string {
@@ -870,20 +881,21 @@ $rxDispatchTask = static function (array $task) use ($rxIsCli, $rxSharedProfile,
     $taskKey = (string) ($task['task_key'] ?? '');
     $token   = (string) ($task['token'] ?? '');
     $occurrence = (int) ($task['occurrence'] ?? ($task['scheduled_for'] ?? 0));
-    $httpAttempted = false;
+    $rxIsStarted = static function () use ($rxTaskStarted, $taskKey): bool {
+        return $taskKey !== '' && $rxTaskStarted($taskKey);
+    };
 
     if ($rxIsCli) {
         $background = ($jobKey === 'backupbot') ? true : !$rxSharedProfile;
         if ($rxDispatchCli($script, $worker, $workers, $background, $taskKey, $token, $occurrence)) {
             return 'accepted';
         }
-        if ($rxTaskStarted($taskKey)) {
+        if ($rxIsStarted()) {
             return 'accepted';
         }
     }
 
     if (function_exists('curl_multi_init')) {
-        $httpAttempted = true;
         $rxBase = $buildCronUrl($script);
         $rxSep = (strpos($rxBase, '?') === false) ? '?' : '&';
         $single = [[
@@ -900,23 +912,32 @@ $rxDispatchTask = static function (array $task) use ($rxIsCli, $rxSharedProfile,
         if (!empty($result['success'])) {
             return 'accepted';
         }
-        if ($rxTaskStarted($taskKey)) {
+        if ($rxIsStarted()) {
             return 'accepted';
+        }
+        if (!empty($result['uncertain'])) {
+            return 'uncertain';
         }
         $result = $rxDispatchHttpTasks($single, true);
         if (!empty($result['success'])) {
             return 'accepted';
         }
-        if ($rxTaskStarted($taskKey)) {
+        if ($rxIsStarted()) {
             return 'accepted';
+        }
+        if (!empty($result['uncertain'])) {
+            return 'uncertain';
         }
     }
 
     if (!$rxIsCli && $rxDispatchCli($script, $worker, $workers, true, $taskKey, $token, $occurrence)) {
         return 'accepted';
     }
+    if ($rxIsStarted()) {
+        return 'accepted';
+    }
 
-    return $httpAttempted ? 'accepted' : 'failed';
+    return 'failed';
 };
 
 if ($rxTaskStateEnabled) {
@@ -981,6 +1002,9 @@ if ($rxTaskStateEnabled) {
             $rxSuccessfulDispatches += count($result['success']);
             $successfulJobs[$jobKey] = true;
         }
+        if (!empty($result['uncertain'])) {
+            $successfulJobs[$jobKey] = true;
+        }
     }
     foreach (array_keys($successfulJobs) as $jobKey) {
         $rxMarkJobRun($pdo, $jobKey, (int) ($rxDueOccurrences[$jobKey] ?? $now), $runtimeState);
@@ -988,11 +1012,13 @@ if ($rxTaskStateEnabled) {
 } elseif (!empty($dueTasks)) {
     $primarySuccess = [];
     $primaryFailed = [];
+    $deliveredUncertain = [];
 
     foreach (array_chunk($dueTasks, $rxHttpBatchSize) as $batch) {
         $result = $rxDispatchHttpTasks($batch, false);
         $primarySuccess = array_merge($primarySuccess, $result['success']);
         $primaryFailed = array_merge($primaryFailed, $result['failed']);
+        $deliveredUncertain = array_merge($deliveredUncertain, $result['uncertain']);
     }
 
     $loopbackSuccess = [];
@@ -1003,6 +1029,7 @@ if ($rxTaskStateEnabled) {
             $result = $rxDispatchHttpTasks($batch, true);
             $loopbackSuccess = array_merge($loopbackSuccess, $result['success']);
             $loopbackFailed = array_merge($loopbackFailed, $result['failed']);
+            $deliveredUncertain = array_merge($deliveredUncertain, $result['uncertain']);
         }
     }
 
@@ -1029,7 +1056,7 @@ if ($rxTaskStateEnabled) {
     $rxSuccessfulDispatches += count($allSuccess);
 
     $successfulJobs = [];
-    foreach ($allSuccess as $task) {
+    foreach (array_merge($allSuccess, $deliveredUncertain) as $task) {
         $successfulJobs[$task['key']] = true;
     }
 

@@ -123,6 +123,8 @@ register_shutdown_function(static function () use (&$rxBcActive): void {
 });
 
 $rxBcHadException = false;
+$rxBcContinuationDelay = 0;
+$rxBcContinuationReason = '';
 try {
 
     $datatxtbot  = select("textbot", "*", null, null, "fetchAll");
@@ -176,7 +178,60 @@ try {
         rx_broadcast_resume_now($c, false);
     });
     if ($rxGate !== 'run' || !is_array($rxGateInfo)) {
-        $rxBcComplete('broadcast_gate_' . $rxGate);
+        $rxGateDefer = 0;
+        $rxGateReason = 'broadcast_gate_' . $rxGate;
+        if ($rxGate === 'wait') {
+            $rxGatePauseInfo = is_array($rxGateInfo) ? $rxGateInfo : $info;
+            $rxGatePauseUntil = (int) ($rxGatePauseInfo['pause_until'] ?? 0);
+            $rxGateManual = !empty($rxGatePauseInfo['manual_resume']);
+            if ($rxGateManual || $rxGatePauseUntil <= 0) {
+                $rxGateDefer = 60;
+            } else {
+                $rxGateDefer = max(30, $rxGatePauseUntil - time());
+            }
+        } elseif ($rxGate === 'run' && is_file($infoFile)) {
+            $rxGateCurrent = json_decode((string) @file_get_contents($infoFile), true);
+            if (is_array($rxGateCurrent) && rx_broadcast_token($rxGateCurrent) === $bcToken) {
+                $rxGateDefer = 60;
+                $rxGateReason = 'broadcast_gate_recheck';
+            }
+        }
+        if ($rxGateDefer > 0) {
+            $rxGateRemain = is_file($usersFileTxt) ? countLines($usersFileTxt) : 0;
+            $rxGateQueueUncertain = false;
+            if (!is_file($usersFileTxt) && is_file($usersFileJson)) {
+                $rxGateJsonRaw = @file_get_contents($usersFileJson);
+                if ($rxGateJsonRaw === false) {
+                    $rxGateQueueUncertain = true;
+                } else {
+                    $rxGateJsonQueue = json_decode($rxGateJsonRaw);
+                    if (!is_array($rxGateJsonQueue)) {
+                        $rxGateQueueUncertain = true;
+                    } else {
+                        $rxGateRemain += count($rxGateJsonQueue);
+                    }
+                }
+            }
+            foreach (glob($usersFileTxt . '.w*.' . $bcToken . '.inflight') ?: [] as $rxGateInflight) {
+                $rxGateRemain += countLines($rxGateInflight);
+            }
+            if ($rxGateRemain > 0 || $rxGateQueueUncertain) {
+                $rxTaskCurrent = $GLOBALS['rxCronTaskCurrent'] ?? null;
+                if (is_array($rxTaskCurrent) && !empty($rxTaskCurrent['key']) && !empty($rxTaskCurrent['token'])
+                    && function_exists('rx_cron_task_extend_occurrence') && isset($pdo) && $pdo instanceof PDO) {
+                    try {
+                        rx_cron_task_extend_occurrence($pdo, (string) $rxTaskCurrent['key'], (string) $rxTaskCurrent['token'], time());
+                    } catch (Throwable $e) {
+                    }
+                }
+                if (function_exists('rx_cron_task_partial')) {
+                    rx_cron_task_partial($rxGateReason, $rxGateDefer);
+                }
+                @unlink($lockFile);
+                exit;
+            }
+        }
+        $rxBcComplete($rxGateReason);
         @unlink($lockFile);
         exit;
     }
@@ -570,6 +625,27 @@ try {
         . ' | باقی‌مانده=' . $countRemain . ' (inflight=' . $inflightRemain . ')'
         . ' | مجموع ارسال‌شده تاکنون=' . $totalSent . ' از ' . (int) ($rxAgg['total'] ?? 0));
 
+    if ($countRemain > 0 && $rxStop === 'running') {
+        $rxBcContinuationDelay = $processed > 0 ? 30 : 300;
+        $rxBcContinuationReason = $processed > 0 ? 'broadcast_continuing' : 'broadcast_stalled';
+    } elseif ($countRemain > 0 && $rxStop === 'paused') {
+        $rxPauseUntil = is_array($rxInfoNow) ? (int) ($rxInfoNow['pause_until'] ?? 0) : 0;
+        $rxBcContinuationDelay = $rxPauseUntil > time()
+            ? min(1800, max(30, $rxPauseUntil - time() + 5))
+            : 120;
+        $rxBcContinuationReason = 'broadcast_paused';
+    }
+    if ($rxBcContinuationDelay > 0) {
+        $rxTaskCurrent = $GLOBALS['rxCronTaskCurrent'] ?? null;
+        if (is_array($rxTaskCurrent) && !empty($rxTaskCurrent['key']) && !empty($rxTaskCurrent['token'])
+            && function_exists('rx_cron_task_extend_occurrence') && isset($pdo) && $pdo instanceof PDO) {
+            try {
+                rx_cron_task_extend_occurrence($pdo, (string) $rxTaskCurrent['key'], (string) $rxTaskCurrent['token'], time());
+            } catch (Throwable $e) {
+            }
+        }
+    }
+
     if ($countRemain === 0 && $rxStop === 'running') {
         if ($usingJsonMode) {
             $rxBcLog('FINISHED — کل عملیات تمام شد | total=' . (int) ($rxAgg['total'] ?? 0));
@@ -582,6 +658,7 @@ try {
         } else {
             $rxTryFinish();
         }
+        $rxBcComplete('broadcast_finished');
         @unlink($lockFile);
         exit;
     }
@@ -627,8 +704,10 @@ try {
     }
 } finally {
     @unlink($lockFile);
-    if (function_exists('rx_cron_task_complete')) {
-        if (!$rxBcHadException) {
+    if (!$rxBcHadException) {
+        if ($rxBcContinuationDelay > 0 && function_exists('rx_cron_task_partial')) {
+            rx_cron_task_partial($rxBcContinuationReason, $rxBcContinuationDelay);
+        } elseif (function_exists('rx_cron_task_complete')) {
             rx_cron_task_complete('broadcast_batch_finished');
         }
     }
