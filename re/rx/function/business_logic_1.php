@@ -389,47 +389,127 @@ function rxManualsaleFileItems($items)
     }
     return $fileItems;
 }
-function rxManualsaleSendFileItems($user_id, $username_service, $fileItems, $caption = '', $reply_markup = null, $totalForNaming = 0, $startIndex = 0)
+function rxManualsaleSendFileItems($user_id, $username_service, $fileItems, $caption = '', $reply_markup = null, $totalForNaming = 0, $startIndex = 0, ?array &$deliveryResults = null)
 {
-    if (!is_array($fileItems) || empty($fileItems)) {
-        return false;
+    $unique = [];
+    foreach ((array) $fileItems as $item) {
+        if (is_array($item)) {
+            $key = hash('sha256', serialize($item));
+            $unique[$key] = $item;
+        }
     }
-    $fileCount = count($fileItems);
+    $attachments = [];
+    $keyCounts = function_exists('rxFileNamingManualKeyCounts') ? rxFileNamingManualKeyCounts($unique) : [];
+    foreach ($unique as $item) {
+        $ext = trim((string) ($item['ext'] ?? '')) !== '' ? $item['ext'] : 'bin';
+        $name = rxManualsalePublicName($item['name'] ?? '', $ext);
+        $customCaption = '';
+        if (function_exists('rxFileNamingResolveManualItem')) {
+            $key = rxFileNamingManualItemKey($item);
+            $resolved = rxFileNamingResolveManualItem($item, $name, '', $key !== '' && ($keyCounts[$key] ?? 0) > 1);
+            $name = $resolved['filename'];
+            $customCaption = $resolved['caption'];
+        }
+        $content = (string) ($item['content'] ?? '');
+        $key = hash('sha256', serialize([$name, $customCaption, $content]));
+        $attachments[$key] = ['name' => $name, 'caption' => $customCaption, 'content' => $content];
+    }
+    $fileCount = count($attachments);
     $index = 0;
     $sentAny = false;
-    $rxManualKeyCounts = function_exists('rxFileNamingManualKeyCounts') ? rxFileNamingManualKeyCounts($fileItems) : [];
-    foreach ($fileItems as $fi) {
-        if (!is_array($fi)) {
-            continue;
-        }
+    $files = [];
+    $text = [];
+    $keyboardState = 'skipped';
+    foreach ($attachments as $item) {
         $index++;
-        $ext = (trim((string) ($fi['ext'] ?? '')) !== '') ? $fi['ext'] : 'bin';
-        $publicName = rxManualsalePublicName($fi['name'] ?? '', $ext);
-        $isLastFile = ($index === $fileCount);
-        $thisCaption = ($index === 1) ? (string) $caption : '';
-        if (function_exists('rxFileNamingResolveManualItem')) {
-            $rxManualKey = rxFileNamingManualItemKey($fi);
-            $rxManualAmbiguous = ($rxManualKey !== '' && (($rxManualKeyCounts[$rxManualKey] ?? 0) > 1));
-            $rxManualResolved = rxFileNamingResolveManualItem($fi, $publicName, $thisCaption, $rxManualAmbiguous);
-            $publicName = $rxManualResolved['filename'];
-            $thisCaption = $rxManualResolved['caption'];
+        $name = $item['name'];
+        $itemCaption = $index === 1 && trim((string) $caption) !== ''
+            ? (string) $caption . ($item['caption'] !== '' ? "\n\n" . $item['caption'] : '')
+            : $item['caption'];
+        $path = rxManualsaleTempPath($name);
+        $keyboard = $index === $fileCount ? $reply_markup : null;
+        $required = trim($itemCaption) !== '';
+        $result = null;
+        $mediaAttempted = false;
+        try {
+            if (file_put_contents($path, (string) ($item['content'] ?? '')) !== false && is_readable($path)) {
+                $document = new CURLFile($path, 'application/octet-stream', $name);
+                $mediaAttempted = true;
+                $result = rxSendMediaWithCaption('sendDocument', [
+                    'chat_id' => $user_id,
+                    'document' => $document,
+                    'caption' => $itemCaption,
+                    'parse_mode' => 'HTML',
+                    'reply_markup' => $keyboard,
+                ], null, $detail, true);
+            } else {
+                $fallback = $required ? rxSendRequiredMediaText(['chat_id' => $user_id, 'reply_markup' => $keyboard], $itemCaption) : ['state' => 'skipped'];
+                $detail = [
+                    'media_state' => 'failed',
+                    'text_state' => $fallback['state'],
+                    'text_chunks_confirmed' => $fallback['chunks_confirmed'] ?? 0,
+                    'caption_source' => $required ? 'separate_text' : 'none',
+                ];
+            }
+        } catch (Throwable $e) {
+            $detail = ['media_state' => $mediaAttempted ? 'unknown' : 'failed', 'text_state' => $required ? 'unknown' : 'skipped'];
+        } finally {
+            @unlink($path);
         }
-        $manualFile = rxManualsaleTempPath($publicName);
-        file_put_contents($manualFile, (string) ($fi['content'] ?? ''));
-        $thisMarkup = $isLastFile ? $reply_markup : null;
-        if (is_file($manualFile) && is_readable($manualFile)) {
-            telegram('sendDocument', [
-                'chat_id' => $user_id,
-                'document' => new CURLFile($manualFile, 'application/octet-stream', $publicName),
-                'caption' => $thisCaption,
-                'reply_markup' => $thisMarkup,
-                'parse_mode' => 'HTML',
-            ]);
-            @unlink($manualFile);
-            $sentAny = true;
-        } elseif (trim($thisCaption) !== '') {
-            sendmessage($user_id, $thisCaption, $thisMarkup, 'HTML');
+        $state = $detail['media_state'];
+        $captionState = $detail['text_state'];
+        if ($keyboard !== null) {
+            $keyboardState = $state;
+            if ($state === 'failed' && in_array($captionState, ['confirmed', 'unknown'], true)) {
+                $keyboardState = $captionState;
+            }
         }
+        $itemText = $required ? [['required' => true, 'state' => $captionState]] : [];
+        if ($captionState !== 'confirmed' && ($detail['text_chunks_confirmed'] ?? 0) > 0) {
+            $itemText[] = ['required' => true, 'state' => 'confirmed'];
+        }
+        $sentAny = $sentAny || $state === 'confirmed';
+        $files[] = [
+            'required' => true,
+            'state' => $state,
+            'caption_state' => $captionState,
+            'caption_required' => $required,
+            'caption_valid' => $detail['caption_valid'] ?? null,
+            'caption_complete' => !$required || $captionState === 'confirmed',
+            'caption_source' => $detail['caption_source'] ?? 'none',
+            'delivery_status' => rxDeliveryAggregate(array_merge([['required' => true, 'state' => $state]], $itemText)),
+        ];
+        array_push($text, ...$itemText);
+        if (function_exists('rx_richDiag_log')) {
+            rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'manual_file_item', $state, [
+                'delivery_mode' => 'manualsale_file',
+                'attachment_index' => $index,
+                'attachment_total' => $fileCount,
+                'caption_valid' => $detail['caption_valid'] ?? null,
+                'caption_complete' => !$required || $captionState === 'confirmed',
+                'caption_source' => $detail['caption_source'] ?? 'none',
+                'caption_delivery_state' => $captionState,
+                'result' => rx_richDiag_result($result),
+            ], $state === 'confirmed' && (!$required || $captionState === 'confirmed') ? 'info' : 'warning');
+        }
+    }
+    $filesStatus = $files ? rxDeliveryAggregate($files) : 'not_attempted';
+    $deliveryResults = [
+        'files' => $files,
+        'text' => $text,
+        'files_delivery_status' => $filesStatus,
+        'files_state' => ['completed' => 'confirmed', 'unknown' => 'unknown', 'not_attempted' => 'not_attempted'][$filesStatus] ?? 'failed',
+        'text_delivery_status' => $text ? rxDeliveryAggregate($text) : 'skipped',
+        'keyboard_state' => $keyboardState,
+        'delivery_status' => $files ? rxDeliveryAggregate(array_merge($files, $text)) : 'failed',
+    ];
+    if (function_exists('rx_richDiag_log')) {
+        rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'manual_file_collection', $deliveryResults['delivery_status'], [
+            'delivery_mode' => 'manualsale_files',
+            'files_delivery_status' => $filesStatus,
+            'file_states' => $files,
+            'text_delivery_status' => $deliveryResults['text_delivery_status'],
+        ], $deliveryResults['delivery_status'] === 'completed' ? 'info' : 'warning');
     }
     return $sentAny;
 }
@@ -569,12 +649,17 @@ function rxAutoFileDeliveryState($invoice_id)
         throw new RuntimeException('Automatic file delivery state database is unavailable');
     }
     try {
-        $stmt = $pdo->prepare('SELECT file_key, status FROM auto_file_delivery WHERE id_invoice = ?');
-        $stmt->execute([$invoice_id]);
+        $stmt = $pdo->prepare('SELECT file_key, status, detail FROM auto_file_delivery WHERE id_invoice = ?');
+        if (!$stmt->execute([$invoice_id])) {
+            throw new RuntimeException('Automatic file delivery state query failed');
+        }
         $state = [];
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             if (is_array($row)) {
-                $state[(string) ($row['file_key'] ?? '')] = (string) ($row['status'] ?? '');
+                $state[(string) ($row['file_key'] ?? '')] = [
+                    'status' => (string) ($row['status'] ?? ''),
+                    'detail' => (string) ($row['detail'] ?? ''),
+                ];
             }
         }
         return $state;
@@ -603,10 +688,9 @@ function rxAutoFileDeliveryMark($invoice_id, $file_key, $status, $detail = '')
     $now = time();
     try {
         $stmt = $pdo->prepare('INSERT INTO auto_file_delivery (id_invoice, file_key, status, detail, attempts, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?) ON DUPLICATE KEY UPDATE status = IF(status = \'sent\', \'sent\', VALUES(status)), detail = VALUES(detail), attempts = attempts + 1, updated_at = VALUES(updated_at)');
-        $stmt->execute([$invoice_id, $file_key, $status, $detail, $now, $now]);
-        return true;
+        return $stmt->execute([$invoice_id, $file_key, $status, $detail, $now, $now]);
     } catch (Throwable $e) {
-        error_log('rxAutoFileDeliveryMark failed: ' . $e->getMessage());
+        error_log('rxAutoFileDeliveryMark failed: ' . get_class($e));
         return false;
     }
 }
@@ -627,41 +711,184 @@ function rxAutoFileResolveNaming($panel, $source, $key, $name, $caption, $ambigu
     }
     return ['filename' => (string) $name, 'caption' => (string) $caption];
 }
-function rxAutoFileSendDocument($user_id, $invoice_id, $file_key, $path, $public_name, $caption)
+function rxAutoFileCaptionProgress(array $row, string $caption): array
 {
-    if (!is_file($path) || !is_readable($path)) {
-        rxAutoFileDeliveryMark($invoice_id, $file_key, 'failed', 'temporary file unavailable');
-        return 'failed';
+    $detail = (string) ($row['detail'] ?? '');
+    if (preg_match('/^caption_v1 (skipped|not_attempted|confirmed|failed|unknown) (\d+) ([a-f0-9]{64})$/D', $detail, $match)) {
+        return hash_equals($match[3], hash('sha256', $caption))
+            ? [$match[1], (int) $match[2]]
+            : ['unknown', 0];
     }
-    try {
-        $result = telegram('sendDocument', [
-            'chat_id' => $user_id,
-            'document' => new CURLFile($path, 'application/octet-stream', $public_name),
-            'caption' => (string) $caption,
-            'parse_mode' => 'HTML',
-        ]);
-    } catch (Throwable $e) {
-        rxAutoFileDeliveryMark($invoice_id, $file_key, 'unknown', $e->getMessage());
-        return 'unknown';
+    if (($row['status'] ?? '') === 'sent') {
+        return [trim($caption) === '' && strpos($detail, 'caption=') === false ? 'skipped' : 'unknown', 0];
     }
-    $status = is_array($result) ? (!empty($result['ok']) ? 'sent' : 'failed') : 'unknown';
-    $detail = is_array($result) ? (string) ($result['description'] ?? '') : '';
-    rxAutoFileDeliveryMark($invoice_id, $file_key, $status, $detail);
-    return $status;
+    if (strpos($detail, 'caption=') !== false) {
+        return ['unknown', 0];
+    }
+    return [trim($caption) === '' ? 'skipped' : 'not_attempted', 0];
 }
-function rxAutoFileSendContent($user_id, $invoice_id, $file_key, $content, $public_name, $caption)
+
+function rxAutoFileCaptionMark($invoiceId, $fileKey, string $documentStatus, string $caption, string $state, int $cursor): bool
 {
+    return rxAutoFileDeliveryMark($invoiceId, $fileKey, $documentStatus, 'caption_v1 ' . $state . ' ' . $cursor . ' ' . hash('sha256', $caption));
+}
+
+function rxAutoFileFinish($userId, $invoiceId, $fileKey, string $documentStatus, string $caption, string $captionState, int $cursor, ?bool $captionValid, string $source, $result, ?array &$detail): string
+{
+    $textResult = null;
+    if (in_array($documentStatus, ['sent', 'failed'], true) && trim($caption) !== ''
+        && in_array($captionState, ['not_attempted', 'failed'], true)) {
+        $checkpoint = static function (string $state, int $next) use ($invoiceId, $fileKey, $documentStatus, $caption): bool {
+            return rxAutoFileCaptionMark($invoiceId, $fileKey, $documentStatus, $caption, $state, $next);
+        };
+        $text = rxSendRequiredMediaText(['chat_id' => $userId], $caption, null, $cursor, $checkpoint);
+        $captionState = $text['state'];
+        $cursor = $text['chunks_confirmed'];
+        $textResult = $text['result'];
+        $source = 'separate_text';
+    }
+    $documentState = $documentStatus === 'sent' ? 'confirmed' : $documentStatus;
+    $captionRequired = trim($caption) !== '' || $captionState === 'unknown';
+    $components = [
+        'document' => ['required' => true, 'state' => $documentState],
+        'caption' => ['required' => $captionRequired, 'state' => $captionState],
+    ];
+    if ($captionState !== 'confirmed' && $cursor > 0) {
+        $components['caption_chunks'] = ['required' => true, 'state' => 'confirmed'];
+    }
+    $detail = rxDeliveryComponentContext($components);
+    $status = $detail['delivery_status'];
+    $detail += [
+        'state' => $status === 'completed' ? 'sent' : ($status === 'unknown' ? 'unknown' : 'failed'),
+        'caption_required' => $captionRequired,
+        'caption_valid' => $captionValid,
+        'caption_complete' => !$captionRequired || $captionState === 'confirmed',
+        'caption_source' => $source,
+        'caption_delivery_state' => $captionState,
+        'caption_fallback_reason' => $source === 'separate_text' ? 'separate_caption_text' : null,
+    ];
+    if (function_exists('rx_richDiag_log')) {
+        rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'auto_file_delivery', $status, $detail + [
+            'delivery_mode' => 'automatic_document',
+            'result' => rx_richDiag_result($result),
+            'text_result' => rx_richDiag_result($textResult),
+        ], $status === 'completed' ? 'info' : 'warning');
+    }
+    return $detail['state'];
+}
+
+function rxAutoFileSendDocument($user_id, $invoice_id, $file_key, $path, $public_name, $caption, ?array &$deliveryDetail = null, array $row = [])
+{
+    $caption = (string) $caption;
+    [$captionState, $cursor] = rxAutoFileCaptionProgress($row, $caption);
+    $documentStatus = (string) ($row['status'] ?? '');
+    if (in_array($documentStatus, ['sent', 'unknown'], true)) {
+        return rxAutoFileFinish($user_id, $invoice_id, $file_key, $documentStatus, $caption, $captionState, $cursor, null, 'stored_state', null, $deliveryDetail);
+    }
+    if (!is_file($path) || !is_readable($path)) {
+        rxAutoFileCaptionMark($invoice_id, $file_key, 'failed', $caption, $captionState, $cursor);
+        return rxAutoFileFinish($user_id, $invoice_id, $file_key, 'failed', $caption, $captionState, $cursor, null, 'none', null, $deliveryDetail);
+    }
+    $safeCaption = rxPrepareSafeMediaCaption($caption);
+    $attach = $safeCaption !== null && $captionState === 'not_attempted' && $cursor === 0;
+    $payload = [
+        'chat_id' => $user_id,
+        'document' => new CURLFile($path, 'application/octet-stream', $public_name),
+        'caption' => $attach ? $safeCaption : '',
+        'parse_mode' => 'HTML',
+        '_rx_no_network_retry' => true,
+    ];
+    $result = null;
+    $documentStatus = 'unknown';
+    for ($attempt = 0; $attempt < 2; $attempt++) {
+        $pendingCaption = $attach ? 'unknown' : $captionState;
+        if (!rxAutoFileCaptionMark($invoice_id, $file_key, 'unknown', $caption, $pendingCaption, $cursor)) {
+            $captionState = $pendingCaption;
+            break;
+        }
+        try {
+            $result = function_exists('rx_richUi_plainCall')
+                ? rx_richUi_plainCall('sendDocument', $payload, null)
+                : telegram('sendDocument', $payload);
+            $documentState = rxDeliveryResultState($result);
+        } catch (Throwable $e) {
+            $documentState = 'unknown';
+        }
+        $documentStatus = $documentState === 'confirmed' ? 'sent' : $documentState;
+        if ($attach && $documentState !== 'failed') {
+            $captionState = $documentState;
+        }
+        if (!rxAutoFileCaptionMark($invoice_id, $file_key, $documentStatus, $caption, $captionState, $cursor)) {
+            if (function_exists('rx_richDiag_log')) {
+                rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'auto_file_state', 'unknown', [
+                    'document_state' => $documentState,
+                    'caption_delivery_state' => $captionState,
+                    'reason' => 'document_result_not_persisted',
+                ], 'warning');
+            }
+            $deliveryDetail = rxDeliveryComponentContext([
+                'document' => ['required' => true, 'state' => $documentState],
+                'caption' => ['required' => trim($caption) !== '', 'state' => $captionState],
+                'persistence' => ['required' => true, 'state' => 'unknown'],
+            ]);
+            return 'unknown';
+        }
+        if (!$attach || !rxMediaCaptionRejected($result)) {
+            break;
+        }
+        $attach = false;
+        $payload['caption'] = '';
+        $documentStatus = 'unknown';
+    }
+    return rxAutoFileFinish($user_id, $invoice_id, $file_key, $documentStatus, $caption, $captionState, $cursor, $safeCaption !== null, $attach ? 'document_caption' : 'none', $result, $deliveryDetail);
+}
+
+function rxAutoFileSendContent($user_id, $invoice_id, $file_key, $content, $public_name, $caption, ?array &$deliveryDetail = null, array $row = [])
+{
+    if (in_array($row['status'] ?? '', ['sent', 'unknown'], true)) {
+        return rxAutoFileSendDocument($user_id, $invoice_id, $file_key, '', $public_name, $caption, $deliveryDetail, $row);
+    }
     $temp = rxAutoFileTempPath($public_name);
     try {
-        if (file_put_contents($temp, (string) $content) === false) {
-            rxAutoFileDeliveryMark($invoice_id, $file_key, 'failed', 'temporary file write failed');
-            return 'failed';
-        }
-        return rxAutoFileSendDocument($user_id, $invoice_id, $file_key, $temp, $public_name, $caption);
+        $path = file_put_contents($temp, (string) $content) === false ? '' : $temp;
+        return rxAutoFileSendDocument($user_id, $invoice_id, $file_key, $path, $public_name, $caption, $deliveryDetail, $row);
     } finally {
         @unlink($temp);
     }
 }
+
+function rxAutoFileRecord(array &$summary, string $status, array $detail = []): void
+{
+    $summary[$status]++;
+    $summary['total']++;
+    $summary['file_states'][] = [
+        'document_state' => $detail['document_state'] ?? ($status === 'sent' ? 'confirmed' : $status),
+        'caption_state' => $detail['caption_state'] ?? 'not_attempted',
+        'caption_required' => $detail['caption_required'] ?? false,
+        'caption_chunks_state' => $detail['caption_chunks_state'] ?? 'not_attempted',
+        'delivery_status' => $detail['delivery_status'] ?? ($status === 'sent' ? 'completed' : $status),
+    ];
+    $summary['ok'] = $summary['failed'] === 0 && $summary['unknown'] === 0;
+}
+
+function rxAutoFileIncludeUnresolved(array $summary, array $state, array $handled): array
+{
+    foreach (array_diff_key($state, $handled) as $row) {
+        $status = $row['status'] ?? '';
+        $captionPending = preg_match('/^caption_v1 (?:not_attempted|failed|unknown) |(?:^| )caption=(?:failed|unknown) source=/', (string) ($row['detail'] ?? '')) === 1;
+        if ($status !== 'unknown' && !$captionPending) {
+            continue;
+        }
+        rxAutoFileRecord($summary, 'unknown', [
+            'document_state' => $status === 'sent' ? 'confirmed' : $status,
+            'caption_state' => $captionPending ? 'unknown' : 'not_attempted',
+            'caption_required' => $captionPending,
+            'delivery_status' => 'unknown',
+        ]);
+    }
+    return $summary;
+}
+
 function rxAutoDeliverPurchaseFiles($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id)
 {
     $empty = ['ok' => true, 'sent' => 0, 'failed' => 0, 'unknown' => 0, 'skipped' => 0, 'total' => 0];
@@ -711,25 +938,24 @@ function rxAutoDeliverPurchaseFilesUnlocked($panel_info, $config, $sub_link, $us
     $autoManager = is_object($ManagePanel) ? $ManagePanel : (class_exists('ManagePanel') ? new ManagePanel() : null);
     $state = rxAutoFileDeliveryState($invoice_id);
     if ((string) ($panel['type'] ?? '') === 'jovadpanel') {
-        if (function_exists('jovadpanelAutoDeliverFiles')) {
-            $jovadResult = jovadpanelAutoDeliverFiles($user_id, $panel, $username_service, [
-                'should_send' => function ($fileKey) use ($state) {
-                    return (string) ($state[$fileKey] ?? '') !== 'sent';
-                },
-                'on_result' => function ($fileKey, $status, $detail) use ($invoice_id) {
-                    rxAutoFileDeliveryMark($invoice_id, $fileKey, $status, $detail);
-                },
-            ]);
-            if (is_array($jovadResult)) {
-                $result['ok'] = !empty($jovadResult['ok']);
-                $result['sent'] = (int) ($jovadResult['sent'] ?? 0);
-                $result['failed'] = (int) ($jovadResult['failed'] ?? 0);
-                $result['unknown'] = (int) ($jovadResult['unknown'] ?? 0);
-                $result['skipped'] = (int) ($jovadResult['skipped'] ?? 0);
-                $result['total'] = (int) ($jovadResult['total'] ?? 0);
-            }
+        if (!function_exists('jovadpanelAutoDeliverFiles')) {
+            return rxAutoFileIncludeUnresolved($result, $state, []);
         }
-        return $result;
+        $fileStates = [];
+        $handled = [];
+        $deliver = static function ($fileKey, $path, $name, $caption) use ($state, $invoice_id, $user_id, &$fileStates, &$handled) {
+            $row = $state[$fileKey] ?? [];
+            if ($path === null && !in_array($row['status'] ?? '', ['sent', 'unknown'], true)) {
+                return null;
+            }
+            $status = rxAutoFileSendDocument($user_id, $invoice_id, $fileKey, $path ?? '', $name, $caption, $detail, $row);
+            $handled[$fileKey] = true;
+            $fileStates[] = $detail;
+            return $status;
+        };
+        $result = jovadpanelAutoDeliverFiles($user_id, $panel, $username_service, ['deliver_file' => $deliver]);
+        $result['file_states'] = $fileStates;
+        return rxAutoFileIncludeUnresolved($result, $state, $handled);
     }
     if ((string) ($panel['type'] ?? '') === 'WGDashboard') {
         $content = (string) $sub_link;
@@ -740,21 +966,15 @@ function rxAutoDeliverPurchaseFilesUnlocked($panel_info, $config, $sub_link, $us
             }
         }
         if (trim($content) === '') {
-            return $result;
+            return rxAutoFileIncludeUnresolved($result, $state, []);
         }
         $defaultName = normalizeConfigFilename("{$panel['inboundid']}-{$username_service}.conf", $panel['namecustom'] ?? '', true);
         $key = function_exists('rxFileNamingKeySubscription') ? rxFileNamingKeySubscription($panel['inboundid'] ?? '') : '';
         $resolved = rxAutoFileResolveNaming($panel, 'wgdashboard', $key, $defaultName, '');
         $fileKey = rxAutoFileKey('wgdashboard', $content);
-        if ((string) ($state[$fileKey] ?? '') === 'sent') {
-            $result['skipped']++;
-            return $result;
-        }
-        $result['total']++;
-        $status = rxAutoFileSendContent($user_id, $invoice_id, $fileKey, $content, $resolved['filename'], $resolved['caption']);
-        $result[$status] = (int) $result[$status] + 1;
-        $result['ok'] = $status === 'sent';
-        return $result;
+        $status = rxAutoFileSendContent($user_id, $invoice_id, $fileKey, $content, $resolved['filename'], $resolved['caption'], $detail, $state[$fileKey] ?? []);
+        rxAutoFileRecord($result, $status, $detail);
+        return rxAutoFileIncludeUnresolved($result, $state, [$fileKey => true]);
     }
     $links = [];
     if (is_array($config)) {
@@ -792,7 +1012,7 @@ function rxAutoDeliverPurchaseFilesUnlocked($panel_info, $config, $sub_link, $us
         }
     }
     if (empty($links)) {
-        return $result;
+        return rxAutoFileIncludeUnresolved($result, $state, []);
     }
     $namingLinks = [];
     foreach ($links as $namingLink) {
@@ -876,26 +1096,25 @@ function rxAutoDeliverPurchaseFilesUnlocked($panel_info, $config, $sub_link, $us
                 $defaultName = normalizeConfigFilename($rebeccaInfo['filename'], '', ($rebeccaInfo['kind'] ?? '') === 'wireguard');
                 $resolved = rxAutoFileResolveNaming($panel, 'rebecca', $namingKey, $defaultName, '', $ambiguous);
                 $fileKey = rxAutoFileKey('rebecca', (string) ($rebeccaInfo['kind'] ?? '') . '|' . (string) ($rebeccaInfo['url'] ?? ''));
-                if (!empty($deliveredKeys[$fileKey]) || (string) ($state[$fileKey] ?? '') === 'sent') {
+                if (isset($deliveredKeys[$fileKey])) {
                     $result['skipped']++;
                     continue;
                 }
                 $deliveredKeys[$fileKey] = true;
-                $result['total']++;
-                $tempExt = strtolower((string) pathinfo($resolved['filename'], PATHINFO_EXTENSION));
-                $tempExt = preg_match('/^[a-z0-9]{1,10}$/', $tempExt) ? '.' . $tempExt : '.tmp';
-                $temp = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'rxauto-' . bin2hex(random_bytes(8)) . $tempExt;
-                $status = 'failed';
+                $row = $state[$fileKey] ?? [];
+                if (in_array($row['status'] ?? '', ['sent', 'unknown'], true)) {
+                    $status = rxAutoFileSendDocument($user_id, $invoice_id, $fileKey, '', $resolved['filename'], $resolved['caption'], $detail, $row);
+                    rxAutoFileRecord($result, $status, $detail);
+                    continue;
+                }
+                $temp = rxAutoFileTempPath($resolved['filename']);
                 try {
-                    if (rebeccaDownloadConfigFile($rebeccaInfo['url'], $temp)) {
-                        $status = rxAutoFileSendDocument($user_id, $invoice_id, $fileKey, $temp, $resolved['filename'], $resolved['caption']);
-                    } else {
-                        rxAutoFileDeliveryMark($invoice_id, $fileKey, 'failed', 'configuration download failed');
-                    }
+                    $downloaded = rebeccaDownloadConfigFile($rebeccaInfo['url'], $temp);
+                    $status = rxAutoFileSendDocument($user_id, $invoice_id, $fileKey, $downloaded ? $temp : '', $resolved['filename'], $resolved['caption'], $detail, $row);
+                    rxAutoFileRecord($result, $status, $detail);
                 } finally {
                     @unlink($temp);
                 }
-                $result[$status] = (int) $result[$status] + 1;
                 continue;
             }
         }
@@ -909,33 +1128,224 @@ function rxAutoDeliverPurchaseFilesUnlocked($panel_info, $config, $sub_link, $us
                 $legacyKeys[] = rxAutoFileKey('xui_file', $protocol . '|' . (string) ($previousSingleFile['filename'] ?? '') . '|' . $content);
             }
             foreach ($legacyKeys as $legacyKey) {
-                if (($state[$legacyKey] ?? '') === 'sent') {
-                    $state[$fileKey] = 'sent';
-                    break;
+                if (!in_array($state[$fileKey]['status'] ?? '', ['sent', 'unknown'], true)
+                    && in_array($state[$legacyKey]['status'] ?? '', ['sent', 'unknown'], true)) {
+                    $fileKey = $legacyKey;
                 }
             }
         }
-        if (!empty($deliveredKeys[$fileKey]) || (string) ($state[$fileKey] ?? '') === 'sent') {
+        if (isset($deliveredKeys[$fileKey])) {
             $result['skipped']++;
             continue;
         }
         $deliveredKeys[$fileKey] = true;
-        $result['total']++;
-        $status = rxAutoFileSendContent($user_id, $invoice_id, $fileKey, $content, $publicName, $caption);
-        $result[$status] = (int) $result[$status] + 1;
+        $status = rxAutoFileSendContent($user_id, $invoice_id, $fileKey, $content, $publicName, $caption, $detail, $state[$fileKey] ?? []);
+        rxAutoFileRecord($result, $status, $detail);
     }
-    $result['ok'] = $result['total'] === 0 || ($result['sent'] === $result['total'] && $result['failed'] === 0 && $result['unknown'] === 0);
-    return $result;
+    return rxAutoFileIncludeUnresolved($result, $state, $deliveredKeys);
 }
 function rxAutoDeliverPurchaseFilesSafe($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id)
 {
     try {
-        return rxAutoDeliverPurchaseFiles($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id);
+        $summary = rxAutoDeliverPurchaseFiles($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id);
     } catch (Throwable $e) {
-        error_log('rxAutoDeliverPurchaseFiles failed: ' . $e->getMessage());
-        return ['ok' => false, 'sent' => 0, 'failed' => 0, 'unknown' => 0, 'skipped' => 0, 'total' => 0];
+        error_log('rxAutoDeliverPurchaseFiles failed: ' . get_class($e));
+        $summary = ['ok' => false, 'sent' => 0, 'failed' => 0, 'unknown' => 0, 'skipped' => 0, 'total' => 0];
+    }
+    $confirmed = (int) $summary['sent'];
+    foreach ($summary['file_states'] ?? [] as $file) {
+        if (($file['delivery_status'] ?? '') === 'partial') {
+            $confirmed++;
+        }
+    }
+    $summary['delivery_status'] = $summary['ok'] ? 'completed'
+        : ($summary['unknown'] > 0 || $summary['failed'] === 0 ? 'unknown' : ($confirmed > 0 ? 'partial' : 'failed'));
+    if (function_exists('rx_richDiag_log')) {
+        rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'automatic_file_collection', $summary['delivery_status'], [
+            'delivery_mode' => 'automatic_file_collection',
+            'files_delivery_status' => $summary['delivery_status'],
+            'file_states' => $summary['file_states'] ?? [],
+        ], $summary['ok'] ? 'info' : 'warning');
+    }
+    return $summary;
+}
+if (!function_exists('rxDeliveryResultState')) {
+    function rxDeliveryResultState($response): string
+    {
+        if (is_string($response)) {
+            $decoded = json_decode($response, true);
+            if (is_array($decoded)) {
+                $response = $decoded;
+            }
+        } elseif (is_object($response)) {
+            $vars = get_object_vars($response);
+            if (is_array($vars)) {
+                $response = $vars;
+            }
+        }
+        if (is_bool($response)) {
+            return $response ? 'confirmed' : 'unknown';
+        }
+        if (!is_array($response) || !array_key_exists('ok', $response) || !empty($response['_rx_invalid_response'])) {
+            return 'unknown';
+        }
+        if ($response['ok'] === true) {
+            return 'confirmed';
+        }
+        if ($response['ok'] !== false) {
+            return 'unknown';
+        }
+        $code = $response['error_code'] ?? null;
+        $description = strtolower((string) ($response['description'] ?? ''));
+        if ($code === 'RICH_VALIDATION_FAILED') {
+            return 'failed';
+        }
+        if ($code !== null && is_numeric($code)) {
+            $numeric = (int) $code;
+            if ($numeric === 429 || $numeric >= 500) {
+                return 'unknown';
+            }
+            if ($numeric >= 400 && $numeric < 500) {
+                return 'failed';
+            }
+        }
+        foreach (['blocked', 'deactivated', 'chat not found', 'message to edit not found', 'message to delete not found', 'forbidden', 'bad request'] as $needle) {
+            if ($description !== '' && strpos($description, $needle) !== false) {
+                return 'failed';
+            }
+        }
+        foreach (['timeout', 'timed out', 'curl', 'connection', 'network', 'اتصال'] as $needle) {
+            if ($description !== '' && strpos($description, $needle) !== false) {
+                return 'unknown';
+            }
+        }
+        return 'unknown';
     }
 }
+
+if (!function_exists('rxDeliveryAggregate')) {
+    function rxDeliveryAggregate(array $components): string
+    {
+        $required = [];
+        foreach ($components as $component) {
+            if (is_array($component) && !empty($component['required'])) {
+                $required[] = $component;
+            }
+        }
+        if (!$required) {
+            return 'completed';
+        }
+        $states = [];
+        foreach ($required as $component) {
+            $states[] = (string) ($component['state'] ?? 'unknown');
+        }
+        $confirmed = 0;
+        $uncertain = false;
+        foreach ($states as $state) {
+            if ($state === 'confirmed') {
+                $confirmed++;
+            } elseif ($state === 'unknown' || $state === 'attempted') {
+                $uncertain = true;
+            }
+        }
+        if ($confirmed === count($states)) {
+            return 'completed';
+        }
+        if ($uncertain) {
+            return 'unknown';
+        }
+        if ($confirmed > 0) {
+            return 'partial';
+        }
+        return 'failed';
+    }
+}
+
+if (!function_exists('rxDeliveryComponentContext')) {
+    function rxDeliveryComponentContext(array $components): array
+    {
+        $required = [];
+        $confirmed = [];
+        $failed = [];
+        $unknown = [];
+        $flat = [];
+        foreach (['text', 'qr', 'card', 'files'] as $name) {
+            $component = isset($components[$name]) && is_array($components[$name]) ? $components[$name] : ['required' => false, 'state' => 'not_attempted'];
+            $state = (string) ($component['state'] ?? 'not_attempted');
+            $isRequired = !empty($component['required']);
+            $flat[$name . '_state'] = $state;
+            $flat[$name . '_required'] = $isRequired;
+            if (!$isRequired) {
+                continue;
+            }
+            $required[] = $name;
+            if ($state === 'confirmed') {
+                $confirmed[] = $name;
+            } elseif (in_array($state, ['failed', 'not_attempted', 'skipped'], true)) {
+                $failed[] = $name;
+            } else {
+                $unknown[] = $name;
+            }
+        }
+        $flat['required_components'] = $required;
+        $flat['confirmed_components'] = $confirmed;
+        $flat['failed_components'] = $failed;
+        $flat['unknown_components'] = $unknown;
+        $flat['delivery_status'] = rxDeliveryAggregate($components);
+        return $flat;
+    }
+}
+
+if (!function_exists('rxPrepareSafeMediaCaption')) {
+    function rxPrepareSafeMediaCaption(string $html): ?string
+    {
+        $caption = trim($html);
+        if ($caption === '') {
+            return '';
+        }
+        if (preg_match('~<table\b~i', $caption) === 1) {
+            if (!function_exists('rx_richUi_replaceTablesWithText')) {
+                return null;
+            }
+            $caption = (string) rx_richUi_replaceTablesWithText($caption);
+            if (preg_match('~</?table\b~i', $caption) === 1) {
+                return null;
+            }
+        }
+        if (function_exists('rx_richUi_stripRtlMarker')) {
+            $caption = rx_richUi_stripRtlMarker($caption);
+        }
+        $caption = preg_replace('~<br\s*/?>~i', "\n", $caption);
+        $caption = preg_replace('~</p\s*>~i', "\n", $caption);
+        $caption = preg_replace('~<p\b[^>]*>~i', '', $caption);
+        $caption = trim((string) $caption);
+        if (!mb_check_encoding($caption, 'UTF-8')) {
+            return null;
+        }
+        $allowed = ['b', 'strong', 'i', 'em', 'u', 'ins', 's', 'strike', 'del', 'code', 'pre', 'mark', 'sub', 'sup', 'tg-spoiler', 'tg-emoji', 'a', 'tg-time', 'br', 'p', 'blockquote'];
+        if (preg_match_all('~<\s*/?\s*([a-z][a-z0-9-]*)\b~i', $caption, $tags)) {
+            foreach ($tags[1] as $tag) {
+                if (!in_array(strtolower($tag), $allowed, true)) {
+                    return null;
+                }
+            }
+        }
+        if (preg_match_all('~<tg-emoji\b([^>]*)>~i', $caption, $emojiTags)) {
+            foreach ($emojiTags[1] as $attributes) {
+                if (!preg_match('~emoji-id\s*=\s*"\d+"~i', $attributes)) {
+                    return null;
+                }
+            }
+        }
+        $visible = html_entity_decode(strip_tags($caption), ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5, 'UTF-8');
+        if (trim($visible) === '' || strlen(mb_convert_encoding($visible, 'UTF-16LE', 'UTF-8')) > 2048) {
+            return null;
+        }
+        return $caption;
+    }
+}
+
+
 function sendMessageService($panel_info, $config, $sub_link, $username_service, $reply_markup, $caption, $invoice_id, $user_id = null, $image = 'images.jpg', $auto_files = false)
 {
     global $setting, $from_id;
@@ -944,7 +1354,157 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
         $reply_markup = null;
     $user_id = $user_id == null ? $from_id : $user_id;
 
+    $rxDeliveryComponents = [
+        'text' => ['required' => false, 'state' => 'not_attempted'],
+        'qr' => ['required' => false, 'state' => 'not_attempted'],
+        'card' => ['required' => false, 'state' => 'not_attempted'],
+        'files' => ['required' => false, 'state' => 'not_attempted'],
+    ];
+    $rxSetDelivery = static function (string $name, string $state, bool $required = true) use (&$rxDeliveryComponents): void {
+        if (!isset($rxDeliveryComponents[$name]) || !is_array($rxDeliveryComponents[$name])) {
+            $rxDeliveryComponents[$name] = ['required' => $required, 'state' => $state];
+            return;
+        }
+        $rxDeliveryComponents[$name]['required'] = $required;
+        $rxDeliveryComponents[$name]['state'] = $state;
+    };
+    $rxSendServiceText = static function ($keyboard) use ($user_id, &$cleanCaption, $rxSetDelivery): array {
+        $result = sendmessage($user_id, $cleanCaption, $keyboard, 'HTML');
+        $state = rxDeliveryResultState($result);
+        $chunks = (int) ($result['_rx_confirmed_text_chunks'] ?? 0);
+        if ($chunks === 0 && (rxMediaCaptionRejected($result) || !empty($result['_rx_validation_failed']) || ($result['error_code'] ?? null) === 'RICH_VALIDATION_FAILED')) {
+            $fallback = rxSendRequiredMediaText(['chat_id' => $user_id, 'reply_markup' => $keyboard], $cleanCaption);
+            $result = $fallback['result'];
+            $state = $fallback['state'];
+            $chunks = $fallback['chunks_confirmed'];
+        }
+        if ($state !== 'confirmed' && $chunks > 0) {
+            $rxSetDelivery('text_chunks', 'confirmed');
+        }
+        return [$result, $state, $chunks];
+    };
+    unset($GLOBALS['rx_rich_diag_last_result'], $GLOBALS['rx_rich_diag_validation_reason'], $GLOBALS['rx_rich_diag_fallback_reason']);
+
+    $rxDiagOwn = false;
+    if (function_exists('rx_richDiag_enabled') && rx_richDiag_enabled() && function_exists('rx_richDiag_active') && function_exists('rx_richDiag_begin') && !rx_richDiag_active()) {
+        rx_richDiag_begin((string) ($GLOBALS['rx_rich_diag_service_key'] ?? 'service_message'), 're/rx/function/business_logic_1.php', 'service_send');
+        $rxDiagOwn = true;
+    }
+    $rxAutoFilesSummary = null;
+    $rxDiagDone = static function (string $status, array $extra = []) use (&$rxDiagOwn, &$rxDeliveryComponents, &$rxAutoFilesSummary) {
+        $deliveryStatus = rxDeliveryAggregate(array_values($rxDeliveryComponents));
+        $summary = rxDeliveryComponentContext($rxDeliveryComponents);
+        if ($deliveryStatus === 'completed' && empty($summary['required_components']) && empty($summary['confirmed_components'])) {
+            $deliveryStatus = 'failed';
+        }
+        $summary['delivery_status'] = $deliveryStatus;
+        $context = array_merge(['branch_status' => $status], $extra, $summary);
+        $context += [
+            'delivery_mode' => null,
+            'files_delivery_status' => null,
+            'file_states' => [],
+            'caption_valid' => null,
+            'caption_complete' => null,
+            'caption_contains_required_content' => null,
+            'caption_delivery_confirmed' => null,
+            'caption_source' => null,
+            'caption_validation_status' => null,
+            'caption_fallback_reason' => null,
+        ];
+        if (is_array($rxAutoFilesSummary)) {
+            $context['auto_files'] = $rxAutoFilesSummary;
+            if (empty($context['files_delivery_status']) && isset($rxAutoFilesSummary['delivery_status'])) {
+                $context['files_delivery_status'] = $rxAutoFilesSummary['delivery_status'];
+            }
+            if (empty($context['file_states'])) {
+                $context['file_states'] = $rxAutoFilesSummary['file_states'] ?? [];
+            }
+        }
+        if (!array_key_exists('fallback_reason', $context)) {
+            $context['fallback_reason'] = $GLOBALS['rx_rich_diag_validation_reason'] ?? ($GLOBALS['rx_rich_diag_fallback_reason'] ?? null);
+        }
+        if (isset($GLOBALS['rx_rich_diag_last_result']) && is_array($GLOBALS['rx_rich_diag_last_result'])) {
+            $lastDeliveryResult = $GLOBALS['rx_rich_diag_last_result'];
+            $context['telegram_error_code'] = (int) ($lastDeliveryResult['error_code'] ?? 0);
+            $context['telegram_error_description'] = (string) ($lastDeliveryResult['description'] ?? '');
+        } else {
+            $context['telegram_error_code'] = null;
+            $context['telegram_error_description'] = null;
+        }
+        $level = $deliveryStatus === 'failed' ? 'error' : ($deliveryStatus === 'partial' ? 'warning' : 'info');
+        if ($deliveryStatus === 'unknown') {
+            $level = 'warning';
+        }
+        if (function_exists('rx_richDiag_log')) {
+            rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'service_delivery', $deliveryStatus, $context, $level);
+        }
+        if ($rxDiagOwn && function_exists('rx_richDiag_finish')) {
+            rx_richDiag_finish($deliveryStatus, ['_function' => 'sendMessageService', '_source_file' => 're/rx/function/business_logic_1.php'] + $context);
+            $rxDiagOwn = false;
+        }
+    };
+    $rxAutoFilesAttempt = static function () use ($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id, &$rxSetDelivery, &$rxAutoFilesSummary): void {
+        $rxAutoFilesSummary = ['ok' => false, 'sent' => 0, 'failed' => 0, 'unknown' => 0, 'skipped' => 0, 'total' => 0, 'delivery_status' => 'unknown', 'state' => 'unknown', 'counts' => []];
+        if (!function_exists('rxAutoDeliverPurchaseFilesSafe')) {
+            $rxAutoFilesSummary['delivery_status'] = 'skipped';
+            $rxAutoFilesSummary['state'] = 'skipped';
+            $rxSetDelivery('files', 'skipped', false);
+            return;
+        }
+        $rxAutoFilesResult = rxAutoDeliverPurchaseFilesSafe($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id);
+        $rxAutoFilesSummary = is_array($rxAutoFilesResult) ? $rxAutoFilesResult : [];
+        $rxSent = (int) ($rxAutoFilesSummary['sent'] ?? 0);
+        $rxFailed = (int) ($rxAutoFilesSummary['failed'] ?? 0);
+        $rxUnknown = (int) ($rxAutoFilesSummary['unknown'] ?? 0);
+        $rxSkipped = (int) ($rxAutoFilesSummary['skipped'] ?? 0);
+        $rxTotal = (int) ($rxAutoFilesSummary['total'] ?? 0);
+        $rxAutoFilesSummary['counts'] = [
+            'sent' => $rxSent,
+            'failed' => $rxFailed,
+            'unknown' => $rxUnknown,
+            'skipped' => $rxSkipped,
+            'total' => $rxTotal,
+        ];
+        $rxFileStates = $rxAutoFilesSummary['file_states'] ?? [];
+        foreach ($rxFileStates as $index => $file) {
+            $rxSetDelivery('auto_document_' . $index, $file['document_state']);
+            if (!empty($file['caption_required'])) {
+                $rxSetDelivery('auto_caption_' . $index, $file['caption_state']);
+            }
+            if (($file['caption_chunks_state'] ?? '') === 'confirmed') {
+                $rxSetDelivery('auto_caption_chunks_' . $index, 'confirmed');
+            }
+            if (($file['delivery_status'] ?? '') === 'unknown') {
+                $rxSetDelivery('auto_confirmation_' . $index, 'unknown');
+            }
+        }
+        $unreported = $rxTotal > count($rxFileStates) || (empty($rxAutoFilesSummary['ok']) && $rxFailed + $rxUnknown === 0);
+        if ($unreported) {
+            $rxSetDelivery('files', $rxUnknown > 0 || $rxFailed === 0 ? 'unknown' : 'failed');
+        }
+    };
+    if (function_exists('rx_richDiag_log')) {
+        rx_richDiag_log('RICH_TEMPLATE_SELECTED', 'service_template', 'received', [
+            'template_key' => (string) ($GLOBALS['rx_rich_diag_service_key'] ?? 'service_message'),
+            'panel_type' => (string) ($panel_info['type'] ?? ''),
+            'caption' => rx_richDiag_text($caption),
+            'config_count' => is_array($config) ? count($config) : 0,
+            'sub_link_present' => is_string($sub_link) && trim($sub_link) !== '',
+            'reply_markup_present' => !empty($reply_markup),
+            'auto_files' => (bool) $auto_files,
+            'chat_hash' => substr(hash('sha256', (string) $user_id), 0, 12),
+        ], 'info');
+    }
+
     if (($panel_info['type'] ?? '') == "Manualsale") {
+        if (function_exists('rx_richDiag_log')) {
+            rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'selected', [
+                'delivery_mode' => 'manualsale',
+                'panel_type' => 'Manualsale',
+                'rich_bypass' => true,
+                'caption' => rx_richDiag_text($caption),
+            ], 'info');
+        }
         $manual = rxManualsaleDelivery($username_service);
         if ($manual['content'] === "" && is_string($sub_link) && trim($sub_link) !== '') {
             $manual['configs'] = [$sub_link];
@@ -964,51 +1524,65 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
         $hasConfigOffer = !empty($textItems);
 
         if (!empty($fileItems)) {
-            $fileCount = count($fileItems);
-            $index = 0;
-            $rxManualKeyCounts = function_exists('rxFileNamingManualKeyCounts') ? rxFileNamingManualKeyCounts($fileItems) : [];
-            foreach ($fileItems as $fi) {
-                $index++;
-                $ext = (trim((string) ($fi['ext'] ?? '')) !== "") ? $fi['ext'] : "bin";
-                $publicName = rxManualsalePublicName($fi['name'] ?? '', $ext);
-                $isLastFile = ($index === $fileCount);
-                $thisCaption = ($index === 1) ? $cleanCaption : '';
-                if (function_exists('rxFileNamingResolveManualItem')) {
-                    $rxManualKey = rxFileNamingManualItemKey($fi);
-                    $rxManualAmbiguous = ($rxManualKey !== '' && (($rxManualKeyCounts[$rxManualKey] ?? 0) > 1));
-                    $rxManualResolved = rxFileNamingResolveManualItem($fi, $publicName, $thisCaption, $rxManualAmbiguous);
-                    $publicName = $rxManualResolved['filename'];
-                    $thisCaption = $rxManualResolved['caption'];
-                }
-                $manualFile = rxManualsaleTempPath($publicName);
-                file_put_contents($manualFile, (string) ($fi['content'] ?? ''));
-                $offerConfig = ($isLastFile && $hasConfigOffer);
-                $offerSub = ($isLastFile && $hasSubOffer);
-                $fileKeyboard = rxBuildDeliveryOffer($panel_info, $invoice_id, $offerConfig, $offerSub, $reply_markup);
-                $fileReplyMarkup = ($fileKeyboard === null) ? ($isLastFile ? $reply_markup : null) : $fileKeyboard;
-                if (is_file($manualFile) && is_readable($manualFile)) {
-                    telegram('sendDocument', [
-                        'chat_id' => $user_id,
-                        'document' => new CURLFile($manualFile, 'application/octet-stream', $publicName),
-                        'caption' => $thisCaption,
-                        'reply_markup' => $fileReplyMarkup,
-                        'parse_mode' => 'HTML',
-                    ]);
-                    @unlink($manualFile);
-                } else {
-                    sendmessage($user_id, $thisCaption, $fileReplyMarkup, 'HTML');
-                }
+            if (function_exists('rx_richDiag_log')) {
+                rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'selected', [
+                    'delivery_mode' => 'manualsale_files',
+                    'file_items' => count($fileItems),
+                    'text_items' => count($textItems),
+                    'caption' => rx_richDiag_text($cleanCaption),
+                ], 'info');
             }
+            $fileKeyboard = rxBuildDeliveryOffer($panel_info, $invoice_id, $hasConfigOffer, $hasSubOffer, $reply_markup) ?? $reply_markup;
+            rxManualsaleSendFileItems($user_id, $username_service, $fileItems, $cleanCaption, $fileKeyboard, 0, 0, $fileDelivery);
+            foreach ($fileDelivery['files'] as $index => $item) {
+                $rxSetDelivery('file_' . $index, $item['state']);
+            }
+            foreach ($fileDelivery['text'] as $index => $item) {
+                $rxSetDelivery('file_caption_' . $index, $item['state']);
+            }
+            if ($fileDelivery['keyboard_state'] === 'failed') {
+                $keyboardResult = sendmessage($user_id, '⚠️ ارسال همه فایل‌های سرویس کامل نشد. برای پیگیری با پشتیبانی تماس بگیرید.', $fileKeyboard, 'HTML');
+                $rxSetDelivery('file_keyboard_notice', rxDeliveryResultState($keyboardResult), false);
+            }
+            $rxDiagDone($fileDelivery['delivery_status'], [
+                'delivery_mode' => 'manualsale_files',
+                'files' => count($fileDelivery['files']),
+                'file_states' => $fileDelivery['files'],
+                'files_delivery_status' => $fileDelivery['files_delivery_status'],
+                'caption_complete' => in_array($fileDelivery['text_delivery_status'], ['completed', 'skipped'], true),
+            ]);
             return;
         }
 
         $availability = rxDeliveryAvailability($panel_info, ['__manual__' => $manual], $manual['sub']);
         $offerKeyboard = rxBuildDeliveryOffer($panel_info, $invoice_id, $availability['config'], $availability['sub'], $reply_markup);
         if ($offerKeyboard === null) {
-            sendmessage($user_id, $cleanCaption, $reply_markup, 'HTML');
+            if (function_exists('rx_richDiag_log')) {
+                rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'selected', [
+                    'delivery_mode' => 'manual_text_plain',
+                    'rich_bypass' => false,
+                    'buttons_detached' => false,
+                    'caption' => rx_richDiag_text($cleanCaption),
+                ], 'info');
+            }
+            $rxManualPlainResult = sendmessage($user_id, $cleanCaption, $reply_markup, 'HTML');
+            $GLOBALS['rx_rich_diag_last_result'] = $rxManualPlainResult;
+            $rxSetDelivery('text', rxDeliveryResultState($rxManualPlainResult), true);
+            $rxDiagDone('completed', ['delivery_mode' => 'manual_text_plain']);
             return;
         }
-        sendmessage($user_id, $cleanCaption, $offerKeyboard, 'HTML');
+        if (function_exists('rx_richDiag_log')) {
+            rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'selected', [
+                'delivery_mode' => 'manual_text_offer',
+                'rich_bypass' => false,
+                'buttons_detached' => false,
+                'caption' => rx_richDiag_text($cleanCaption),
+            ], 'info');
+        }
+        $rxManualOfferResult = sendmessage($user_id, $cleanCaption, $offerKeyboard, 'HTML');
+        $GLOBALS['rx_rich_diag_last_result'] = $rxManualOfferResult;
+        $rxSetDelivery('text', rxDeliveryResultState($rxManualOfferResult), true);
+        $rxDiagDone('completed', ['delivery_mode' => 'manual_text_offer']);
         return;
     }
 
@@ -1017,6 +1591,31 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
     $cleanCaption = rxAppendSubscriptionLinkLine($cleanCaption, $availability['sub'] ? $sub_link : '', $panel_info);
     $offerKeyboard = rxBuildDeliveryOffer($panel_info, $invoice_id, $availability['config'], $availability['sub'], $reply_markup);
     $finalKeyboard = $offerKeyboard === null ? $reply_markup : $offerKeyboard;
+    $rxServiceCaptionHasTable = is_string($cleanCaption) && preg_match('~<table\b~i', $cleanCaption) === 1;
+    $rxSafeMediaCaption = function_exists('rxPrepareSafeMediaCaption') ? rxPrepareSafeMediaCaption($cleanCaption) : $cleanCaption;
+    $rxServiceCaptionNeedsSplit = $rxSafeMediaCaption === null;
+    $rxTextRequired = trim((string) $cleanCaption) !== '';
+    $rxServiceCaptionDelivered = false;
+    $rxQrKeyboardDelivered = false;
+    if (!$rxTextRequired) {
+        $rxSetDelivery('text', 'skipped', false);
+    }
+    if (function_exists('rx_richDiag_log')) {
+        rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'evaluated', [
+            'panel_type' => (string) ($panel_info['type'] ?? ''),
+            'config_available' => !empty($availability['config']),
+            'sub_available' => !empty($availability['sub']),
+            'offer_keyboard' => $offerKeyboard !== null,
+            'info_card_renderer' => function_exists('nm_renderInfoCardForInvoice'),
+            'qr_fallback' => function_exists('nm_sendServiceQrFallback'),
+            'caption' => rx_richDiag_text($cleanCaption),
+            'caption_has_table' => $rxServiceCaptionHasTable,
+            'caption_needs_split' => $rxServiceCaptionNeedsSplit,
+            'caption_safe_length' => $rxSafeMediaCaption !== null ? mb_strlen($rxSafeMediaCaption, 'UTF-8') : null,
+            'text_required' => $rxTextRequired,
+            'rich_bypass' => false,
+        ], 'info');
+    }
 
     if (function_exists('nm_renderInfoCardForInvoice')) {
         $cardPath = nm_renderInfoCardForInvoice($panel_info, $username_service, $invoice_id, $user_id);
@@ -1029,37 +1628,332 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
                 array_unshift($kb['inline_keyboard'], [['text' => faoxima_textbot_get('dyn_purchase_qr_code_btn', '📷 دریافت QR Code'), 'callback_data' => 'infocard_qr_' . $invoice_id]]);
             }
             $cardKeyboard = json_encode($kb, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if (function_exists('rx_richDiag_log')) {
+                rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'selected', [
+                    'delivery_mode' => 'info_card_photo',
+                    'api_method' => 'sendphoto',
+                    'rich_bypass' => true,
+                    'rich_bypass_reason' => 'photo_caption_delivery',
+                    'caption' => rx_richDiag_text($cleanCaption),
+                    'infocard_rendered' => true,
+                ], 'info');
+            }
+            $rxCardPhotoResult = null;
+            $rxCardTextResult = null;
+            $rxCardTextState = 'not_attempted';
+            $rxCardTextAttempted = false;
             try {
-                telegram('sendphoto', [
+                if ($rxServiceCaptionNeedsSplit) {
+                    if (function_exists('rx_richDiag_log')) {
+                        rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'selected', [
+                            'delivery_mode' => 'info_card_plus_rich_text',
+                            'api_method' => 'sendphoto+sendmessage',
+                            'rich_bypass' => false,
+                            'rich_bypass_reason' => $rxServiceCaptionHasTable ? 'table_moved_out_of_media_caption' : 'caption_requires_separate_text',
+                            'caption' => rx_richDiag_text($cleanCaption),
+                            'infocard_rendered' => true,
+                        ], 'info');
+                    }
+                    $rxCardPhotoResult = telegram('sendphoto', [
+                        'chat_id' => $user_id,
+                        'photo'   => new CURLFile($cardPath),
+                    ]);
+                    $rxCardPhotoState = rxDeliveryResultState($rxCardPhotoResult);
+                    $rxSetDelivery('card', $rxCardPhotoState, true);
+                    @unlink($cardPath);
+                    $rxCardTextAttempted = true;
+                    [$rxCardTextResult, $rxCardTextState, $rxCardTextChunks] = $rxSendServiceText($cardKeyboard);
+                    $rxSetDelivery('text', $rxCardTextState, true);
+                    $rxServiceCaptionDelivered = $rxCardTextState === 'confirmed';
+                    $rxCardQrState = 'not_attempted';
+                    if ($rxCardTextState === 'failed' && $rxCardTextChunks === 0 && function_exists('nm_sendServiceQrFallback') && is_string($sub_link) && trim($sub_link) !== '') {
+                        $rxCardQrDetail = null;
+                        $rxCardQrFallback = nm_sendServiceQrFallback($user_id, $sub_link, $image, '', $cardKeyboard, $rxCardQrDetail);
+                        $rxCardQrState = is_array($rxCardQrDetail) ? (string) ($rxCardQrDetail['state'] ?? rxDeliveryResultState($rxCardQrFallback)) : rxDeliveryResultState($rxCardQrFallback);
+                        $rxSetDelivery('qr', $rxCardQrState, $rxCardQrState !== 'skipped');
+                    }
+                    if (function_exists('rx_richDiag_log')) {
+                        rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'service_delivery', rxDeliveryAggregate(array_values($rxDeliveryComponents)), [
+                            'delivery_mode' => 'info_card_plus_rich_text',
+                            'rich_bypass' => false,
+                            'caption' => rx_richDiag_text($cleanCaption),
+                            'photo_result' => rx_richDiag_result($rxCardPhotoResult),
+                            'result' => rx_richDiag_result($rxCardTextResult),
+                            'qr_fallback_state' => $rxCardQrState,
+                            'caption_complete' => $rxServiceCaptionDelivered,
+                            'caption_validation_status' => $rxServiceCaptionDelivered ? 'text_message_confirmed' : 'text_not_confirmed',
+                        ], $rxCardTextState === 'confirmed' ? 'info' : 'warning');
+                    }
+                    $GLOBALS['rx_rich_diag_last_result'] = ($rxCardQrState !== 'not_attempted' && $rxCardQrState !== 'confirmed' && isset($rxCardQrDetail['result']) && is_array($rxCardQrDetail['result']))
+                        ? $rxCardQrDetail['result']
+                        : $rxCardTextResult;
+                    if ($auto_files) {
+                        $rxAutoFilesAttempt();
+                    }
+                    $rxDiagDone(rxDeliveryAggregate($rxDeliveryComponents), [
+                        'delivery_mode' => 'info_card_plus_rich_text',
+                        'caption_valid' => $rxSafeMediaCaption !== null,
+                        'caption_complete' => $rxServiceCaptionDelivered,
+                        'caption_contains_required_content' => $rxServiceCaptionDelivered,
+                        'caption_delivery_confirmed' => $rxServiceCaptionDelivered,
+                        'caption_source' => 'text_message',
+                        'caption_validation_status' => $rxServiceCaptionDelivered ? 'text_message_confirmed' : 'text_not_confirmed',
+                        'caption_fallback_reason' => $rxServiceCaptionDelivered ? null : 'caption_incomplete',
+                    ]);
+                    return;
+                }
+                $rxCardResult = rxSendMediaWithCaption('sendphoto', [
                     'chat_id'      => $user_id,
                     'photo'        => new CURLFile($cardPath),
                     'caption'      => $cleanCaption,
                     'parse_mode'   => 'HTML',
                     'reply_markup' => $cardKeyboard,
-                ]);
-                @unlink($cardPath);
-                if ($auto_files) {
-                    rxAutoDeliverPurchaseFilesSafe($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id);
+                ], null, $rxCardDelivery);
+                $rxCardState = $rxCardDelivery['media_state'];
+                $rxSetDelivery('card', $rxCardState, true);
+                if ($rxTextRequired) {
+                    $rxSetDelivery('text', $rxCardDelivery['text_state'], true);
+                    if ($rxCardDelivery['text_state'] !== 'confirmed' && $rxCardDelivery['text_chunks_confirmed'] > 0) {
+                        $rxSetDelivery('text_chunks', 'confirmed');
+                    }
+                } else {
+                    $rxSetDelivery('text', 'skipped', false);
                 }
-                return;
+                if (function_exists('rx_richDiag_log')) {
+                    rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'service_delivery', $rxCardState, [
+                        'delivery_mode' => 'info_card_photo',
+                        'rich_bypass' => true,
+                        'caption' => rx_richDiag_text($cleanCaption),
+                        'result' => rx_richDiag_result($rxCardResult),
+                    ], $rxCardState === 'confirmed' ? 'info' : ($rxCardState === 'unknown' ? 'warning' : 'error'));
+                }
+                $GLOBALS['rx_rich_diag_last_result'] = $rxCardResult;
+                @unlink($cardPath);
+                if ($rxCardState === 'confirmed' || ($rxCardDelivery['caption_source'] === 'separate_text'
+                    && ($rxCardDelivery['text_state'] !== 'failed' || $rxCardDelivery['text_chunks_confirmed'] > 0))) {
+                    $rxServiceCaptionDelivered = $rxCardDelivery['caption_complete'];
+                    if ($auto_files) {
+                        $rxAutoFilesAttempt();
+                    }
+                    $rxDiagDone($rxCardDelivery['delivery_status'], ['delivery_mode' => 'info_card_photo', 'caption_complete' => $rxCardDelivery['caption_complete']]);
+                    return;
+                }
+                if ($rxCardState === 'unknown') {
+                    if ($auto_files) {
+                        $rxAutoFilesAttempt();
+                    }
+                    $rxDiagDone('unknown', ['delivery_mode' => 'info_card_photo', 'fallback_reason' => 'card_delivery_ambiguous']);
+                    return;
+                }
             } catch (Throwable $e) {
-                @unlink($cardPath);
-                error_log('sendMessageService info card send failed: ' . $e->getMessage());
-            }
-        } elseif (function_exists('nm_sendServiceQrFallback') && is_string($sub_link) && trim($sub_link) !== '') {
-            if (nm_sendServiceQrFallback($user_id, $sub_link, $image, $cleanCaption, $finalKeyboard)) {
-                if ($auto_files) {
-                    rxAutoDeliverPurchaseFilesSafe($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id);
+                $rxCatchCardState = isset($rxCardResult) ? rxDeliveryResultState($rxCardResult) : (isset($rxCardPhotoResult) ? rxDeliveryResultState($rxCardPhotoResult) : 'failed');
+                $rxCatchTextState = isset($rxCardTextResult) ? rxDeliveryResultState($rxCardTextResult) : 'not_attempted';
+                if ($rxCatchTextState === 'not_attempted') {
+                    $rxCatchTextState = $rxCatchCardState === 'failed' ? 'failed' : 'unknown';
                 }
+                $rxSetDelivery('card', $rxCatchCardState, true);
+                $rxSetDelivery('text', $rxCatchTextState, true);
+                @unlink($cardPath);
+                if ($rxCardTextAttempted && $rxCardTextResult === null) {
+                    if ($auto_files) {
+                        $rxAutoFilesAttempt();
+                    }
+                    $rxDiagDone('unknown', ['delivery_mode' => 'info_card_plus_rich_text', 'fallback_reason' => 'text_delivery_exception']);
+                    return;
+                }
+                if (function_exists('rx_richDiag_log')) {
+                    rx_richDiag_log('RICH_RENDER_FAILED', 'service_delivery', 'exception', [
+                        'delivery_mode' => 'info_card_photo',
+                        'exception' => get_class($e),
+                    ], 'error');
+                }
+                error_log('sendMessageService info card send failed: ' . get_class($e));
+            }
+        } else {
+            $rxSetDelivery('card', 'skipped', false);
+        }
+    } else {
+        $rxSetDelivery('card', 'skipped', false);
+    }
+    if (function_exists('nm_sendServiceQrFallback') && is_string($sub_link) && trim($sub_link) !== '') {
+            if ($rxServiceCaptionNeedsSplit) {
+                if (function_exists('rx_richDiag_log')) {
+                    rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'selected', [
+                        'delivery_mode' => 'qr_plus_rich_text',
+                        'api_method' => 'sendmessage+sendphoto',
+                        'rich_bypass' => false,
+                        'rich_bypass_reason' => $rxServiceCaptionHasTable ? 'table_moved_out_of_qr_caption' : 'caption_requires_separate_text',
+                        'caption' => rx_richDiag_text($cleanCaption),
+                    ], 'info');
+                }
+                try {
+                    [$rxQrTextResult, $rxQrTextState, $rxQrTextChunks] = $rxSendServiceText($finalKeyboard);
+                } catch (Throwable $e) {
+                    $rxQrTextResult = null;
+                    $rxQrTextState = 'unknown';
+                    $rxQrTextChunks = 0;
+                    error_log('sendMessageService QR text send failed: ' . get_class($e));
+                }
+                $rxSetDelivery('text', $rxQrTextState, true);
+                $rxServiceCaptionDelivered = $rxQrTextState === 'confirmed';
+                $rxQrKeyboard = $rxQrTextState === 'failed' && $rxQrTextChunks === 0 ? $finalKeyboard : null;
+                $rxQrDetail = null;
+                $rxQrDelivered = nm_sendServiceQrFallback($user_id, $sub_link, $image, '', $rxQrKeyboard, $rxQrDetail);
+                $rxQrState = is_array($rxQrDetail) ? (string) ($rxQrDetail['state'] ?? rxDeliveryResultState($rxQrDelivered)) : rxDeliveryResultState($rxQrDelivered);
+                $rxSetDelivery('qr', $rxQrState, $rxQrState !== 'skipped');
+                if ($rxQrState !== 'confirmed' && isset($rxQrDetail['result']) && is_array($rxQrDetail['result'])) {
+                    $GLOBALS['rx_rich_diag_last_result'] = $rxQrDetail['result'];
+                }
+                if (function_exists('rx_richDiag_log')) {
+                    rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'service_delivery', rxDeliveryAggregate(array_values($rxDeliveryComponents)), [
+                        'delivery_mode' => 'qr_plus_rich_text',
+                        'rich_bypass' => false,
+                        'caption' => rx_richDiag_text($cleanCaption),
+                        'caption_valid' => $rxSafeMediaCaption !== null,
+                        'caption_complete' => $rxServiceCaptionDelivered,
+                        'caption_contains_required_content' => $rxServiceCaptionDelivered,
+                        'caption_delivery_confirmed' => $rxServiceCaptionDelivered,
+                        'caption_source' => 'text_message',
+                        'caption_validation_status' => $rxServiceCaptionDelivered ? 'text_message_confirmed' : 'text_not_confirmed',
+                        'caption_fallback_reason' => $rxServiceCaptionDelivered ? null : 'caption_incomplete',
+                        'qr_caption_used_for_text' => false,
+                        'text_result' => rx_richDiag_result($rxQrTextResult),
+                        'qr_detail' => is_array($rxQrDetail) ? $rxQrDetail : null,
+                    ], $rxQrTextState === 'confirmed' && $rxQrState === 'confirmed' ? 'info' : 'warning');
+                }
+                $GLOBALS['rx_rich_diag_last_result'] = ($rxQrState !== 'confirmed' && isset($rxQrDetail['result']) && is_array($rxQrDetail['result']))
+                    ? $rxQrDetail['result']
+                    : $rxQrTextResult;
+                if ($auto_files) {
+                    $rxAutoFilesAttempt();
+                }
+                $rxDiagDone(rxDeliveryAggregate($rxDeliveryComponents), [
+                    'delivery_mode' => 'qr_plus_rich_text',
+                    'caption_valid' => $rxSafeMediaCaption !== null,
+                    'caption_complete' => $rxServiceCaptionDelivered,
+                    'caption_contains_required_content' => $rxServiceCaptionDelivered,
+                    'caption_delivery_confirmed' => $rxServiceCaptionDelivered,
+                    'caption_source' => 'text_message',
+                    'caption_validation_status' => $rxServiceCaptionDelivered ? 'text_message_confirmed' : 'text_not_confirmed',
+                ]);
                 return;
             }
+            if (function_exists('rx_richDiag_log')) {
+                rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'selected', [
+                    'delivery_mode' => 'qr_fallback',
+                    'rich_bypass' => true,
+                    'rich_bypass_reason' => 'qr_image_delivery',
+                    'caption' => rx_richDiag_text($cleanCaption),
+                ], 'info');
+            }
+            $rxQrDetail = null;
+            $rxQrCaption = $cleanCaption;
+            $rxQrDelivered = nm_sendServiceQrFallback($user_id, $sub_link, $image, $rxQrCaption, $finalKeyboard, $rxQrDetail);
+            $rxQrState = is_array($rxQrDetail) ? (string) ($rxQrDetail['state'] ?? rxDeliveryResultState($rxQrDelivered)) : rxDeliveryResultState($rxQrDelivered);
+            $rxQrCaptionComplete = $rxTextRequired && ($rxQrDetail['caption_delivery_state'] ?? null) === 'confirmed';
+            $rxQrCaptionSeparate = ($rxQrDetail['caption_source'] ?? '') === 'separate_text';
+            if ($rxQrState === 'confirmed') {
+                $rxQrKeyboardDelivered = true;
+            }
+            if ($rxQrState === 'skipped') {
+                $rxSetDelivery('qr', 'skipped', false);
+                if ($rxTextRequired) {
+                    $rxSetDelivery('text', 'not_attempted', true);
+                }
+            } else {
+                $rxSetDelivery('qr', $rxQrState, true);
+                if (!$rxTextRequired) {
+                    $rxSetDelivery('text', 'skipped', false);
+                } elseif ($rxQrCaptionComplete) {
+                    $rxSetDelivery('text', 'confirmed', true);
+                    $rxServiceCaptionDelivered = true;
+                } elseif ($rxQrCaptionSeparate) {
+                    $rxSetDelivery('text', $rxQrDetail['caption_delivery_state'], true);
+                    if ($rxQrDetail['text_chunks_confirmed'] > 0) {
+                        $rxSetDelivery('text_chunks', 'confirmed');
+                    }
+                } elseif ($rxQrState === 'unknown') {
+                    $rxSetDelivery('text', 'unknown', true);
+                } else {
+                    $rxSetDelivery('text', 'not_attempted', true);
+                }
+            }
+            if ($rxQrState !== 'confirmed' && isset($rxQrDetail['result']) && is_array($rxQrDetail['result'])) {
+                $GLOBALS['rx_rich_diag_last_result'] = $rxQrDetail['result'];
+            }
+            if (function_exists('rx_richDiag_log')) {
+                rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'service_delivery', rxDeliveryAggregate(array_values($rxDeliveryComponents)), [
+                    'delivery_mode' => 'qr_fallback',
+                    'rich_bypass' => true,
+                    'caption' => rx_richDiag_text($cleanCaption),
+                    'caption_valid' => $rxSafeMediaCaption !== null,
+                    'caption_complete' => $rxQrCaptionComplete,
+                    'caption_contains_required_content' => $rxQrCaptionComplete,
+                    'caption_delivery_confirmed' => $rxQrCaptionComplete,
+                    'caption_source' => $rxQrCaptionSeparate ? 'separate_text' : ($rxQrCaptionComplete ? 'qr_caption' : ($rxTextRequired ? 'pending' : 'none')),
+                    'caption_validation_status' => $rxQrCaptionComplete ? 'validated' : 'generic_or_unsafe',
+                    'caption_fallback_reason' => $rxQrCaption === '' ? 'no_safe_caption' : (($rxQrDetail['reason'] ?? '') === 'caption_unsafe' ? 'caption_unsafe' : null),
+                    'qr_detail' => is_array($rxQrDetail) ? $rxQrDetail : null,
+                ], $rxQrState === 'confirmed' ? 'info' : 'warning');
+            }
+            if ($rxQrState === 'confirmed' || ($rxQrCaptionSeparate
+                && ($rxQrDetail['caption_delivery_state'] !== 'failed' || $rxQrDetail['text_chunks_confirmed'] > 0))) {
+                if (!$rxTextRequired) {
+                    $rxSetDelivery('text', 'skipped', false);
+                }
+                $rxServiceCaptionDelivered = !$rxTextRequired || $rxQrCaptionComplete;
+                if ($auto_files) {
+                    $rxAutoFilesAttempt();
+                }
+                $rxDiagDone(rxDeliveryAggregate($rxDeliveryComponents), ['delivery_mode' => 'qr_fallback', 'caption_complete' => $rxServiceCaptionDelivered]);
+                return;
+            }
+            if ($rxQrState === 'unknown') {
+                if ($auto_files) {
+                    $rxAutoFilesAttempt();
+                }
+                $rxDiagDone('unknown', ['delivery_mode' => 'qr_fallback', 'fallback_reason' => 'qr_delivery_ambiguous']);
+                return;
+            }
+        } else {
+            $rxSetDelivery('qr', 'skipped', false);
         }
-    }
 
-    sendmessage($user_id, $cleanCaption, $finalKeyboard, 'HTML');
-    if ($auto_files) {
-        rxAutoDeliverPurchaseFilesSafe($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id);
+    $rxFinalDeliveryMode = 'qr_only_no_text';
+    if ($rxTextRequired && !$rxServiceCaptionDelivered) {
+        if (function_exists('rx_richDiag_log')) {
+            rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'selected', [
+                'delivery_mode' => 'plain_text',
+                'api_method' => 'sendmessage',
+                'rich_bypass' => false,
+                'caption' => rx_richDiag_text($cleanCaption),
+            ], 'info');
+        }
+        try {
+            [$rxServiceTextResult, $rxServiceTextState] = $rxSendServiceText($rxQrKeyboardDelivered ? null : $finalKeyboard);
+        } catch (Throwable $e) {
+            $rxServiceTextResult = null;
+            $rxServiceTextState = 'unknown';
+            error_log('sendMessageService text send failed: ' . get_class($e));
+        }
+        $rxSetDelivery('text', $rxServiceTextState, true);
+        $rxServiceCaptionDelivered = $rxServiceTextState === 'confirmed';
+        $GLOBALS['rx_rich_diag_last_result'] = $rxServiceTextResult;
+        $rxFinalDeliveryMode = 'plain_text';
     }
+    if ($auto_files) {
+        $rxAutoFilesAttempt();
+    }
+    $rxDiagDone(rxDeliveryAggregate($rxDeliveryComponents), [
+        'delivery_mode' => $rxFinalDeliveryMode,
+        'rich_bypass' => false,
+        'caption_valid' => $rxSafeMediaCaption !== null,
+        'caption_complete' => $rxServiceCaptionDelivered,
+        'caption_contains_required_content' => $rxServiceCaptionDelivered || !$rxTextRequired,
+        'caption_delivery_confirmed' => $rxServiceCaptionDelivered,
+        'caption_source' => $rxTextRequired ? 'text_message' : 'none',
+        'caption_validation_status' => $rxServiceCaptionDelivered ? 'text_confirmed' : 'text_not_confirmed',
+    ]);
 }
 function isValidInvitationCode($setting, $fromId, $verfy_status)
 {
@@ -1128,6 +2022,14 @@ function nm_replyOrEdit($chatId, $text, $keyboard = null, $parseMode = 'HTML')
 
                 if (is_array($rx_edit_result) && !empty($rx_edit_result['ok'])) {
                     return true;
+                }
+                $rx_edit_description = is_array($rx_edit_result) ? strtolower((string) ($rx_edit_result['description'] ?? '')) : '';
+                if ($rx_edit_description !== '' && strpos($rx_edit_description, 'message is not modified') !== false) {
+                    return true;
+                }
+                if (function_exists('rxDeliveryResultState') && rxDeliveryResultState($rx_edit_result) === 'unknown') {
+                    error_log('nm_replyOrEdit Editmessagetext outcome unknown; fallback suppressed to avoid duplicate delivery');
+                    return false;
                 }
                 if (is_array($rx_edit_result) && isset($rx_edit_result['description'])) {
                     error_log('nm_replyOrEdit Editmessagetext not ok: ' . $rx_edit_result['description']);

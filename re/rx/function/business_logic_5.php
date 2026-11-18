@@ -53,8 +53,9 @@ function nm_sendInfoCardsForServiceList($from_id, array $services)
 
     $cap = defined('INFOCARD_LIST_MAX') ? (int) INFOCARD_LIST_MAX : 8;
     $sent = 0;
+    $attempted = 0;
     foreach ($services as $row) {
-        if ($sent >= $cap) {
+        if ($attempted >= $cap) {
             break;
         }
         if (!is_array($row) || empty($row['username']) || empty($row['id_invoice'])) {
@@ -89,15 +90,18 @@ function nm_sendInfoCardsForServiceList($from_id, array $services)
             $__kbButtons[] = ['text' => faoxima_textbot_get('dyn_purchase_qr_code_btn', '📷 دریافت QR Code'), 'callback_data' => 'infocard_qr_' . $row['id_invoice']];
         }
         $kb = json_encode(['inline_keyboard' => [$__kbButtons]], JSON_UNESCAPED_UNICODE);
+        $attempted++;
         try {
-            telegram('sendphoto', [
+            rxSendMediaWithCaption('sendphoto', [
                 'chat_id' => $from_id,
                 'photo' => new CURLFile($cardPath),
                 'reply_markup' => $kb,
                 'caption' => $caption,
                 'parse_mode' => 'HTML',
-            ]);
-            $sent++;
+            ], null, $cardDelivery, true);
+            if ($cardDelivery['delivery_status'] === 'completed') {
+                $sent++;
+            }
         } catch (\Throwable $e) {
             error_log('nm_sendInfoCardsForServiceList send failed: ' . $e->getMessage());
         }

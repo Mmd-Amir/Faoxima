@@ -2996,6 +2996,7 @@ function jovadpanelDeliverProtocolFiles($chatId, array $panel, $remoteId, $kind,
     $total = 0;
     $shouldSend = is_array($options) && isset($options['should_send']) && is_callable($options['should_send']) ? $options['should_send'] : null;
     $onResult = is_array($options) && isset($options['on_result']) && is_callable($options['on_result']) ? $options['on_result'] : null;
+    $deliverFile = is_array($options) && is_callable($options['deliver_file'] ?? null) ? $options['deliver_file'] : null;
     $attemptedKeys = [];
     $rxJovadNameCounts = [];
     if (rxFileNamingEnabled()) {
@@ -3014,6 +3015,19 @@ function jovadpanelDeliverProtocolFiles($chatId, array $panel, $remoteId, $kind,
             continue;
         }
         $attemptedKeys[$rxJovadFileKey] = true;
+        $rxJovadDescriptor = rxFileNamingJovadDescriptor($file, $kind);
+        $rxJovadKey = is_array($rxJovadDescriptor) ? $rxJovadDescriptor['key'] : '';
+        $rxJovadAmbiguous = ($rxJovadKey !== '' && (($rxJovadNameCounts[$rxJovadKey] ?? 0) > 1));
+        $thisCaption = $total === 0 ? (string) $caption : '';
+        if ($deliverFile !== null) {
+            $resume = rxFileNamingResolve($panel, 'jovad', $rxJovadKey, '', $thisCaption, $rxJovadAmbiguous);
+            $resumedStatus = $deliverFile($rxJovadFileKey, null, '', $resume['caption']);
+            if ($resumedStatus !== null) {
+                $total++;
+                ${$resumedStatus}++;
+                continue;
+            }
+        }
         $tempExt = $kind === 'openvpn' ? '.ovpn' : '.conf';
         $tempPath = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'jovad-tmp-' . bin2hex(random_bytes(8)) . $tempExt;
         $attempted = false;
@@ -3037,7 +3051,14 @@ function jovadpanelDeliverProtocolFiles($chatId, array $panel, $remoteId, $kind,
             }
             if (!$downloadOk) {
                 $total++;
-                $failed++;
+                $attempted = true;
+                $status = 'failed';
+                if ($deliverFile !== null) {
+                    $resolved = rxFileNamingResolve($panel, 'jovad', $rxJovadKey, '', $thisCaption, $rxJovadAmbiguous);
+                    $status = $deliverFile($rxJovadFileKey, '', '', $resolved['caption']);
+                }
+                $failed += (int) ($status === 'failed');
+                $unknown += (int) ($status === 'unknown');
                 if ($onResult !== null) {
                     $onResult($rxJovadFileKey, 'failed', 'configuration download failed');
                 }
@@ -3060,50 +3081,50 @@ function jovadpanelDeliverProtocolFiles($chatId, array $panel, $remoteId, $kind,
             }
             $total++;
             $attempted = true;
-            $thisCaption = $total === 1 ? $caption : '';
-            $rxJovadDescriptor = rxFileNamingJovadDescriptor($file, $kind);
-            $rxJovadKey = is_array($rxJovadDescriptor) ? $rxJovadDescriptor['key'] : '';
-            $rxJovadAmbiguous = ($rxJovadKey !== '' && (($rxJovadNameCounts[$rxJovadKey] ?? 0) > 1));
             $rxJovadResolved = rxFileNamingResolve($panel, 'jovad', $rxJovadKey, $publicName, $thisCaption, $rxJovadAmbiguous);
             $publicName = $rxJovadResolved['filename'];
             $thisCaption = $rxJovadResolved['caption'];
-            $payload = [
-                'chat_id' => $chatId,
-                'document' => new CURLFile($tempPath, 'application/octet-stream', $publicName),
-                'caption' => $thisCaption,
-                'parse_mode' => 'HTML',
-            ];
-            if ($replyMarkup !== null) {
-                $payload['reply_markup'] = $replyMarkup;
+            if (is_string($contentHash)) {
+                $deliveredHashes[$contentHash] = true;
             }
-            $result = telegram('sendDocument', $payload);
-            $sendStatus = is_array($result) ? (!empty($result['ok']) ? 'sent' : 'failed') : 'unknown';
+            if ($deliverFile !== null) {
+                $sendStatus = $deliverFile($rxJovadFileKey, $tempPath, $publicName, $thisCaption);
+            } else {
+                rxSendMediaWithCaption('sendDocument', [
+                    'chat_id' => $chatId,
+                    'document' => new CURLFile($tempPath, 'application/octet-stream', $publicName),
+                    'caption' => $thisCaption,
+                    'parse_mode' => 'HTML',
+                    'reply_markup' => $replyMarkup,
+                ], null, $delivery, true);
+                $sendStatus = ['completed' => 'sent', 'unknown' => 'unknown'][$delivery['delivery_status']] ?? 'failed';
+            }
             if ($sendStatus === 'sent') {
                 $sent++;
-                if (is_string($contentHash)) {
-                    $deliveredHashes[$contentHash] = true;
-                }
             } elseif ($sendStatus === 'failed') {
                 $failed++;
             } else {
                 $unknown++;
             }
             if ($onResult !== null) {
-                $onResult($rxJovadFileKey, $sendStatus, is_array($result) ? (string) ($result['description'] ?? '') : '');
+                $onResult($rxJovadFileKey, $sendStatus, 'document delivery ' . $sendStatus);
             }
         } catch (Throwable $e) {
             if ($attempted) {
                 $unknown++;
                 if ($onResult !== null) {
-                    $onResult($rxJovadFileKey, 'unknown', $e->getMessage());
+                    $onResult($rxJovadFileKey, 'unknown', 'document delivery outcome unknown');
                 }
+            } else {
+                $total++;
+                $failed++;
             }
         } finally {
             @unlink($tempPath);
         }
     }
     if ($sent !== $total) {
-        return ['ok' => false, 'sent' => $sent, 'failed' => $failed, 'unknown' => $unknown, 'skipped' => $skipped, 'total' => $total, 'msg' => "ارسال فایل‌ها کامل نشد ({$sent} از {$total}). برای دریافت فایل‌های باقی‌مانده دوباره تلاش کنید."];
+        return ['ok' => false, 'sent' => $sent, 'failed' => $failed, 'unknown' => $unknown, 'skipped' => $skipped, 'total' => $total, 'msg' => "ارسال فایل‌ها کامل نشد ({$sent} از {$total}). برای پیگیری با پشتیبانی تماس بگیرید."];
     }
     return ['ok' => true, 'sent' => $sent, 'failed' => $failed, 'unknown' => $unknown, 'skipped' => $skipped, 'total' => $total];
 }
@@ -3346,7 +3367,7 @@ function jovadpanelAutoDeliverFiles($chatId, array $panel, $username, $options =
         $result['unknown'] += (int) ($delivery['unknown'] ?? 0);
         $result['skipped'] += (int) ($delivery['skipped'] ?? 0);
         $result['total'] += (int) ($delivery['total'] ?? 0);
-        if (empty($delivery['ok']) && (int) ($delivery['total'] ?? 0) > 0) {
+        if (empty($delivery['ok'])) {
             $result['ok'] = false;
         }
     }

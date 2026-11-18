@@ -552,7 +552,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
                         ]
                     ])
                 ]);
-                telegram('sendvideo', [
+                rxSendMediaWithCaption('sendvideo', [
                     'chat_id' => $from_id,
                     'video' => $helpdata['Media_os'],
                     'caption' => $helpdata['Description_os'],
@@ -567,7 +567,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
                         ]
                     ])
                 ]);
-                telegram('sendDocument', [
+                rxSendMediaWithCaption('sendDocument', [
                     'chat_id' => $from_id,
                     'document' => $helpdata['Media_os'],
                     'caption' => $helpdata['Description_os'],
@@ -582,7 +582,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
                         ]
                     ])
                 ]);
-                telegram('sendphoto', [
+                rxSendMediaWithCaption('sendphoto', [
                     'chat_id' => $from_id,
                     'photo' => $helpdata['Media_os'],
                     'caption' => $helpdata['Description_os'],
@@ -935,6 +935,32 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
 } elseif ($datain == "fqQuestions") {
     sendmessage($from_id, $datatextbot['text_dec_fq'], null, 'HTML');
 } elseif (($text !== '' && $text == $datatextbot['accountwallet']) || $datain == "account" || $datain == "accountbtn" || $text == "/wallet") {
+    $rxWalletRoute = 'wallet_unknown';
+    if ($datain == 'account') {
+        $rxWalletRoute = 'account';
+    } elseif ($datain == 'accountbtn') {
+        $rxWalletRoute = 'accountbtn';
+    } elseif ($text == '/wallet') {
+        $rxWalletRoute = 'wallet_command';
+    } elseif ($text !== '' && $text == ($datatextbot['accountwallet'] ?? '')) {
+        $rxWalletRoute = 'wallet_button';
+    }
+    $rxWalletStartedAt = microtime(true);
+    if (function_exists('rx_richDiag_log')) {
+        rx_richDiag_log('RICH_STATE_BEFORE_AFTER', 'state_snapshot', 'captured', rx_richDiag_stateSnapshot(['phase' => 'wallet_before_handler', 'chat_id' => $from_id, 'message_id' => $message_id]), 'debug');
+    }
+    $rxWalletCtx = function_exists('rx_richDiag_enterContext') ? rx_richDiag_enterContext('text_account_info', 'user_flow_wallet_branch', $rxWalletRoute, 'textbot_row', 'user_flow_wallet') : '';
+    if (function_exists('rx_richDiag_log')) {
+        rx_richDiag_log('RICH_WALLET_HANDLER_ENTER', 'wallet', 'entered', [
+            'handler' => 'user_flow_wallet_branch',
+            'callback_route' => $rxWalletRoute,
+            'is_callback' => $datain !== '' && (int) $message_id > 0,
+            'message_id_present' => (int) $message_id > 0,
+            'chat_hash' => substr(hash('sha256', (string) $from_id), 0, 12),
+            'active_ui_section' => $GLOBALS['rx_ui_section'] ?? null,
+        ], 'info');
+        rx_richDiag_log('RICH_STATE_BEFORE_AFTER', 'state_snapshot', 'captured', rx_richDiag_stateSnapshot(['phase' => 'wallet_handler_entered', 'chat_id' => $from_id, 'message_id' => $message_id]), 'debug');
+    }
     rx_section_media_enter('wallet', $from_id, $datain, $message_id, ['accountbtn'], ['accountbtn']);
     $dateacc = jdate('Y/m/d');
     $current_time = time();
@@ -998,6 +1024,36 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
 
 📆 {date_now} → ⏰ {time_now}
                     ";
+    $rxWalletStructureRaw = isset($datatextbot['richmsg.text_account_info']) ? (string) $datatextbot['richmsg.text_account_info'] : '';
+    $rxWalletTplInfo = function_exists('rx_richDiag_text') ? rx_richDiag_text($text_account_tpl) : [];
+    $rxWalletStructure = function_exists('rx_richDiag_structure') ? rx_richDiag_structure($rxWalletStructureRaw) : ['available' => false];
+    if (function_exists('rx_richDiag_log')) {
+        rx_richDiag_log('RICH_WALLET_TEMPLATE_LOADED', 'wallet_template', !empty($rxWalletTplInfo['present']) ? 'loaded' : 'empty', [
+            'template_key' => 'text_account_info',
+            'template_source' => trim((string) $text_account_tpl) !== '' ? 'textbot_row' : 'empty_text',
+            'text' => $rxWalletTplInfo,
+            'structure' => $rxWalletStructure,
+            'companion_key' => 'richmsg.text_account_info',
+            'companion_present' => trim($rxWalletStructureRaw) !== '',
+            'parse_mode' => 'html',
+        ], 'info');
+        rx_richDiag_log('RICH_WALLET_STRUCTURE_RESOLVED', 'wallet_structure', !empty($rxWalletStructure['available']) ? 'found' : 'missing', $rxWalletStructure + [
+            'template_key' => 'text_account_info',
+            'companion_key' => 'richmsg.text_account_info',
+            'companion_present' => trim($rxWalletStructureRaw) !== '',
+        ], 'info');
+        rx_richDiag_comparison('template_retrieval', 'text_account_info', $rxWalletTplInfo, $rxWalletTplInfo, [
+            'template_source' => trim((string) $text_account_tpl) !== '' ? 'textbot_row' : 'empty_text',
+            'structure_digest' => $rxWalletStructure['sha256'] ?? null,
+            'structure_available' => !empty($rxWalletStructure['available']),
+            'after' => [
+                'rich_blocks' => $rxWalletStructure['blocks'] ?? 0,
+                'structure_sha256' => $rxWalletStructure['sha256'] ?? null,
+                'structure_available' => !empty($rxWalletStructure['available']),
+            ],
+            'phase' => 'wallet_template_retrieval',
+        ]);
+    }
     $text_account_replacements = [
         '{shanase}' => $from_id,
         '{name}' => $first_name,
@@ -1013,13 +1069,123 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         '{time_now}' => $timeacc,
     ];
     $text_account = strtr($text_account_tpl, $text_account_replacements) . "\n$textscore\n$textinvite";
+    $rxWalletTextInfo = function_exists('rx_richDiag_text') ? rx_richDiag_text($text_account) : [];
+    $rxWalletIsEdit = ($datain == "account" || $datain == "accountbtn");
+    if (function_exists('rx_richDiag_log')) {
+        rx_richDiag_comparison('wallet_variables_applied', 'text_account_info', $rxWalletTplInfo, $rxWalletTextInfo, [
+            'template_source' => trim((string) $text_account_tpl) !== '' ? 'textbot_row' : 'empty_text',
+            'structure_digest' => $rxWalletStructure['sha256'] ?? null,
+            'structure_available' => !empty($rxWalletStructure['available']),
+            'after' => [
+                'rich_blocks' => $rxWalletStructure['blocks'] ?? 0,
+                'structure_sha256' => $rxWalletStructure['sha256'] ?? null,
+                'structure_available' => !empty($rxWalletStructure['available']),
+            ],
+            'phase' => 'wallet_variables',
+        ]);
+        rx_richDiag_log('RICH_STATE_BEFORE_AFTER', 'state_snapshot', 'captured', rx_richDiag_stateSnapshot([
+            'phase' => 'wallet_template_rendered',
+            'text' => $text_account,
+            'chat_id' => $from_id,
+            'message_id' => $message_id,
+            'rendering_mode' => 'template_rendered',
+            'previous_message_key' => 'text_account_info',
+        ]), 'debug');
+    }
     $activeKeyboard = rx_account_keyboard_json($from_id);
-    if ($datain == "account" || $datain == "accountbtn") {
-        Editmessagetext($from_id, $message_id, $text_account, $activeKeyboard);
+    $rxWalletExplicitRich = !empty($rxWalletTextInfo['rtl_marker']) || !empty($rxWalletTextInfo['html_table']);
+    if (function_exists('rx_richDiag_log')) {
+        rx_richDiag_log('RICH_WALLET_RENDER_PREPARED', 'wallet_render', 'prepared', [
+            'template_key' => 'text_account_info',
+            'callback_route' => $rxWalletRoute,
+            'render_method' => $rxWalletIsEdit ? 'Editmessagetext' : 'sendmessage',
+            'expected_api_method' => $rxWalletIsEdit ? 'editmessagetext' : 'sendmessage',
+            'is_edit' => $rxWalletIsEdit,
+            'target_message_id' => $rxWalletIsEdit ? (int) $message_id : null,
+            'text' => $rxWalletTextInfo,
+            'table_present' => !empty($rxWalletTextInfo['html_table']),
+            'premium_present' => !empty($rxWalletTextInfo['tg_emoji_tags']),
+            'expected_explicit_rich' => $rxWalletExplicitRich,
+            'expected_embed_buttons' => null,
+            'expected_dest_rich' => $rxWalletExplicitRich,
+            'active_ui_section' => $GLOBALS['rx_ui_section'] ?? null,
+            'parse_mode' => 'html',
+        ], 'info', (microtime(true) - $rxWalletStartedAt) * 1000.0);
+        rx_richDiag_comparison('wallet_render_prepared', 'text_account_info', $rxWalletTextInfo, $rxWalletTextInfo, [
+            'render_mode' => $rxWalletIsEdit ? 'rich_edit' : 'rich_send',
+            'telegram_method' => $rxWalletIsEdit ? 'editmessagetext' : 'sendmessage',
+            'structure_digest' => $rxWalletStructure['sha256'] ?? null,
+            'structure_available' => !empty($rxWalletStructure['available']),
+            'after' => [
+                'rich_blocks' => $rxWalletStructure['blocks'] ?? 0,
+                'structure_sha256' => $rxWalletStructure['sha256'] ?? null,
+                'structure_available' => !empty($rxWalletStructure['available']),
+            ],
+            'phase' => 'wallet_prepared',
+        ]);
+        rx_richDiag_log('RICH_STATE_BEFORE_AFTER', 'state_snapshot', 'captured', rx_richDiag_stateSnapshot([
+            'phase' => 'wallet_before_dispatch',
+            'text' => $text_account,
+            'chat_id' => $from_id,
+            'message_id' => $message_id,
+            'rendering_mode' => $rxWalletIsEdit ? 'rich_edit' : 'rich_send',
+            'dest_rich' => $rxWalletExplicitRich,
+            'needs_intercept' => !empty($rxWalletTextInfo['html_table']) || !empty($rxWalletTextInfo['rtl_marker']) || !empty($rxWalletTextInfo['html_markup']),
+            'previous_message_key' => 'text_account_info',
+        ]), 'debug');
+    }
+    $rxWalletResult = null;
+    if ($rxWalletIsEdit) {
+        $rxWalletResult = Editmessagetext($from_id, $message_id, $text_account, $activeKeyboard);
     } else {
-        sendmessage($from_id, $text_account, $activeKeyboard, 'HTML');
+        $rxWalletResult = sendmessage($from_id, $text_account, $activeKeyboard, 'HTML');
+    }
+    if (function_exists('rx_richDiag_log')) {
+        $rxWalletOk = is_array($rxWalletResult) && !empty($rxWalletResult['ok']);
+        rx_richDiag_log('RICH_WALLET_DELIVERY_COMPLETED', 'wallet_delivery', $rxWalletOk ? 'completed' : 'failed', [
+            'template_key' => 'text_account_info',
+            'callback_route' => $rxWalletRoute,
+            'render_method' => $rxWalletIsEdit ? 'Editmessagetext' : 'sendmessage',
+            'is_edit' => $rxWalletIsEdit,
+            'target_message_id' => $rxWalletIsEdit ? (int) $message_id : null,
+            'resulting_message_id' => is_array($rxWalletResult) ? (int) ($rxWalletResult['result']['message_id'] ?? 0) : null,
+            'text' => $rxWalletTextInfo,
+            'result' => rx_richDiag_result($rxWalletResult),
+            'table_present' => !empty($rxWalletTextInfo['html_table']),
+            'premium_present' => !empty($rxWalletTextInfo['tg_emoji_tags']),
+        ], $rxWalletOk ? 'info' : 'warning', (microtime(true) - $rxWalletStartedAt) * 1000.0);
+        rx_richDiag_comparison('wallet_delivery', 'text_account_info', $rxWalletTextInfo, $rxWalletTextInfo, [
+            'render_mode' => $rxWalletIsEdit ? 'rich_edit' : 'rich_send',
+            'telegram_method' => $rxWalletIsEdit ? 'editmessagetext' : 'sendmessage',
+            'structure_digest' => $rxWalletStructure['sha256'] ?? null,
+            'structure_available' => !empty($rxWalletStructure['available']),
+            'rich_json_valid' => is_array($rxWalletResult) && isset($rxWalletResult['result']['rich_message']),
+            'after' => [
+                'rich_blocks' => $rxWalletStructure['blocks'] ?? 0,
+                'structure_sha256' => $rxWalletStructure['sha256'] ?? null,
+                'structure_available' => !empty($rxWalletStructure['available']),
+            ],
+            'phase' => 'wallet_delivery',
+        ]);
+        rx_richDiag_log('RICH_STATE_BEFORE_AFTER', 'state_snapshot', 'captured', rx_richDiag_stateSnapshot([
+            'phase' => 'wallet_after_dispatch',
+            'text' => $text_account,
+            'chat_id' => $from_id,
+            'message_id' => $message_id,
+            'previous_message_key' => 'text_account_info',
+        ]) + ['scope_result' => rx_richDiag_result($rxWalletResult)], $rxWalletOk ? 'debug' : 'warning');
     }
     step('home', $from_id);
+    if (function_exists('rx_richDiag_log')) {
+        rx_richDiag_log('RICH_WALLET_HANDLER_EXIT', 'wallet', (is_array($rxWalletResult) && !empty($rxWalletResult['ok'])) ? 'completed' : 'failed', [
+            'callback_route' => $rxWalletRoute,
+            'template_key' => 'text_account_info',
+            'result' => rx_richDiag_result($rxWalletResult),
+        ], 'info', (microtime(true) - $rxWalletStartedAt) * 1000.0);
+    }
+    if (function_exists('rx_richDiag_exitContext')) {
+        rx_richDiag_exitContext($rxWalletCtx);
+    }
     return;
 } elseif ($datain == "MyTransactions") {
     $_rx_tx_s = (isset($GLOBALS['_rx_tx_styles']) && is_array($GLOBALS['_rx_tx_styles'])) ? $GLOBALS['_rx_tx_styles'] : [];
@@ -2209,6 +2375,13 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     $Shoppinginfo = json_encode($Shoppinginfo);
     $datatextbot['textafterpay'] = $marzban_list_get['type'] == "Manualsale" ? $datatextbot['textmanual'] : $datatextbot['textafterpay'];
     $datatextbot['textafterpay'] = $marzban_list_get['type'] == "WGDashboard" ? $datatextbot['text_wgdashboard'] : $datatextbot['textafterpay'];
+    $rxServicePanelType = (string) ($marzban_list_get['type'] ?? '');
+    $rxServiceTemplateKey = $rxServicePanelType === 'Manualsale' ? 'textmanual' : ($rxServicePanelType === 'WGDashboard' ? 'text_wgdashboard' : 'textafterpay');
+    $rxServiceTemplateBefore = (string) ($datatextbot['textafterpay'] ?? '');
+    if (function_exists('rx_richDiag_enabled') && rx_richDiag_enabled() && function_exists('rx_richDiag_active') && !rx_richDiag_active() && function_exists('rx_richDiag_begin')) {
+        rx_richDiag_begin($rxServiceTemplateKey, 're/rx/index/user_flow.php', 'service_template_render');
+        $GLOBALS['rx_rich_diag_service_key'] = $rxServiceTemplateKey;
+    }
     if (intval($info_product['Service_time']) == 0)
         $info_product['Service_time'] = $textbotlang['users']['stateus']['Unlimited'];
     if (($marzban_list_get['type'] ?? '') === 'jovadpanel' ? (is_numeric($info_product['Volume_constraint']) && (float) $info_product['Volume_constraint'] === 0.0) : intval($info_product['Volume_constraint']) == 0)
@@ -2229,7 +2402,51 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         $textcreatuser = str_replace('{password}', $dataoutput['subscription_url'], $textcreatuser);
         update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $randomString);
     }
-    sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
+    if (function_exists('rx_richDiag_text') && function_exists('rx_richDiag_structure')) {
+        $rxServiceBefore = rx_richDiag_text($rxServiceTemplateBefore);
+        $rxServiceAfter = rx_richDiag_text($textcreatuser);
+        $rxServiceRich = isset($datatextbot['richmsg.' . $rxServiceTemplateKey]) ? (string) $datatextbot['richmsg.' . $rxServiceTemplateKey] : '';
+        $GLOBALS['rx_rich_diag_templates'][$rxServiceTemplateKey] = [
+            'text' => $rxServiceAfter,
+            'structure' => rx_richDiag_structure($rxServiceRich),
+            'variables' => [
+                'before' => (int) $rxServiceBefore['variables'],
+                'after' => (int) $rxServiceAfter['variables'],
+                'resolved' => max(0, (int) $rxServiceBefore['variables'] - (int) $rxServiceAfter['variables']),
+                'unresolved' => (int) $rxServiceAfter['variables'],
+                'length_before' => (int) $rxServiceBefore['length'],
+                'length_after' => (int) $rxServiceAfter['length'],
+                'length_delta' => (int) $rxServiceAfter['length'] - (int) $rxServiceBefore['length'],
+                'table_preserved' => !empty($rxServiceBefore['html_table']) && !empty($rxServiceAfter['html_table']),
+                'rows_preserved' => (int) $rxServiceAfter['row_count'] >= (int) $rxServiceBefore['row_count'],
+                'rtl_marker_before' => !empty($rxServiceBefore['rtl_marker']),
+                'rtl_marker_after' => !empty($rxServiceAfter['rtl_marker']),
+            ],
+            'selection' => [
+                'template_key' => $rxServiceTemplateKey,
+                'template_source' => 'textbot_row',
+                'panel_type' => $rxServicePanelType,
+                'selection_mode' => 'panel_type_conditional',
+                'rich_structure_key' => 'richmsg.' . $rxServiceTemplateKey,
+                'rich_structure_present' => trim($rxServiceRich) !== '',
+                'render_input' => 'textbot_text_html',
+                'parse_mode' => 'html',
+                'send_call' => 'sendMessageService',
+                'sub_link_present' => trim((string) $output_config_link) !== '',
+                'config_count' => is_array($dataoutput['configs'] ?? null) ? count($dataoutput['configs']) : 0,
+                'invoice_present' => trim((string) $randomString) !== '',
+            ],
+        ];
+        $GLOBALS['rx_rich_diag_service_key'] = $rxServiceTemplateKey;
+    }
+    if (function_exists('rx_richDiag_traceSend')) {
+        rx_richDiag_traceSend($rxServiceTemplateKey, static function () use ($marzban_list_get, $dataoutput, $output_config_link, $Shoppinginfo, $textcreatuser, $randomString) {
+            return sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
+        });
+        $GLOBALS['rx_rich_diag_service_key'] = null;
+    } else {
+        sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
+    }
     if (intval($priceproduct) != 0) {
 
         $rxBuyDeductRows = 0;
@@ -3071,6 +3288,9 @@ $textonebuy
             }
         }
         $datatextbot['textafterpay'] = $marzban_list_get['type'] == "Manualsale" ? $datatextbot['textmanual'] : $datatextbot['textafterpay'];
+        $rxServicePanelType = (string) ($marzban_list_get['type'] ?? '');
+        $rxServiceTemplateKey = $rxServicePanelType === 'Manualsale' ? 'textmanual' : 'textafterpay';
+        $rxServiceTemplateSource = 'panel_type_conditional';
         if ($marzban_list_get['type'] == "WGDashboard") {
             $datatextbot['textafterpay'] = "✅ سرویس با موفقیت ایجاد شد
 
@@ -3081,6 +3301,13 @@ $textonebuy
 🗜 حجم سرویس:  {volume} گیگابایت
 
 🧑‍🦯 شما میتوانید شیوه اتصال را  با فشردن دکمه زیر و انتخاب سیستم عامل خود را دریافت کنید";
+            $rxServiceTemplateSource = 'hardcoded_wgdashboard_bulk';
+            $rxServiceTemplateKey = 'text_wgdashboard';
+        }
+        $rxServiceTemplateBefore = (string) ($datatextbot['textafterpay'] ?? '');
+        if (function_exists('rx_richDiag_enabled') && rx_richDiag_enabled() && function_exists('rx_richDiag_active') && !rx_richDiag_active() && function_exists('rx_richDiag_begin')) {
+            rx_richDiag_begin($rxServiceTemplateKey, 're/rx/index/user_flow.php', 'bulk_service_template_render');
+            $GLOBALS['rx_rich_diag_service_key'] = $rxServiceTemplateKey;
         }
         $textcreatuser = str_replace('{username}', "<code>" . guardDisplayUsername($dataoutput['username'], $marzban_list_get) . "</code>", $datatextbot['textafterpay']);
         $textcreatuser = str_replace('{name_service}', $info_product['name_product'], $textcreatuser);
@@ -3091,7 +3318,51 @@ $textonebuy
             $textcreatuser .= fx_custom_price_text($marzban_list_get, $user['agent'], $parts[2], $parts[1], $__bulkItemCharge);
         }
         $textcreatuser = applyConnectionPlaceholders($textcreatuser, $output_config_link, $config);
-        sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
+        if (function_exists('rx_richDiag_text') && function_exists('rx_richDiag_structure')) {
+            $rxServiceBefore = rx_richDiag_text($rxServiceTemplateBefore);
+            $rxServiceAfter = rx_richDiag_text($textcreatuser);
+            $rxServiceRich = isset($datatextbot['richmsg.' . $rxServiceTemplateKey]) ? (string) $datatextbot['richmsg.' . $rxServiceTemplateKey] : '';
+            $GLOBALS['rx_rich_diag_templates'][$rxServiceTemplateKey] = [
+                'text' => $rxServiceAfter,
+                'structure' => rx_richDiag_structure($rxServiceRich),
+                'variables' => [
+                    'before' => (int) $rxServiceBefore['variables'],
+                    'after' => (int) $rxServiceAfter['variables'],
+                    'resolved' => max(0, (int) $rxServiceBefore['variables'] - (int) $rxServiceAfter['variables']),
+                    'unresolved' => (int) $rxServiceAfter['variables'],
+                    'length_before' => (int) $rxServiceBefore['length'],
+                    'length_after' => (int) $rxServiceAfter['length'],
+                    'length_delta' => (int) $rxServiceAfter['length'] - (int) $rxServiceBefore['length'],
+                    'table_preserved' => !empty($rxServiceBefore['html_table']) && !empty($rxServiceAfter['html_table']),
+                    'rows_preserved' => (int) $rxServiceAfter['row_count'] >= (int) $rxServiceBefore['row_count'],
+                    'rtl_marker_before' => !empty($rxServiceBefore['rtl_marker']),
+                    'rtl_marker_after' => !empty($rxServiceAfter['rtl_marker']),
+                ],
+                'selection' => [
+                    'template_key' => $rxServiceTemplateKey,
+                    'template_source' => $rxServiceTemplateSource,
+                    'panel_type' => $rxServicePanelType,
+                    'selection_mode' => 'bulk_purchase_path',
+                    'rich_structure_key' => 'richmsg.' . $rxServiceTemplateKey,
+                    'rich_structure_present' => trim($rxServiceRich) !== '',
+                    'render_input' => 'textbot_text_html',
+                    'parse_mode' => 'html',
+                    'send_call' => 'sendMessageService',
+                    'sub_link_present' => trim((string) $output_config_link) !== '',
+                    'config_count' => is_array($dataoutput['configs'] ?? null) ? count($dataoutput['configs']) : 0,
+                    'invoice_present' => trim((string) $randomString) !== '',
+                ],
+            ];
+            $GLOBALS['rx_rich_diag_service_key'] = $rxServiceTemplateKey;
+        }
+        if (function_exists('rx_richDiag_traceSend')) {
+            rx_richDiag_traceSend($rxServiceTemplateKey, static function () use ($marzban_list_get, $dataoutput, $output_config_link, $Shoppinginfo, $textcreatuser, $randomString) {
+                return sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
+            });
+            $GLOBALS['rx_rich_diag_service_key'] = null;
+        } else {
+            sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
+        }
         $rxBulkFilesPaid = (float) $__bulkItemCharge <= 0;
         if (function_exists('balance_atomic_charge')) {
             $__bulkChargeLive = balance_atomic_charge($from_id, (float)$__bulkItemCharge, $__bulkAllowNeg);
@@ -3610,13 +3881,17 @@ $textonebuy
     foreach ($admin_ids_local as $idAdminLocal) {
         if (!is_numeric($idAdminLocal)) continue;
         if ($rccPhotoId !== '') {
-            telegram('sendphoto', [
+            $rccAdminPhotoResult = telegram('sendphoto', [
                 'chat_id' => $idAdminLocal,
                 'photo'   => $rccPhotoId,
                 'caption' => $rccAdminCaption,
                 'parse_mode' => 'HTML',
                 'reply_markup' => $rccAdminKb,
             ]);
+            $rccAdminPhotoState = function_exists('rxDeliveryResultState') ? rxDeliveryResultState($rccAdminPhotoResult) : (!empty($rccAdminPhotoResult['ok']) ? 'confirmed' : 'unknown');
+            if ($rccAdminPhotoState === 'failed') {
+                sendmessage((string) $idAdminLocal, $rccAdminCaption, $rccAdminKb, 'HTML');
+            }
         } else {
             sendmessage((string) $idAdminLocal, $rccAdminCaption, $rccAdminKb, 'HTML');
         }
@@ -3633,7 +3908,20 @@ $textonebuy
         }
         if ($rccPhotoId !== '') {
             $payload['photo'] = $rccPhotoId;
-            telegram('sendphoto', $payload);
+            $rccChannelResult = telegram('sendphoto', $payload);
+            $rccChannelState = function_exists('rxDeliveryResultState') ? rxDeliveryResultState($rccChannelResult) : (!empty($rccChannelResult['ok']) ? 'confirmed' : 'unknown');
+            if ($rccChannelState === 'failed') {
+                $rccChannelFallback = [
+                    'chat_id' => $setting['Channel_Report'],
+                    'text' => $rccAdminCaption,
+                    'parse_mode' => 'HTML',
+                    'reply_markup' => $rccAdminKb,
+                ];
+                if (!empty($paymentreports)) {
+                    $rccChannelFallback['message_thread_id'] = $paymentreports;
+                }
+                telegram('sendmessage', $rccChannelFallback);
+            }
         } else {
             unset($payload['caption']);
             $payload['text'] = $rccAdminCaption;
@@ -5546,7 +5834,8 @@ $textonebuy
                             'parse_mode'   => 'HTML',
                             'reply_markup' => $invoiceKb,
                         ]);
-                        $fancyOk = true;
+                        $fancyState = function_exists('rxDeliveryResultState') ? rxDeliveryResultState($resp) : (!empty($resp['ok']) ? 'confirmed' : 'unknown');
+                        $fancyOk = $fancyState === 'confirmed' || $fancyState === 'unknown';
                     }
                 }
             } catch (\Throwable $_) {  }

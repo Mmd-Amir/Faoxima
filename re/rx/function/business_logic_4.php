@@ -388,39 +388,65 @@ function nm_renderInfoCardForInvoice($panel_info, $username_service, $invoice_id
     }
 }
 
-function nm_sendServiceQrFallback($user_id, string $qrPayload, string $backgroundImage = 'images.jpg', string $caption = '', $replyMarkup = null): bool
+function nm_sendServiceQrFallback($user_id, string $qrPayload, string $backgroundImage = 'images.jpg', string $caption = '', $replyMarkup = null, ?array &$deliveryDetail = null): bool
 {
+    $deliveryDetail = ['state' => 'not_attempted', 'reason' => '', 'result' => null];
     if (function_exists('isQrDisabled') && isQrDisabled()) {
+        $deliveryDetail = ['state' => 'skipped', 'reason' => 'qr_disabled', 'result' => null];
         return false;
     }
     if (!function_exists('createqrcode') || !function_exists('telegram')) {
+        $deliveryDetail = ['state' => 'failed', 'reason' => 'qr_stack_unavailable', 'result' => null];
         return false;
     }
     $qrPayload = trim($qrPayload);
     if ($qrPayload === '') {
+        $deliveryDetail = ['state' => 'failed', 'reason' => 'empty_qr_payload', 'result' => null];
         return false;
     }
+    $urlimage = '';
     try {
         $qrCode = createqrcode($qrPayload);
         if ($qrCode === null) {
+            $deliveryDetail = ['state' => 'failed', 'reason' => 'qr_generation_failed', 'result' => null];
             return false;
         }
         $urlimage = (defined('REFACTORED_LEGACY_ROOT') ? REFACTORED_LEGACY_ROOT : __DIR__)
             . DIRECTORY_SEPARATOR . $user_id . bin2hex(random_bytes(3)) . '.png';
-        file_put_contents($urlimage, $qrCode->getString());
+        $written = file_put_contents($urlimage, $qrCode->getString());
+        if ($written === false) {
+            $deliveryDetail = ['state' => 'failed', 'reason' => 'qr_file_write_failed', 'result' => null];
+            return false;
+        }
         if (function_exists('addBackgroundImage')) {
             @addBackgroundImage($urlimage, $qrCode, $backgroundImage);
         }
-        telegram('sendphoto', [
+        $deliveryDetail['state'] = 'attempted';
+        $result = rxSendMediaWithCaption('sendphoto', [
             'chat_id'    => $user_id,
             'photo'      => new CURLFile($urlimage),
-            'caption'    => $caption !== '' ? $caption : '📥 کیو‌آر کد',
+            'caption'    => trim($caption) !== '' ? $caption : '📥 کیو‌آر کد',
             'parse_mode' => 'HTML',
             'reply_markup' => $replyMarkup,
-        ]);
+        ], null, $mediaDelivery);
+        $state = $mediaDelivery['media_state'];
+        $deliveryDetail = [
+            'state' => $state,
+            'reason' => !$mediaDelivery['caption_valid'] ? 'caption_unsafe' : ('telegram_' . $state),
+            'result' => function_exists('rx_richDiag_result') ? rx_richDiag_result($result) : null,
+        ] + $mediaDelivery;
         @unlink($urlimage);
-        return true;
+        return $state === 'confirmed';
     } catch (Throwable $e) {
+        if ($urlimage !== '' && is_file($urlimage)) {
+            @unlink($urlimage);
+        }
+        $attempted = isset($deliveryDetail['state']) && $deliveryDetail['state'] === 'attempted';
+        $deliveryDetail = [
+            'state' => $attempted ? 'unknown' : 'failed',
+            'reason' => 'exception:' . get_class($e),
+            'result' => null,
+        ];
         error_log('nm_sendServiceQrFallback failed: ' . $e->getMessage());
         return false;
     }

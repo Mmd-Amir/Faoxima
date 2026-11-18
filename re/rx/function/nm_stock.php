@@ -277,8 +277,14 @@ function nmMaybeShowStockInvoiceDetails($chatId,$messageId,$invoice){
 }}
 if (!function_exists('nmSendLongStockMessage')) {
 function nmSendLongStockMessage($chatId,$text,$keyboard=null){
-    $text=(string)$text; if(mb_strlen($text,'UTF-8')<=3900){sendmessage($chatId,$text,$keyboard,'HTML');return;}
-    foreach(str_split($text,3800) as $part) sendmessage($chatId,$part,null,'HTML');
+    $text = (string) $text;
+    if (mb_strlen($text, 'UTF-8') <= 3900) {
+        $result = sendmessage($chatId, $text, $keyboard, 'HTML');
+        if (!rxMediaCaptionRejected($result) || !empty($result['_rx_confirmed_text_chunks'])) {
+            return;
+        }
+    }
+    rxSendRequiredMediaText(['chat_id' => $chatId, 'reply_markup' => $keyboard], $text);
 }}
 if (!function_exists('nmMaybeHandleStockCallback')) {
 function nmMaybeHandleStockCallback($datain,$chatId,$messageId=null,$callbackQueryId=null){
@@ -797,9 +803,9 @@ function nmStockSendQr($chatId, $qrPayload, $fullText, $shortCaption = '📥 ک�
                 $urlimage = $chatId . bin2hex(random_bytes(3)) . '.png';
                 file_put_contents($urlimage, $qrCode->getString());
                 if (function_exists('addBackgroundImage')) @addBackgroundImage($urlimage, $qrCode, 'images.jpg');
-                telegram('sendphoto', ['chat_id' => $chatId, 'photo' => new CURLFile($urlimage), 'caption' => $shortCaption, 'parse_mode' => 'HTML']);
+                rxSendMediaWithCaption('sendphoto', ['chat_id' => $chatId, 'photo' => new CURLFile($urlimage), 'caption' => $shortCaption, 'parse_mode' => 'HTML'], null, $stockDelivery);
+                $sent = $stockDelivery['delivery_status'] === 'completed';
                 @unlink($urlimage);
-                $sent = true;
             }
         } catch (Throwable $e) {
             error_log('nmStockSendQr failed: ' . $e->getMessage());

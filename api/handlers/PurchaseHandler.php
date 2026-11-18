@@ -651,11 +651,16 @@ final class PurchaseHandler extends BaseHandler
             $serviceTime,
             $template,
             $configList,
-            $subLink
+            $subLink,
+            $cardDelivery
         );
 
 
-        if (!$cardSent) {
+        if (!$cardSent && ($cardDelivery === null || (
+            $cardDelivery['media_state'] === 'failed'
+            && in_array($cardDelivery['text_state'], ['failed', 'skipped', 'not_attempted'], true)
+            && $cardDelivery['text_chunks_confirmed'] === 0
+        ))) {
             $serviceKeyboard = json_encode([
                 'inline_keyboard' => [
                     [
@@ -816,8 +821,10 @@ final class PurchaseHandler extends BaseHandler
         int $serviceTime,
         string $caption,
         array $configList = [],
-        string $subLink = ''
+        string $subLink = '',
+        ?array &$delivery = null
     ): bool {
+        $delivery = null;
 
         if (($panel['type'] ?? '') === 'Manualsale') {
             return false;
@@ -902,19 +909,20 @@ final class PurchaseHandler extends BaseHandler
         $keyboard = json_encode(['inline_keyboard' => $__kbPurchaseRows], JSON_UNESCAPED_UNICODE);
 
         try {
-            telegram('sendphoto', [
+            rxSendMediaWithCaption('sendphoto', [
                 'chat_id'      => $this->user['id'],
                 'photo'        => new CURLFile($outPath),
                 'caption'      => $caption,
                 'parse_mode'   => 'HTML',
                 'reply_markup' => $keyboard,
-            ]);
-            @unlink($outPath);
-            return true;
+            ], null, $delivery);
+            return $delivery['delivery_status'] === 'completed';
         } catch (Throwable $e) {
-            @unlink($outPath);
-            FaoximaLogger::warn('sendphoto (info card) failed', ['err' => $e->getMessage()]);
+            $delivery = ['media_state' => 'unknown', 'text_state' => 'unknown'];
+            FaoximaLogger::warn('sendphoto (info card) failed', ['exception' => get_class($e)]);
             return false;
+        } finally {
+            @unlink($outPath);
         }
     }
 

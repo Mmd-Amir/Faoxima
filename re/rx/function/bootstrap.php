@@ -54,9 +54,13 @@ function getDatabaseConnection()
     }
 
     try {
+        $username = (string) $username;
+        $password = (string) $password;
+        $options = is_array($options) ? $options : [];
+
         $newPdo = function_exists('rx_connect_pdo')
-            ? rx_connect_pdo($dsn, (string) $username, (string) $password, is_array($options) ? $options : [])
-            : new PDO($dsn, (string) $username, (string) $password, is_array($options) ? $options : []);
+            ? rx_connect_pdo($dsn, $username, $password, $options)
+            : new PDO($dsn, $username, $password, $options);
         $GLOBALS['pdo'] = $newPdo;
         $cachedPdo = $newPdo;
         return $cachedPdo;
@@ -243,6 +247,7 @@ if (!function_exists('applyConnectionPlaceholders')) {
 
     function applyConnectionPlaceholders($template, $subscriptionLink, $configList)
     {
+        $rxDiagTemplateBefore = (function_exists('rx_richDiag_active') && rx_richDiag_active() && function_exists('rx_richDiag_text')) ? rx_richDiag_text($template) : null;
         $trimmedSubscription = trim((string) $subscriptionLink);
         $trimmedConfigList = trim((string) $configList);
 
@@ -356,6 +361,33 @@ if (!function_exists('applyConnectionPlaceholders')) {
         }
 
         $template = preg_replace("/\n{3,}/u", "\n\n", $template);
+
+        if (is_array($rxDiagTemplateBefore) && function_exists('rx_richDiag_text')) {
+            $rxDiagTemplateAfter = rx_richDiag_text($template);
+            rx_richDiag_log('RICH_VARIABLES_APPLIED', 'connection_placeholders', 'applied', [
+                'before' => [
+                    'length' => (int) $rxDiagTemplateBefore['length'],
+                    'sha256' => $rxDiagTemplateBefore['sha256'],
+                    'html_table' => !empty($rxDiagTemplateBefore['html_table']),
+                    'table_count' => (int) $rxDiagTemplateBefore['table_count'],
+                    'row_count' => (int) $rxDiagTemplateBefore['row_count'],
+                    'variables' => (int) $rxDiagTemplateBefore['variables'],
+                ],
+                'after' => [
+                    'length' => (int) $rxDiagTemplateAfter['length'],
+                    'sha256' => $rxDiagTemplateAfter['sha256'],
+                    'html_table' => !empty($rxDiagTemplateAfter['html_table']),
+                    'table_count' => (int) $rxDiagTemplateAfter['table_count'],
+                    'row_count' => (int) $rxDiagTemplateAfter['row_count'],
+                    'variables' => (int) $rxDiagTemplateAfter['variables'],
+                ],
+                'table_preserved' => !empty($rxDiagTemplateBefore['html_table']) && !empty($rxDiagTemplateAfter['html_table']),
+                'rows_preserved' => (int) $rxDiagTemplateAfter['row_count'] >= (int) $rxDiagTemplateBefore['row_count'],
+                'length_delta' => (int) $rxDiagTemplateAfter['length'] - (int) $rxDiagTemplateBefore['length'],
+                'subscription_present' => trim((string) $subscriptionLink) !== '',
+                'config_present' => trim((string) $configList) !== '',
+            ]);
+        }
 
         return $template;
     }

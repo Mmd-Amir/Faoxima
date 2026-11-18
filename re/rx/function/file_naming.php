@@ -474,7 +474,7 @@ if (!function_exists('rxFileNamingTrimCaption')) {
 }
 
 if (!function_exists('rxFileNamingMergeCaption')) {
-    function rxFileNamingMergeCaption($base, $custom)
+    function rxFileNamingMergeCaption($base, $custom, bool $preserveFull = false)
     {
         $custom = rxFileNamingTrimCaption($custom, 1024);
         $base = (string) $base;
@@ -487,6 +487,9 @@ if (!function_exists('rxFileNamingMergeCaption')) {
                 : strlen($text);
         };
         $separator = trim($base) === '' ? '' : "\n\n";
+        if ($preserveFull) {
+            return $base . $separator . htmlspecialchars($custom, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        }
         $plainBase = html_entity_decode(strip_tags($base), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $allowance = 1024 - $rxFnLen($plainBase) - strlen($separator);
         if ($allowance <= 0) {
@@ -536,7 +539,7 @@ if (!function_exists('rxFileNamingResolve')) {
         if ($filename !== '') {
             $result['filename'] = $filename;
         }
-        $caption = rxFileNamingMergeCaption($originalCaption, (string) ($rule['custom_caption'] ?? ''));
+        $caption = rxFileNamingMergeCaption($originalCaption, (string) ($rule['custom_caption'] ?? ''), true);
         if ($caption !== '') {
             $result['caption'] = $caption;
         }

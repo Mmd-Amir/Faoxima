@@ -18,6 +18,14 @@ if (!defined('RX_DEFER_UPDATE_DEDUPE')) {
 require_once 'botapi.php';
 require_once 'jdf.php';
 require_once 'function.php';
+function rxConfigDeliveryNotice(string $status, string $failure = '❌ ارسال فایل کانفیگ ناموفق بود.'): string
+{
+    return [
+        'partial' => '⚠️ بخشی از فایل‌ها یا توضیحات ارسال نشد. برای پیگیری با پشتیبانی تماس بگیرید.',
+        'unknown' => '⏳ ارسال همه فایل‌ها یا توضیحات تأیید نشد. برای پیگیری با پشتیبانی تماس بگیرید.',
+    ][$status] ?? $failure;
+}
+
 if (isset($update_id) && isDuplicateUpdate($update_id)) {
     if (!headers_sent()) {
         http_response_code(200);
@@ -578,6 +586,7 @@ $varable_start += [
     '{time_now}' => $date_start,
 ];
 // Only count orders/payments when the start template actually uses them.
+$rxDiagStartBeforeRaw = $datatextbot['text_start'];
 if (strpos($datatextbot['text_start'], '{order_count}') !== false) {
     $startOrderStmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE id_user = :id_user AND name_product != 'سرویس تست' AND status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold')");
     $startOrderStmt->execute([':id_user' => $from_id]);
@@ -589,6 +598,23 @@ if (strpos($datatextbot['text_start'], '{payment_count}') !== false) {
     $varable_start['{payment_count}'] = (int) $startPaymentStmt->fetchColumn();
 }
 $datatextbot['text_start'] = strtr($datatextbot['text_start'], $varable_start);
+if (isset($rxDiagStartBeforeRaw) && function_exists('rx_richDiag_text') && function_exists('rx_richDiag_structure')) {
+    $rxDiagStartRich = isset($datatextbot['richmsg.text_start']) ? (string) $datatextbot['richmsg.text_start'] : '';
+    $GLOBALS['rx_rich_diag_templates']['text_start'] = [
+        'text_raw' => $datatextbot['text_start'],
+        'text_before_raw' => $rxDiagStartBeforeRaw,
+        'structure_raw' => $rxDiagStartRich,
+        'selection' => [
+            'template_key' => 'text_start',
+            'template_source' => 'textbot_row',
+            'rich_structure_key' => 'richmsg.text_start',
+            'rich_structure_present' => trim($rxDiagStartRich) !== '',
+            'render_input' => 'textbot_text_html',
+            'parse_mode' => 'html',
+            'send_call' => 'rx_send_banner_message',
+        ],
+    ];
+}
 if (function_exists('rx_resolveInlineButtonText') && isset($datain) && is_string($datain) && strpos($datain, 'rxb_') === 0) {
     $rxResolvedInlineText = rx_resolveInlineButtonText($datain);
     if ($rxResolvedInlineText !== null && $rxResolvedInlineText !== '') {
@@ -1077,7 +1103,13 @@ if ($shouldCheckChannel && !in_array($from_id, $admin_ids)) {
                 update("user", "joinchannel", "active", "id", $from_id);
                 $user['joinchannel'] = "active";
                 deletemessage($from_id, $message_id);
-                rx_send_banner_message($from_id, 'start', $datatextbot['text_start'], $keyboard, 'html');
+                if (function_exists('rx_richDiag_traceSend')) {
+                    rx_richDiag_traceSend('text_start', static function () use ($from_id, $datatextbot, $keyboard) {
+                        return rx_send_banner_message($from_id, 'start', $datatextbot['text_start'], $keyboard, 'html');
+                    });
+                } else {
+                    rx_send_banner_message($from_id, 'start', $datatextbot['text_start'], $keyboard, 'html');
+                }
                 telegram('answerCallbackQuery', [
                     'callback_query_id' => $callback_query_id,
                     'text' => $textbotlang['users']['channel']['confirmed'],
@@ -1212,7 +1244,13 @@ if ($text == "/start" || $datain == "start" || $text == "start" || $rxStartLandi
             'cache_time' => 0,
         ]);
     }
-    rx_send_banner_message($from_id, 'start', $datatextbot['text_start'], $keyboard, "html");
+    if (function_exists('rx_richDiag_traceSend')) {
+        rx_richDiag_traceSend('text_start', static function () use ($from_id, $datatextbot, $keyboard) {
+            return rx_send_banner_message($from_id, 'start', $datatextbot['text_start'], $keyboard, 'html');
+        });
+    } else {
+        rx_send_banner_message($from_id, 'start', $datatextbot['text_start'], $keyboard, 'html');
+    }
     return;
 }
 if ((!isset($connect) || !($connect instanceof mysqli)) && function_exists('getMysqliConnection')) {
@@ -1300,7 +1338,13 @@ if ($text == "version") {
         return;
     }
     sendmessage($from_id, $textbotlang['users']['number']['active'], json_encode(['inline_keyboard' => [], 'remove_keyboard' => true]), 'html');
-    rx_send_banner_message($from_id, 'start', $datatextbot['text_start'], $keyboard, 'html');
+    if (function_exists('rx_richDiag_traceSend')) {
+        rx_richDiag_traceSend('text_start', static function () use ($from_id, $datatextbot, $keyboard) {
+            return rx_send_banner_message($from_id, 'start', $datatextbot['text_start'], $keyboard, 'html');
+        });
+    } else {
+        rx_send_banner_message($from_id, 'start', $datatextbot['text_start'], $keyboard, 'html');
+    }
     update("user", "number", $user_phone, "id", $from_id);
     if ($setting['verifystart'] == "onverify") {
         update("user", "verify", "1", "id", $from_id);
@@ -1635,13 +1679,13 @@ if ($text == "version") {
                     ],
                 ],
             ], JSON_UNESCAPED_UNICODE);
-            telegram('sendphoto', [
+            rxSendMediaWithCaption('sendphoto', [
                 'chat_id' => $from_id,
                 'photo'   => new CURLFile($cardPath_qv),
                 'caption' => $caption_qv,
                 'parse_mode' => 'HTML',
                 'reply_markup' => $kb_qv,
-            ]);
+            ], null, $rxQvDelivery, true);
             @unlink($cardPath_qv);
             if (isset($callback_query_id)) {
                 telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'cache_time' => 1]);
@@ -2433,19 +2477,22 @@ $nameconfig";
     $subQrPayload = [
         'chat_id' => $from_id,
         'photo' => new CURLFile($urlimage),
-        'caption' => "<code>{$subscriptionurl}</code>",
+        'caption' => '<code>' . htmlspecialchars($subscriptionurl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</code>',
         'parse_mode' => "HTML",
     ];
     $subQrCopyKb = rx_copy_button_keyboard($subscriptionurl, '📋 کپی لینک اشتراک', null, 'service:' . $nameloc['id_invoice'] . ':copy_subscription');
     if ($subQrCopyKb !== null) {
         $subQrPayload['reply_markup'] = $subQrCopyKb;
     }
-    telegram('sendphoto', $subQrPayload);
+    rxSendMediaWithCaption('sendphoto', $subQrPayload, null, $rxSubQrDelivery, true);
     unlink($urlimage);
     if (isset($callback_query_id)) {
+        $rxSubQrAnswer = $rxSubQrDelivery['delivery_status'] === 'completed'
+            ? '✅ QR Code ارسال شد'
+            : rxConfigDeliveryNotice($rxSubQrDelivery['delivery_status'], '❌ ارسال QR ناموفق بود');
         telegram('answerCallbackQuery', [
             'callback_query_id' => $callback_query_id,
-            'text' => '✅ QR Code ارسال شد',
+            'text' => $rxSubQrAnswer,
             'show_alert' => false,
             'cache_time' => 0,
         ]);
@@ -2536,8 +2583,14 @@ $nameconfig";
         $wgSubResolved = rxFileNamingResolve($marzban_list_get, 'wgdashboard', rxFileNamingKeySubscription($marzban_list_get['inboundid'] ?? ''), $wgSubName, '');
         $wgSubPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'rxconf-' . bin2hex(random_bytes(8)) . '.conf';
         file_put_contents($wgSubPath, $DataUserOut['subscription_url']);
-        sendDocument($from_id, $wgSubPath, $wgSubResolved['caption'], $wgSubResolved['filename']);
-        @unlink($wgSubPath);
+        try {
+            sendDocument($from_id, $wgSubPath, $wgSubResolved['caption'], $wgSubResolved['filename'], $configDelivery);
+            if ($configDelivery['delivery_status'] !== 'completed') {
+                sendmessage($from_id, rxConfigDeliveryNotice($configDelivery['delivery_status']), null, 'HTML');
+            }
+        } finally {
+            @unlink($wgSubPath);
+        }
     } elseif ((!function_exists('isQrDisabled') || !isQrDisabled())
         && !(function_exists('nmPanelNationalEnabled') && nmPanelNationalEnabled($marzban_list_get))
         && trim((string) $subscriptionurl) !== '') {
@@ -2550,13 +2603,13 @@ $nameconfig";
         $urlimage = "{$from_id}{$randomString}.png";
         file_put_contents($urlimage, $qrCode->getString());
         addBackgroundImage($urlimage, $qrCode, 'images.jpg');
-        telegram('sendphoto', [
+        rxSendMediaWithCaption('sendphoto', [
             'chat_id' => $from_id,
             'photo' => new CURLFile($urlimage),
             'caption' => $textsub,
-            'parse_mode' => "HTML",
+            'parse_mode' => 'HTML',
             'reply_markup' => $bakinfos,
-        ]);
+        ], null, $rxQrDelivery, true);
         unlink($urlimage);
     } else {
         sendmessage($from_id, $textsub, $bakinfos, 'HTML');
@@ -2667,9 +2720,11 @@ $nameconfig";
             $manualBackKb = json_encode(['inline_keyboard' => [[
                 ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "product_{$nameloc['id_invoice']}"],
             ]]], JSON_UNESCAPED_UNICODE);
-            $sentFiles = rxManualsaleSendFileItems($from_id, $nameloc['username'], $manualFileItems, '', $manualBackKb);
-            if (!$sentFiles) {
-                sendmessage($from_id, $datatextbot['dyn_errors_config_read_error'] ?? "❌  خطا در خواندن اطلاعات کانفیگ با پشتیبانی در ارتباط باشید.", null, 'html');
+            rxManualsaleSendFileItems($from_id, $nameloc['username'], $manualFileItems, '', $manualBackKb, 0, 0, $manualDeliveryResult);
+            $deliveryStatus = $manualDeliveryResult['delivery_status'];
+            if ($deliveryStatus !== 'completed') {
+                $notice = rxConfigDeliveryNotice($deliveryStatus, $datatextbot['dyn_errors_config_read_error'] ?? "❌  خطا در خواندن اطلاعات کانفیگ با پشتیبانی در ارتباط باشید.");
+                sendmessage($from_id, $notice, $manualDeliveryResult['keyboard_state'] === 'failed' ? $manualBackKb : null, 'HTML');
             }
             return;
         }
@@ -2736,9 +2791,11 @@ $nameconfig";
         $manualDelivery = rxManualsaleDelivery($nameloc['username']);
         $manualFileItems = rxManualsaleFileItems($manualDelivery['items'] ?? []);
         if (!empty($manualFileItems)) {
-            $sentFiles = rxManualsaleSendFileItems($from_id, $nameloc['username'], $manualFileItems, '', null);
-            if (!$sentFiles) {
-                sendmessage($from_id, $datatextbot['dyn_errors_config_read_from_panel_error'] ?? "❌ خطا در خواندن کانفیگ از پنل.", null, 'html');
+            rxManualsaleSendFileItems($from_id, $nameloc['username'], $manualFileItems, '', null, 0, 0, $manualDeliveryResult);
+            $deliveryStatus = $manualDeliveryResult['delivery_status'];
+            if ($deliveryStatus !== 'completed') {
+                $notice = rxConfigDeliveryNotice($deliveryStatus, $datatextbot['dyn_errors_config_read_from_panel_error'] ?? "❌ خطا در خواندن کانفیگ از پنل.");
+                sendmessage($from_id, $notice, null, 'HTML');
             }
             return;
         }
@@ -2806,10 +2863,12 @@ $nameconfig";
                         sendmessage($from_id, '❌ خطا در آماده‌سازی فایل کانفیگ.', null, 'HTML');
                         return;
                     }
-                    $allSingleSent = sendDocument($from_id, $allSingleTemp, $allSingleResolved['caption'], $allSingleResolved['filename']);
-                    if (!is_array($allSingleSent) || empty($allSingleSent['ok'])) {
-                        sendmessage($from_id, '❌ ارسال فایل کانفیگ ناموفق بود؛ دوباره تلاش کنید.', null, 'HTML');
-                        return;
+                    sendDocument($from_id, $allSingleTemp, $allSingleResolved['caption'], $allSingleResolved['filename'], $configDelivery);
+                    if ($configDelivery['delivery_status'] !== 'completed') {
+                        sendmessage($from_id, rxConfigDeliveryNotice($configDelivery['delivery_status']), null, 'HTML');
+                        if ($configDelivery['media_state'] !== 'confirmed') {
+                            return;
+                        }
                     }
                     $rxDeliveredConfigHashes[hash('sha256', (string) $allSingleFile['value'])] = true;
                 } finally {
@@ -2845,10 +2904,12 @@ $nameconfig";
                             sendmessage($from_id, '❌ خطا در آماده‌سازی فایل کانفیگ.', null, 'HTML');
                             return;
                         }
-                        $allWgSent = sendDocument($from_id, $allWgDest, $allWgResolved['caption'], $allWgName);
-                        if (!is_array($allWgSent) || empty($allWgSent['ok'])) {
-                            sendmessage($from_id, '❌ ارسال فایل کانفیگ ناموفق بود؛ دوباره تلاش کنید.', null, 'HTML');
-                            return;
+                        sendDocument($from_id, $allWgDest, $allWgResolved['caption'], $allWgName, $configDelivery);
+                        if ($configDelivery['delivery_status'] !== 'completed') {
+                            sendmessage($from_id, rxConfigDeliveryNotice($configDelivery['delivery_status']), null, 'HTML');
+                            if ($configDelivery['media_state'] !== 'confirmed') {
+                                return;
+                            }
                         }
                         $rxDeliveredConfigHashes[$allWgHash] = true;
                     } finally {
@@ -2870,10 +2931,12 @@ $nameconfig";
                         sendmessage($from_id, '❌ خطا در دریافت فایل کانفیگ از پنل.', null, 'HTML');
                         return;
                     }
-                    $allRebeccaSent = sendDocument($from_id, $allRebeccaTemp, $allRebeccaResolved['caption'], $allRebeccaResolved['filename']);
-                    if (!is_array($allRebeccaSent) || empty($allRebeccaSent['ok'])) {
-                        sendmessage($from_id, '❌ ارسال فایل کانفیگ ناموفق بود؛ دوباره تلاش کنید.', null, 'HTML');
-                        return;
+                    sendDocument($from_id, $allRebeccaTemp, $allRebeccaResolved['caption'], $allRebeccaResolved['filename'], $configDelivery);
+                    if ($configDelivery['delivery_status'] !== 'completed') {
+                        sendmessage($from_id, rxConfigDeliveryNotice($configDelivery['delivery_status']), null, 'HTML');
+                        if ($configDelivery['media_state'] !== 'confirmed') {
+                            return;
+                        }
                     }
                 } finally {
                     @unlink($allRebeccaTemp);
@@ -2896,13 +2959,14 @@ $nameconfig";
         $xuiFileName = $xuiFileResolved['filename'];
         $xuiFileDest = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'rxconf-' . bin2hex(random_bytes(8)) . '.conf';
         file_put_contents($xuiFileDest, $singleConfigFile['value']);
-        telegram('sendDocument', [
-            'chat_id' => $from_id,
-            'document' => new CURLFile($xuiFileDest, 'application/octet-stream', $xuiFileName),
-            'caption' => $xuiFileResolved['caption'],
-            'parse_mode' => 'HTML',
-        ]);
-        @unlink($xuiFileDest);
+        try {
+            sendDocument($from_id, $xuiFileDest, $xuiFileResolved['caption'], $xuiFileName, $configDelivery);
+            if ($configDelivery['delivery_status'] !== 'completed') {
+                sendmessage($from_id, rxConfigDeliveryNotice($configDelivery['delivery_status']), null, 'HTML');
+            }
+        } finally {
+            @unlink($xuiFileDest);
+        }
         return;
     }
     if (function_exists('xui_wg_conf_from_link')) {
@@ -2916,13 +2980,14 @@ $nameconfig";
             $xuiWgName = $xuiWgResolved['filename'];
             $xuiWgDest = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'rxconf-' . bin2hex(random_bytes(8)) . '.conf';
             file_put_contents($xuiWgDest, $xuiWgConf['conf']);
-            telegram('sendDocument', [
-                'chat_id' => $from_id,
-                'document' => new CURLFile($xuiWgDest, 'application/octet-stream', $xuiWgName),
-                'caption' => $xuiWgResolved['caption'],
-                'parse_mode' => 'HTML',
-            ]);
-            @unlink($xuiWgDest);
+            try {
+                sendDocument($from_id, $xuiWgDest, $xuiWgResolved['caption'], $xuiWgName, $configDelivery);
+                if ($configDelivery['delivery_status'] !== 'completed') {
+                    sendmessage($from_id, rxConfigDeliveryNotice($configDelivery['delivery_status']), null, 'HTML');
+                }
+            } finally {
+                @unlink($xuiWgDest);
+            }
             return;
         }
     }
@@ -2951,10 +3016,10 @@ $nameconfig";
             $rebeccaTempExt = preg_match('/^[a-z0-9]{1,10}$/', $rebeccaTempExt) ? '.' . $rebeccaTempExt : '.tmp';
             $rebeccaDownloadDest = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'rxconf-' . bin2hex(random_bytes(8)) . $rebeccaTempExt;
             if (rebeccaDownloadConfigFile($rebeccaDownloadInfo['url'], $rebeccaDownloadDest)) {
-                $rebeccaSendResult = sendDocument($from_id, $rebeccaDownloadDest, $rebeccaResolved['caption'], $rebeccaPublicName);
+                sendDocument($from_id, $rebeccaDownloadDest, $rebeccaResolved['caption'], $rebeccaPublicName, $configDelivery);
                 @unlink($rebeccaDownloadDest);
-                if (!is_array($rebeccaSendResult) || empty($rebeccaSendResult['ok'])) {
-                    sendmessage($from_id, $datatextbot['dyn_errors_config_read_from_panel_error'] ?? "❌ خطا در خواندن کانفیگ از پنل.", null, 'html');
+                if ($configDelivery['delivery_status'] !== 'completed') {
+                    sendmessage($from_id, rxConfigDeliveryNotice($configDelivery['delivery_status']), null, 'HTML');
                 }
             } else {
                 sendmessage($from_id, $datatextbot['dyn_errors_config_read_from_panel_error'] ?? "❌ خطا در خواندن کانفیگ از پنل.", null, 'html');
@@ -2985,13 +3050,13 @@ $nameconfig";
         $photoPayload = [
             'chat_id' => $from_id,
             'photo' => new CURLFile($urlimage),
-            'caption' => "<code>{$selectedConfig}</code>",
+            'caption' => '<code>' . htmlspecialchars($selectedConfig, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</code>',
             'parse_mode' => "HTML",
         ];
         if ($selectedConfigCopyKb !== null) {
             $photoPayload['reply_markup'] = $selectedConfigCopyKb;
         }
-        telegram('sendphoto', $photoPayload);
+        rxSendMediaWithCaption('sendphoto', $photoPayload, null, $rxCfgQrDelivery, true);
         unlink($urlimage);
     } else {
         sendmessage($from_id, "<code>{$selectedConfig}</code>", $selectedConfigCopyKb, 'HTML');

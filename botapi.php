@@ -153,6 +153,8 @@ function telegram($method, $datas = [], $token = null)
     unset($datas['_rx_curl_timeout']);
     $rxNoNetworkRetry = !empty($datas['_rx_no_network_retry']);
     unset($datas['_rx_no_network_retry']);
+    $rxDiagOn = function_exists('rx_richDiag_active') && rx_richDiag_active();
+    $rxDiagStartedAt = microtime(true);
 
     if (strtolower((string) $method) === 'setwebhook') {
         $datas['secret_token'] = FaoximaWebhookAuth::secret((string) $token, $token === $APIKEY);
@@ -235,6 +237,13 @@ function telegram($method, $datas = [], $token = null)
     }
 
     $preparedPayload = prepareTelegramRequestPayload($datas);
+    if ($rxDiagOn) {
+        rx_richDiag_log('RICH_PAYLOAD_PREPARED', 'telegram_request', 'prepared', [
+            'api_method' => (string) $method,
+            'request' => rx_richDiag_payload($datas),
+            'already_transformed' => $rxAlreadyTransformed,
+        ], 'debug');
+    }
 
     // Outbound to api.telegram.org has intermittent 2-5s connect timeouts
     // on some hosting providers (MatHost.eu in particular). When a single
@@ -318,7 +327,9 @@ function telegram($method, $datas = [], $token = null)
 
         // Stop if the error isn't network-transient, or if we just used the
         // last attempt — fall through to the error-return block.
-        if (!in_array($curlErrorNumber, $retryableCurlErrnos, true) || $attemptedTimes >= $maxAttempts) {
+        if (!in_array($curlErrorNumber, $retryableCurlErrnos, true) || $attemptedTimes >= $maxAttempts
+            || (in_array($rxSendMethod, ['sendmessage', 'sendrichmessage', 'sendphoto', 'sendvideo', 'senddocument', 'sendanimation'], true)
+                && !in_array($curlErrorNumber, [6, 7], true))) {
             break;
         }
 
@@ -327,9 +338,19 @@ function telegram($method, $datas = [], $token = null)
 
     if ($rawResponse === false) {
         $logError = $curlError !== '' ? $curlError : 'Unknown cURL error';
+        $logError = function_exists('rx_richDiag_sanitize') ? rx_richDiag_sanitize($logError) : 'Telegram transport failed';
         $redactedUrl = preg_replace('#(/bot)[^/]+(/)#', '$1***$2', $url);
         error_log(sprintf('Telegram request failed (errno: %d, url: %s, attempts: %d): %s',
             $curlErrorNumber, $redactedUrl, $attemptedTimes, $logError));
+        if ($rxDiagOn) {
+            rx_richDiag_log('RICH_TELEGRAM_API_RESPONSE', 'telegram_transport', 'transport_failed', [
+                'api_method' => (string) $method,
+                'curl_errno' => (int) $curlErrorNumber,
+                'error' => $logError,
+                'attempts' => (int) $attemptedTimes,
+                'http_code' => (int) $httpCode,
+            ], 'error', (microtime(true) - $rxDiagStartedAt) * 1000.0);
+        }
         return [
             'ok' => false,
             'description' => ($curlError !== '' ? $curlError : 'Telegram request failed.') . ' اتصال به تلگرام در مهلت مقرر برقرار نشد؛ فایروال یا پراکسی خروجی را بررسی کنید.'
@@ -344,11 +365,28 @@ function telegram($method, $datas = [], $token = null)
     if (!$rxEmojiFallbackAttempt) {
         $rxRetryResult = FxTelegramEmojiFallback::recover((string) $method, $datas, $rxParsedResponse, (string) $token, $rxRequestTimeout);
         if ($rxRetryResult !== null) {
+            if ($rxDiagOn) {
+                rx_richDiag_log('RICH_TELEGRAM_API_RESPONSE', 'telegram_emoji_fallback', 'retried', [
+                    'api_method' => (string) $method,
+                    'http_code' => (int) $httpCode,
+                    'first_result' => rx_richDiag_result($rxParsedResponse),
+                    'retry_result' => rx_richDiag_result($rxRetryResult),
+                ], 'warning', (microtime(true) - $rxDiagStartedAt) * 1000.0);
+            }
             return $rxRetryResult;
         }
     }
     if (function_exists('rx_ui_after_send')) {
         rx_ui_after_send($method, $datas, $rxParsedResponse);
+    }
+    if ($rxDiagOn) {
+        rx_richDiag_log('RICH_TELEGRAM_API_RESPONSE', 'telegram_response', !empty($rxParsedResponse['ok']) ? 'ok' : 'rejected', [
+            'api_method' => (string) $method,
+            'http_code' => (int) $httpCode,
+            'attempts' => (int) $attemptedTimes,
+            'duration_ms' => round($duration * 1000.0, 2),
+            'response' => rx_richDiag_result($rxParsedResponse),
+        ], !empty($rxParsedResponse['ok']) ? 'info' : 'error', (microtime(true) - $rxDiagStartedAt) * 1000.0);
     }
     return $rxParsedResponse;
 }
@@ -357,8 +395,7 @@ function rx_parse_telegram_response($rawResponse, $httpCode)
 {
     $decodedResponse = json_decode($rawResponse, true);
     if (!is_array($decodedResponse)) {
-        $logSnippet = substr((string) $rawResponse, 0, 200);
-        error_log(sprintf('Invalid response from Telegram API (HTTP %d): %s', $httpCode, $logSnippet));
+        error_log(sprintf('Invalid response from Telegram API (HTTP %d)', $httpCode));
 
         return [
             'ok' => false,
@@ -394,11 +431,16 @@ function rx_parse_telegram_response($rawResponse, $httpCode)
             }
         }
         if (!$rxIsBenign) {
-            $rxTgKey = 'tg|' . (string)($decodedResponse['error_code'] ?? 0) . '|' . substr($rxDesc, 0, 60);
+            $rxTgKey = 'tg|' . (string)($decodedResponse['error_code'] ?? 0) . '|' . hash('sha256', $rxDesc);
+            $rxSafeError = [
+                'ok' => false,
+                'error_code' => $decodedResponse['error_code'] ?? 0,
+                'description' => function_exists('rx_richDiag_sanitize') ? rx_richDiag_sanitize($rxDesc) : 'Telegram rejected the request',
+            ];
             if (function_exists('faoxima_dedup_error_log')) {
-                faoxima_dedup_error_log($rxTgKey, json_encode($decodedResponse), 21600);
+                faoxima_dedup_error_log($rxTgKey, json_encode($rxSafeError), 21600);
             } else {
-                error_log(json_encode($decodedResponse));
+                error_log(json_encode($rxSafeError));
             }
         }
     }
@@ -637,12 +679,40 @@ function getPremiumEmojiMap($forceReload = false) {
     return $cache;
 }
 function applyPremiumEmojiTransform($text, $parseMode) {
-    if (!is_string($text) || $text === '') { return $text; }
+    $rxDiagEnabled = function_exists('rx_richDiag_active') && rx_richDiag_active();
+    $rxDiagBefore = $rxDiagEnabled ? rx_richDiag_text($text) : null;
+    if (!is_string($text) || $text === '') {
+        if ($rxDiagEnabled) {
+            rx_richDiag_log('RICH_PREMIUM_EMOJI_PROCESS', 'premium_emoji', 'skipped', [
+                'reason' => 'not_string_or_empty',
+                'parse_mode' => (string) $parseMode,
+            ], 'debug');
+        }
+        return $text;
+    }
     $pm = strtolower((string)$parseMode);
 
-    if ($pm !== 'html') { return $text; }
+    if ($pm !== 'html') {
+        if ($rxDiagEnabled) {
+            rx_richDiag_log('RICH_PREMIUM_EMOJI_PROCESS', 'premium_emoji', 'skipped', [
+                'reason' => 'parse_mode_not_html',
+                'parse_mode' => (string) $parseMode,
+                'before' => $rxDiagBefore,
+            ], 'debug');
+        }
+        return $text;
+    }
     $map = getPremiumEmojiMap();
-    if (empty($map)) { return $text; }
+    if (empty($map)) {
+        if ($rxDiagEnabled) {
+            rx_richDiag_log('RICH_PREMIUM_EMOJI_PROCESS', 'premium_emoji', 'skipped', [
+                'reason' => 'emoji_map_empty',
+                'parse_mode' => (string) $parseMode,
+                'before' => $rxDiagBefore,
+            ], 'debug');
+        }
+        return $text;
+    }
 
     $replacements = [];
     foreach ($map as $emoji => $cid) {
@@ -656,7 +726,16 @@ function applyPremiumEmojiTransform($text, $parseMode) {
     // text is transformed, once, so overlapping sources cannot create nested tags.
     $tagPattern = '~(<(?:[^>"\']|"[^"]*"|\'[^\']*\')*>)~s';
     $segments = preg_split($tagPattern, $text, -1, PREG_SPLIT_DELIM_CAPTURE);
-    if ($segments === false) { return $text; }
+    if ($segments === false) {
+        if ($rxDiagEnabled) {
+            rx_richDiag_log('RICH_PREMIUM_EMOJI_PROCESS', 'premium_emoji', 'failed', [
+                'reason' => 'html_segment_split_failed',
+                'parse_mode' => (string) $parseMode,
+                'before' => $rxDiagBefore,
+            ], 'warning');
+        }
+        return $text;
+    }
     $protected = [];
     $out = '';
     foreach ($segments as $index => $segment) {
@@ -672,6 +751,29 @@ function applyPremiumEmojiTransform($text, $parseMode) {
             $out .= $segment;
         } else {
             $out .= array_sum($protected) > 0 ? $segment : strtr($segment, $replacements);
+        }
+    }
+    if ($rxDiagEnabled) {
+        $rxDiagAfter = rx_richDiag_text($out);
+        rx_richDiag_log('RICH_PREMIUM_EMOJI_PROCESS', 'premium_emoji', 'transformed', [
+            'parse_mode' => (string) $parseMode,
+            'before' => $rxDiagBefore,
+            'after' => $rxDiagAfter,
+            'changed' => $out !== $text,
+            'map_size' => count($map),
+            'length_delta' => (int) $rxDiagAfter['length'] - (int) ($rxDiagBefore['length'] ?? 0),
+            'table_count_before' => (int) ($rxDiagBefore['table_count'] ?? 0),
+            'table_count_after' => (int) $rxDiagAfter['table_count'],
+            'html_table_preserved' => (int) ($rxDiagBefore['table_count'] ?? 0) === (int) $rxDiagAfter['table_count'],
+            'emoji_tags_before' => (int) ($rxDiagBefore['tg_emoji_tags'] ?? 0),
+            'emoji_tags_after' => (int) $rxDiagAfter['tg_emoji_tags'],
+            'escaped_markup_after' => (int) $rxDiagAfter['escaped_markup'],
+        ], 'debug');
+        if (in_array(rx_richDiag_currentKey(), ['text_start', 'text_account_info'], true)) {
+            rx_richDiag_comparison('premium_emoji', rx_richDiag_currentKey(), $rxDiagBefore, $rxDiagAfter, [
+                'render_mode' => 'premium_emoji_transform',
+                'phase' => 'premium_emoji',
+            ]);
         }
     }
     return $out;
@@ -2956,16 +3058,42 @@ if (!function_exists('rx_mergeKeyboardSectionDefaults')) {
 
 function sendmessage($chat_id,$text,$keyboard,$parse_mode,$bot_token = null){
     if(intval($chat_id) == 0)return ['ok' => false];
+    $rxDiagOwn = false;
+    if (is_string($text) && function_exists('rx_richDiag_enabled') && rx_richDiag_enabled() && function_exists('rx_richDiag_active') && !rx_richDiag_active()) {
+        $rxDiagText = rx_richDiag_text($text);
+        if (!empty($rxDiagText['html_table']) || !empty($rxDiagText['rtl_marker'])) {
+            rx_richDiag_begin('unknown', 'botapi.php', 'sendmessage');
+            rx_richDiag_log('RICH_TEMPLATE_LOADED', 'sendmessage_text', 'observed', ['text' => $rxDiagText], 'debug');
+            rx_richDiag_log('RICH_MESSAGE_CONTEXT', 'context_enter', 'entered', [
+                'handler' => 'sendmessage',
+                'callback_route' => '',
+                'template_source' => 'unknown',
+                'template_key' => 'unknown',
+                'parent_trace_id' => null,
+                'context_origin' => 'sendmessage_auto_trace',
+                'context_depth' => 0,
+                'context_inherited' => false,
+                'context_valid' => true,
+            ], 'debug');
+            $rxDiagOwn = true;
+        }
+    }
     $text = applyPremiumEmojiTransform($text, $parse_mode);
     $keyboard = processKeyboardStyles($keyboard, function_exists('rx_isAdminChat') && rx_isAdminChat($chat_id), $chat_id);
     $keyboard = applyPremiumEmojiToKeyboard($keyboard);
-    return telegram('sendmessage',[
+    $rxSendResult = telegram('sendmessage',[
         'chat_id' => $chat_id,
         'text' => $text,
         'reply_markup' => $keyboard,
         'parse_mode' => $parse_mode,
         '_rx_already_transformed' => true,
         ],$bot_token);
+    if ($rxDiagOwn) {
+        $GLOBALS['rx_rich_diag_last_result'] = $rxSendResult;
+        $rxSendState = rxMediaResultState($rxSendResult);
+        rx_richDiag_finish($rxSendState === 'confirmed' ? 'completed' : $rxSendState, ['delivery_mode' => 'sendmessage', '_function' => 'sendmessage', '_source_file' => 'botapi.php']);
+    }
+    return $rxSendResult;
 }
 
 
@@ -3085,22 +3213,180 @@ function prepareTelegramInputFile($input, $postFilename = null)
     return null;
 }
 
-function sendDocument($chat_id, $documentPath, $caption, $filename = null)
+function rxMediaResultState($response): string
+{
+    if (function_exists('rxDeliveryResultState')) {
+        return rxDeliveryResultState($response);
+    }
+    if (is_array($response) && ($response['ok'] ?? null) === true) {
+        return 'confirmed';
+    }
+    $code = (int) ($response['error_code'] ?? 0);
+    return is_array($response) && empty($response['_rx_invalid_response']) && $code >= 400 && $code < 500 && $code !== 429 ? 'failed' : 'unknown';
+}
+
+function rxMediaCaptionRejected($result): bool
+{
+    return is_array($result) && ($result['ok'] ?? null) === false && empty($result['_rx_invalid_response'])
+        && (int) ($result['error_code'] ?? 0) === 400
+        && preg_match("~caption is too long|message is too long|can't parse entities|entity.*(invalid|offset|length)|unsupported start tag|unsupported URL protocol~i", (string) ($result['description'] ?? '')) === 1;
+}
+
+function rxSendRequiredMediaText(array $destination, string $caption, $token = null, int $startChunk = 0, ?callable $checkpoint = null): array
+{
+    try {
+        $plain = function_exists('rx_richUi_plainText')
+            ? rx_richUi_plainText($caption, 'HTML', true)
+            : trim(html_entity_decode(strip_tags($caption), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
+    } catch (Throwable $e) {
+        return ['state' => 'failed', 'chunks_confirmed' => $startChunk, 'result' => null];
+    }
+    $chunks = function_exists('rx_richUi_plainChunks') ? rx_richUi_plainChunks($plain) : [$plain];
+    $payload = array_intersect_key($destination, array_flip(['chat_id', 'message_thread_id', 'disable_notification', 'protect_content']));
+    $result = null;
+    $state = 'failed';
+    $sent = $startChunk;
+    $last = count($chunks) - 1;
+    if ($last < 0 || trim($plain) === '') {
+        if ($checkpoint !== null) {
+            $checkpoint('failed', $startChunk);
+        }
+        return ['state' => 'failed', 'chunks_confirmed' => $startChunk, 'result' => null];
+    }
+    foreach ($chunks as $index => $chunk) {
+        if ($index < $startChunk || trim($chunk) === '') {
+            continue;
+        }
+        if ($checkpoint !== null && !$checkpoint('unknown', $index)) {
+            $state = 'unknown';
+            break;
+        }
+        $payload['text'] = $chunk;
+        $payload['_rx_already_transformed'] = true;
+        $payload['_rx_no_network_retry'] = true;
+        if ($index === $last && isset($destination['reply_markup'])) {
+            $payload['reply_markup'] = $destination['reply_markup'];
+            unset($payload['_rx_already_transformed']);
+        }
+        try {
+            $result = function_exists('rx_richUi_plainCall')
+                ? rx_richUi_plainCall('sendmessage', $payload, $token)
+                : telegram('sendmessage', $payload, $token);
+            $state = rxMediaResultState($result);
+        } catch (Throwable $e) {
+            $state = 'unknown';
+        }
+        if ($state === 'confirmed') {
+            $sent = $index + 1;
+        }
+        if ($checkpoint !== null && !$checkpoint($state === 'confirmed' && $index !== $last ? 'not_attempted' : $state, $sent)) {
+            $state = 'unknown';
+            break;
+        }
+        if ($state !== 'confirmed') {
+            break;
+        }
+    }
+    return ['state' => $state, 'chunks_confirmed' => $sent, 'result' => $result];
+}
+
+function rxSendMediaWithCaption(string $method, array $payload, $token = null, ?array &$delivery = null, bool $captionOnMediaFailure = false)
+{
+    $caption = (string) ($payload['caption'] ?? '');
+    $required = trim($caption) !== '';
+    $prepared = function_exists('rxPrepareSafeMediaCaption') ? rxPrepareSafeMediaCaption($caption) : $caption;
+    $sendMedia = static function (array $data) use ($method, $token) {
+        try {
+            return function_exists('rx_richUi_plainCall')
+                ? rx_richUi_plainCall($method, $data, $token)
+                : telegram($method, $data, $token);
+        } catch (Throwable $e) {
+            return ['ok' => false, 'description' => 'Telegram media delivery outcome is unknown'];
+        }
+    };
+    $payload['caption'] = $prepared ?? '';
+    $payload['_rx_no_network_retry'] = true;
+    $result = $sendMedia($payload);
+    if ($required && $prepared !== null && rxMediaCaptionRejected($result)) {
+        $prepared = null;
+        $payload['caption'] = '';
+        unset($payload['caption_entities']);
+        $result = $sendMedia($payload);
+    }
+    $mediaState = rxMediaResultState($result);
+    $split = $required && ($prepared === null || ($captionOnMediaFailure && $mediaState === 'failed'));
+    $text = ['state' => $required ? $mediaState : 'skipped', 'result' => null];
+    if ($split) {
+        $destination = $payload;
+        if ($mediaState !== 'failed') {
+            unset($destination['reply_markup']);
+        }
+        $text = rxSendRequiredMediaText($destination, $caption, $token);
+    }
+    $components = [
+        'media' => ['required' => true, 'state' => $mediaState],
+        'text' => ['required' => $required, 'state' => $text['state']],
+    ];
+    if ($text['state'] !== 'confirmed' && ($text['chunks_confirmed'] ?? 0) > 0) {
+        $components['text_chunks'] = ['required' => true, 'state' => 'confirmed'];
+    }
+    $delivery = function_exists('rxDeliveryComponentContext') ? rxDeliveryComponentContext($components) : [
+        'media_state' => $mediaState,
+        'text_state' => $text['state'],
+        'delivery_status' => in_array('unknown', [$mediaState, $text['state']], true) ? 'unknown'
+            : ($mediaState === 'confirmed' ? ($required && $text['state'] !== 'confirmed' ? 'partial' : 'completed')
+                : ($text['state'] === 'confirmed' ? 'partial' : 'failed')),
+    ];
+    $delivery += [
+        'caption_required' => $required,
+        'caption_valid' => $prepared !== null,
+        'caption_complete' => !$required || $text['state'] === 'confirmed',
+        'caption_delivery_state' => $text['state'],
+        'text_chunks_confirmed' => $text['chunks_confirmed'] ?? 0,
+        'caption_source' => $split ? 'separate_text' : ($required ? 'media_caption' : 'none'),
+    ];
+    if (function_exists('rx_richDiag_log')) {
+        $rxStatus = $delivery['delivery_status'];
+        rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'media_delivery', $rxStatus, $delivery + [
+            'delivery_mode' => $method,
+            'fallback_reason' => $split ? 'separate_caption_text' : null,
+            'media_result' => rx_richDiag_result($result),
+            'text_result' => rx_richDiag_result($text['result']),
+        ], $rxStatus === 'completed' ? 'info' : 'warning');
+    }
+    return $result;
+}
+
+function sendDocument($chat_id, $documentPath, $caption, $filename = null, ?array &$delivery = null)
 {
     $document = prepareTelegramInputFile($documentPath, $filename);
     if ($document === null) {
+        $required = trim((string) $caption) !== '';
+        $text = $required ? rxSendRequiredMediaText(['chat_id' => $chat_id], (string) $caption) : ['state' => 'skipped', 'chunks_confirmed' => 0];
+        $delivery = [
+            'media_state' => 'failed',
+            'text_state' => $text['state'],
+            'caption_required' => $required,
+            'caption_complete' => !$required || $text['state'] === 'confirmed',
+            'delivery_status' => $text['state'] === 'unknown' ? 'unknown' : ($text['chunks_confirmed'] > 0 ? 'partial' : 'failed'),
+        ];
+        if (function_exists('rx_richDiag_log')) {
+            rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'media_delivery', $delivery['delivery_status'], [
+                'delivery_mode' => 'sendDocument',
+                'fallback_reason' => 'document_unavailable',
+            ] + $delivery, 'warning');
+        }
         return [
             'ok' => false,
             'description' => 'Document could not be prepared for Telegram upload.'
         ];
     }
-
-    return telegram('sendDocument', [
+    return rxSendMediaWithCaption('sendDocument', [
         'chat_id' => $chat_id,
         'document' => $document,
-        'caption' => $caption,
+        'caption' => (string) $caption,
         'parse_mode' => 'HTML',
-    ]);
+    ], null, $delivery);
 }
 
 function forwardMessage($chat_id,$message_id,$chat_id_user){
@@ -3110,29 +3396,29 @@ function forwardMessage($chat_id,$message_id,$chat_id_user){
         'chat_id'=> $chat_id_user,
     ]);
 }
-function sendphoto($chat_id,$photoid,$caption){
-    telegram('sendphoto',[
+function sendphoto($chat_id,$photoid,$caption, ?array &$delivery = null){
+    return rxSendMediaWithCaption('sendphoto', [
         'chat_id' => $chat_id,
-        'photo'=> $photoid,
-        'caption'=> $caption,
+        'photo' => $photoid,
+        'caption' => (string) $caption,
         'parse_mode' => 'HTML',
-    ]);
+    ], null, $delivery);
 }
-function sendvideo($chat_id,$videoid,$caption){
-    telegram('sendvideo',[
+function sendvideo($chat_id,$videoid,$caption, ?array &$delivery = null){
+    return rxSendMediaWithCaption('sendvideo', [
         'chat_id' => $chat_id,
-        'video'=> $videoid,
-        'caption'=> $caption,
+        'video' => $videoid,
+        'caption' => (string) $caption,
         'parse_mode' => 'HTML',
-    ]);
+    ], null, $delivery);
 }
-function senddocumentsid($chat_id,$documentid,$caption){
-    telegram('sendDocument',[
+function senddocumentsid($chat_id,$documentid,$caption, ?array &$delivery = null){
+    return rxSendMediaWithCaption('sendDocument', [
         'chat_id' => $chat_id,
-        'document'=> $documentid,
-        'caption'=> $caption,
+        'document' => $documentid,
+        'caption' => (string) $caption,
         'parse_mode' => 'HTML',
-    ]);
+    ], null, $delivery);
 }
 function Editmessagetext($chat_id, $message_id, $text, $keyboard,$parse_mode = 'HTML', $threadId = null){
     $message_id = (int) $message_id;
@@ -3143,6 +3429,35 @@ function Editmessagetext($chat_id, $message_id, $text, $keyboard,$parse_mode = '
     $__origThreadId = $threadId !== null
         ? (int) $threadId
         : ($__callbackMsg ? (int)($__callbackMsg['message_thread_id'] ?? 0) : 0);
+    $__diagChatHash = substr(hash('sha256', (string) $chat_id), 0, 12);
+    $__diagTargetRich = $__callbackMsg && isset($__callbackMsg['rich_message']);
+    $__diagTargetText = $__callbackMsg && isset($__callbackMsg['text']);
+    $__diagTargetMedia = $__callbackMsg && (
+        !empty($__callbackMsg['photo'])
+        || !empty($__callbackMsg['video'])
+        || !empty($__callbackMsg['animation'])
+        || !empty($__callbackMsg['document'])
+    );
+    if (function_exists('rx_richDiag_log')) {
+        rx_richDiag_log('RICH_MESSAGE_TARGET', 'edit_dispatch', 'selected', [
+            'original_operation' => 'editmessagetext',
+            'requested_api_method' => 'editmessagetext',
+            'selected_api_method' => 'editmessagetext',
+            'is_edit' => true,
+            'is_new_message' => false,
+            'chat_hash' => $__diagChatHash,
+            'target_message_id' => $message_id,
+            'previous_message_id' => $__callbackMsgId,
+            'target_is_rich' => $__diagTargetRich,
+            'target_has_text' => $__diagTargetText,
+            'target_has_media' => $__diagTargetMedia,
+            'replacement_created' => false,
+            'deletion_requested' => false,
+            'rich_intercepted_edit' => false,
+            'reason' => 'standard_edit_request',
+            'target_rich_meta' => rx_richDiag_targetRichMeta(),
+        ], 'info');
+    }
     $__sendFallback = function ($fbChatId, $fbText, $fbKeyboard, $fbParseMode) use ($__origThreadId) {
         $fbText = applyPremiumEmojiTransform($fbText, $fbParseMode);
         $fbKeyboard = processKeyboardStyles($fbKeyboard, function_exists('rx_isAdminChat') && rx_isAdminChat($fbChatId), $fbChatId);
@@ -3160,7 +3475,37 @@ function Editmessagetext($chat_id, $message_id, $text, $keyboard,$parse_mode = '
         return telegram('sendmessage', $fbPayload);
     };
     if ($message_id <= 0) {
-        return $__sendFallback($chat_id, $text, $keyboard, strtolower($parse_mode));
+        if (function_exists('rx_richDiag_log')) {
+            rx_richDiag_log('RICH_MESSAGE_TARGET', 'edit_dispatch', 'send_fallback_selected', [
+                'original_operation' => 'editmessagetext',
+                'requested_api_method' => 'editmessagetext',
+                'selected_api_method' => 'sendmessage',
+                'is_edit' => false,
+                'is_new_message' => true,
+                'chat_hash' => $__diagChatHash,
+                'target_message_id' => $message_id,
+                'previous_message_id' => $__callbackMsgId,
+                'replacement_created' => false,
+                'deletion_requested' => false,
+                'rich_intercepted_edit' => false,
+                'reason' => 'missing_target_message_id',
+            ], 'warning');
+        }
+        $__fallbackResult = $__sendFallback($chat_id, $text, $keyboard, strtolower($parse_mode));
+        if (function_exists('rx_richDiag_log')) {
+            rx_richDiag_log('RICH_MESSAGE_TARGET', 'edit_dispatch', is_array($__fallbackResult) && !empty($__fallbackResult['ok']) ? 'send_fallback_completed' : 'send_fallback_failed', [
+                'original_operation' => 'editmessagetext',
+                'selected_api_method' => 'sendmessage',
+                'is_edit' => false,
+                'is_new_message' => true,
+                'chat_hash' => $__diagChatHash,
+                'resulting_message_id' => is_array($__fallbackResult) ? (int) ($__fallbackResult['result']['message_id'] ?? 0) : null,
+                'replacement_created' => true,
+                'deletion_requested' => false,
+                'result' => rx_richDiag_result($__fallbackResult),
+            ], is_array($__fallbackResult) && !empty($__fallbackResult['ok']) ? 'info' : 'warning');
+        }
+        return $__fallbackResult;
     }
     $text = applyPremiumEmojiTransform($text, $parse_mode);
     $keyboard = processKeyboardStyles($keyboard, function_exists('rx_isAdminChat') && rx_isAdminChat($chat_id), $chat_id);
@@ -3173,10 +3518,50 @@ function Editmessagetext($chat_id, $message_id, $text, $keyboard,$parse_mode = '
         || !empty($__callbackMsg['document'])
     );
     if ($__isPhotoMsg && $__callbackMsgId === (int)$message_id) {
-        if (function_exists('deletemessage')) {
-            @deletemessage($chat_id, $message_id);
+        if (function_exists('rx_richDiag_log')) {
+            rx_richDiag_log('RICH_MESSAGE_TARGET', 'edit_dispatch', 'replacement_selected', [
+                'original_operation' => 'editmessagetext',
+                'requested_api_method' => 'editmessagetext',
+                'selected_api_method' => 'sendmessage',
+                'is_edit' => false,
+                'is_new_message' => true,
+                'chat_hash' => $__diagChatHash,
+                'target_message_id' => $message_id,
+                'previous_message_id' => $__callbackMsgId,
+                'target_is_rich' => $__diagTargetRich,
+                'target_has_media' => true,
+                'replacement_created' => null,
+                'deletion_requested' => true,
+                'rich_intercepted_edit' => false,
+                'reason' => 'media_target_delete_and_send',
+            ], 'info');
         }
-        return $__sendFallback($chat_id, $text, $keyboard, strtolower($parse_mode));
+        $__fallbackResult = $__sendFallback($chat_id, $text, $keyboard, strtolower($parse_mode));
+        $__replacementOk = is_array($__fallbackResult) && !empty($__fallbackResult['ok']);
+        $__deleteResult = null;
+        if ($__replacementOk && function_exists('deletemessage')) {
+            $__deleteResult = @deletemessage($chat_id, $message_id);
+        }
+        if (function_exists('rx_richDiag_log')) {
+            rx_richDiag_log('RICH_MESSAGE_TARGET', 'edit_dispatch', $__replacementOk ? 'replacement_completed' : 'replacement_failed', [
+                'original_operation' => 'editmessagetext',
+                'selected_api_method' => 'sendmessage',
+                'is_edit' => false,
+                'is_new_message' => true,
+                'chat_hash' => $__diagChatHash,
+                'target_message_id' => $message_id,
+                'previous_message_id' => $__callbackMsgId,
+                'resulting_message_id' => is_array($__fallbackResult) ? (int) ($__fallbackResult['result']['message_id'] ?? 0) : null,
+                'replacement_created' => $__replacementOk,
+                'deletion_requested' => $__replacementOk,
+                'deletion_succeeded' => $__deleteResult === null ? null : (is_array($__deleteResult) && !empty($__deleteResult['ok'])),
+                'rich_intercepted_edit' => false,
+                'reason' => 'media_target_delete_and_send',
+                'result' => rx_richDiag_result($__fallbackResult),
+                'delete_result' => $__deleteResult === null ? null : rx_richDiag_result($__deleteResult),
+            ], $__replacementOk ? 'info' : 'warning');
+        }
+        return $__fallbackResult;
     }
 
     $result = telegram('editmessagetext', [
@@ -3187,7 +3572,27 @@ function Editmessagetext($chat_id, $message_id, $text, $keyboard,$parse_mode = '
         'parse_mode' => $parse_mode,
         '_rx_already_transformed' => true,
     ]);
-
+    if (function_exists('rx_richDiag_log')) {
+        rx_richDiag_log('RICH_MESSAGE_TARGET', 'edit_dispatch', is_array($result) && !empty($result['ok']) ? 'edit_completed' : 'edit_rejected', [
+            'original_operation' => 'editmessagetext',
+            'requested_api_method' => 'editmessagetext',
+            'selected_api_method' => 'editmessagetext',
+            'is_edit' => true,
+            'is_new_message' => false,
+            'chat_hash' => $__diagChatHash,
+            'target_message_id' => $message_id,
+            'previous_message_id' => $__callbackMsgId,
+            'resulting_message_id' => is_array($result) ? (int) ($result['result']['message_id'] ?? 0) : null,
+            'target_is_rich' => $__diagTargetRich,
+            'target_has_text' => $__diagTargetText,
+            'target_has_media' => $__diagTargetMedia,
+            'replacement_created' => false,
+            'deletion_requested' => false,
+            'rich_intercepted_edit' => false,
+            'reason' => 'edit_api_response',
+            'result' => rx_richDiag_result($result),
+        ], is_array($result) && !empty($result['ok']) ? 'info' : 'warning');
+    }
 
     if (is_array($result) && isset($result['ok']) && $result['ok'] === false) {
         $desc = strtolower((string)($result['description'] ?? ''));
@@ -3199,10 +3604,60 @@ function Editmessagetext($chat_id, $message_id, $text, $keyboard,$parse_mode = '
             || strpos($desc, 'rich message') !== false
         );
         if ($needsFallback) {
-            if (function_exists('deletemessage')) {
-                @deletemessage($chat_id, $message_id);
+            $__fallbackReason = 'edit_rejected';
+            if (strpos($desc, 'rich message') !== false) {
+                $__fallbackReason = 'rich_message_edit_rejected';
+            } elseif (strpos($desc, 'no text in the message') !== false) {
+                $__fallbackReason = 'target_has_no_text';
+            } elseif (strpos($desc, "message can't be edited") !== false) {
+                $__fallbackReason = 'target_not_editable';
+            } elseif (strpos($desc, 'message to edit not found') !== false) {
+                $__fallbackReason = 'target_not_found';
             }
-            return $__sendFallback($chat_id, $text, $keyboard, strtolower($parse_mode));
+            if (function_exists('rx_richDiag_log')) {
+                rx_richDiag_log('RICH_MESSAGE_TARGET', 'edit_dispatch', 'replacement_selected', [
+                    'original_operation' => 'editmessagetext',
+                    'requested_api_method' => 'editmessagetext',
+                    'selected_api_method' => 'sendmessage',
+                    'is_edit' => false,
+                    'is_new_message' => true,
+                    'chat_hash' => $__diagChatHash,
+                    'target_message_id' => $message_id,
+                    'previous_message_id' => $__callbackMsgId,
+                    'target_is_rich' => $__diagTargetRich,
+                    'replacement_created' => null,
+                    'deletion_requested' => true,
+                    'rich_intercepted_edit' => false,
+                    'reason' => $__fallbackReason,
+                    'edit_error' => rx_richDiag_result($result),
+                ], 'warning');
+            }
+            $__fallbackResult = $__sendFallback($chat_id, $text, $keyboard, strtolower($parse_mode));
+            $__replacementOk = is_array($__fallbackResult) && !empty($__fallbackResult['ok']);
+            $__deleteResult = null;
+            if ($__replacementOk && function_exists('deletemessage')) {
+                $__deleteResult = @deletemessage($chat_id, $message_id);
+            }
+            if (function_exists('rx_richDiag_log')) {
+                rx_richDiag_log('RICH_MESSAGE_TARGET', 'edit_dispatch', $__replacementOk ? 'replacement_completed' : 'replacement_failed', [
+                    'original_operation' => 'editmessagetext',
+                    'selected_api_method' => 'sendmessage',
+                    'is_edit' => false,
+                    'is_new_message' => true,
+                    'chat_hash' => $__diagChatHash,
+                    'target_message_id' => $message_id,
+                    'previous_message_id' => $__callbackMsgId,
+                    'resulting_message_id' => is_array($__fallbackResult) ? (int) ($__fallbackResult['result']['message_id'] ?? 0) : null,
+                    'replacement_created' => $__replacementOk,
+                    'deletion_requested' => $__replacementOk,
+                    'deletion_succeeded' => $__deleteResult === null ? null : (is_array($__deleteResult) && !empty($__deleteResult['ok'])),
+                    'rich_intercepted_edit' => false,
+                    'reason' => $__fallbackReason,
+                    'result' => rx_richDiag_result($__fallbackResult),
+                    'delete_result' => $__deleteResult === null ? null : rx_richDiag_result($__deleteResult),
+                ], $__replacementOk ? 'info' : 'warning');
+            }
+            return $__fallbackResult;
         }
     }
     return $result;
@@ -3210,10 +3665,25 @@ function Editmessagetext($chat_id, $message_id, $text, $keyboard,$parse_mode = '
  function deletemessage($chat_id, $message_id){
   $message_id = (int) $message_id;
   if ($message_id <= 0) return ['ok' => false, 'description' => 'message_id missing'];
-  return telegram('deletemessage', [
+  $rxDiagDeleteResult = telegram('deletemessage', [
 'chat_id' => $chat_id,
 'message_id' => $message_id,
 ]);
+  if (function_exists('rx_richDiag_active') && rx_richDiag_active() && function_exists('rx_richDiag_log')) {
+      rx_richDiag_log('RICH_MESSAGE_TARGET', 'delete', is_array($rxDiagDeleteResult) && !empty($rxDiagDeleteResult['ok']) ? 'deleted' : 'delete_failed', [
+          'original_operation' => 'deletemessage',
+          'requested_api_method' => 'deletemessage',
+          'selected_api_method' => 'deletemessage',
+          'is_edit' => false,
+          'is_new_message' => false,
+          'chat_hash' => substr(hash('sha256', (string) $chat_id), 0, 12),
+          'target_message_id' => $message_id,
+          'deletion_requested' => true,
+          'deletion_succeeded' => is_array($rxDiagDeleteResult) && !empty($rxDiagDeleteResult['ok']),
+          'result' => rx_richDiag_result($rxDiagDeleteResult),
+      ], is_array($rxDiagDeleteResult) && !empty($rxDiagDeleteResult['ok']) ? 'info' : 'warning');
+  }
+  return $rxDiagDeleteResult;
  }
 function getFileddire($photoid){
   return telegram('getFile', [

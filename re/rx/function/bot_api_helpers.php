@@ -145,6 +145,12 @@ function addFieldToTable($tableName, $fieldName, $defaultValue = null, $datatype
 function rx_send_banner_message($chat_id, $section, $text, $keyboard = null, $parse_mode = 'html')
 {
     global $setting;
+    $rxDiagOwn = false;
+    if (function_exists('rx_richDiag_begin') && function_exists('rx_richDiag_enabled') && rx_richDiag_enabled() && function_exists('rx_richDiag_active') && !rx_richDiag_active()) {
+        rx_richDiag_begin($section === 'start' ? 'text_start' : ('banner_' . $section), 're/rx/function/bot_api_helpers.php', 'banner_send');
+        $rxDiagOwn = true;
+    }
+    $rxDiagText = function_exists('rx_richDiag_text') ? rx_richDiag_text($text) : ['present' => false];
     $statusCol = "banner_{$section}_status";
     $fileCol = "banner_{$section}_file_id";
     $status = is_array($setting) ? ($setting[$statusCol] ?? '0') : '0';
@@ -160,27 +166,134 @@ function rx_send_banner_message($chat_id, $section, $text, $keyboard = null, $pa
             rx_start_media_log('start hook failed: ' . $startMediaError->getMessage());
         }
     }
+    if (function_exists('rx_richDiag_log')) {
+        rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'banner_gate', 'observed', [
+            'section' => (string) $section,
+            'parse_mode' => (string) $parse_mode,
+            'banner_status' => (string) $status,
+            'banner_file_present' => $fileId !== '',
+            'start_media_active' => $startMediaActive,
+            'keyboard_present' => !empty($keyboard),
+            'text' => $rxDiagText,
+            'chat_hash' => substr(hash('sha256', (string) $chat_id), 0, 12),
+        ], 'info');
+    }
     if ($status == '1' && $fileId !== '' && !$startMediaActive) {
         if (function_exists('rx_richUi_sendBanner')) {
             $richBannerResult = rx_richUi_sendBanner($chat_id, $fileId, $text, $keyboard, $parse_mode, $section === 'start' ? 'main_menu' : null);
             if (is_array($richBannerResult)) {
-                rx_decor_record($chat_id, $richBannerResult, 'screen', $section);
-                return $richBannerResult;
+                $rxBannerState = function_exists('rxDeliveryResultState') ? rxDeliveryResultState($richBannerResult) : (!empty($richBannerResult['ok']) ? 'confirmed' : 'unknown');
+                if ($rxBannerState === 'confirmed') {
+                    if (function_exists('rx_richDiag_log')) {
+                        rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'banner_delivery', 'completed', [
+                            'delivery_mode' => 'rich_banner',
+                            'section' => (string) $section,
+                            'result' => rx_richDiag_result($richBannerResult),
+                            'table_present' => !empty($rxDiagText['html_table']),
+                            'premium_present' => !empty($rxDiagText['tg_emoji_tags']),
+                        ], 'info');
+                    }
+                    rx_decor_record($chat_id, $richBannerResult, 'screen', $section);
+                    if ($rxDiagOwn) {
+                        $GLOBALS['rx_rich_diag_last_result'] = $richBannerResult;
+                        rx_richDiag_finish('completed', ['_function' => 'rx_send_banner_message', '_source_file' => 're/rx/function/bot_api_helpers.php']);
+                    }
+                    return $richBannerResult;
+                }
+                if ($rxBannerState === 'unknown') {
+                    if (function_exists('rx_richDiag_log')) {
+                        rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'banner_delivery', 'unknown', [
+                            'delivery_mode' => 'rich_banner',
+                            'section' => (string) $section,
+                            'result' => rx_richDiag_result($richBannerResult),
+                            'fallback_reason' => 'rich_banner_delivery_ambiguous',
+                        ], 'warning');
+                    }
+                    if ($rxDiagOwn) {
+                        $GLOBALS['rx_rich_diag_last_result'] = $richBannerResult;
+                        rx_richDiag_finish('unknown', ['_function' => 'rx_send_banner_message', '_source_file' => 're/rx/function/bot_api_helpers.php']);
+                    }
+                    return $richBannerResult;
+                }
+            }
+            if (function_exists('rx_richDiag_log')) {
+                rx_richDiag_log('RICH_FALLBACK_TRIGGERED', 'banner_gate', 'fallback', [
+                    'reason' => 'rich_banner_not_delivered',
+                    'intended_mode' => 'rich_banner',
+                    'initiator' => 'rx_send_banner_message',
+                    'fallback_method' => 'sendphoto',
+                    'initial_request_failed' => true,
+                    'table_present' => !empty($rxDiagText['html_table']),
+                    'premium_present' => !empty($rxDiagText['tg_emoji_tags']),
+                ], 'warning');
             }
         }
-        $photoResult = telegram('sendphoto', [
-            'chat_id' => $chat_id,
-            'photo' => $fileId,
-            'caption' => $text,
-            'reply_markup' => $keyboard,
-            'parse_mode' => $parse_mode,
-        ]);
-        if (is_array($photoResult) && !empty($photoResult['ok'])) {
-            rx_decor_record($chat_id, $photoResult, 'screen', $section);
-            return $photoResult;
+        $rxBannerPhotoCaption = function_exists('rxPrepareSafeMediaCaption') ? rxPrepareSafeMediaCaption((string) $text) : (string) $text;
+        if ($rxBannerPhotoCaption !== null) {
+            $photoPayload = [
+                'chat_id' => $chat_id,
+                'photo' => $fileId,
+                'caption' => $rxBannerPhotoCaption,
+                'reply_markup' => $keyboard,
+                'parse_mode' => $parse_mode,
+            ];
+            if (strtolower((string) $parse_mode) === 'html') {
+                $photoPayload['caption'] = (string) $text;
+                $photoResult = rxSendMediaWithCaption('sendphoto', $photoPayload, null, $bannerDelivery);
+                $rxPhotoStatus = $bannerDelivery['delivery_status'];
+            } else {
+                $photoResult = telegram('sendphoto', $photoPayload);
+                $rxPhotoState = rxMediaResultState($photoResult);
+                $rxPhotoStatus = $rxPhotoState === 'confirmed' ? 'completed' : $rxPhotoState;
+            }
+            if ($rxPhotoStatus === 'completed') {
+                if (function_exists('rx_richDiag_log')) {
+                    rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'banner_delivery', 'completed', [
+                        'delivery_mode' => 'photo_banner',
+                        'section' => (string) $section,
+                        'result' => rx_richDiag_result($photoResult),
+                        'table_present' => !empty($rxDiagText['html_table']),
+                    ], 'info');
+                }
+                rx_decor_record($chat_id, $photoResult, 'screen', $section);
+                if ($rxDiagOwn) {
+                    $GLOBALS['rx_rich_diag_last_result'] = $photoResult;
+                    rx_richDiag_finish('completed', ['_function' => 'rx_send_banner_message', '_source_file' => 're/rx/function/bot_api_helpers.php']);
+                }
+                return $photoResult;
+            }
+            if ($rxPhotoStatus === 'unknown' || $rxPhotoStatus === 'partial') {
+                if (function_exists('rx_richDiag_log')) {
+                    rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'banner_delivery', $rxPhotoStatus, [
+                        'delivery_mode' => 'photo_banner',
+                        'section' => (string) $section,
+                        'result' => rx_richDiag_result($photoResult),
+                        'fallback_reason' => 'photo_banner_delivery_incomplete',
+                    ], 'warning');
+                }
+                if ($rxDiagOwn) {
+                    $GLOBALS['rx_rich_diag_last_result'] = $photoResult;
+                    rx_richDiag_finish($rxPhotoStatus, ['_function' => 'rx_send_banner_message', '_source_file' => 're/rx/function/bot_api_helpers.php']);
+                }
+                return $photoResult;
+            }
         }
     }
-    return sendmessage($chat_id, $text, $keyboard, $parse_mode);
+    if (function_exists('rx_richDiag_log')) {
+        rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'banner_gate', 'selected', [
+            'delivery_mode' => 'text_delivery',
+            'send_call' => 'sendmessage',
+            'section' => (string) $section,
+            'text' => $rxDiagText,
+        ], 'info');
+    }
+    $plainResult = sendmessage($chat_id, $text, $keyboard, $parse_mode);
+    if ($rxDiagOwn) {
+        $GLOBALS['rx_rich_diag_last_result'] = $plainResult;
+        $rxPlainState = function_exists('rxDeliveryResultState') ? rxDeliveryResultState($plainResult) : ((is_array($plainResult) && ($plainResult['ok'] ?? null) === true) ? 'confirmed' : 'failed');
+        rx_richDiag_finish($rxPlainState === 'confirmed' ? 'completed' : ($rxPlainState === 'unknown' ? 'unknown' : 'failed'), ['_function' => 'rx_send_banner_message', '_source_file' => 're/rx/function/bot_api_helpers.php']);
+    }
+    return $plainResult;
 }
 function rx_start_media_types()
 {
@@ -543,19 +656,25 @@ function rx_send_buy_first_step($chat_id, $message_id, $datain, $text, $keyboard
 {
     $fileId = rx_buy_banner_file_id();
     if ($fileId !== '') {
-        $photoResult = telegram('sendphoto', [
-            'chat_id' => $chat_id,
-            'photo' => $fileId,
-            'caption' => $text,
-            'reply_markup' => $keyboard,
-            'parse_mode' => 'HTML',
-        ]);
-        if (is_array($photoResult) && !empty($photoResult['ok'])) {
-            if ($isCallback) {
-                deletemessage($chat_id, $message_id);
+        $rxBuyPhotoCaption = function_exists('rxPrepareSafeMediaCaption') ? rxPrepareSafeMediaCaption((string) $text) : (string) $text;
+        if ($rxBuyPhotoCaption !== null) {
+            $photoResult = rxSendMediaWithCaption('sendphoto', [
+                'chat_id' => $chat_id,
+                'photo' => $fileId,
+                'caption' => (string) $text,
+                'reply_markup' => $keyboard,
+                'parse_mode' => 'HTML',
+            ], null, $buyDelivery);
+            if ($buyDelivery['delivery_status'] === 'completed') {
+                if ($isCallback) {
+                    deletemessage($chat_id, $message_id);
+                }
+                rx_decor_record($chat_id, $photoResult, 'screen', 'buy');
+                return $photoResult;
             }
-            rx_decor_record($chat_id, $photoResult, 'screen', 'buy');
-            return $photoResult;
+            if (in_array($buyDelivery['delivery_status'], ['partial', 'unknown'], true)) {
+                return $photoResult;
+            }
         }
     }
     if ($isCallback) {

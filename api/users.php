@@ -459,20 +459,21 @@ switch ($data['actions'] ?? '') {
 
             $tmpDir = sys_get_temp_dir();
             $tmpSuffix = bin2hex(random_bytes(6));
+            $mediaDelivery = null;
             if ($data['content_type'] == "image") {
                 $tmpFile = $tmpDir . '/api_users_img_' . $tmpSuffix . '.jpg';
                 file_put_contents($tmpFile, base64_decode($data['file']));
-                sendphoto($data['chat_id'], new CURLFile($tmpFile), $data['text']);
+                sendphoto($data['chat_id'], new CURLFile($tmpFile), $data['text'], $mediaDelivery);
                 @unlink($tmpFile);
             } elseif ($data['content_type'] == "video") {
                 $tmpFile = $tmpDir . '/api_users_vid_' . $tmpSuffix . '.mp4';
                 file_put_contents($tmpFile, base64_decode($data['file']));
-                sendvideo($data['chat_id'], new CURLFile($tmpFile), $data['text']);
+                sendvideo($data['chat_id'], new CURLFile($tmpFile), $data['text'], $mediaDelivery);
                 @unlink($tmpFile);
             } elseif ($data['content_type'] == "application") {
                 $tmpFile = $tmpDir . '/api_users_doc_' . $tmpSuffix . '.pdf';
                 file_put_contents($tmpFile, base64_decode($data['file']));
-                sendDocument($data['chat_id'], $tmpFile, $data['text']);
+                sendDocument($data['chat_id'], $tmpFile, $data['text'], null, $mediaDelivery);
                 @unlink($tmpFile);
             } elseif ($data['content_type'] == "audio") {
 
@@ -491,6 +492,13 @@ switch ($data['actions'] ?? '') {
                 @unlink($tmpFile);
             } else {
                 sendJsonResponse(false, "content_type invalid", [], 200);
+            }
+            if ($mediaDelivery !== null && $mediaDelivery['delivery_status'] !== 'completed') {
+                $status = $mediaDelivery['delivery_status'];
+                sendJsonResponse(false, [
+                    'partial' => 'Media delivery was incomplete',
+                    'unknown' => 'Media delivery could not be confirmed',
+                ][$status] ?? 'Media delivery failed', ['delivery_status' => $status], 200);
             }
         }
         sendJsonResponse(true, "Successful");

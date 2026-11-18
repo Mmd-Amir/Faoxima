@@ -24,18 +24,14 @@ final class FaoximaDb
 
     public static function fetchAll(string $sql, array $params = []): array
     {
-        $stmt = self::pdo()->prepare($sql);
-        self::bindAll($stmt, $params);
-        $stmt->execute();
+        $stmt = self::runStatement($sql, $params);
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
 
     public static function fetchOne(string $sql, array $params = []): ?array
     {
-        $stmt = self::pdo()->prepare($sql);
-        self::bindAll($stmt, $params);
-        $stmt->execute();
+        $stmt = self::runStatement($sql, $params);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         return $row === false ? null : $row;
     }
@@ -43,9 +39,7 @@ final class FaoximaDb
 
     public static function fetchScalar(string $sql, array $params = [])
     {
-        $stmt = self::pdo()->prepare($sql);
-        self::bindAll($stmt, $params);
-        $stmt->execute();
+        $stmt = self::runStatement($sql, $params);
         $val = $stmt->fetchColumn();
         return $val === false ? null : $val;
     }
@@ -53,10 +47,16 @@ final class FaoximaDb
 
     public static function execute(string $sql, array $params = []): int
     {
+        $stmt = self::runStatement($sql, $params);
+        return $stmt->rowCount();
+    }
+
+    private static function runStatement(string $sql, array $params): PDOStatement
+    {
         $stmt = self::pdo()->prepare($sql);
         self::bindAll($stmt, $params);
         $stmt->execute();
-        return $stmt->rowCount();
+        return $stmt;
     }
 
     private static function bindAll(PDOStatement $stmt, array $params): void
