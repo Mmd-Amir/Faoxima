@@ -767,9 +767,25 @@ function ensureColumnExistsForUpdate($tableName, $fieldName, $valueSample = null
         $checkedColumns[$cacheKey] = true;
     }
 }
+function rx_update_missing_row_insert($table, $field, $valueToStore, $whereField, $whereValueToStore): array
+{
+    $columns = [$field];
+    $values = [$valueToStore];
+    if ($field !== $whereField) {
+        $columns[] = $whereField;
+        $values[] = $whereValueToStore;
+    }
+    $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+    $columnList = implode(', ', array_map(function ($column) {
+        return "`$column`";
+    }, $columns));
+
+    return ["INSERT INTO $table ($columnList) VALUES ($placeholders)", $values];
+}
+
 function update($table, $field, $newValue, $whereField = null, $whereValue = null)
 {
-    global $pdo, $user;
+    global $pdo;
 
     $valueToStore = normaliseUpdateValue($newValue);
     $whereValueToStore = $whereField !== null ? normaliseUpdateValue($whereValue) : null;
@@ -829,25 +845,10 @@ function update($table, $field, $newValue, $whereField = null, $whereValue = nul
             $existsStmt = $pdo->prepare("SELECT 1 FROM $table WHERE $whereField = ? LIMIT 1");
             $existsStmt->execute([$whereValueToStore]);
         }
-
-        $rowExists = $existsStmt->fetchColumn();
-
-        if ($rowExists === false) {
-            $columns = [$field];
-            $values = [$valueToStore];
-
-            if ($field !== $whereField) {
-                $columns[] = $whereField;
-                $values[] = $whereValueToStore;
-            }
-
-            $placeholders = implode(', ', array_fill(0, count($columns), '?'));
-            $columnList = implode(', ', array_map(function ($column) {
-                return "`$column`";
-            }, $columns));
-
+        if ($existsStmt->fetchColumn() === false) {
+            [$insertSql, $values] = rx_update_missing_row_insert($table, $field, $valueToStore, $whereField, $whereValueToStore);
             try {
-                $insertStmt = $pdo->prepare("INSERT INTO $table ($columnList) VALUES ($placeholders)");
+                $insertStmt = $pdo->prepare($insertSql);
                 $insertStmt->execute($values);
             } catch (PDOException $insertException) {
                 error_log('Failed to insert missing row during update fallback: ' . $insertException->getMessage());
@@ -871,6 +872,7 @@ function update($table, $field, $newValue, $whereField = null, $whereValue = nul
             'Processing_value'  => true,
         ];
         if (!isset($rx_update_log_skip[$field])) {
+            global $user;
             $date = date("Y-m-d H:i:s");
             if (!isset($user['step'])) {
                 $user['step'] = '';
@@ -1009,6 +1011,34 @@ function rx_redis_clear_selectcache_row($table, $whereField, $whereValue)
     }
 }
 
+function rx_select_cache_store_result(array &$store, $table, $cacheKey, $whereField, $whereValue, $result): string
+{
+    $store['results'][$cacheKey] = $result;
+    if (!isset($store['tableIndex'][$table])) {
+        $store['tableIndex'][$table] = [];
+    }
+    $store['tableIndex'][$table][$cacheKey] = true;
+    $rowIndex = $table . '|' . (string) $whereField . '|' . (string) $whereValue;
+    if (!isset($store['rowIndex'][$rowIndex])) {
+        $store['rowIndex'][$rowIndex] = [];
+    }
+    $store['rowIndex'][$rowIndex][$cacheKey] = true;
+    return $rowIndex;
+}
+
+function rx_select_failure_result($type)
+{
+    switch ($type) {
+        case 'count':
+            return 0;
+        case 'FETCH_COLUMN':
+        case 'fetchAll':
+            return [];
+        default:
+            return null;
+    }
+}
+
 function select($table, $field, $whereField = null, $whereValue = null, $type = "select", $options = [])
 {
     $pdo = getDatabaseConnection();
@@ -1020,15 +1050,7 @@ function select($table, $field, $whereField = null, $whereValue = null, $type = 
             @touch($rxDbMarker);
         }
 
-        switch ($type) {
-            case 'count':
-                return 0;
-            case 'FETCH_COLUMN':
-            case 'fetchAll':
-                return [];
-            default:
-                return null;
-        }
+        return rx_select_failure_result($type);
     }
 
     $useCache = true;
@@ -1056,16 +1078,7 @@ function select($table, $field, $whereField = null, $whereValue = null, $type = 
             if ($rxRedisCached !== null) {
                 $rxRedisDecoded = json_decode($rxRedisCached, true);
                 if (json_last_error() === JSON_ERROR_NONE) {
-                    $store['results'][$cacheKey] = $rxRedisDecoded;
-                    if (!isset($store['tableIndex'][$table])) {
-                        $store['tableIndex'][$table] = [];
-                    }
-                    $store['tableIndex'][$table][$cacheKey] = true;
-                    $rxRedisHitRowIdx = $table . '|' . (string) $whereField . '|' . (string) $whereValue;
-                    if (!isset($store['rowIndex'][$rxRedisHitRowIdx])) {
-                        $store['rowIndex'][$rxRedisHitRowIdx] = [];
-                    }
-                    $store['rowIndex'][$rxRedisHitRowIdx][$cacheKey] = true;
+                    rx_select_cache_store_result($store, $table, $cacheKey, $whereField, $whereValue, $rxRedisDecoded);
                     return $rxRedisDecoded;
                 }
             }
@@ -1114,15 +1127,7 @@ function select($table, $field, $whereField = null, $whereValue = null, $type = 
 
 
         error_log('select() PDOException on table=' . $table . ': ' . $e->getMessage());
-        switch ($type) {
-            case 'count':
-                return 0;
-            case 'FETCH_COLUMN':
-            case 'fetchAll':
-                return [];
-            default:
-                return null;
-        }
+        return rx_select_failure_result($type);
     }
 
     if ($useCache && $cacheKey !== null) {
@@ -1151,17 +1156,7 @@ function select($table, $field, $whereField = null, $whereValue = null, $type = 
                     unset($keys);
                 }
             }
-            $store['results'][$cacheKey] = $result;
-            if (!isset($store['tableIndex'][$table])) {
-                $store['tableIndex'][$table] = [];
-            }
-            $store['tableIndex'][$table][$cacheKey] = true;
-
-            $rxRowIdx = $table . '|' . (string) $whereField . '|' . (string) $whereValue;
-            if (!isset($store['rowIndex'][$rxRowIdx])) {
-                $store['rowIndex'][$rxRowIdx] = [];
-            }
-            $store['rowIndex'][$rxRowIdx][$cacheKey] = true;
+            $rxRowIdx = rx_select_cache_store_result($store, $table, $cacheKey, $whereField, $whereValue, $result);
 
             if (function_exists('rx_redis_is_active') && rx_redis_is_active()) {
                 $rxRedisEncoded = json_encode($result, JSON_UNESCAPED_UNICODE);

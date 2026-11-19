@@ -5,6 +5,121 @@ if (rx_duration_admin_handle()) {
     return;
 }
 
+if (!function_exists('rxAdminManualConfigNames')) {
+    function rxAdminManualConfigNames(PDO $pdo, $panel): array
+    {
+        $listconfig = [];
+        $stmt = $pdo->prepare("SELECT namerecord FROM manualsell WHERE codepanel = ?");
+        $stmt->execute([(string) $panel['code_panel']]);
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $listconfig[] = [$row['namerecord']];
+        }
+        return $listconfig;
+    }
+
+    function rxAdminManualConfigKeyboard(array $listconfig)
+    {
+        $list_configmanual = [
+            'keyboard' => [],
+            'resize_keyboard' => true,
+        ];
+        $list_configmanual['keyboard'][] = [
+            ['text' => "🏠 بازگشت به منوی مدیریت"],
+        ];
+        foreach ($listconfig as $button) {
+            $list_configmanual['keyboard'][] = [
+                ['text' => $button[0]]
+            ];
+        }
+        return json_encode($list_configmanual);
+    }
+
+    function rxAdminManualConfigInsert(PDO $pdo, $panel, $userdata, $text): void
+    {
+        $status = "active";
+        $stmt = $pdo->prepare("INSERT IGNORE INTO manualsell (codepanel,namerecord,contentrecord,status,codeproduct) VALUES (:codepanel,:namerecord,:contentrecord,:status,:codeproduct)");
+        $stmt->bindParam(':codepanel', $panel['code_panel']);
+        $stmt->bindParam(':namerecord', $userdata['namerecord']);
+        $stmt->bindParam(':contentrecord', $text);
+        $stmt->bindParam(':status', $status);
+        $stmt->bindParam(':codeproduct', $userdata['codeproduct']);
+        $stmt->execute();
+    }
+}
+
+if (!function_exists('rxAdminGatewayLabelRoute')) {
+    function rxAdminGatewayLabelRoute($text, $step): ?array
+    {
+        $routes = [
+            ['labels' => ["🗂 نام درگاه کارت به کارت", "🏷️ نام نمایشی درگاه کارت به کارت"], 'step' => 'getnamecarttocart', 'prompt' => "🏷️ نام نمایشی دلخواه برای درگاه کارت به کارت را ارسال کنید.", 'key' => 'carttocart', 'keyboard' => 'CartManage'],
+            ['labels' => ["🗂 نام درگاه nowpayment", "🏷️ نام نمایشی درگاه nowpayment"], 'step' => 'getnamenowpayment', 'prompt' => "🏷️ نام نمایشی دلخواه برای درگاه nowpayment را ارسال کنید.", 'key' => 'textsnowpayment', 'keyboard' => 'nowpayment_setting_keyboard'],
+            ['labels' => ["🗂 نام درگاه ریالی بدون احراز"], 'step' => 'getnamecarttopaynotverify', 'prompt' => " 📌 نام درگاه را ارسال نمايید", 'key' => 'textpaymentnotverify', 'keyboard' => 'CartManage'],
+            ['labels' => ["🗂 نام درگاه   plisio", "🏷️ نام نمایشی درگاه plisio"], 'step' => 'gettextnowpayment', 'prompt' => "🏷️ نام نمایشی دلخواه برای درگاه plisio را ارسال کنید.", 'key' => 'textnowpayment', 'keyboard' => 'NowPaymentsManage'],
+            ['labels' => ["🗂 نام درگاه رمز ارز آفلاین", "🏷️ نام نمایشی درگاه رمز ارز آفلاین"], 'step' => 'gettextnowpaymentTRON', 'prompt' => "🏷️ نام نمایشی دلخواه برای درگاه رمز ارز آفلاین را ارسال کنید.", 'key' => 'textnowpaymenttron', 'keyboard' => 'tronnowpayments'],
+            ['labels' => ["🗂 نام درگاه استار", "🏷️ نام نمایشی درگاه استار"], 'step' => 'gettextstartelegram', 'prompt' => "🏷️ نام نمایشی دلخواه برای درگاه استار را ارسال کنید.", 'key' => 'text_star_telegram', 'keyboard' => 'Startelegram'],
+            ['labels' => ["🏷️ نام نمایشی درگاه ترونادو"], 'step' => 'gettextiranpay3', 'prompt' => "🏷️ نام نمایشی دلخواه برای درگاه ترونادو را ارسال کنید.", 'key' => 'iranpay3', 'keyboard' => 'trnado'],
+            ['labels' => ["🏷️ نام نمایشی درگاه تون‌پی"], 'step' => 'gettexttonpay', 'prompt' => "🏷️ نام نمایشی دلخواه برای درگاه تون‌پی را ارسال کنید.", 'key' => 'tonpay', 'keyboard' => 'tonpay'],
+            ['labels' => ["🏷️ نام نمایشی درگاه کیوب‌پی"], 'step' => 'gettextcubepay', 'prompt' => "🏷️ نام نمایشی دلخواه برای درگاه کیوب‌پی را ارسال کنید.", 'key' => 'cubepay', 'keyboard' => 'cubepay'],
+            ['labels' => ["🏷️ نام نمایشی درگاه واریزا"], 'step' => 'gettextvariza', 'prompt' => "🏷️ نام نمایشی دلخواه برای درگاه واریزا را ارسال کنید.", 'key' => 'variza', 'keyboard' => 'variza'],
+            ['labels' => ["🏷️ نام نمایشی درگاه آبان گیت وی"], 'step' => 'gettextabangateway', 'prompt' => "🏷️ نام نمایشی دلخواه برای درگاه آبان گیت وی را ارسال کنید.", 'key' => 'abangateway', 'keyboard' => 'abangateway'],
+            ['labels' => ["🏷️ نام نمایشی درگاه بلوپال"], 'step' => 'gettextblupal', 'prompt' => "🏷️ نام نمایشی دلخواه برای درگاه بلوپال را ارسال کنید.", 'key' => 'blupal', 'keyboard' => 'blupal'],
+            ['labels' => ["🏷️ نام نمایشی درگاه اطلس‌پی"], 'step' => 'gettextatlaspay', 'prompt' => "🏷️ نام نمایشی دلخواه برای درگاه اطلس‌پی را ارسال کنید.", 'key' => 'atlaspay', 'keyboard' => 'atlaspay'],
+            ['labels' => ["🗂 نام درگاه ریالی سوم"], 'step' => 'gettextiranpay1', 'prompt' => " 📌 نام درگاه را ارسال نمايید", 'key' => 'iranpay1', 'keyboard' => 'iranpaykeyboard'],
+            ['labels' => ["🗂 درگاه زرین پال", "🏷️ نام نمایشی درگاه زرین پال"], 'step' => 'gettextzarinpal', 'prompt' => "🏷️ نام نمایشی دلخواه برای درگاه زرین پال را ارسال کنید.", 'key' => 'zarinpal', 'keyboard' => 'keyboardzarinpal'],
+        ];
+        return rxAdminMatchSettingsRoute($routes, $text, $step);
+    }
+
+    function rxAdminGatewayLimitRoute($text, $step): ?array
+    {
+        $routes = [
+            ['labels' => ["⬇️ کف plisio"], 'step' => 'getmainplisio', 'prompt' => "📌 حداقل مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداقل مبلغ واریزی تنظیم گردید.", 'keyboard' => 'NowPaymentsManage', 'key' => 'minbalanceplisio'],
+            ['labels' => ["⬆️ سقف plisio"], 'step' => 'getmaxplisio', 'prompt' => "📌 حداکثر مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداکثر مبلغ واریزی تنظیم گردید.", 'keyboard' => 'NowPaymentsManage', 'key' => 'maxbalanceplisio'],
+            ['labels' => ["⬇️ کف رمزارز آفلاین"], 'step' => 'getmaindigitaltron', 'prompt' => "📌 حداقل مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداقل مبلغ واریزی تنظیم گردید.", 'keyboard' => 'tronnowpayments', 'key' => 'minbalancedigitaltron'],
+            ['labels' => ["⬆️ سقف رمزارز آفلاین"], 'step' => 'getmaxdigitaltron', 'prompt' => "📌 حداکثر مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداکثر مبلغ واریزی تنظیم گردید.", 'keyboard' => 'tronnowpayments', 'key' => 'maxbalancedigitaltron'],
+            ['labels' => ["⬇️ کف ترونادو"], 'step' => 'getmainiranpay2', 'prompt' => "📌 حداقل مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداقل مبلغ واریزی تنظیم گردید.", 'keyboard' => 'trnado', 'key' => 'minbalanceiranpay2'],
+            ['labels' => ["⬆️ سقف ترونادو"], 'step' => 'getmaaxiranpay2', 'prompt' => "📌 حداکثر مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداکثر مبلغ واریزی تنظیم گردید.", 'keyboard' => 'trnado', 'key' => 'maxbalanceiranpay2'],
+            ['labels' => ["⬇️ کف تون‌پی"], 'step' => 'getmaintonpay', 'prompt' => "📌 حداقل مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداقل مبلغ واریزی تنظیم گردید.", 'keyboard' => 'tonpay', 'key' => 'minbalancetonpay'],
+            ['labels' => ["⬆️ سقف تون‌پی"], 'step' => 'getmaxtonpay', 'prompt' => "📌 حداکثر مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداکثر مبلغ واریزی تنظیم گردید.", 'keyboard' => 'tonpay', 'key' => 'maxbalancetonpay'],
+            ['labels' => ["⬇️ کف بلوپال"], 'step' => 'getmainblupal', 'prompt' => "📌 حداقل مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداقل مبلغ واریزی تنظیم گردید.", 'keyboard' => 'blupal', 'key' => 'minbalanceblupal'],
+            ['labels' => ["⬆️ سقف بلوپال"], 'step' => 'getmaxblupal', 'prompt' => "📌 حداکثر مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداکثر مبلغ واریزی تنظیم گردید.", 'keyboard' => 'blupal', 'key' => 'maxbalanceblupal'],
+            ['labels' => ["⬇️ کف واریزا"], 'step' => 'getmainvariza', 'prompt' => "📌 حداقل مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداقل مبلغ واریزی تنظیم گردید.", 'keyboard' => 'variza', 'key' => 'minbalancevariza'],
+            ['labels' => ["⬆️ سقف واریزا"], 'step' => 'getmaxvariza', 'prompt' => "📌 حداکثر مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداکثر مبلغ واریزی تنظیم گردید.", 'keyboard' => 'variza', 'key' => 'maxbalancevariza'],
+            ['labels' => ["⬇️ کف آبان گیت وی"], 'step' => 'getmainabangateway', 'prompt' => "📌 حداقل مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداقل مبلغ واریزی تنظیم گردید.", 'keyboard' => 'abangateway', 'key' => 'minbalanceabangateway'],
+            ['labels' => ["⬆️ سقف آبان گیت وی"], 'step' => 'getmaxabangateway', 'prompt' => "📌 حداکثر مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداکثر مبلغ واریزی تنظیم گردید.", 'keyboard' => 'abangateway', 'key' => 'maxbalanceabangateway'],
+            ['labels' => ["⬇️ کف اطلس‌پی"], 'step' => 'getmainatlaspay', 'prompt' => "📌 حداقل مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداقل مبلغ واریزی تنظیم گردید.", 'keyboard' => 'atlaspay', 'key' => 'minbalanceatlaspay'],
+            ['labels' => ["⬆️ سقف اطلس‌پی"], 'step' => 'getmaxatlaspay', 'prompt' => "📌 حداکثر مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداکثر مبلغ واریزی تنظیم گردید.", 'keyboard' => 'atlaspay', 'key' => 'maxbalanceatlaspay'],
+            ['labels' => ["⬇️ کف کیوب‌پی"], 'step' => 'getmaincubepay', 'prompt' => "📌 حداقل مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداقل مبلغ واریزی تنظیم گردید.", 'keyboard' => 'cubepay', 'key' => 'minbalancecubepay'],
+            ['labels' => ["⬆️ سقف کیوب‌پی"], 'step' => 'getmaxcubepay', 'prompt' => "📌 حداکثر مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداکثر مبلغ واریزی تنظیم گردید.", 'keyboard' => 'cubepay', 'key' => 'maxbalancecubepay'],
+            ['labels' => ["⬇️ کف زرین پال"], 'step' => 'getmainaqzarinpal', 'prompt' => "📌 حداقل مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداقل مبلغ واریزی تنظیم گردید.", 'keyboard' => 'keyboardzarinpal', 'key' => 'minbalancezarinpal'],
+            ['labels' => ["⬆️ سقف زرین پال"], 'step' => 'getmaaxzarinpal', 'prompt' => "📌 حداکثر مبلغ واریزی را ارسال نمایید", 'saved' => "✅ حداکثر مبلغ واریزی تنظیم گردید.", 'keyboard' => 'keyboardzarinpal', 'key' => 'maxbalancezarinpal'],
+        ];
+        return rxAdminMatchSettingsRoute($routes, $text, $step);
+    }
+
+    function rxAdminMatchSettingsRoute(array $routes, $text, $step): ?array
+    {
+        foreach ($routes as $route) {
+            foreach ($route['labels'] as $label) {
+                if ($text == $label) {
+                    return ['is_prompt' => true] + $route;
+                }
+            }
+            if ($step == $route['step']) {
+                return ['is_prompt' => false] + $route;
+            }
+        }
+        return null;
+    }
+
+    function rxAdminSaveGatewayLabel($adminId, $text, string $key, $keyboard): void
+    {
+        nm_adminInstantReply($adminId, "✅  متن با موفقیت تنظیم گردید.", $keyboard, 'HTML');
+        update("textbot", "text", $text, "id_text", $key);
+        step("home", $adminId);
+    }
+}
+
 if (!function_exists('rx_iranpay_label')) {
     function rx_iranpay_label($datatextbot, $key, $fallback)
     {
@@ -1838,124 +1953,13 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     step('home', $from_id);
 } elseif ($datain == "affilnecurrencysetting") {
     nm_adminInstantReply($from_id, "یک گزینه را انتخاب کنید", $tronnowpayments, 'HTML');
-} elseif ($text == "🗂 نام درگاه کارت به کارت" || $text == "🏷️ نام نمایشی درگاه کارت به کارت") {
-    $prompt = "🏷️ نام نمایشی دلخواه برای درگاه کارت به کارت را ارسال کنید.";
-    nm_adminInstantReply($from_id, $prompt, $backadmin, 'HTML');
-    step("getnamecarttocart", $from_id);
-} elseif ($user['step'] == "getnamecarttocart") {
-    nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $CartManage, 'HTML');
-    update("textbot", "text", $text, "id_text", "carttocart");
-    step("home", $from_id);
-} elseif ($text == "🗂 نام درگاه nowpayment" || $text == "🏷️ نام نمایشی درگاه nowpayment") {
-    $prompt = "🏷️ نام نمایشی دلخواه برای درگاه nowpayment را ارسال کنید.";
-    nm_adminInstantReply($from_id, $prompt, $backadmin, 'HTML');
-    step("getnamenowpayment", $from_id);
-} elseif ($user['step'] == "getnamenowpayment") {
-    nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $nowpayment_setting_keyboard, 'HTML');
-    update("textbot", "text", $text, "id_text", "textsnowpayment");
-    step("home", $from_id);
-} elseif ($text == "🗂 نام درگاه ریالی بدون احراز") {
-    nm_adminInstantReply($from_id, " 📌 نام درگاه را ارسال نمايید", $backadmin, 'HTML');
-    step("getnamecarttopaynotverify", $from_id);
-} elseif ($user['step'] == "getnamecarttopaynotverify") {
-    nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $CartManage, 'HTML');
-    update("textbot", "text", $text, "id_text", "textpaymentnotverify");
-    step("home", $from_id);
-} elseif ($text == "🗂 نام درگاه   plisio" || $text == "🏷️ نام نمایشی درگاه plisio") {
-    $prompt = "🏷️ نام نمایشی دلخواه برای درگاه plisio را ارسال کنید.";
-    nm_adminInstantReply($from_id, $prompt, $backadmin, 'HTML');
-    step("gettextnowpayment", $from_id);
-} elseif ($user['step'] == "gettextnowpayment") {
-    nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $NowPaymentsManage, 'HTML');
-    update("textbot", "text", $text, "id_text", "textnowpayment");
-    step("home", $from_id);
-} elseif ($text == "🗂 نام درگاه رمز ارز آفلاین" || $text == "🏷️ نام نمایشی درگاه رمز ارز آفلاین") {
-    $prompt = "🏷️ نام نمایشی دلخواه برای درگاه رمز ارز آفلاین را ارسال کنید.";
-    nm_adminInstantReply($from_id, $prompt, $backadmin, 'HTML');
-    step("gettextnowpaymentTRON", $from_id);
-} elseif ($user['step'] == "gettextnowpaymentTRON") {
-    nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $tronnowpayments, 'HTML');
-    update("textbot", "text", $text, "id_text", "textnowpaymenttron");
-    step("home", $from_id);
-} elseif ($text == "🗂 نام درگاه استار" || $text == "🏷️ نام نمایشی درگاه استار") {
-    $prompt = "🏷️ نام نمایشی دلخواه برای درگاه استار را ارسال کنید.";
-    nm_adminInstantReply($from_id, $prompt, $backadmin, 'HTML');
-    step("gettextstartelegram", $from_id);
-} elseif ($user['step'] == "gettextstartelegram") {
-    nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $Startelegram, 'HTML');
-    update("textbot", "text", $text, "id_text", "text_star_telegram");
-    step("home", $from_id);
-} elseif ($text == "🏷️ نام نمایشی درگاه ترونادو") {
-    $prompt = "🏷️ نام نمایشی دلخواه برای درگاه ترونادو را ارسال کنید.";
-    nm_adminInstantReply($from_id, $prompt, $backadmin, 'HTML');
-    step("gettextiranpay3", $from_id);
-} elseif ($user['step'] == "gettextiranpay3") {
-    nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $trnado, 'HTML');
-    update("textbot", "text", $text, "id_text", "iranpay3");
-    step("home", $from_id);
-} elseif ($text == "🏷️ نام نمایشی درگاه تون‌پی") {
-    $prompt = "🏷️ نام نمایشی دلخواه برای درگاه تون‌پی را ارسال کنید.";
-    nm_adminInstantReply($from_id, $prompt, $backadmin, 'HTML');
-    step("gettexttonpay", $from_id);
-} elseif ($user['step'] == "gettexttonpay") {
-    nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $tonpay, 'HTML');
-    update("textbot", "text", $text, "id_text", "tonpay");
-    step("home", $from_id);
-} elseif ($text == "🏷️ نام نمایشی درگاه کیوب‌پی") {
-    $prompt = "🏷️ نام نمایشی دلخواه برای درگاه کیوب‌پی را ارسال کنید.";
-    nm_adminInstantReply($from_id, $prompt, $backadmin, 'HTML');
-    step("gettextcubepay", $from_id);
-} elseif ($user['step'] == "gettextcubepay") {
-    nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $cubepay, 'HTML');
-    update("textbot", "text", $text, "id_text", "cubepay");
-    step("home", $from_id);
-} elseif ($text == "🏷️ نام نمایشی درگاه واریزا") {
-    $prompt = "🏷️ نام نمایشی دلخواه برای درگاه واریزا را ارسال کنید.";
-    nm_adminInstantReply($from_id, $prompt, $backadmin, 'HTML');
-    step("gettextvariza", $from_id);
-} elseif ($user['step'] == "gettextvariza") {
-    nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $variza, 'HTML');
-    update("textbot", "text", $text, "id_text", "variza");
-    step("home", $from_id);
-} elseif ($text == "🏷️ نام نمایشی درگاه آبان گیت وی") {
-    $prompt = "🏷️ نام نمایشی دلخواه برای درگاه آبان گیت وی را ارسال کنید.";
-    nm_adminInstantReply($from_id, $prompt, $backadmin, 'HTML');
-    step("gettextabangateway", $from_id);
-} elseif ($user['step'] == "gettextabangateway") {
-    nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $abangateway, 'HTML');
-    update("textbot", "text", $text, "id_text", "abangateway");
-    step("home", $from_id);
-} elseif ($text == "🏷️ نام نمایشی درگاه بلوپال") {
-    $prompt = "🏷️ نام نمایشی دلخواه برای درگاه بلوپال را ارسال کنید.";
-    nm_adminInstantReply($from_id, $prompt, $backadmin, 'HTML');
-    step("gettextblupal", $from_id);
-} elseif ($user['step'] == "gettextblupal") {
-    nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $blupal, 'HTML');
-    update("textbot", "text", $text, "id_text", "blupal");
-    step("home", $from_id);
-} elseif ($text == "🏷️ نام نمایشی درگاه اطلس‌پی") {
-    $prompt = "🏷️ نام نمایشی دلخواه برای درگاه اطلس‌پی را ارسال کنید.";
-    nm_adminInstantReply($from_id, $prompt, $backadmin, 'HTML');
-    step("gettextatlaspay", $from_id);
-} elseif ($user['step'] == "gettextatlaspay") {
-    nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $atlaspay, 'HTML');
-    update("textbot", "text", $text, "id_text", "atlaspay");
-    step("home", $from_id);
-} elseif ($text == "🗂 نام درگاه ریالی سوم") {
-    nm_adminInstantReply($from_id, " 📌 نام درگاه را ارسال نمايید", $backadmin, 'HTML');
-    step("gettextiranpay1", $from_id);
-} elseif ($user['step'] == "gettextiranpay1") {
-    nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $iranpaykeyboard, 'HTML');
-    update("textbot", "text", $text, "id_text", "iranpay1");
-    step("home", $from_id);
-} elseif ($text == "🗂 درگاه زرین پال" || $text == "🏷️ نام نمایشی درگاه زرین پال") {
-    $prompt = "🏷️ نام نمایشی دلخواه برای درگاه زرین پال را ارسال کنید.";
-    nm_adminInstantReply($from_id, $prompt, $backadmin, 'HTML');
-    step("gettextzarinpal", $from_id);
-} elseif ($user['step'] == "gettextzarinpal") {
-    nm_adminInstantReply($from_id, "✅  متن با موفقیت تنظیم گردید.", $keyboardzarinpal, 'HTML');
-    update("textbot", "text", $text, "id_text", "zarinpal");
-    step("home", $from_id);
+} elseif (($rxGatewayLabelRoute = rxAdminGatewayLabelRoute($text, $user['step'] ?? null)) !== null) {
+    if ($rxGatewayLabelRoute['is_prompt']) {
+        nm_adminInstantReply($from_id, $rxGatewayLabelRoute['prompt'], $backadmin, 'HTML');
+        step($rxGatewayLabelRoute['step'], $from_id);
+    } else {
+        rxAdminSaveGatewayLabel($from_id, $text, $rxGatewayLabelRoute['key'], ${$rxGatewayLabelRoute['keyboard']});
+    }
 } elseif ($text == "⚙️  اینباند اکانت غیرفعال" && $adminrulecheck['rule'] == "administrator") {
     nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['Inbound']['GetProtocol'], $keyboardprotocol, 'HTML');
     step('getprotocoldisable', $from_id);
@@ -3582,36 +3586,12 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     step('home', $from_id);
     $userdata = json_decode($user['Processing_value'], true);
     $panel = select("marzban_panel", "*", "name_panel", $userdata['namepanel'], "select");
-    $status = "active";
-    $stmt = $pdo->prepare("INSERT IGNORE INTO manualsell (codepanel,namerecord,contentrecord,status,codeproduct) VALUES (:codepanel,:namerecord,:contentrecord,:status,:codeproduct)");
-    $stmt->bindParam(':codepanel', $panel['code_panel']);
-    $stmt->bindParam(':namerecord', $userdata['namerecord']);
-    $stmt->bindParam(':contentrecord', $text);
-    $stmt->bindParam(':status', $status);
-    $stmt->bindParam(':codeproduct', $userdata['codeproduct']);
-    $stmt->execute();
+    rxAdminManualConfigInsert($pdo, $panel, $userdata, $text);
     update("user", "Processing_value", $panel['name_panel'], "id", $from_id);
 } elseif (trim($text) == "❌ حذف کانفیگ") {
     $panel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
-    $listconfig = [];
-    $stmt = $pdo->prepare("SELECT * FROM manualsell WHERE codepanel = '{$panel['code_panel']}'");
-    $stmt->execute();
-    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $listconfig[] = [$row['namerecord']];
-    }
-    $list_configmanual = [
-        'keyboard' => [],
-        'resize_keyboard' => true,
-    ];
-    $list_configmanual['keyboard'][] = [
-        ['text' => "🏠 بازگشت به منوی مدیریت"],
-    ];
-    foreach ($listconfig as $button) {
-        $list_configmanual['keyboard'][] = [
-            ['text' => $button[0]]
-        ];
-    }
-    $json_list_manualconfig_list = json_encode($list_configmanual);
+    $listconfig = rxAdminManualConfigNames($pdo, $panel);
+    $json_list_manualconfig_list = rxAdminManualConfigKeyboard($listconfig);
     nm_adminInstantReply($from_id, "📌 نام کانفیگی که میخواهید حذف نمایید را ارسال کنید ", $json_list_manualconfig_list, 'HTML');
     step("getnameremove", $from_id);
 } elseif ($user['step'] == "getnameremove") {
@@ -3881,25 +3861,8 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     Editmessagetext($from_id, $message_id, "روشن شد", $keyboardverify);
 } elseif ($text == "✏️ ویرایش کانفیگ") {
     $panel = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
-    $listconfig = [];
-    $stmt = $pdo->prepare("SELECT * FROM manualsell WHERE codepanel = '{$panel['code_panel']}'");
-    $stmt->execute();
-    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $listconfig[] = [$row['namerecord']];
-    }
-    $list_configmanual = [
-        'keyboard' => [],
-        'resize_keyboard' => true,
-    ];
-    $list_configmanual['keyboard'][] = [
-        ['text' => "🏠 بازگشت به منوی مدیریت"],
-    ];
-    foreach ($listconfig as $button) {
-        $list_configmanual['keyboard'][] = [
-            ['text' => $button[0]]
-        ];
-    }
-    $json_list_manualconfig_list = json_encode($list_configmanual);
+    $listconfig = rxAdminManualConfigNames($pdo, $panel);
+    $json_list_manualconfig_list = rxAdminManualConfigKeyboard($listconfig);
     nm_adminInstantReply($from_id, "📌 نام کانفیگی که میخواهید ویرایش نمایید را ارسال کنید ", $json_list_manualconfig_list, 'HTML');
     step("getnameedit", $from_id);
 } elseif ($user['step'] == "getnameedit") {
@@ -4053,226 +4016,19 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی تنظیم گردید.", $CartManage, 'HTML');
     step("home", $from_id);
     update("PaySetting", "ValuePay", $text, "NamePay", "maxbalancecart");
-} elseif ($text == "⬇️ کف plisio") {
-    nm_adminInstantReply($from_id, "📌 حداقل مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmainplisio", $from_id);
-} elseif ($user['step'] == "getmainplisio") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
+} elseif (($rxGatewayLimitRoute = rxAdminGatewayLimitRoute($text, $user['step'] ?? null)) !== null) {
+    if ($rxGatewayLimitRoute['is_prompt']) {
+        nm_adminInstantReply($from_id, $rxGatewayLimitRoute['prompt'], $backadmin, 'HTML');
+        step($rxGatewayLimitRoute['step'], $from_id);
+    } else {
+        if (!ctype_digit($text)) {
+            nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
+            return;
+        }
+        nm_adminInstantReply($from_id, $rxGatewayLimitRoute['saved'], ${$rxGatewayLimitRoute['keyboard']}, 'HTML');
+        step("home", $from_id);
+        update("PaySetting", "ValuePay", $text, "NamePay", $rxGatewayLimitRoute['key']);
     }
-    nm_adminInstantReply($from_id, "✅ حداقل مبلغ واریزی تنظیم گردید.", $NowPaymentsManage, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "minbalanceplisio");
-} elseif ($text == "⬆️ سقف plisio") {
-    nm_adminInstantReply($from_id, "📌 حداکثر مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmaxplisio", $from_id);
-} elseif ($user['step'] == "getmaxplisio") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی تنظیم گردید.", $NowPaymentsManage, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "maxbalanceplisio");
-} elseif ($text == "⬇️ کف رمزارز آفلاین") {
-    nm_adminInstantReply($from_id, "📌 حداقل مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmaindigitaltron", $from_id);
-} elseif ($user['step'] == "getmaindigitaltron") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداقل مبلغ واریزی تنظیم گردید.", $tronnowpayments, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "minbalancedigitaltron");
-} elseif ($text == "⬆️ سقف رمزارز آفلاین") {
-    nm_adminInstantReply($from_id, "📌 حداکثر مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmaxdigitaltron", $from_id);
-} elseif ($user['step'] == "getmaxdigitaltron") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی تنظیم گردید.", $tronnowpayments, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "maxbalancedigitaltron");
-} elseif ($text == "⬇️ کف ترونادو") {
-    nm_adminInstantReply($from_id, "📌 حداقل مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmainiranpay2", $from_id);
-} elseif ($user['step'] == "getmainiranpay2") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداقل مبلغ واریزی تنظیم گردید.", $trnado, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "minbalanceiranpay2");
-} elseif ($text == "⬆️ سقف ترونادو") {
-    nm_adminInstantReply($from_id, "📌 حداکثر مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmaaxiranpay2", $from_id);
-} elseif ($user['step'] == "getmaaxiranpay2") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی تنظیم گردید.", $trnado, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "maxbalanceiranpay2");
-} elseif ($text == "⬇️ کف تون‌پی") {
-    nm_adminInstantReply($from_id, "📌 حداقل مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmaintonpay", $from_id);
-} elseif ($user['step'] == "getmaintonpay") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداقل مبلغ واریزی تنظیم گردید.", $tonpay, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "minbalancetonpay");
-} elseif ($text == "⬆️ سقف تون‌پی") {
-    nm_adminInstantReply($from_id, "📌 حداکثر مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmaxtonpay", $from_id);
-} elseif ($user['step'] == "getmaxtonpay") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی تنظیم گردید.", $tonpay, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "maxbalancetonpay");
-} elseif ($text == "⬇️ کف بلوپال") {
-    nm_adminInstantReply($from_id, "📌 حداقل مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmainblupal", $from_id);
-} elseif ($user['step'] == "getmainblupal") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداقل مبلغ واریزی تنظیم گردید.", $blupal, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "minbalanceblupal");
-} elseif ($text == "⬆️ سقف بلوپال") {
-    nm_adminInstantReply($from_id, "📌 حداکثر مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmaxblupal", $from_id);
-} elseif ($user['step'] == "getmaxblupal") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی تنظیم گردید.", $blupal, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "maxbalanceblupal");
-} elseif ($text == "⬇️ کف واریزا") {
-    nm_adminInstantReply($from_id, "📌 حداقل مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmainvariza", $from_id);
-} elseif ($user['step'] == "getmainvariza") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداقل مبلغ واریزی تنظیم گردید.", $variza, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "minbalancevariza");
-} elseif ($text == "⬆️ سقف واریزا") {
-    nm_adminInstantReply($from_id, "📌 حداکثر مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmaxvariza", $from_id);
-} elseif ($user['step'] == "getmaxvariza") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی تنظیم گردید.", $variza, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "maxbalancevariza");
-} elseif ($text == "⬇️ کف آبان گیت وی") {
-    nm_adminInstantReply($from_id, "📌 حداقل مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmainabangateway", $from_id);
-} elseif ($user['step'] == "getmainabangateway") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداقل مبلغ واریزی تنظیم گردید.", $abangateway, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "minbalanceabangateway");
-} elseif ($text == "⬆️ سقف آبان گیت وی") {
-    nm_adminInstantReply($from_id, "📌 حداکثر مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmaxabangateway", $from_id);
-} elseif ($user['step'] == "getmaxabangateway") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی تنظیم گردید.", $abangateway, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "maxbalanceabangateway");
-} elseif ($text == "⬇️ کف اطلس‌پی") {
-    nm_adminInstantReply($from_id, "📌 حداقل مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmainatlaspay", $from_id);
-} elseif ($user['step'] == "getmainatlaspay") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداقل مبلغ واریزی تنظیم گردید.", $atlaspay, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "minbalanceatlaspay");
-} elseif ($text == "⬆️ سقف اطلس‌پی") {
-    nm_adminInstantReply($from_id, "📌 حداکثر مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmaxatlaspay", $from_id);
-} elseif ($user['step'] == "getmaxatlaspay") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی تنظیم گردید.", $atlaspay, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "maxbalanceatlaspay");
-} elseif ($text == "⬇️ کف کیوب‌پی") {
-    nm_adminInstantReply($from_id, "📌 حداقل مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmaincubepay", $from_id);
-} elseif ($user['step'] == "getmaincubepay") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداقل مبلغ واریزی تنظیم گردید.", $cubepay, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "minbalancecubepay");
-} elseif ($text == "⬆️ سقف کیوب‌پی") {
-    nm_adminInstantReply($from_id, "📌 حداکثر مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmaxcubepay", $from_id);
-} elseif ($user['step'] == "getmaxcubepay") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی تنظیم گردید.", $cubepay, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "maxbalancecubepay");
-} elseif ($text == "⬇️ کف زرین پال") {
-    nm_adminInstantReply($from_id, "📌 حداقل مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmainaqzarinpal", $from_id);
-} elseif ($user['step'] == "getmainaqzarinpal") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداقل مبلغ واریزی تنظیم گردید.", $keyboardzarinpal, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "minbalancezarinpal");
-} elseif ($text == "⬆️ سقف زرین پال") {
-    nm_adminInstantReply($from_id, "📌 حداکثر مبلغ واریزی را ارسال نمایید", $backadmin, 'HTML');
-    step("getmaaxzarinpal", $from_id);
-} elseif ($user['step'] == "getmaaxzarinpal") {
-    if (!ctype_digit($text)) {
-        nm_adminInstantReply($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
-        return;
-    }
-    nm_adminInstantReply($from_id, "✅ حداکثر مبلغ واریزی تنظیم گردید.", $keyboardzarinpal, 'HTML');
-    step("home", $from_id);
-    update("PaySetting", "ValuePay", $text, "NamePay", "maxbalancezarinpal");
 } elseif ($datain == "walletaddress" && $adminrulecheck['rule'] == "administrator") {
 
     if (function_exists('crypto_active_wallet')) {

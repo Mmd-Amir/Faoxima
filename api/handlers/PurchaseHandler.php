@@ -354,8 +354,7 @@ final class PurchaseHandler extends BaseHandler
         $balanceChargedAtomically = false;
         if ($priceToCharge > 0.0 || $discountCode !== '') {
             $agent = $this->user['agent'] ?? 'f';
-            $allowNeg = ($agent === 'n2') ? (int)($this->user['maxbuyagent'] ?? 0) : 0;
-            $charge = MiniDiscount::chargeWallet($discountCode, $this->user, $priceToCharge, $allowNeg, (string)$orderId);
+            $charge = MiniDiscount::chargeServiceWallet($discountCode, $this->user, $priceToCharge, $agent, (string)$orderId);
             if (empty($charge['ok'])) {
                 FaoximaLogger::warn('Atomic balance charge failed at purchase', [
                     'user_id'  => $this->user['id'],
@@ -392,14 +391,16 @@ final class PurchaseHandler extends BaseHandler
                 MiniDiscount::releaseWalletDiscount($discountCode, $this->user, (string)$orderId);
                 if (is_array($stock) && function_exists('nmStockReleaseReservation')) nmStockReleaseReservation($stock);
                 if ($balanceChargedAtomically) {
-                    if (!balance_atomic_credit($this->user['id'], $priceToCharge)) {
+                    $refund = rx_wallet_credit_and_record(
+                        $this->user['id'], $priceToCharge, 'refund', static fn () => 'بازگشت وجه به دلیل خطای انبار',
+                        $orderId, 'invoice', $orderId
+                    );
+                    if ($refund === 'credit_failed') {
                         FaoximaLogger::critical('Refund after stock reservation failure did not apply; user balance may be short', [
                             'user_id'  => $this->user['id'],
                             'order_id' => $orderId,
                             'price'    => $priceToCharge,
                         ]);
-                    } elseif (function_exists('wallet_ledger_record')) {
-                        wallet_ledger_record($this->user['id'], 'credit', $priceToCharge, 'refund', 'بازگشت وجه به دلیل خطای انبار', $orderId, 'invoice', $orderId);
                     }
                 }
                 try { FaoximaDb::execute('DELETE FROM invoice WHERE id_invoice = :o AND id_user = :u', [':o' => $orderId, ':u' => $this->user['id']]); } catch (Throwable $_) {}
@@ -514,11 +515,7 @@ final class PurchaseHandler extends BaseHandler
                 $snapshot = rx_pf_panel_snapshot($managePanel, (string)$panel['name_panel'], (string)$usernameAc, (string)($panel['type'] ?? ''));
             }
             if (is_array($snapshot) && !empty($snapshot['ok']) && !empty($snapshot['exists']) && is_array($snapshot['raw'] ?? null)) {
-                $remote = $snapshot['raw'];
-                $remote['status'] = 'successful';
-                if (empty($remote['configs']) && !empty($remote['links'])) {
-                    $remote['configs'] = is_array($remote['links']) ? $remote['links'] : explode("\n", (string)$remote['links']);
-                }
+                $remote = rx_pf_adopt_created($snapshot['raw']);
             } elseif (!is_array($snapshot) || empty($snapshot['ok'])) {
                 $this->reportToChannel(faoxima_render_text(faoxima_textbot_get('dyn_purchase_create_user_uncertain_report_tpl', "⚠️ وضعیت ساخت سرویس در پنل نامشخص است\n<blockquote>آیدی کاربر : {user_id}</blockquote>\n<blockquote>نام کاربری : {username}</blockquote>\n<blockquote>پنل : {panel_name}</blockquote>"), [
                     'user_id' => $this->user['id'],
@@ -547,14 +544,16 @@ final class PurchaseHandler extends BaseHandler
 
 
             if ($balanceChargedAtomically) {
-                if (!balance_atomic_credit($this->user['id'], $priceToCharge)) {
+                $refund = rx_wallet_credit_and_record(
+                    $this->user['id'], $priceToCharge, 'refund', static fn () => 'بازگشت وجه به دلیل خطای ساخت سرویس',
+                    $orderId, 'invoice', $orderId
+                );
+                if ($refund === 'credit_failed') {
                     FaoximaLogger::critical('Refund after createUser failure did not apply; user balance may be short', [
                         'user_id'  => $this->user['id'],
                         'order_id' => $orderId,
                         'price'    => $priceToCharge,
                     ]);
-                } elseif (function_exists('wallet_ledger_record')) {
-                    wallet_ledger_record($this->user['id'], 'credit', $priceToCharge, 'refund', 'بازگشت وجه به دلیل خطای ساخت سرویس', $orderId, 'invoice', $orderId);
                 }
             }
             try { FaoximaDb::execute('DELETE FROM invoice WHERE id_invoice = :o AND id_user = :u', [':o' => $orderId, ':u' => $this->user['id']]); } catch (Throwable $_) {}

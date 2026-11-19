@@ -81,18 +81,19 @@ if (!$tableMissing) {
 }
 
 
-$savedCount = 0;
-if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_save'])) {
-    foreach ($SHOP_GROUPS as $group) {
+function fx_shop_save_settings(PDO $pdo, array $groups, array $post, array $shopRows): int
+{
+    $savedCount = 0;
+    foreach ($groups as $group) {
         foreach ($group['fields'] as $f) {
             $key = $f['name'];
             $cur = $shopRows[$key] ?? '';
 
             if ($f['type'] === 'toggle') {
-                $new = isset($_POST['f_' . $key]) ? $f['on'] : $f['off'];
+                $new = isset($post['f_' . $key]) ? $f['on'] : $f['off'];
             } else {
-                if (!array_key_exists('f_' . $key, $_POST)) continue;
-                $new = (string)$_POST['f_' . $key];
+                if (!array_key_exists('f_' . $key, $post)) continue;
+                $new = (string)$post['f_' . $key];
             }
 
             if ((string)$cur === (string)$new) continue;
@@ -108,6 +109,12 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_s
             }
         }
     }
+    return $savedCount;
+}
+
+$savedCount = 0;
+if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_save'])) {
+    $savedCount = fx_shop_save_settings($pdo, $SHOP_GROUPS, $_POST, $shopRows);
     header('Location: shopsettings.php?saved=' . $savedCount);
     exit;
 }

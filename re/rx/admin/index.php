@@ -5,6 +5,83 @@ if (!defined('REFACTORED_LEGACY_ROOT')) {
 }
 @chdir(REFACTORED_LEGACY_ROOT);
 
+function rxAdminCanonicalNavigation($text, $adminLabels): array
+{
+    $backAdmin = $adminLabels['backadmin'] ?? '🏠 بازگشت به منوی مدیریت';
+    $backMenu  = $adminLabels['backmenu'] ?? '▶️ بازگشت به منوی قبل';
+
+    $trimmed = trim((string) $text);
+
+
+    $emojiPattern = '/[\x{1F300}-\x{1F9FF}\x{2600}-\x{27BF}\x{2300}-\x{23FF}\x{2500}-\x{25FF}\x{2900}-\x{2BFF}\x{1F100}-\x{1F1FF}\x{1FA00}-\x{1FAFF}\x{FE0E}\x{FE0F}\x{200D}\x{200E}\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}\x{200C}]/u';
+    $stripped = preg_replace($emojiPattern, '', $trimmed);
+    $stripped = is_string($stripped) ? trim($stripped) : '';
+
+    $isBackAdmin = ($trimmed === $backAdmin);
+    $isBackMenu  = ($trimmed === $backMenu);
+
+
+    if (!$isBackAdmin && !$isBackMenu && $stripped !== '') {
+        $backAdminAliases = [
+            'بازگشت به منوی مدیریت',
+            'بازگشت به منوی اصلی',
+            'بازگشت به منو اصلی',
+            'بازگشت به خانه',
+            'بازگشت به ادمین',
+            'بازگشت به پنل مدیریت',
+            'بازگشت به پنل ادمین',
+            'منوی مدیریت',
+            'منوی اصلی',
+            'خانه',
+        ];
+        $backMenuAliases = [
+            'بازگشت به منوی قبل',
+            'بازگشت به منو قبل',
+            'بازگشت به قبل',
+            'منوی قبل',
+            'بازگشت',
+        ];
+
+        if (in_array($stripped, $backAdminAliases, true)) {
+            $isBackAdmin = true;
+        } elseif (in_array($stripped, $backMenuAliases, true)) {
+            $isBackMenu = true;
+        }
+    }
+
+    if ($isBackAdmin || $isBackMenu) {
+        $text = $isBackAdmin ? $backAdmin : $backMenu;
+    }
+
+    return [$text, $isBackMenu];
+}
+
+function rxAdminHasNavigationInput($fromId, $adminIds, $text): bool
+{
+    return $fromId !== null
+        && is_array($adminIds)
+        && in_array((string) $fromId, array_map('strval', $adminIds), true)
+        && is_string($text)
+        && $text !== '';
+}
+
+function rxAdminResetStepForNavigation($fromId, $text, array &$user): void
+{
+    if (function_exists('step')) {
+        try {
+            step('home', $fromId);
+        } catch (Throwable $error) {
+            if (function_exists('rx_log_event')) {
+                rx_log_event('NAV_GUARD_STEP_RESET_FAILED', $error->getMessage(), [
+                    'from_id' => $fromId,
+                    'text'    => $text,
+                ]);
+            }
+        }
+    }
+    $user['step'] = 'home';
+}
+
 $__rx_section = rx_compile_section(__DIR__);
 $__rx_code = $__rx_section['body'] !== null
     ? $__rx_section['body']
@@ -21,83 +98,16 @@ $rx_pem_entry_step = (isset($user) && is_array($user) && isset($user['step'])) ?
 
 $rx_nav_is_backmenu = false;
 
-if (
-    isset($from_id)
-    && isset($admin_ids)
-    && is_array($admin_ids)
-    && in_array((string) $from_id, array_map('strval', $admin_ids), true)
-    && isset($text)
-    && is_string($text)
-    && $text !== ''
-) {
+if (rxAdminHasNavigationInput($from_id ?? null, $admin_ids ?? null, $text ?? null)) {
     if (empty($callback_query_id) && empty($datain) && function_exists('rx_normalizeAdminButtonText')) {
         $text = rx_normalizeAdminButtonText($text);
     }
-    $rx_back_admin_canonical = $textbotlang['Admin']['backadmin'] ?? '🏠 بازگشت به منوی مدیریت';
-    $rx_back_menu_canonical  = $textbotlang['Admin']['backmenu'] ?? '▶️ بازگشت به منوی قبل';
-
-    $rx_text_trim = trim((string) $text);
-
-
-    $rx_emoji_pattern = '/[\x{1F300}-\x{1F9FF}\x{2600}-\x{27BF}\x{2300}-\x{23FF}\x{2500}-\x{25FF}\x{2900}-\x{2BFF}\x{1F100}-\x{1F1FF}\x{1FA00}-\x{1FAFF}\x{FE0E}\x{FE0F}\x{200D}\x{200E}\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}\x{200C}]/u';
-    $rx_text_stripped = preg_replace($rx_emoji_pattern, '', $rx_text_trim);
-    $rx_text_stripped = is_string($rx_text_stripped) ? trim($rx_text_stripped) : '';
-
-    $rx_is_back_admin = ($rx_text_trim === $rx_back_admin_canonical);
-    $rx_is_back_menu  = ($rx_text_trim === $rx_back_menu_canonical);
-
-
-    if (!$rx_is_back_admin && !$rx_is_back_menu && $rx_text_stripped !== '') {
-        $rx_back_admin_targets = [
-            'بازگشت به منوی مدیریت',
-            'بازگشت به منوی اصلی',
-            'بازگشت به منو اصلی',
-            'بازگشت به خانه',
-            'بازگشت به ادمین',
-            'بازگشت به پنل مدیریت',
-            'بازگشت به پنل ادمین',
-            'منوی مدیریت',
-            'منوی اصلی',
-            'خانه',
-        ];
-        $rx_back_menu_targets = [
-            'بازگشت به منوی قبل',
-            'بازگشت به منو قبل',
-            'بازگشت به قبل',
-            'منوی قبل',
-            'بازگشت',
-        ];
-
-        if (in_array($rx_text_stripped, $rx_back_admin_targets, true)) {
-            $rx_is_back_admin = true;
-        } elseif (in_array($rx_text_stripped, $rx_back_menu_targets, true)) {
-            $rx_is_back_menu = true;
-        }
-    }
-
-    if ($rx_is_back_admin || $rx_is_back_menu) {
-        $text = $rx_is_back_admin ? $rx_back_admin_canonical : $rx_back_menu_canonical;
-    }
-
-    $rx_nav_is_backmenu = $rx_is_back_menu;
-
-    unset(
-        $rx_back_admin_canonical, $rx_back_menu_canonical,
-        $rx_text_trim, $rx_text_stripped, $rx_emoji_pattern,
-        $rx_is_back_admin, $rx_is_back_menu,
-        $rx_back_admin_targets, $rx_back_menu_targets
-    );
+    [$text, $rx_nav_is_backmenu] = rxAdminCanonicalNavigation($text, $textbotlang['Admin'] ?? []);
 }
 
 
 if (
-    isset($from_id)
-    && isset($admin_ids)
-    && is_array($admin_ids)
-    && in_array((string) $from_id, array_map('strval', $admin_ids), true)
-    && isset($text)
-    && is_string($text)
-    && $text !== ''
+    rxAdminHasNavigationInput($from_id ?? null, $admin_ids ?? null, $text ?? null)
     && isset($user)
     && is_array($user)
     && isset($user['step'])
@@ -187,22 +197,10 @@ if (
     }
 
     if (!empty($rx_nav_targets) && in_array((string) $text, $rx_nav_targets, true) && empty($rx_nav_is_backmenu) && !$rx_nav_is_dynamic_selection) {
-        if (function_exists('step')) {
-            try {
-                step('home', $from_id);
-            } catch (Throwable $rx_step_err) {
-                if (function_exists('rx_log_event')) {
-                    rx_log_event('NAV_GUARD_STEP_RESET_FAILED', $rx_step_err->getMessage(), [
-                        'from_id' => $from_id,
-                        'text'    => $text,
-                    ]);
-                }
-            }
-        }
-        $user['step'] = 'home';
+        rxAdminResetStepForNavigation($from_id, $text, $user);
     }
 
-    unset($rx_nav_targets, $rx_nav_key, $rx_hardcoded_nav, $rx_step_err, $rx_nav_is_dynamic_selection);
+    unset($rx_nav_targets, $rx_nav_key, $rx_hardcoded_nav, $rx_nav_is_dynamic_selection);
 }
 
 unset($rx_nav_is_backmenu);

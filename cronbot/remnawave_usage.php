@@ -36,6 +36,7 @@ if (function_exists('rx_cron_bulk_cursor')) {
     try {
         $rxUsageCursor = rx_cron_bulk_cursor($pdo, 'remnawave_usage');
     } catch (Throwable $e) {
+        error_log('[REMNAMWAVE-CRON-DISCONNECT] cursor read failed | ' . get_class($e));
         $rxUsageCursor = 0;
     }
 }
@@ -55,6 +56,20 @@ try {
 if (!is_array($rows) || count($rows) === 0) {
     return;
 }
+
+$rxPersistRemnawaveUsage = static function (PDO $pdo, array $row, array $data): void {
+    $remoteStatus = strtolower((string) ($data['status'] ?? 'active'));
+    $localStatus = ($remoteStatus === 'disabled' || $remoteStatus === 'expired' || $remoteStatus === 'limited') ? $remoteStatus : 'active';
+    if ($localStatus !== (string) ($row['status'] ?? 'active')) {
+        $upd = $pdo->prepare("UPDATE remnawave_users SET status = :s WHERE id = :id");
+        $upd->execute([':s' => $localStatus, ':id' => $row['id']]);
+    }
+    $subUrl = (string) ($data['subscriptionUrl'] ?? '');
+    if ($subUrl !== '' && $subUrl !== (string) ($row['subscription_url'] ?? '')) {
+        $upd = $pdo->prepare("UPDATE remnawave_users SET subscription_url = :u WHERE id = :id");
+        $upd->execute([':u' => $subUrl, ':id' => $row['id']]);
+    }
+};
 
 $managers = array();
 $rxLastScannedId = 0;
@@ -78,18 +93,7 @@ foreach ($rows as $row) {
             error_log("[REMNAMWAVE-CRON-DISCONNECT] Panel: $namePanel | User: {$row['username']} | could not fetch usage");
             continue;
         }
-        $data = $res['data'];
-        $remoteStatus = strtolower((string) ($data['status'] ?? 'active'));
-        $localStatus = ($remoteStatus === 'disabled' || $remoteStatus === 'expired' || $remoteStatus === 'limited') ? $remoteStatus : 'active';
-        if ($localStatus !== (string) ($row['status'] ?? 'active')) {
-            $upd = $pdo->prepare("UPDATE remnawave_users SET status = :s WHERE id = :id");
-            $upd->execute([':s' => $localStatus, ':id' => $row['id']]);
-        }
-        $subUrl = (string) ($data['subscriptionUrl'] ?? '');
-        if ($subUrl !== '' && $subUrl !== (string) ($row['subscription_url'] ?? '')) {
-            $upd = $pdo->prepare("UPDATE remnawave_users SET subscription_url = :u WHERE id = :id");
-            $upd->execute([':u' => $subUrl, ':id' => $row['id']]);
-        }
+        $rxPersistRemnawaveUsage($pdo, $row, $res['data']);
     } catch (Throwable $e) {
         error_log("[REMNAMWAVE-CRON-DISCONNECT] Panel: $namePanel | User: " . ($row['username'] ?? '') . " | " . $e->getMessage());
         continue;

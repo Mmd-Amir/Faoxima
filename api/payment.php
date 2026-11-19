@@ -50,8 +50,7 @@ function validateToken($headers)
 {
     global $APIKEY;
     require_once __DIR__ . '/../lib/ApiCredential.php';
-    $headers = array_change_key_case($headers, CASE_LOWER);
-    return FaoximaApiCredential::valid($headers['token'] ?? null, (string) ($APIKEY ?? ''));
+    return FaoximaApiCredential::validHeaders($headers, (string) ($APIKEY ?? ''));
 }
 
 $headers = getallheaders();
@@ -74,7 +73,7 @@ $action = $data['actions'] ?? null;
 $stmt = $pdo->prepare("INSERT IGNORE INTO logs_api (header, data, time, ip, actions) VALUES (:header, :data, :time, :ip, :actions)");
 $stmt->execute([
     ':header' => json_encode(FaoximaApiCredential::redactHeaders($headers)),
-    ':data' => json_encode($data),
+    ':data' => json_encode(FaoximaApiCredential::redactAuditFields($data)),
     ':time' => date('Y/m/d H:i:s'),
     ':ip' => $_SERVER['REMOTE_ADDR'],
     ':actions' => $action

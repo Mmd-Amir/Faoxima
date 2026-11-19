@@ -26,6 +26,75 @@ function rxConfigDeliveryNotice(string $status, string $failure = '❌ ارسا�
     ][$status] ?? $failure;
 }
 
+function rxBotStartMenuDelivery($fromId, $callbackId, $labels, $keyboard): void
+{
+    if (function_exists('removeReplyKeyboardOnStartIfNeeded')) {
+        removeReplyKeyboardOnStartIfNeeded($fromId);
+    }
+    if (!empty($callbackId)) {
+        @telegram('answerCallbackQuery', [
+            'callback_query_id' => $callbackId,
+            'cache_time' => 0,
+        ]);
+    }
+    if (function_exists('rx_richDiag_traceSend')) {
+        rx_richDiag_traceSend('text_start', static function () use ($fromId, $labels, $keyboard) {
+            return rx_send_banner_message($fromId, 'start', $labels['text_start'], $keyboard, 'html');
+        });
+    } else {
+        rx_send_banner_message($fromId, 'start', $labels['text_start'], $keyboard, 'html');
+    }
+}
+
+function rxBotCanPickDuration($fromId, $user, $duration): bool
+{
+    if (!in_array($user['step'] ?? '', ['getvolumecustomusername', 'getvolumecustomuser', 'getvolumecustomusernameom', 'getvolumecustomuserom', 'getvolumecustomuserforextend'], true)) {
+        return false;
+    }
+    $state = json_decode((string) $user['Processing_value'], true);
+    if (($user['step'] ?? '') === 'getvolumecustomuserforextend') {
+        $invoice = select('invoice', '*', 'id_invoice', $state['id_invoice'] ?? '', 'select');
+        if ((string) ($invoice['id_user'] ?? '') !== (string) $fromId) {
+            return false;
+        }
+        $panelName = $invoice['Service_location'];
+    } else {
+        $panelName = is_array($state) ? ($state['name_panel'] ?? '') : $user['Processing_value'];
+    }
+    $panel = select('marzban_panel', '*', 'name_panel', $panelName, 'select');
+    return is_array($panel) && fx_duration_config($panel, $user['agent'])['enabled']
+        && isset(fx_duration_tariffs($panel, $user['agent'])[(int) $duration]);
+}
+
+function rxBotServiceProductButtons(array $products, $customProductLabel): array
+{
+    $buttons = [];
+    foreach ($products as $product) {
+        $value = $product['name_product'];
+        $label = trim((string) $value);
+        $key = md5($value === null ? 'NULL' : 'P:' . $value);
+        $buttons[] = [[
+            'text' => $label !== '' ? $label : $customProductLabel,
+            'callback_data' => 'myservicescat_' . $key,
+        ]];
+    }
+    return $buttons;
+}
+
+function rxBotResetPendingTransfer($pdo, $fromId, array &$user): void
+{
+    $stmt = $pdo->prepare("UPDATE user SET Processing_value = '0', Processing_value_one = '', Processing_value_tow = '0' WHERE id = ?");
+    $stmt->execute([$fromId]);
+    if (function_exists('clearSelectCacheRow')) {
+        clearSelectCacheRow('user', 'id', $fromId);
+    }
+    $user['step'] = 'home';
+    $user['Processing_value'] = '0';
+    $user['Processing_value_one'] = '';
+    $user['Processing_value_tow'] = '0';
+    step('home', $fromId);
+}
+
 if (isset($update_id) && isDuplicateUpdate($update_id)) {
     if (!headers_sent()) {
         http_response_code(200);
@@ -1235,44 +1304,14 @@ if ($text == "/start" || $datain == "start" || $text == "start" || $rxStartLandi
         clearSelectCache('user');
     }
     step('home', $from_id);
-    if (function_exists('removeReplyKeyboardOnStartIfNeeded')) {
-        removeReplyKeyboardOnStartIfNeeded($from_id);
-    }
-    if (!empty($callback_query_id)) {
-        @telegram('answerCallbackQuery', [
-            'callback_query_id' => $callback_query_id,
-            'cache_time' => 0,
-        ]);
-    }
-    if (function_exists('rx_richDiag_traceSend')) {
-        rx_richDiag_traceSend('text_start', static function () use ($from_id, $datatextbot, $keyboard) {
-            return rx_send_banner_message($from_id, 'start', $datatextbot['text_start'], $keyboard, 'html');
-        });
-    } else {
-        rx_send_banner_message($from_id, 'start', $datatextbot['text_start'], $keyboard, 'html');
-    }
+    rxBotStartMenuDelivery($from_id, $callback_query_id ?? null, $datatextbot, $keyboard);
     return;
 }
 if ((!isset($connect) || !($connect instanceof mysqli)) && function_exists('getMysqliConnection')) {
     $connect = getMysqliConnection();
 }
 if (is_string($datain) && preg_match('/^cdpick_([0-9]{1,5})$/', $datain, $rxDurationPick)) {
-    if (!in_array($user['step'] ?? '', ['getvolumecustomusername', 'getvolumecustomuser', 'getvolumecustomusernameom', 'getvolumecustomuserom', 'getvolumecustomuserforextend'], true)) {
-        return;
-    }
-    $rxDurationState = json_decode((string)$user['Processing_value'], true);
-    if (($user['step'] ?? '') === 'getvolumecustomuserforextend') {
-        $rxDurationInvoice = select('invoice', '*', 'id_invoice', $rxDurationState['id_invoice'] ?? '', 'select');
-        if ((string)($rxDurationInvoice['id_user'] ?? '') !== (string)$from_id) {
-            return;
-        }
-        $rxDurationPanelName = $rxDurationInvoice['Service_location'];
-    } else {
-        $rxDurationPanelName = is_array($rxDurationState) ? ($rxDurationState['name_panel'] ?? '') : $user['Processing_value'];
-    }
-    $rxDurationPanel = select('marzban_panel', '*', 'name_panel', $rxDurationPanelName, 'select');
-    if (!is_array($rxDurationPanel) || !fx_duration_config($rxDurationPanel, $user['agent'])['enabled']
-        || !isset(fx_duration_tariffs($rxDurationPanel, $user['agent'])[(int)$rxDurationPick[1]])) {
+    if (!rxBotCanPickDuration($from_id, $user, $rxDurationPick[1])) {
         return;
     }
     if (!empty($callback_query_id)) {
@@ -1286,16 +1325,7 @@ if (
     && in_array((string) ($user['step'] ?? ''), ['getTransferRecipient', 'getTransferAmount', 'getTransferConfirm'], true)
     && rx_ui_route($datain ?? '', $text ?? '') !== null
 ) {
-    $rxPendingResetStmt = $pdo->prepare("UPDATE user SET Processing_value = '0', Processing_value_one = '', Processing_value_tow = '0' WHERE id = ?");
-    $rxPendingResetStmt->execute([$from_id]);
-    if (function_exists('clearSelectCacheRow')) {
-        clearSelectCacheRow('user', 'id', $from_id);
-    }
-    $user['step'] = 'home';
-    $user['Processing_value'] = '0';
-    $user['Processing_value_one'] = '';
-    $user['Processing_value_tow'] = '0';
-    step('home', $from_id);
+    rxBotResetPendingTransfer($pdo, $from_id, $user);
 }
 if ($datain === 'confirmpaid') {
     if (!empty($callback_query_id) && function_exists('telegram')) {
@@ -1308,9 +1338,101 @@ if ($datain === 'confirmpaid') {
     }
     return;
 }
-if ($text == "version") {
+function rxBotRouteAccount($user, $text, $datain, $textbotlang, $datatextbot, $from_id, $admin_ids, &$dataget): ?string
+{
+    return match (true) {
+        (bool) ($text == "version") => 'version',
+        (bool) ($text == $textbotlang['users']['backbtn'] || $datain == "backuser" || $datain == "admin_back") => 'back',
+        (bool) ($user['step'] == 'get_number' && in_array($from_id, $admin_ids)) => 'admin_phone',
+        (bool) ($user['step'] == 'get_number' && !in_array($from_id, $admin_ids)) => 'phone',
+        (bool) (($text !== '' && $text == $datatextbot['text_Purchased_services']) || $datain == "backorder" || $datain == "myservicesbtn" || $datain == "next_page" || $datain == "previous_page" || $text == "/services") => 'services',
+        (bool) (preg_match('/^(myservicescat|next_page|previous_page)_([a-f0-9]{32})(?:_([0-9]{1,10}))?$/', (string) $datain, $dataget)) => 'services_page',
+        (bool) ($datain == "notusernameme") => 'lookup_prompt',
+        (bool) ($user['step'] == "getusernameinfo") => 'lookup_name',
+        (bool) (preg_match('/locationnotuser_(.*)/', $datain, $dataget)) => 'lookup_panel',
+        default => null,
+    };
+}
+
+function rxBotRouteService($user, $text, $datain, &$dataget, &$rwm): ?string
+{
+    return match (true) {
+        (bool) (preg_match('/^quickview_(\w+)/', $datain, $dataget) || preg_match('/^product_(\w+)/', $datain, $dataget) || preg_match('/updateproduct_(\w+)/', $datain, $dataget) || $user['step'] == "getuseragnetservice" || $datain == "productcheckdata") => 'service_detail',
+        (bool) (preg_match('/^infocard_qr_(\w+)$/', $datain, $dataget)) => 'info_qr',
+        (bool) (preg_match('/subscriptionurl_(\w+)/', $datain, $dataget) || (is_string($text) && strpos($text, "/sub ") !== false)) => 'subscription',
+        (bool) (preg_match('/removeauto-(\w+)/', $datain, $dataget)) => 'remove_auto',
+        (bool) (preg_match('/^configpage_(.*)_(\d+)$/', $datain, $dataget)) => 'config_page',
+        (bool) (preg_match('/config_(\w+)/', $datain, $dataget) || (is_string($text) && strpos($text, "/link ") !== false)) => 'config_send',
+        (bool) (preg_match('/configget_(.*)_(.*)/', $datain, $dataget)) => 'config_item',
+        (bool) (preg_match('/^remnausage_(.+)$/', $datain, $rwm)) => 'remna_usage',
+        (bool) (preg_match('/^remnasetsquad_(.+)_([0-9a-fA-F-]{36})$/', $datain, $rwm)) => 'remna_squad',
+        (bool) (preg_match('/^remnapicker_(.+)$/', $datain, $rwm)) => 'remna_picker',
+        (bool) (preg_match('/changestatus_(\w+)/', $datain, $dataget)) => 'service_status',
+        (bool) (preg_match('/confirmaccountdisable_(\w+)/', $datain, $dataget)) => 'disable_service',
+        default => null,
+    };
+}
+
+function rxBotRouteRenewal($user, $datain, &$dataget): ?string
+{
+    return match (true) {
+        (bool) (preg_match('/extend_(\w+)/', $datain, $dataget)) => 'renewal_start',
+        (bool) ($user['step'] == "gettimecustomvolomforextend") => 'renewal_duration',
+        (bool) (preg_match('/productextendmonths_(\w+)/', $datain, $dataget)) => 'renewal_month',
+        (bool) (preg_match('/^serviceextendselect_(.*)/', $datain, $dataget) || $user['step'] == "getvolumecustomuserforextend" || $datain == "exntedagei") => 'renewal_product',
+        (bool) (in_array($datain, ['rsvt', 'rsvp', 'rsvu', 'rsvd'], true) || strpos((string) $datain, 'rsvc:') === 0) => 'renewal_reservation',
+        (bool) ($user['step'] == 'rsv_get_date') => 'renewal_date',
+        (bool) ($datain == "discountextend") => 'renewal_discount_prompt',
+        (bool) ($user['step'] == "getcodesellDiscountextend") => 'renewal_discount',
+        (bool) ($datain == "confirmserivce" || $datain == "confirmserdiscount") => 'renewal_confirm',
+        default => null,
+    };
+}
+
+function rxBotRouteServiceChanges($user, $datain, $text, $datatextbot, &$dataget): ?string
+{
+    return match (true) {
+        (bool) (preg_match('/changelink_(\w+)/', $datain, $dataget)) => 'rotate_link',
+        (bool) (preg_match('/confirmchange_(\w+)/', $datain, $dataget)) => 'rotate_confirm',
+        (bool) (preg_match('/Extra_volume_(\w+)/', $datain, $dataget)) => 'traffic_start',
+        (bool) ($user['step'] == "getvolumeextra") => 'traffic_amount',
+        (bool) (preg_match('/discountvolume-(\w+)/', $datain, $dataget)) => 'traffic_discount_prompt',
+        (bool) ($user['step'] == "getcodesellDiscountvolume") => 'traffic_discount',
+        (bool) (preg_match('/confirmaextra(discount)?-(\w+)/', $datain, $dataget)) => 'traffic_confirm',
+        (bool) (preg_match('/changeloc_(\w+)/', $datain, $dataget)) => 'location_start',
+        (bool) (preg_match('/changelocselectlo-(\w+)/', $datain, $dataget)) => 'location_select',
+        (bool) (preg_match('/confirmchangeloccha_(\w+)/', $datain, $dataget)) => 'location_confirm',
+        (bool) (preg_match('/disorder-(\w+)/', $datain, $dataget)) => 'dispute_start',
+        (bool) ($user['step'] == "getdesdisorder") => 'dispute_description',
+        (bool) (preg_match('/confirmdisorders-(\w+)/', $datain, $dataget)) => 'dispute_confirm',
+        (bool) (preg_match('/Extra_time_(\w+)/', $datain, $dataget)) => 'time_start',
+        (bool) ($user['step'] == "gettimeextra") => 'time_amount',
+        (bool) (preg_match('/discounttime-(\w+)/', $datain, $dataget)) => 'time_discount_prompt',
+        (bool) ($user['step'] == "getcodesellDiscounttime") => 'time_discount',
+        (bool) (preg_match('/confirmaextratime(discount)?-(\w+)/', $datain, $dataget)) => 'time_confirm',
+        (bool) (preg_match('/deletelist-(\w+)/', $datain, $dataget)) => 'delete_prompt',
+        (bool) (preg_match('/removeserviceuser_(\w+)/', $datain, $dataget)) => 'delete_start',
+        (bool) ($user['step'] == "getdisdeleteconfig") => 'delete_description',
+        (bool) (preg_match('/confirmremoveservices-(\w+)/', $datain, $dataget)) => 'delete_confirm',
+        (bool) (preg_match('/transfer_(\w+)/', $datain, $dataget)) => 'transfer_start',
+        (bool) ($user['step'] == "getidfortransfer") => 'transfer_recipient',
+        (bool) (preg_match('/confrimtransfers_(\w+)/', $datain, $dataget)) => 'transfer_confirm',
+        (bool) (($text !== '' && $text == $datatextbot['text_usertest']) || $datain == "usertestbtn" || $text == "usertest") => 'trial_menu',
+        default => null,
+    };
+}
+
+switch (
+    rxBotRouteAccount($user, $text, $datain, $textbotlang, $datatextbot, $from_id, $admin_ids, $dataget)
+    ?? ((function_exists('nmMaybeHandleStockCallback') && nmMaybeHandleStockCallback($datain ?? '', $from_id, $message_id ?? null, $callback_query_id ?? null)) ? 'stock' : null)
+    ?? rxBotRouteService($user, $text, $datain, $dataget, $rwm)
+    ?? rxBotRouteRenewal($user, $datain, $dataget)
+    ?? rxBotRouteServiceChanges($user, $datain, $text, $datatextbot, $dataget)
+) {
+case 'version':
     sendmessage($from_id, $version, null, 'html');
-} elseif ($text == $textbotlang['users']['backbtn'] || $datain == "backuser" || $datain == "admin_back") {
+    break;
+case 'back':
     if ($datain == "backuser" || $datain == "admin_back")
         deletemessage($from_id, $message_id);
     $message_id = sendmessage($from_id, $textbotlang['users']['back'], $keyboard, 'html');
@@ -1323,8 +1445,9 @@ if ($text == "version") {
         rxCancelAbandonedCardPaymentsForUser($from_id, 'user_back', ['methods' => ['cart to cart']]);
     }
     return;
-} elseif ($user['step'] == 'get_number' && in_array($from_id, $admin_ids)) {
-} elseif ($user['step'] == 'get_number' && !in_array($from_id, $admin_ids)) {
+case 'admin_phone':
+    break;
+case 'phone':
     if (empty($user_phone)) {
         sendmessage($from_id, $textbotlang['users']['number']['false'], $request_contact, 'html');
         return;
@@ -1350,7 +1473,8 @@ if ($text == "version") {
         update("user", "verify", "1", "id", $from_id);
     }
     step('home', $from_id);
-} elseif (($text !== '' && $text == $datatextbot['text_Purchased_services']) || $datain == "backorder" || $datain == "myservicesbtn" || $datain == "next_page" || $datain == "previous_page" || $text == "/services") {
+    break;
+case 'services':
     $rxServiceStatuses = ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin'];
     $rxServiceStatusSql = "status IN ('" . implode("','", $rxServiceStatuses) . "')";
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :id_user AND $rxServiceStatusSql");
@@ -1363,26 +1487,12 @@ if ($text == "version") {
     }
     rx_section_media_enter('services', $from_id, $datain, $message_id, ['myservicesbtn'], ['myservicesbtn']);
 
-    $keyboardlists = [
-        'inline_keyboard' => [],
-    ];
     $stmt = $pdo->prepare("SELECT name_product FROM invoice WHERE id_user = :id_user AND $rxServiceStatusSql GROUP BY name_product ORDER BY name_product ASC");
     $stmt->execute([':id_user' => $from_id]);
     $serviceProducts = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    foreach ($serviceProducts as $productRow) {
-        $rxProductValue = $productRow['name_product'];
-        $rxProductLabel = trim((string) $rxProductValue);
-        if ($rxProductLabel === '') {
-            $rxProductLabel = $textbotlang['users']['customsellvolume']['title'] ?? 'سرویس دلخواه';
-        }
-        $rxProductKey = md5($rxProductValue === null ? 'NULL' : 'P:' . $rxProductValue);
-        $keyboardlists['inline_keyboard'][] = [
-            [
-                'text' => $rxProductLabel,
-                'callback_data' => 'myservicescat_' . $rxProductKey
-            ],
-        ];
-    }
+    $keyboardlists = [
+        'inline_keyboard' => rxBotServiceProductButtons($serviceProducts, $textbotlang['users']['customsellvolume']['title'] ?? 'سرویس دلخواه'),
+    ];
     $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
     $backuser = [
         rx_kb_style(['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'backuser'], 'backuser', $_rx_nav_s)
@@ -1400,7 +1510,8 @@ if ($text == "version") {
         sendmessage($from_id, $rxProductListText, $keyboard_json, 'html');
     }
 
-} elseif (preg_match('/^(myservicescat|next_page|previous_page)_([a-f0-9]{32})(?:_([0-9]{1,10}))?$/', (string) $datain, $dataget)) {
+    break;
+case 'services_page':
     $rxProductHash = $dataget[2];
     $rxRequestedPage = isset($dataget[3]) ? (int) $dataget[3] : 1;
     $rxServiceStatuses = ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin'];
@@ -1500,10 +1611,12 @@ if ($text == "version") {
     $keyboard_json = json_encode($keyboardlists);
     Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json);
 
-} elseif ($datain == "notusernameme") {
+    break;
+case 'lookup_prompt':
     sendmessage($from_id, $textbotlang['users']['stateus']['SendUsername'], $backuser, 'html');
     step('getusernameinfo', $from_id);
-} elseif ($user['step'] == "getusernameinfo") {
+    break;
+case 'lookup_name':
     if (!isset($update['message']) && empty($text)) { return; }
     if (empty($text))
         return;
@@ -1535,7 +1648,8 @@ if ($text == "version") {
     update("user", "Processing_value", $usernameconfig, "id", $from_id);
     sendmessage($from_id, $datatextbot['textselectlocation'], $list_marzban_panel_user, 'html');
     step('getdata', $from_id);
-} elseif (preg_match('/locationnotuser_(.*)/', $datain, $dataget)) {
+    break;
+case 'lookup_panel':
     $marzban_list_get = select("marzban_panel", "*", "code_panel", $dataget[1]);
     update("user", "Processing_value_four", $marzban_list_get['code_panel'], "id", $from_id);
     $DataUserOut = $ManagePanel->DataUser($marzban_list_get['name_panel'], $user['Processing_value']);
@@ -1633,9 +1747,10 @@ if ($text == "version") {
     Editmessagetext($from_id, $message_id, $textbotlang['users']['stateus']['info'], $keyboardinfo);
     sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'html');
     step('home', $from_id);
-} elseif (function_exists('nmMaybeHandleStockCallback') && nmMaybeHandleStockCallback($datain ?? '', $from_id, $message_id ?? null, $callback_query_id ?? null)) {
+    break;
+case 'stock':
     return;
-} elseif (preg_match('/^quickview_(\w+)/', $datain, $dataget) || preg_match('/^product_(\w+)/', $datain, $dataget) || preg_match('/updateproduct_(\w+)/', $datain, $dataget) || $user['step'] == "getuseragnetservice" || $datain == "productcheckdata") {
+case 'service_detail':
 
     if (is_string($datain) && strpos($datain, 'quickview_') === 0) {
         $id_invoice_qv = $dataget[1];
@@ -2431,7 +2546,7 @@ $nameconfig";
     }
     step('home', $from_id);
     return;
-} elseif (preg_match('/^infocard_qr_(\w+)$/', $datain, $dataget)) {
+case 'info_qr':
 
     if (function_exists('isQrDisabled') && isQrDisabled()) {
         if (isset($callback_query_id)) {
@@ -2497,7 +2612,8 @@ $nameconfig";
             'cache_time' => 0,
         ]);
     }
-} elseif (preg_match('/subscriptionurl_(\w+)/', $datain, $dataget) || (is_string($text) && strpos($text, "/sub ") !== false)) {
+    break;
+case 'subscription':
     if (is_string($text) && $text !== '' && $text[0] == "/") {
         $id_invoice = explode(' ', $text)[1];
         $nameloc = select("invoice", "*", "username", $id_invoice, "select");
@@ -2614,7 +2730,8 @@ $nameconfig";
     } else {
         sendmessage($from_id, $textsub, $bakinfos, 'HTML');
     }
-} elseif (preg_match('/removeauto-(\w+)/', $datain, $dataget)) {
+    break;
+case 'remove_auto':
     $id_invoice = $dataget[1];
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
 
@@ -2640,7 +2757,8 @@ $nameconfig";
         ]);
     }
     sendmessage($from_id, $datatextbot['dyn_errors_service_deleted'] ?? "📌 سرویس با موفقیت حذف شد", null, 'html');
-} elseif (preg_match('/^configpage_(.*)_(\d+)$/', $datain, $dataget)) {
+    break;
+case 'config_page':
     $id_invoice = $dataget[1];
     $page = (int) $dataget[2];
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
@@ -2680,7 +2798,8 @@ $nameconfig";
         return;
     }
     rx_config_deliver_list($from_id, $message_id, "📌 از لیست زیر یک کانفیگ را انتخاب استفاده نمایید.", $configKeyboard);
-} elseif (preg_match('/config_(\w+)/', $datain, $dataget) || (is_string($text) && strpos($text, "/link ") !== false)) {
+    break;
+case 'config_send':
     $textCommand = is_string($text) ? $text : '';
     if ($textCommand !== '' && $textCommand[0] === "/") {
         $parts = explode(' ', $textCommand, 2);
@@ -2770,7 +2889,8 @@ $nameconfig";
         return;
     }
     rx_config_deliver_list($from_id, $message_id, "📌 از لیست زیر یک کانفیگ را انتخاب استفاده نمایید.", $configKeyboard);
-} elseif (preg_match('/configget_(.*)_(.*)/', $datain, $dataget)) {
+    break;
+case 'config_item':
     $id_invoice = $dataget[1];
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
 
@@ -3061,7 +3181,8 @@ $nameconfig";
     } else {
         sendmessage($from_id, "<code>{$selectedConfig}</code>", $selectedConfigCopyKb, 'HTML');
     }
-} elseif (preg_match('/^remnausage_(.+)$/', $datain, $rwm)) {
+    break;
+case 'remna_usage':
     $rwId = $rwm[1];
     $rwInv = select("invoice", "*", "id_invoice", $rwId, "select");
     if (!is_array($rwInv) || (string)($rwInv['id_user'] ?? '') !== (string)$from_id) {
@@ -3076,7 +3197,7 @@ $nameconfig";
     $rwBack = json_encode(['inline_keyboard' => [[['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "product_{$rwInv['id_invoice']}"]]]]);
     sendmessage($from_id, "📊 مصرف ۳۰ روز اخیر به‌تفکیک سرور:\n\n" . $rwBw['text'], $rwBack, 'HTML');
     return;
-} elseif (preg_match('/^remnasetsquad_(.+)_([0-9a-fA-F-]{36})$/', $datain, $rwm)) {
+case 'remna_squad':
     $rwId = $rwm[1];
     $rwSquad = $rwm[2];
     $rwInv = select("invoice", "*", "id_invoice", $rwId, "select");
@@ -3093,7 +3214,7 @@ $nameconfig";
     $rwBack = json_encode(['inline_keyboard' => [[['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "product_{$rwInv['id_invoice']}"]]]]);
     sendmessage($from_id, ($rwSet['status'] ?? '') === 'successful' ? "✅ سرور با موفقیت تغییر کرد." : "❌ تغییر سرور ناموفق بود.", $rwBack, 'HTML');
     return;
-} elseif (preg_match('/^remnapicker_(.+)$/', $datain, $rwm)) {
+case 'remna_picker':
     $rwId = $rwm[1];
     $rwInv = select("invoice", "*", "id_invoice", $rwId, "select");
     if (!is_array($rwInv) || (string)($rwInv['id_user'] ?? '') !== (string)$from_id) {
@@ -3122,7 +3243,7 @@ $nameconfig";
     $rwKb['inline_keyboard'][] = [['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "product_{$rwInv['id_invoice']}"]];
     Editmessagetext($from_id, $message_id, "🌍 یک سرور (Squad) انتخاب کنید:", json_encode($rwKb));
     return;
-} elseif (preg_match('/changestatus_(\w+)/', $datain, $dataget)) {
+case 'service_status':
     $rxChangeStatusInvoice = select("invoice", "*", "id_invoice", $dataget[1], "select");
     if (is_array($rxChangeStatusInvoice) && !panel_feature_enabled($rxChangeStatusInvoice['Service_location'], 'changeservice')) {
         sendmessage($from_id, $datatextbot['dyn_errors_feature_currently_unavailable_nodot'] ?? "❌ این قابلیت درحال حاضر در دسترس نیست", null, 'html');
@@ -3188,7 +3309,8 @@ $nameconfig";
         Editmessagetext($from_id, $message_id, "📌 با تایید گزینه زیر کانفیگ شما روشن خواهد شد. و می توانید به کانفیگ خود متصل شوید
 ⚠️ در صورتی که میخواهید مجدد کانفیگ غیرفعال شود باید از بخش مدیریت سرویس دکمه <u>❌ خاموش کردن اکانت</u>را کلیک کنید", $confirmdisableaccount);
     }
-} elseif (preg_match('/confirmaccountdisable_(\w+)/', $datain, $dataget)) {
+    break;
+case 'disable_service':
     $id_invoice = $dataget[1];
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
 
@@ -3230,7 +3352,8 @@ $nameconfig";
         update("invoice", "Status", "disabled", "id_invoice", $nameloc['id_invoice']);
         Editmessagetext($from_id, $message_id, $textbotlang['users']['stateus']['disabledconfig'], $bakinfos);
     }
-} elseif (preg_match('/extend_(\w+)/', $datain, $dataget)) {
+    break;
+case 'renewal_start':
     $id_invoice = $dataget[1];
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
 
@@ -3343,7 +3466,8 @@ $nameconfig";
         $monthkeyboard = keyboardTimeCategory($nameloc['Service_location'], $user['agent'], "productextendmonths_", "product_$id_invoice", false, true);
         Editmessagetext($from_id, $message_id, $textbotlang['Admin']['month']['title'], $monthkeyboard);
     }
-} elseif ($user['step'] == "gettimecustomvolomforextend") {
+    break;
+case 'renewal_duration':
     $userdate = json_decode($user['Processing_value'], true);
     $nameloc = select("invoice", "*", "id_invoice", $userdate['id_invoice'], "select");
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
@@ -3376,7 +3500,8 @@ $nameconfig";
         sendmessage($from_id, $textcustom, $backuser, 'html');
     }
     step('getvolumecustomuserforextend', $from_id);
-} elseif (preg_match('/productextendmonths_(\w+)/', $datain, $dataget)) {
+    break;
+case 'renewal_month':
     $monthenumber = $dataget[1];
     $userdate = json_decode($user['Processing_value'], true);
     $nameloc = select("invoice", "*", "id_invoice", $userdate['id_invoice'], "select");
@@ -3420,7 +3545,8 @@ $nameconfig";
         ? faoxima_render_text($textbotlang['users']['extend']['selectservice'], ['panel' => $nameloc['Service_location']])
         : $textbotlang['users']['extend']['selectservice'];
     Editmessagetext($from_id, $message_id, $textselectservice, $json_list_product_lists);
-} elseif (preg_match('/^serviceextendselect_(.*)/', $datain, $dataget) || $user['step'] == "getvolumecustomuserforextend" || $datain == "exntedagei") {
+    break;
+case 'renewal_product':
     $userdate = json_decode($user['Processing_value'], true);
     $nameloc = select("invoice", "*", "id_invoice", $userdate['id_invoice'], "select");
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
@@ -3554,18 +3680,22 @@ $nameconfig";
     } else {
         Editmessagetext($from_id, $message_id, $textextend, $keyboardextend);
     }
-} elseif (in_array($datain, ['rsvt', 'rsvp', 'rsvu', 'rsvd'], true) || strpos((string) $datain, 'rsvc:') === 0) {
+    break;
+case 'renewal_reservation':
     if (!empty($callback_query_id)) {
         telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => rxRenewalText('button_outdated'), 'show_alert' => true]);
     }
-} elseif ($user['step'] == 'rsv_get_date') {
+    break;
+case 'renewal_date':
     step('home', $from_id);
     sendmessage($from_id, rxRenewalText('button_outdated'), $keyboard, 'HTML');
-} elseif ($datain == "discountextend") {
+    break;
+case 'renewal_discount_prompt':
     sendmessage($from_id, $textbotlang['users']['Discount']['getcodesell'], $backuser, 'HTML');
     step('getcodesellDiscountextend', $from_id);
     deletemessage($from_id, $message_id);
-} elseif ($user['step'] == "getcodesellDiscountextend") {
+    break;
+case 'renewal_discount':
     if (!isset($update['message']) && empty($text)) { return; }
     $userdate = json_decode($user['Processing_value'], true);
     $nameloc = select("invoice", "*", "id_invoice", $userdate['id_invoice'], "select");
@@ -3664,7 +3794,8 @@ $nameconfig";
     update("user", "Processing_value_four", $parametrsendvalue, "id", $from_id);
     fx_quote_store($from_id, fx_quote_context_key('renew_discount', (string) $nameloc['id_invoice'] . '|' . (string) ($userdate['code_product'] ?? '')), $info_product['price_product'], $marzban_list_get, $fxRenewKinds);
     step("home", $from_id);
-} elseif ($datain == "confirmserivce" || $datain == "confirmserdiscount") {
+    break;
+case 'renewal_confirm':
     Editmessagetext($from_id, $message_id, $text_inline, json_encode(['inline_keyboard' => []]));
     $partsdic = explode("_", $user['Processing_value_four']);
     $userdata = json_decode($user['Processing_value'], true);
@@ -4039,7 +4170,8 @@ $nameconfig";
             'category'   => $prodcut['category'] ?? '',
         ], $setting);
     }
-} elseif (preg_match('/changelink_(\w+)/', $datain, $dataget)) {
+    break;
+case 'rotate_link':
     $id_invoice = $dataget[1];
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
 
@@ -4072,7 +4204,8 @@ $nameconfig";
         ]
     ]);
     Editmessagetext($from_id, $message_id, $textbotlang['users']['changelink']['warnchange'], $keyboardextend);
-} elseif (preg_match('/confirmchange_(\w+)/', $datain, $dataget)) {
+    break;
+case 'rotate_confirm':
     $id_invoice = $dataget[1];
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
 
@@ -4124,7 +4257,8 @@ $nameconfig";
             'parse_mode' => "HTML",
         ]);
     }
-} elseif (preg_match('/Extra_volume_(\w+)/', $datain, $dataget)) {
+    break;
+case 'traffic_start':
     $id_invoice = $dataget[1];
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
 
@@ -4162,7 +4296,8 @@ $nameconfig";
     ]);
     Editmessagetext($from_id, $message_id, $textextra, $bakinfos);
     step('getvolumeextra', $from_id);
-} elseif ($user['step'] == "getvolumeextra") {
+    break;
+case 'traffic_amount':
     if (!ctype_digit($text)) {
         sendmessage($from_id, $textbotlang['Admin']['Product']['Invalidvolume'], $backuser, 'HTML');
         return;
@@ -4203,12 +4338,14 @@ $nameconfig";
 ✅ جهت پرداخت و اضافه شدن حجم، روی دکمه زیر کلیک کنید";
     sendmessage($from_id, $textextra, $keyboardsetting, 'HTML');
     step('home', $from_id);
-} elseif (preg_match('/discountvolume-(\w+)/', $datain, $dataget)) {
+    break;
+case 'traffic_discount_prompt':
     update("user", "Processing_value_four", "prevol_" . $dataget[1], "id", $from_id);
     sendmessage($from_id, $textbotlang['users']['Discount']['getcodesell'], $backuser, 'HTML');
     step('getcodesellDiscountvolume', $from_id);
     deletemessage($from_id, $message_id);
-} elseif ($user['step'] == "getcodesellDiscountvolume") {
+    break;
+case 'traffic_discount':
     $nameloc = select("invoice", "*", "id_invoice", $user['Processing_value'], "select");
     if (!is_array($nameloc) || (string)($nameloc['id_user'] ?? '') !== (string)$from_id) {
         sendmessage($from_id, $datatextbot['dyn_errors_extra_volume_restart_process'] ?? "❌ مراحل خرید حجم اضافه را مجددا انجام دهید", $keyboard, 'HTML');
@@ -4260,7 +4397,8 @@ $nameconfig";
 ✅ جهت پرداخت و اضافه شدن حجم، روی دکمه زیر کلیک کنید";
     sendmessage($from_id, $textextra, $keyboardsetting, 'HTML');
     step('home', $from_id);
-} elseif (preg_match('/confirmaextra(discount)?-(\w+)/', $datain, $dataget)) {
+    break;
+case 'traffic_confirm':
     $volume = $dataget[2];
     $__volDiscountCode = '';
     $__volCharge = (float)$volume;
@@ -4464,7 +4602,8 @@ $nameconfig";
             'parse_mode' => "HTML"
         ]);
     }
-} elseif (preg_match('/changeloc_(\w+)/', $datain, $dataget)) {
+    break;
+case 'location_start':
     $id_invoice = $dataget[1];
     $limitchangeloc = json_decode($setting['limitnumber'], true);
     if ($user['limitchangeloc'] > $limitchangeloc['all'] and intval($setting['statuslimitchangeloc']) == 1) {
@@ -4493,7 +4632,8 @@ $nameconfig";
         return;
     }
     Editmessagetext($from_id, $message_id, $datatextbot['textselectlocation'], $list_marzban_panel_userschange);
-} elseif (preg_match('/changelocselectlo-(\w+)/', $datain, $dataget)) {
+    break;
+case 'location_select':
     update("user", "Processing_value_one", $dataget[1], "id", $from_id);
     $limitchangeloc = json_decode($setting['limitnumber'], true);
     $userlimitlast = $limitchangeloc['all'] - $user['limitchangeloc'];
@@ -4517,7 +4657,8 @@ $nameconfig";
         ]
     ]);
     Editmessagetext($from_id, $message_id, $textchange, $keyboardextend);
-} elseif (preg_match('/confirmchangeloccha_(\w+)/', $datain, $dataget)) {
+    break;
+case 'location_confirm':
     $id_invoice = $dataget[1];
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
 
@@ -4749,7 +4890,8 @@ $nameconfig";
             'parse_mode' => "HTML"
         ]);
     }
-} elseif (preg_match('/disorder-(\w+)/', $datain, $dataget)) {
+    break;
+case 'dispute_start':
     $id_invoice = $dataget[1];
     update("user", "Processing_value", $id_invoice, "id", $from_id);
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
@@ -4779,7 +4921,8 @@ $nameconfig";
     ]);
     Editmessagetext($from_id, $message_id, $textdisorder, $keyboarddisorder);
     step("getdesdisorder", $from_id);
-} elseif ($user['step'] == "getdesdisorder") {
+    break;
+case 'dispute_description':
     update("user", "Processing_value", $text, "id", $from_id);
     $nameloc = select("invoice", "*", "id_invoice", $user['Processing_value'], "select");
     $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
@@ -4802,7 +4945,8 @@ $nameconfig";
     ]);
     sendmessage($from_id, $textdisorder, $keyboarddisorder, 'html');
     step("home", $from_id);
-} elseif (preg_match('/confirmdisorders-(\w+)/', $datain, $dataget)) {
+    break;
+case 'dispute_confirm':
     $id_invoice = $dataget[1];
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
 
@@ -4914,7 +5058,8 @@ $nameconfig";
         ]
     ]);
     Editmessagetext($from_id, $message_id, $datatextbot['dyn_errors_removal_request_thanks'] ?? "✅ با تشکر از ثبت درخواست ،درخواست شما  ارسال شده و درحال بررسی توسط پشتیبانی می باشد.", $bakinfos, 'html');
-} elseif (preg_match('/Extra_time_(\w+)/', $datain, $dataget)) {
+    break;
+case 'time_start':
     $id_invoice = $dataget[1];
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
 
@@ -4956,7 +5101,8 @@ $nameconfig";
     ]);
     Editmessagetext($from_id, $message_id, $textextra, $bakinfos);
     step('gettimeextra', $from_id);
-} elseif ($user['step'] == "gettimeextra") {
+    break;
+case 'time_amount':
     if (!ctype_digit($text) || $text < 1) {
         sendmessage($from_id, $textbotlang['Admin']['Product']['Invalidtime'], $backuser, 'HTML');
         return;
@@ -4995,12 +5141,14 @@ $nameconfig";
 ✅ جهت پرداخت و اضافه شدن زمان، روی دکمه زیر کلیک کنید";
     sendmessage($from_id, $textextra, $keyboardsetting, 'HTML');
     step('home', $from_id);
-} elseif (preg_match('/discounttime-(\w+)/', $datain, $dataget)) {
+    break;
+case 'time_discount_prompt':
     update("user", "Processing_value_four", "pretime_" . $dataget[1], "id", $from_id);
     sendmessage($from_id, $textbotlang['users']['Discount']['getcodesell'], $backuser, 'HTML');
     step('getcodesellDiscounttime', $from_id);
     deletemessage($from_id, $message_id);
-} elseif ($user['step'] == "getcodesellDiscounttime") {
+    break;
+case 'time_discount':
     $nameloc = select("invoice", "*", "id_invoice", $user['Processing_value'], "select");
     if (!is_array($nameloc) || (string)($nameloc['id_user'] ?? '') !== (string)$from_id) {
         sendmessage($from_id, $datatextbot['dyn_errors_extra_time_restart_process'] ?? "❌ مراحل خرید زمان اضافه را مجددا انجام دهید", $keyboard, 'HTML');
@@ -5052,7 +5200,8 @@ $nameconfig";
 ✅ جهت پرداخت و اضافه شدن زمان، روی دکمه زیر کلیک کنید";
     sendmessage($from_id, $textextra, $keyboardsetting, 'HTML');
     step('home', $from_id);
-} elseif (preg_match('/confirmaextratime(discount)?-(\w+)/', $datain, $dataget)) {
+    break;
+case 'time_confirm':
     $tmieextra = $dataget[2];
     $__timeDiscountCode = '';
     $__timeCharge = (float)$tmieextra;
@@ -5271,7 +5420,8 @@ $nameconfig";
             'price'   => $volumesformat,
         ], $setting);
     }
-} elseif (preg_match('/deletelist-(\w+)/', $datain, $dataget)) {
+    break;
+case 'delete_prompt':
     $id_invoice = $dataget[1];
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
     if (is_array($nameloc) && (string) $nameloc['id_user'] === (string) $from_id) {
@@ -5287,7 +5437,8 @@ $nameconfig";
     } else {
         sendmessage($from_id, $datatextbot['dyn_errors_service_removal_unavailable'] ?? "❌ امکان حذف سرویس وجود ندارد.", null, 'html');
     }
-} elseif (preg_match('/removeserviceuser_(\w+)/', $datain, $dataget)) {
+    break;
+case 'delete_start':
     $id_invoice = $dataget[1];
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
 
@@ -5309,7 +5460,8 @@ $nameconfig";
     ]);
     Editmessagetext($from_id, $message_id, $datatextbot['dyn_errors_removal_reason_prompt'] ?? "📌 دلیل حذف سرویس خود را ارسال کنید.", $bakinfos);
     step("getdisdeleteconfig", $from_id);
-} elseif ($user['step'] == "getdisdeleteconfig") {
+    break;
+case 'delete_description':
     $userdata = json_decode($user['Processing_value'], true);
     $id_invoice = $userdata['id_invoice'];
     savedata("save", "descritionsremove", $text);
@@ -5339,7 +5491,8 @@ $nameconfig";
     ]);
     sendmessage($from_id, $textbotlang['users']['stateus']['descriptions_removeservice'], $confirmremove, "html");
     step("home", $from_id);
-} elseif (preg_match('/confirmremoveservices-(\w+)/', $datain, $dataget)) {
+    break;
+case 'delete_confirm':
     $userdata = json_decode($user['Processing_value'], true);
     $stmt = $pdo->prepare("SELECT * FROM cancel_service WHERE id_user = :from_id AND status = 'waiting'");
     $stmt->execute([
@@ -5455,7 +5608,8 @@ $nameconfig";
     }
     deletemessage($from_id, $message_id);
     sendmessage($from_id, $textbotlang['users']['stateus']['sendrequestsremove'], $keyboard, 'html');
-} elseif (preg_match('/transfer_(\w+)/', $datain, $dataget)) {
+    break;
+case 'transfer_start':
     $id_invoice = $dataget[1];
     $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
 
@@ -5488,7 +5642,8 @@ $nameconfig";
     step("getidfortransfer", $from_id);
     update("user", "Processing_value_one", $nameloc['username'], "id", $from_id);
     update("user", "Processing_value_tow", $nameloc['id_invoice'], "id", $from_id);
-} elseif ($user['step'] == "getidfortransfer") {
+    break;
+case 'transfer_recipient':
     if (!userExists($text)) {
         sendmessage($from_id, $textbotlang['Admin']['transfor']['notusertrns'], $backuser, 'HTML');
         return;
@@ -5503,7 +5658,8 @@ $nameconfig";
     ]);
     sendmessage($from_id, $textbotlang['Admin']['transfor']['confirm'], $confirmtransfer, 'HTML');
     step("home", $from_id);
-} elseif (preg_match('/confrimtransfers_(\w+)/', $datain, $dataget)) {
+    break;
+case 'transfer_confirm':
     if ($from_id == $user['Processing_value_one']) {
         sendmessage($from_id, $textbotlang['Admin']['transfor']['notsendserviceyou'], $keyboard, 'HTML');
         return;
@@ -5538,7 +5694,8 @@ $nameconfig";
     $stmt->bind_param("ssssss", $from_id, $nameloc['username'], $value, $type, $dateacc, $price);
     $stmt->execute();
     $stmt->close();
-} elseif (($text !== '' && $text == $datatextbot['text_usertest']) || $datain == "usertestbtn" || $text == "usertest") {
+    break;
+case 'trial_menu':
     if (!check_active_btn($setting['keyboardmain'], "text_usertest")) {
         sendmessage($from_id, $datatextbot['dyn_errors_test_service_unavailable'] ?? "📌 سرویس تست در حال حاضر در دسترس نیست .", null, 'HTML');
         return;
@@ -5581,4 +5738,5 @@ $nameconfig";
         rx_section_media_enter('test', $from_id, $datain, $message_id, ['usertestbtn']);
         sendmessage($from_id, $datatextbot['textselectlocation'], json_encode($rxTestEntryKb), 'html');
     }
+    break;
 }

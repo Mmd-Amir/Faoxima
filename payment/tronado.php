@@ -190,15 +190,7 @@ foreach ($datatxtbot as $item) {
                 $creditAmount = $tomanAmountWithoutWage;
             }
 
-            $atomic = $connect->prepare(
-                "UPDATE Payment_report SET payment_Status = ?, dec_not_confirmed = ? "
-                . "WHERE id_order = ? AND payment_Status <> 'paid'"
-            );
-            $statusPaid = 'paid';
-            $atomic->bind_param('sss', $statusPaid, $dedupeKey, $paymentId);
-            $atomic->execute();
-            $affected = $atomic->affected_rows;
-            $atomic->close();
+            $affected = RxLegacyPaymentConfirmation::claimTronado($connect, $paymentId, $dedupeKey);
             if ($affected < 1) {
                 $doneLookup = $connect->prepare("SELECT direct_payment_done FROM Payment_report WHERE id_order = ? LIMIT 1");
                 $doneLookup->bind_param('s', $paymentId);
@@ -229,15 +221,13 @@ foreach ($datatxtbot as $item) {
         ]);
         $Balance_id = ['id' => $Payment_report['id_user'] ?? '', 'username' => '—', 'Balance' => 0];
     }
-    $cashbackEligible = !function_exists('rx_cashbackEligibleForKey')
-        || rx_cashbackEligibleForKey("chashbackiranpay2", $Balance_id['register'] ?? null, $Payment_report['id_invoice'] ?? null, $Balance_id['id'] ?? null, $Payment_report['id_order'] ?? null);
-    if($cashbackEligible && $pricecashback != "0"){
-       $result = (int) floor(($Payment_report['price'] * $pricecashback) / 100);
-        if (rx_cashback_credit_once($Payment_report['id_order'], $Balance_id['id'], $result, 'chashbackiranpay2', 'هدیه بازگشت وجه ترنادو') === 'credited') {
-            $pricecashback =  number_format($pricecashback);
-            $text_report = "🎁 کاربر عزیز مبلغ " . rxFormatToman($result) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
-            sendmessage($Balance_id['id'], $text_report, null, 'HTML');
-        }
+    $result = RxLegacyPaymentConfirmation::creditCashback(
+        $Payment_report, $Balance_id, 'chashbackiranpay2', $pricecashback, 'هدیه بازگشت وجه ترنادو'
+    );
+    if ($result !== null) {
+        $pricecashback =  number_format($pricecashback);
+        $text_report = "🎁 کاربر عزیز مبلغ " . rxFormatToman($result) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
+        sendmessage($Balance_id['id'], $text_report, null, 'HTML');
     }
     $paymentreports = select("topicid","idreport","report","paymentreport","select")['idreport'];
     $balancelow = '';

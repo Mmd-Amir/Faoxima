@@ -14,15 +14,9 @@ if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); head
 require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/lib/remaining.php';
 require_once __DIR__ . '/lib/item_parser.php';
+require_once __DIR__ . '/lib/bulk_delete.php';
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindValue(":username", $_SESSION["user"] ?? '', PDO::PARAM_STR);
-$query->execute();
-$adminRow = $query->fetch(PDO::FETCH_ASSOC);
-if (!isset($_SESSION["user"]) || !$adminRow) {
-    header('Location: login.php');
-    exit;
-}
+fx_admin_require_access($pdo);
 
 $tableMissing = true;
 try {
@@ -190,48 +184,200 @@ function faoxima_ms_normalize_ext(string $ext): string
 }
 
 
-function faoxima_ms_delete_linked_invoices(PDO $pdo, array $where): void
+function fx_ms_prepare_items(array $post, array $files, string $configSource, string $entryMode, string $payload, string $customExt, bool $sendAsFile, array &$flash): array
 {
-    $sql = "SELECT username FROM manualsell WHERE status = 'selled' AND username IS NOT NULL AND username <> ''";
-    $params = [];
-    if (isset($where['id'])) {
-        $sql .= " AND id = :id";
-        $params[':id'] = (int)$where['id'];
-    }
-    if (isset($where['ids']) && is_array($where['ids']) && $where['ids']) {
-        $ph = implode(',', array_fill(0, count($where['ids']), '?'));
-        $sql .= " AND id IN ({$ph})";
-    }
-    try {
-        $stmt = $pdo->prepare($sql);
-        if (isset($where['ids']) && is_array($where['ids']) && $where['ids']) {
-            $i = 1;
-            foreach ($params as $v) {
-                $stmt->bindValue($i, $v);
-                $i++;
+    $items      = [];
+    $pasteExt   = ($customExt !== '' && preg_match('/^[a-z0-9]{1,10}$/i', $customExt)) ? $customExt : '';
+    $nonLinkExt = ($pasteExt !== '') ? $pasteExt : ($sendAsFile ? 'conf' : 'text');
+
+    if ($configSource === 'file') {
+        if ($entryMode === 'single') {
+            $singleFile = $files['single_file'] ?? $files['config_file'] ?? null;
+            if ($singleFile) {
+                $errCode = (int)($singleFile['error'] ?? UPLOAD_ERR_NO_FILE);
+                if ($errCode === UPLOAD_ERR_OK) {
+                    $tmp   = (string)($singleFile['tmp_name'] ?? '');
+                    $fname = (string)($singleFile['name'] ?? '');
+                    $isUploaded = ($tmp !== '' && is_uploaded_file($tmp));
+                    if ($isUploaded) {
+                        $ext = faoxima_ms_normalize_ext((string)pathinfo($fname, PATHINFO_EXTENSION));
+                        if ($ext === '') $ext = 'bin';
+                        $raw = faoxima_read_uploaded_file($tmp);
+                        $hasSub = (($post['file_has_sub_link'] ?? $post['has_sub_link'] ?? '') === '1');
+                        $sub    = trim((string)($post['file_single_sub_link'] ?? $post['single_sub_link'] ?? ''));
+                        $content = $raw;
+                        if ($content !== '') {
+                            $items[] = ['content' => $content, 'ext' => $ext, 'sub' => ($hasSub && $sub !== '') ? $sub : ''];
+                        }
+                    }
+                }
             }
-            foreach ($where['ids'] as $v) {
-                $stmt->bindValue($i, (int)$v, PDO::PARAM_INT);
-                $i++;
+            if (empty($items) && $flash['err'] === '') {
+                $flash['err'] = 'لطفاً یک فایل کانفیگ انتخاب و آپلود کنید.';
             }
-            $stmt->execute();
         } else {
-            $stmt->execute($params);
+            $bulkFiles = $files['bulk_files'] ?? null;
+            $bulkSubs  = $post['bulk_file_subs'] ?? [];
+            $bulkHasSubs = $post['bulk_file_has_subs'] ?? [];
+
+            if ($bulkFiles && isset($bulkFiles['name']) && is_array($bulkFiles['name'])) {
+                foreach ($bulkFiles['name'] as $i => $fname) {
+                    $errCode = (int)($bulkFiles['error'][$i] ?? UPLOAD_ERR_NO_FILE);
+                    if ($errCode !== UPLOAD_ERR_OK) {
+                        continue;
+                    }
+                    $tmp = (string)($bulkFiles['tmp_name'][$i] ?? '');
+                    if ($tmp === '' || !is_uploaded_file($tmp)) {
+                        continue;
+                    }
+
+                    $ext = faoxima_ms_normalize_ext((string)pathinfo((string)$fname, PATHINFO_EXTENSION));
+                    if ($ext === '') $ext = 'bin';
+                    $raw = faoxima_read_uploaded_file($tmp);
+                    $hasSub = (isset($bulkHasSubs[$i]) && (string)$bulkHasSubs[$i] === '1');
+                    $sub    = trim((string)($bulkSubs[$i] ?? ''));
+                    $content = $raw;
+                    if ($content === '') {
+                        continue;
+                    }
+                    $items[] = ['content' => $content, 'ext' => $ext, 'sub' => ($hasSub && $sub !== '') ? $sub : ''];
+                }
+            }
+            if (empty($items) && $flash['err'] === '') {
+                $flash['err'] = 'لطفاً حداقل یک فایل کانفیگ معتبر انتخاب و آپلود کنید.';
+            }
         }
-        $usernames = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
-    } catch (\Throwable $e) {
-        return;
+    } elseif (trim($payload) !== '') {
+        $items = faoxima_pair_manual_service_items($payload, $nonLinkExt, $pasteExt);
+        if (empty($items)) {
+            $flash['err'] = 'هیچ کانفیگ معتبری یافت نشد.';
+        } elseif ($entryMode === 'single' && count($items) > 1) {
+            $flash['err'] = 'در حالت «تکی» فقط یک کانفیگ (یا یک کانفیگ همراه با لینکِ اشتراکش) مجاز است.';
+        }
+    } else {
+        $flash['err'] = 'فایل کانفیگ یا متن آن را وارد کنید.';
     }
-    $usernames = array_values(array_unique(array_filter(array_map('trim', $usernames), static function ($v) {
-        return $v !== '';
-    })));
-    if (!$usernames) return;
-    $ph = implode(',', array_fill(0, count($usernames), '?'));
+    return $items;
+}
+
+function fx_ms_store_items(PDO $pdo, array $items, string $entryMode, string $codePanel, string $codeProduct, string $nameRecord): array
+{
     try {
-        $del = $pdo->prepare("DELETE FROM invoice WHERE username IN ({$ph})");
-        $del->execute($usernames);
+        @$pdo->exec("ALTER TABLE manualsell MODIFY contentrecord LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL");
     } catch (\Throwable $e) {
     }
+    try {
+        @$pdo->exec("ALTER TABLE manualsell ADD COLUMN sub_link MEDIUMTEXT NULL");
+    } catch (\Throwable $e) {
+    }
+    try {
+        @$pdo->exec("ALTER TABLE manualsell ADD COLUMN group_id VARCHAR(40) NULL");
+    } catch (\Throwable $e) {
+    }
+    try {
+        @$pdo->exec("ALTER TABLE manualsell ADD COLUMN group_size INT NULL");
+    } catch (\Throwable $e) {
+    }
+
+    $isMultiItem = ($entryMode === 'multi');
+    $multi = count($items) > 1 || $entryMode === 'bulk' || $isMultiItem;
+    $groupId = null;
+    $groupSize = null;
+    if ($isMultiItem) {
+        $groupId = function_exists('faoxima_generate_group_id') ? faoxima_generate_group_id() : ('mg_' . bin2hex(random_bytes(8)));
+        $groupSize = count($items);
+    }
+    $ok = 0;
+    $bad = 0;
+    $insertStmt = $pdo->prepare("INSERT INTO manualsell (codepanel,codeproduct,namerecord,contentrecord,status,file_ext,sub_link,group_id,group_size) VALUES (:codepanel,:codeproduct,:namerecord,:contentrecord,'active',:file_ext,:sub_link,:group_id,:group_size)");
+    foreach ($items as $idx => $item) {
+        $content  = (string)($item['content'] ?? '');
+        $thisName = $multi ? ($nameRecord . '-' . ($idx + 1)) : $nameRecord;
+        $itemSub  = (string)($item['sub'] ?? '');
+
+        try {
+            $insertStmt->execute([
+                ':codepanel'     => $codePanel,
+                ':codeproduct'   => $codeProduct,
+                ':namerecord'    => $thisName,
+                ':contentrecord' => $content,
+                ':file_ext'      => ($item['ext'] !== '' ? $item['ext'] : null),
+                ':sub_link'      => ($itemSub !== '' ? $itemSub : null),
+                ':group_id'      => $groupId,
+                ':group_size'    => $groupSize,
+            ]);
+            if ($insertStmt->rowCount() > 0) {
+                $ok++;
+            } else {
+                $bad++;
+            }
+        } catch (\Throwable $e) {
+            $bad++;
+        }
+    }
+    return [$ok, $bad, $isMultiItem];
+}
+
+function fx_ms_delete_action(PDO $pdo, $action, array $post, array $flash): array
+{
+    $msBulkClear = null;
+    if ($action === 'ms_delete_config_hard') {
+        $id = (int)($post['config_id'] ?? 0);
+        if ($id > 0) {
+            try {
+                $configDeleted = fx_admin_delete_configs($pdo, 'manualsell', 'id = ?', [$id]) > 0;
+                $flash['ok'] = $configDeleted ? 'کانفیگ برای همیشه از دیتابیس حذف شد.' : 'کانفیگ پیدا نشد.';
+                $msBulkClear = $configDeleted;
+            } catch (\Throwable $e) {
+                $flash['err'] = 'حذف انجام نشد. جزئیات در لاگ سرور ثبت شد.';
+            }
+        }
+    } elseif ($action === 'ms_delete_group_hard') {
+        $groupId = trim((string)($post['group_id'] ?? ''));
+        if ($groupId !== '') {
+            try {
+                $n = fx_admin_delete_configs($pdo, 'manualsell', 'group_id = ?', [$groupId]);
+                $flash['ok'] = $n > 0 ? ($n . ' کانفیگ این بستهٔ چندموردی برای همیشه حذف شد.') : 'بستهٔ چندموردی پیدا نشد.';
+                $msBulkClear = $n > 0;
+            } catch (\Throwable $e) {
+                $flash['err'] = 'حذف انجام نشد. جزئیات در لاگ سرور ثبت شد.';
+            }
+        }
+    } elseif ($action === 'ms_purge_deleted') {
+        try {
+            $del = $pdo->prepare("DELETE FROM manualsell WHERE status = 'delete'");
+            $del->execute();
+            $n = $del->rowCount();
+            $flash['ok'] = $n > 0
+                ? $n . ' رکورد حذف‌شده برای همیشه از دیتابیس پاک شد.'
+                : 'رکورد حذف‌شده‌ای برای پاکسازی وجود نداشت.';
+            $msBulkClear = $n > 0;
+        } catch (\Throwable $e) {
+            $flash['err'] = 'پاکسازی ناموفق: ' . $e->getMessage();
+        }
+    } elseif ($action === 'ms_bulk_delete') {
+        $ids = $post['ids'] ?? [];
+        $deleted = 0;
+        if (is_array($ids) && count($ids) > 0) {
+            $ids = fx_bulk_positive_ids($ids);
+            if (count($ids) > 0) {
+                $ids = array_slice($ids, 0, 500);
+                $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                try {
+                    $deleted = fx_admin_delete_configs($pdo, 'manualsell', "id IN ($placeholders)", $ids);
+                } catch (\Throwable $e) {
+                    $flash['err'] = 'حذف انجام نشد. جزئیات در لاگ سرور ثبت شد.';
+                }
+            }
+        }
+        if ($flash['err'] === '') {
+            $flash['ok'] = $deleted > 0
+                ? $deleted . ' کانفیگ برای همیشه حذف شد.'
+                : 'موردی برای حذف انتخاب نشده بود.';
+        }
+        $msBulkClear = $deleted > 0;
+    }
+    return [$flash, $msBulkClear];
 }
 
 if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -240,6 +386,9 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $action = $_POST['_action'] ?? '';
+    if ($action !== '') {
+        fx_csrf_guard();
+    }
 
     if ($action === 'update_storage_limit') {
         $newGb = (float)($_POST['max_storage_gb'] ?? 5);
@@ -274,77 +423,7 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $entryMode    = in_array($entryMode, ['bulk', 'multi'], true) ? $entryMode : 'single';
         $payload      = ($itemsJson !== '') ? $itemsJson : $pasteText;
 
-        $items      = [];
-        $pasteExt   = ($customExt !== '' && preg_match('/^[a-z0-9]{1,10}$/i', $customExt)) ? $customExt : '';
-        $nonLinkExt = ($pasteExt !== '') ? $pasteExt : ($sendAsFile ? 'conf' : 'text');
-
-        if ($configSource === 'file') {
-            if ($entryMode === 'single') {
-                $singleFile = $_FILES['single_file'] ?? $_FILES['config_file'] ?? null;
-                if ($singleFile) {
-                    $errCode = (int)($singleFile['error'] ?? UPLOAD_ERR_NO_FILE);
-                    if ($errCode === UPLOAD_ERR_OK) {
-                        $tmp   = (string)($singleFile['tmp_name'] ?? '');
-                        $fname = (string)($singleFile['name'] ?? '');
-                        $isUploaded = ($tmp !== '' && is_uploaded_file($tmp));
-                        if ($isUploaded) {
-                            $ext = faoxima_ms_normalize_ext((string)pathinfo($fname, PATHINFO_EXTENSION));
-                            if ($ext === '') $ext = 'bin';
-                            $raw = faoxima_read_uploaded_file($tmp);
-                            $hasSub = (($_POST['file_has_sub_link'] ?? $_POST['has_sub_link'] ?? '') === '1');
-                            $sub    = trim((string)($_POST['file_single_sub_link'] ?? $_POST['single_sub_link'] ?? ''));
-                            $content = $raw;
-                            if ($content !== '') {
-                                $items[] = ['content' => $content, 'ext' => $ext, 'sub' => ($hasSub && $sub !== '') ? $sub : ''];
-                            }
-                        }
-                    }
-                }
-                if (empty($items) && $flash['err'] === '') {
-                    $flash['err'] = 'لطفاً یک فایل کانفیگ انتخاب و آپلود کنید.';
-                }
-            } else {
-                $bulkFiles = $_FILES['bulk_files'] ?? null;
-                $bulkSubs  = $_POST['bulk_file_subs'] ?? [];
-                $bulkHasSubs = $_POST['bulk_file_has_subs'] ?? [];
-
-                if ($bulkFiles && isset($bulkFiles['name']) && is_array($bulkFiles['name'])) {
-                    foreach ($bulkFiles['name'] as $i => $fname) {
-                        $errCode = (int)($bulkFiles['error'][$i] ?? UPLOAD_ERR_NO_FILE);
-                        if ($errCode !== UPLOAD_ERR_OK) {
-                            continue;
-                        }
-                        $tmp = (string)($bulkFiles['tmp_name'][$i] ?? '');
-                        if ($tmp === '' || !is_uploaded_file($tmp)) {
-                            continue;
-                        }
-
-                        $ext = faoxima_ms_normalize_ext((string)pathinfo((string)$fname, PATHINFO_EXTENSION));
-                        if ($ext === '') $ext = 'bin';
-                        $raw = faoxima_read_uploaded_file($tmp);
-                        $hasSub = (isset($bulkHasSubs[$i]) && (string)$bulkHasSubs[$i] === '1');
-                        $sub    = trim((string)($bulkSubs[$i] ?? ''));
-                        $content = $raw;
-                        if ($content === '') {
-                            continue;
-                        }
-                        $items[] = ['content' => $content, 'ext' => $ext, 'sub' => ($hasSub && $sub !== '') ? $sub : ''];
-                    }
-                }
-                if (empty($items) && $flash['err'] === '') {
-                    $flash['err'] = 'لطفاً حداقل یک فایل کانفیگ معتبر انتخاب و آپلود کنید.';
-                }
-            }
-        } elseif (trim($payload) !== '') {
-            $items = faoxima_pair_manual_service_items($payload, $nonLinkExt, $pasteExt);
-            if (empty($items)) {
-                $flash['err'] = 'هیچ کانفیگ معتبری یافت نشد.';
-            } elseif ($entryMode === 'single' && count($items) > 1) {
-                $flash['err'] = 'در حالت «تکی» فقط یک کانفیگ (یا یک کانفیگ همراه با لینکِ اشتراکش) مجاز است.';
-            }
-        } else {
-            $flash['err'] = 'فایل کانفیگ یا متن آن را وارد کنید.';
-        }
+        $items = fx_ms_prepare_items($_POST, $_FILES, $configSource, $entryMode, $payload, $customExt, $sendAsFile, $flash);
 
         if ($flash['err'] === '' && $codePanel === '') {
             $flash['err'] = 'پنل فروش دستی را انتخاب کنید.';
@@ -380,59 +459,7 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         if ($flash['err'] === '') {
-            try {
-                @$pdo->exec("ALTER TABLE manualsell MODIFY contentrecord LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL");
-            } catch (\Throwable $e) {
-            }
-            try {
-                @$pdo->exec("ALTER TABLE manualsell ADD COLUMN sub_link MEDIUMTEXT NULL");
-            } catch (\Throwable $e) {
-            }
-            try {
-                @$pdo->exec("ALTER TABLE manualsell ADD COLUMN group_id VARCHAR(40) NULL");
-            } catch (\Throwable $e) {
-            }
-            try {
-                @$pdo->exec("ALTER TABLE manualsell ADD COLUMN group_size INT NULL");
-            } catch (\Throwable $e) {
-            }
-
-            $isMultiItem = ($entryMode === 'multi');
-            $multi = count($items) > 1 || $entryMode === 'bulk' || $isMultiItem;
-            $groupId = null;
-            $groupSize = null;
-            if ($isMultiItem) {
-                $groupId = function_exists('faoxima_generate_group_id') ? faoxima_generate_group_id() : ('mg_' . bin2hex(random_bytes(8)));
-                $groupSize = count($items);
-            }
-            $ok = 0;
-            $bad = 0;
-            $insertStmt = $pdo->prepare("INSERT INTO manualsell (codepanel,codeproduct,namerecord,contentrecord,status,file_ext,sub_link,group_id,group_size) VALUES (:codepanel,:codeproduct,:namerecord,:contentrecord,'active',:file_ext,:sub_link,:group_id,:group_size)");
-            foreach ($items as $idx => $item) {
-                $content  = (string)($item['content'] ?? '');
-                $thisName = $multi ? ($nameRecord . '-' . ($idx + 1)) : $nameRecord;
-                $itemSub  = (string)($item['sub'] ?? '');
-
-                try {
-                    $insertStmt->execute([
-                        ':codepanel'     => $codePanel,
-                        ':codeproduct'   => $codeProduct,
-                        ':namerecord'    => $thisName,
-                        ':contentrecord' => $content,
-                        ':file_ext'      => ($item['ext'] !== '' ? $item['ext'] : null),
-                        ':sub_link'      => ($itemSub !== '' ? $itemSub : null),
-                        ':group_id'      => $groupId,
-                        ':group_size'    => $groupSize,
-                    ]);
-                    if ($insertStmt->rowCount() > 0) {
-                        $ok++;
-                    } else {
-                        $bad++;
-                    }
-                } catch (\Throwable $e) {
-                    $bad++;
-                }
-            }
+            [$ok, $bad, $isMultiItem] = fx_ms_store_items($pdo, $items, $entryMode, $codePanel, $codeProduct, $nameRecord);
 
             if ($ok > 0) {
                 $flash['ok'] = ($isMultiItem
@@ -443,81 +470,11 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $flash['err'] = 'هیچ کانفیگ معتبری برای ثبت یافت نشد.';
             }
         }
-    } elseif ($action === 'ms_delete_config_hard') {
-        $id = (int)($_POST['config_id'] ?? 0);
-        if ($id > 0) {
-            try {
-                faoxima_ms_delete_linked_invoices($pdo, ['id' => $id]);
-                $del = $pdo->prepare("DELETE FROM manualsell WHERE id = :id");
-                $del->execute([':id' => $id]);
-                $configDeleted = $del->rowCount() > 0;
-                $flash['ok'] = $configDeleted ? 'کانفیگ برای همیشه از دیتابیس حذف شد.' : 'کانفیگ پیدا نشد.';
-                $msBulkClear = $configDeleted;
-            } catch (\Throwable $e) {
-                $flash['err'] = 'حذف ناموفق: ' . $e->getMessage();
-            }
+    } elseif (in_array($action, ['ms_delete_config_hard', 'ms_delete_group_hard', 'ms_purge_deleted', 'ms_bulk_delete'], true)) {
+        [$flash, $clearSelection] = fx_ms_delete_action($pdo, $action, $_POST, $flash);
+        if ($clearSelection !== null) {
+            $msBulkClear = $clearSelection;
         }
-    } elseif ($action === 'ms_delete_group_hard') {
-        $groupId = trim((string)($_POST['group_id'] ?? ''));
-        if ($groupId !== '') {
-            try {
-                $sel = $pdo->prepare("SELECT id FROM manualsell WHERE group_id = :gid");
-                $sel->execute([':gid' => $groupId]);
-                $groupIds = array_values(array_filter(array_map('intval', $sel->fetchAll(PDO::FETCH_COLUMN)), function ($v) {
-                    return $v > 0;
-                }));
-                if (count($groupIds) > 0) {
-                    faoxima_ms_delete_linked_invoices($pdo, ['ids' => $groupIds]);
-                    $del = $pdo->prepare("DELETE FROM manualsell WHERE group_id = :gid");
-                    $del->execute([':gid' => $groupId]);
-                    $n = $del->rowCount();
-                    $flash['ok'] = $n > 0 ? ($n . ' کانفیگ این بستهٔ چندموردی برای همیشه حذف شد.') : 'بستهٔ چندموردی پیدا نشد.';
-                    $msBulkClear = $n > 0;
-                } else {
-                    $flash['ok'] = 'بستهٔ چندموردی پیدا نشد.';
-                }
-            } catch (\Throwable $e) {
-                $flash['err'] = 'حذف ناموفق: ' . $e->getMessage();
-            }
-        }
-    } elseif ($action === 'ms_purge_deleted') {
-        try {
-            $del = $pdo->prepare("DELETE FROM manualsell WHERE status = 'delete'");
-            $del->execute();
-            $n = $del->rowCount();
-            $flash['ok'] = $n > 0
-                ? $n . ' رکورد حذف‌شده برای همیشه از دیتابیس پاک شد.'
-                : 'رکورد حذف‌شده‌ای برای پاکسازی وجود نداشت.';
-            $msBulkClear = $n > 0;
-        } catch (\Throwable $e) {
-            $flash['err'] = 'پاکسازی ناموفق: ' . $e->getMessage();
-        }
-    } elseif ($action === 'ms_bulk_delete') {
-        $ids = $_POST['ids'] ?? [];
-        $deleted = 0;
-        if (is_array($ids) && count($ids) > 0) {
-            $ids = array_values(array_unique(array_filter(array_map('intval', $ids), function ($v) {
-                return $v > 0;
-            })));
-            if (count($ids) > 0) {
-                $ids = array_slice($ids, 0, 500);
-                $placeholders = implode(',', array_fill(0, count($ids), '?'));
-                try {
-                    faoxima_ms_delete_linked_invoices($pdo, ['ids' => $ids]);
-                    $del = $pdo->prepare("DELETE FROM manualsell WHERE id IN ($placeholders)");
-                    $del->execute($ids);
-                    $deleted = $del->rowCount();
-                } catch (\Throwable $e) {
-                    $flash['err'] = 'حذف ناموفق: ' . $e->getMessage();
-                }
-            }
-        }
-        if ($flash['err'] === '') {
-            $flash['ok'] = $deleted > 0
-                ? $deleted . ' کانفیگ برای همیشه حذف شد.'
-                : 'موردی برای حذف انتخاب نشده بود.';
-        }
-        $msBulkClear = $deleted > 0;
     }
 }
 
@@ -646,24 +603,10 @@ if (!$tableMissing) {
             $scan = $r->fetchAll(PDO::FETCH_ASSOC);
         } catch (\Throwable $e) {
         }
-        if (count($scan) > $cap) {
-            $scanTruncated = true;
-            $scan = array_slice($scan, 0, $cap);
-        }
-        $scanRemaining = faoxima_ms_resolve_remaining($pdo, $scan, $invoiceTableMissing);
-
-        $matched = [];
-        foreach ($scan as $row) {
-            $rem = $scanRemaining[(int)$row['id']] ?? null;
-            if (faoxima_remaining_matches($rem, $daysMode, $daysFilter)) $matched[] = $row;
-        }
-        $total = count($matched);
-        $pages = max(1, (int)ceil($total / $perPage));
-        if ($page > $pages) $page = $pages;
-        $configs = array_slice($matched, ($page - 1) * $perPage, $perPage);
-        foreach ($configs as $row) {
-            $remainingOf[(int)$row['id']] = $scanRemaining[(int)$row['id']] ?? null;
-        }
+        [$total, $pages, $page, $configs, $remainingOf, $scanTruncated] = faoxima_remaining_filter_page(
+            $scan, $page, $perPage, $daysMode, $daysFilter,
+            static fn (array $rows) => faoxima_ms_resolve_remaining($pdo, $rows, $invoiceTableMissing)
+        );
     }
 } else {
     $pages = 1;
@@ -1041,6 +984,7 @@ function faoxima_ms_status_label(string $s): array
                         ?>
                         <form method="POST" action="manual_service.php" id="ms-bulk-form" style="display:none;"
                             onsubmit="return faoximaMsBulkConfirm();">
+                            <?php echo fx_csrf_field(); ?>
                             <input type="hidden" name="_action" value="ms_bulk_delete">
                         </form>
 
@@ -1106,6 +1050,7 @@ function faoxima_ms_status_label(string $s): array
                                         </div>
                                         <div class="ms-row__actions">
                                             <form method="POST" action="manual_service.php" onsubmit="return confirm('این کانفیگ برای همیشه از دیتابیس حذف شود؟ این عمل بازگشت‌پذیر نیست.');">
+                                                <?php echo fx_csrf_field(); ?>
                                                 <input type="hidden" name="_action" value="ms_delete_config_hard">
                                                 <input type="hidden" name="config_id" value="<?php echo $cid; ?>">
                                                 <input type="hidden" name="allow_selled" value="1">
@@ -1151,6 +1096,7 @@ function faoxima_ms_status_label(string $s): array
                                         </div>
                                         <div class="ms-row__actions">
                                             <form method="POST" action="manual_service.php" onsubmit="return confirm('کل این بستهٔ چندموردی (<?php echo count($rows); ?> مورد) برای همیشه از دیتابیس حذف شود؟ این عمل بازگشت‌پذیر نیست.');">
+                                                <?php echo fx_csrf_field(); ?>
                                                 <input type="hidden" name="_action" value="ms_delete_group_hard">
                                                 <input type="hidden" name="group_id" value="<?php echo htmlspecialchars($grp['group_id'], ENT_QUOTES); ?>">
                                                 <input type="hidden" name="allow_selled" value="1">
@@ -1204,6 +1150,7 @@ function faoxima_ms_status_label(string $s): array
                                 <button type="button" class="modal-close" onclick="closeModal('modal-ms-storage-settings')">&times;</button>
                             </div>
                             <form method="POST" action="manual_service.php" autocomplete="off">
+                                <?php echo fx_csrf_field(); ?>
                                 <input type="hidden" name="_action" value="update_storage_limit">
                                 <div class="modal-body" style="padding: 1.25rem;">
                                     <div class="ms-storage-summary">
@@ -1252,6 +1199,7 @@ function faoxima_ms_status_label(string $s): array
                                     <button type="button" class="modal-close" onclick="closeModal('modal-ms-add')">&times;</button>
                                 </div>
                                 <form method="POST" action="manual_service.php" enctype="multipart/form-data" id="ms-add-form">
+                                    <?php echo fx_csrf_field(); ?>
                                     <input type="hidden" name="_action" value="ms_add_config">
                                     <input type="hidden" name="items_json" id="ms-bulk-items-json">
 

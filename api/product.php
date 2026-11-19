@@ -62,8 +62,7 @@ function validateToken($headers)
 {
     global $APIKEY;
     require_once __DIR__ . '/../lib/ApiCredential.php';
-    $headers = array_change_key_case($headers, CASE_LOWER);
-    return FaoximaApiCredential::valid($headers['token'] ?? null, (string) ($APIKEY ?? ''));
+    return FaoximaApiCredential::validHeaders($headers, (string) ($APIKEY ?? ''));
 }
 
 function sanitizeRecursive($data)
@@ -91,7 +90,7 @@ function logApiRequest($headers, $data, $action)
         );
         $stmt->execute([
             json_encode(FaoximaApiCredential::redactHeaders($headers)),
-            json_encode($data),
+            json_encode(FaoximaApiCredential::redactAuditFields($data)),
             date('Y/m/d H:i:s'),
             $_SERVER['REMOTE_ADDR'] ?? 'unknown',
             $action

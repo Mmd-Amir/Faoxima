@@ -51,6 +51,7 @@ if (empty($_SESSION['_session_regenerated'])) {
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
 require_once __DIR__ . '/lib/icons.php';
+require_once __DIR__ . '/lib/csrf.php';
 require_once __DIR__ . '/../jdf.php';
 require_once __DIR__ . '/../re/rx/function/statistics_helpers.php';
 
@@ -64,10 +65,7 @@ if ($sessionUser === null) {
     exit;
 }
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username = :username LIMIT 1");
-$query->bindValue(':username', $sessionUser, PDO::PARAM_STR);
-$query->execute();
-$result = $query->fetch(PDO::FETCH_ASSOC);
+$result = fx_admin_find_by_username($pdo, $sessionUser);
 
 if (!$result) {
     $_SESSION = [];

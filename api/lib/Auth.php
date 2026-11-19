@@ -43,15 +43,7 @@ final class FaoximaAuth
 
         // Telegram spec: build data_check_string from EVERY remaining field
         // (including empty ones), sorted by key, joined with \n as `key=value`.
-        $checkArr = [];
-        foreach ($initData as $key => $value) {
-            $checkArr[] = $key . '=' . self::normalize($value);
-        }
-        if ($checkArr === []) {
-            throw new InvalidArgumentException('Telegram init data payload is empty');
-        }
-        sort($checkArr, SORT_STRING);
-        $checkString = implode("\n", $checkArr);
+        $checkString = self::signaturePayload($initData, 'Telegram init data payload is empty');
 
         $secretKey = hash_hmac('sha256', $botToken, 'WebAppData', true);
         $calcHash = hash_hmac('sha256', $checkString, $secretKey);
@@ -105,15 +97,7 @@ final class FaoximaAuth
         $receivedHash = (string)$data['hash'];
         unset($data['hash']);
 
-        $checkArr = [];
-        foreach ($data as $key => $value) {
-            $checkArr[] = $key . '=' . self::normalize($value);
-        }
-        if ($checkArr === []) {
-            throw new InvalidArgumentException('Contact data payload is empty');
-        }
-        sort($checkArr, SORT_STRING);
-        $checkString = implode("\n", $checkArr);
+        $checkString = self::signaturePayload($data, 'Contact data payload is empty');
 
         $secrets = [
             hash_hmac('sha256', $botToken, 'WebAppData', true),
@@ -153,6 +137,25 @@ final class FaoximaAuth
         return $contact;
     }
 
+
+    private static function signaturePayload(array $fields, string $emptyMessage): string
+    {
+        $parts = [];
+        foreach ($fields as $key => $value) {
+            $parts[] = $key . '=' . self::normalize($value);
+        }
+        if ($parts === []) {
+            throw new InvalidArgumentException($emptyMessage);
+        }
+        sort($parts, SORT_STRING);
+        return implode("\n", $parts);
+    }
+
+    public static function isMiniAppAdministrator(int $userId): bool
+    {
+        $adminIds = select('admin', 'id_admin', null, null, 'FETCH_COLUMN', ['cache' => false]);
+        return is_array($adminIds) && in_array($userId, array_map('intval', $adminIds), true);
+    }
 
     public static function collectInitDataCandidates(): array
     {

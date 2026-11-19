@@ -102,21 +102,34 @@ final class WalletTransferHandler extends BaseHandler
         $operationId = $this->operationId();
         $transfer = rx_wallet_transfer_atomic($senderId, $recipientId, $amount, $operationId);
         if (empty($transfer['ok'])) {
-            $reason = (string)($transfer['reason'] ?? '');
-            if ($reason === 'insufficient_balance') {
-                FaoximaResponse::fail(422, 'موجودی کیف پول شما کافی نیست');
-            }
-            if ($reason === 'operation_conflict') {
-                FaoximaResponse::fail(409, 'شناسه این انتقال قبلاً با مبلغ یا گیرنده دیگری استفاده شده است.');
-            }
-            FaoximaResponse::fail(500, 'انتقال تکمیل نشد؛ لطفاً با شناسه پیگیری با پشتیبانی در ارتباط باشید.', ['operation_id' => $operationId]);
+            $this->transferFailure((string)($transfer['reason'] ?? ''), $operationId);
         }
         $newBalance = (float)$transfer['new_balance'];
         if (!empty($transfer['replayed'])) {
             FaoximaResponse::ok(['new_balance' => $newBalance, 'replayed' => true, 'operation_id' => $operationId]);
         }
         rx_wallet_transfer_report($transfer['sender'], $transfer['recipient'], $amount, $operationId, $newBalance, (float)$transfer['recipient_balance']);
+        $this->notifyRecipient($recipientId, $senderId, $amount);
 
+        FaoximaResponse::ok([
+            'new_balance' => $newBalance,
+            'operation_id' => $operationId,
+        ]);
+    }
+
+    private function transferFailure(string $reason, string $operationId): void
+    {
+        if ($reason === 'insufficient_balance') {
+            FaoximaResponse::fail(422, 'موجودی کیف پول شما کافی نیست');
+        }
+        if ($reason === 'operation_conflict') {
+            FaoximaResponse::fail(409, 'شناسه این انتقال قبلاً با مبلغ یا گیرنده دیگری استفاده شده است.');
+        }
+        FaoximaResponse::fail(500, 'انتقال تکمیل نشد؛ لطفاً با شناسه پیگیری با پشتیبانی در ارتباط باشید.', ['operation_id' => $operationId]);
+    }
+
+    private function notifyRecipient(string $recipientId, string $senderId, int $amount): void
+    {
         if (function_exists('sendmessage')) {
             try {
                 $senderUsername = trim((string)($this->user['username'] ?? ''));
@@ -125,13 +138,9 @@ final class WalletTransferHandler extends BaseHandler
                 $notifyText = sprintf("مبلغ %s تومان به کیف پول شما واریز شد.\n\n<blockquote>%s</blockquote>", number_format($amount), $senderLines);
                 sendmessage($recipientId, $notifyText, null, 'HTML');
             } catch (Throwable $e) {
+                error_log('[miniapp:wallet-transfer] notification failed: ' . get_class($e));
             }
         }
-
-        FaoximaResponse::ok([
-            'new_balance' => $newBalance,
-            'operation_id' => $operationId,
-        ]);
     }
 
 }

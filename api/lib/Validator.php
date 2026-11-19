@@ -13,27 +13,26 @@ final class FaoximaInput
     public static function payload(): array
     {
         $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-        $payload = [];
-
-        if (!empty($_GET)) {
-            foreach ($_GET as $k => $v) {
-                $payload[$k] = $v;
-            }
+        if (!in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
+            return self::sanitise($_GET);
         }
 
-        if ($method === 'POST' || $method === 'PUT' || $method === 'PATCH' || $method === 'DELETE') {
-            $raw = file_get_contents('php://input');
-            if (is_string($raw) && trim($raw) !== '') {
-                $decoded = json_decode($raw, true);
-                if (is_array($decoded)) {
-                    $payload = array_merge($payload, $decoded);
-                }
-            }
-            if (!empty($_POST)) {
-                $payload = array_merge($payload, $_POST);
+        $raw = file_get_contents('php://input');
+        return self::mergePayload($_GET, $_POST, $raw);
+    }
+
+    private static function mergePayload(array $query, array $form, $raw): array
+    {
+        $payload = $query;
+        if (is_string($raw) && trim($raw) !== '') {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $payload = array_merge($payload, $decoded);
             }
         }
-
+        if ($form !== []) {
+            $payload = array_merge($payload, $form);
+        }
         return self::sanitise($payload);
     }
 

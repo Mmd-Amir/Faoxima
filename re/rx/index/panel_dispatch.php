@@ -147,7 +147,130 @@ if (preg_match('/^sbv(resume|cancel)_(\w+)$/', (string) $datain, $_sbvm) && func
     }
     return;
 }
-if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
+
+function rxBotReferralSummary($affiliatescommission, $Percent_porsant, $affiliateCount, $orders_count, $sum_order, $rxCommissionEarned, $rxPendingGiftCount, string $rxAffiliateInfoTpl): string
+{
+    $text_start = "";
+    $text_porsant = "";
+    if ($affiliatescommission['Discount'] == "onDiscountaffiliates") {
+        $rxFmtAffiliateDiscount = rxFormatToman($affiliatescommission['price_Discount'] ?? 0);
+        $text_start = "<b>🎁 هدیه عضویت:</b>
+• 🎉 مجموع هدیه: {$rxFmtAffiliateDiscount} تومان
+• 🔻 ۵۰٪ برای شما (معرف)
+• 🔻 ۵۰٪ برای زیرمجموعه (کاربر جدید)
+";
+    }
+    if ($affiliatescommission['status_commission'] == "oncommission") {
+        $text_porsant = "<b>💸 پورسانت خرید:</b>
+•  $Percent_porsant درصد از مبلغ خرید زیرمجموعه به شما تعلق می‌گیره";
+    }
+    $textaffiliates = "<b>💼 زیرمجموعه‌گیری و هدیه خوش‌آمد</b>
+
+با دعوت دوستان از طریق <b>لینک اختصاصی</b>، بدون پرداخت حتی ۱ ریال کیف پولت شارژ میشه و از خدمات ربات استفاده می‌کنی!
+
+$text_start
+$text_porsant
+
+<b>📊 آمار شما:</b>
+• 👥 زیرمجموعه‌ها: $affiliateCount نفر
+• 🛒 خریدها: $orders_count عدد
+• 💵 مجموع خرید: $sum_order تومان
+• 💰 مجموع پورسانت دریافتی: $rxCommissionEarned تومان
+• ⏳ هدیه‌های در انتظار دریافت: $rxPendingGiftCount نفر
+
+<b>📢 دعوت کن، هدیه بگیر، رشد کن!</b>
+";
+    if (trim($rxAffiliateInfoTpl) !== '') {
+        try {
+            $rxAffiliateInfoText = vsprintf($rxAffiliateInfoTpl, [
+                rxFormatToman($affiliatescommission['price_Discount'] ?? 0),
+                $Percent_porsant,
+                $affiliateCount,
+                $orders_count,
+                $sum_order,
+                $rxCommissionEarned,
+                $rxPendingGiftCount,
+            ]);
+        } catch (\Throwable $rxAffiliateInfoErr) {
+            $rxAffiliateInfoText = false;
+        }
+        if (is_string($rxAffiliateInfoText) && trim($rxAffiliateInfoText) !== '') {
+            $textaffiliates = $rxAffiliateInfoText;
+        }
+    }
+    return $textaffiliates;
+}
+
+function rxPanelRoutePayment($user, $datain, $text_inline, &$dataget): ?string
+{
+    return match (true) {
+        (bool) (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) => 'card_start',
+        (bool) ($user['step'] == 'card_select_step') => 'card_select',
+        (bool) ($user['step'] == 'card_photo_step') => 'card_photo',
+        (bool) ($user['step'] == 'card_last4_step') => 'card_last_four',
+        (bool) (preg_match('/^sendresidarze-(.*)/', $datain, $dataget) and $text_inline != null) => 'crypto_start',
+        (bool) ($user['step'] == "digitaltron_hash_input") => 'crypto_hash',
+        (bool) ($user['step'] == "digitaltron_receipt_photo") => 'crypto_photo',
+        (bool) ($user['step'] == "getresidcurrency") => 'crypto_receipt',
+        (bool) ($user['step'] == "cart_to_cart_user") => 'legacy_card',
+        (bool) ($datain == "Discount") => 'discount_prompt',
+        (bool) ($user['step'] == "get_code_user") => 'discount_code',
+        default => null,
+    };
+}
+
+function rxPanelRouteNavigation($user, $datain, $text, $datatextbot, &$dataget): ?string
+{
+    return match (true) {
+        (bool) (($text !== '' && $text == $datatextbot['text_Tariff_list']) || $datain == "Tariff_list") => 'tariffs',
+        (bool) ($datain == "colselist") => 'close_list',
+        (bool) (($text !== '' && $text == $datatextbot['text_affiliates']) || $datain == "affiliatesbtn") => 'referral',
+        (bool) ($datain == "get_gift_start") => 'referral_gift',
+        (bool) (preg_match('/Extra_volumes_(\w+)_(.*)/', $datain, $dataget)) => 'legacy_traffic_start',
+        (bool) ($user['step'] == "getvolumeextras") => 'legacy_traffic_amount',
+        (bool) (preg_match('/confirmaextras_(\w+)/', $datain, $dataget)) => 'legacy_traffic_confirm',
+        default => null,
+    };
+}
+
+function rxPanelRouteConversation($user, $datain, $text, $textbotlang, $datatextbot): ?string
+{
+    return match (true) {
+        (bool) ($datain == "searchservice") => 'service_search',
+        (bool) ($datain == "Responseuser") => 'user_response',
+        (bool) ($user['step'] == "getmessageAsuser") => 'user_message',
+        (bool) ((($text !== '' && $text == $datatextbot['textpanelagent']) || $datain == "agentpanel") && $user['agent'] != "f") => 'agent_panel',
+        (bool) ($text == $textbotlang['users']['agenttext']['customnameusername'] || $datain == "selectname") => 'agent_name_prompt',
+        (bool) ($user['step'] == "selectusernamecustom") => 'agent_name',
+        (bool) (($text !== '' && $text == $datatextbot['textrequestagent']) || $datain == "requestagent") => 'agent_start',
+        (bool) ($user['step'] == "getagentrequest" && $text) => 'agent_request',
+        (bool) ($text == "/privacy") => 'privacy',
+        (bool) (($text !== '' && $text == $datatextbot['text_wheel_luck']) || $datain == "wheel_luck" || $text == "/gift") => 'prize_wheel',
+        (bool) ($text == "/tron") => 'tron_price',
+        (bool) ($text == "/usd") => 'usd_price',
+        default => null,
+    };
+}
+
+function rxPanelRouteService($user, $datain, $text, $datatextbot, &$dataget): ?string
+{
+    return match (true) {
+        (bool) (($text !== '' && $text == $datatextbot['text_extend']) || $datain == "extendbtn") => 'renewal_list',
+        (bool) ($datain == 'next_page_extends') => 'renewal_next',
+        (bool) ($datain == 'previous_page_extends') => 'renewal_previous',
+        (bool) (preg_match('/changenote_(\w+)/', $datain, $dataget)) => 'note_start',
+        (bool) ($user['step'] == "getnotedit") => 'note_save',
+        default => null,
+    };
+}
+
+switch (
+    rxPanelRoutePayment($user, $datain, $text_inline, $dataget)
+    ?? rxPanelRouteNavigation($user, $datain, $text, $datatextbot, $dataget)
+    ?? rxPanelRouteConversation($user, $datain, $text, $textbotlang, $datatextbot)
+    ?? rxPanelRouteService($user, $datain, $text, $datatextbot, $dataget)
+) {
+case 'card_start':
     $timefivemin = time() - 120;
     $timefivemin = date('Y/m/d H:i:s', intval($timefivemin));
     $sql = "SELECT * FROM Payment_report WHERE id_user = :u AND Payment_Method = 'cart to cart' AND at_updated > :t AND COALESCE(payment_Status, '') NOT IN ('cancelled', 'expire')";
@@ -190,7 +313,8 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     sendmessage($from_id, "🖼 تصویر رسید خود را ارسال نمایید", $backuser, 'HTML');
     step('cart_to_cart_user', $from_id);
     update("user", "Processing_value", $dataget[1], "id", $from_id);
-} elseif ($user['step'] == 'card_select_step') {
+    break;
+case 'card_select':
     if (!isset($update['callback_query'])) { return; }
     $orderId = (string)($user['Processing_value'] ?? '');
     if ($orderId === '' || $orderId === '0') {
@@ -340,7 +464,8 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
         updatePaymentMessageId($cartMsgResult, $orderId);
         return;
     }
-} elseif ($user['step'] == 'card_photo_step') {
+    break;
+case 'card_photo':
     if (!isset($update['message']) && empty($text)) { return; }
     if (!$photo || isset($update['message']['media_group_id'])) {
         sendmessage($from_id, "❌ لطفاً یک تصویر تکی از کارت خود ارسال کنید.", null, 'HTML');
@@ -361,7 +486,8 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     update("Payment_report", "card_photo_file_id", $photoid, "id_order", $orderId);
     step('card_last4_step', $from_id);
     sendmessage($from_id, "✅ عکس کارت دریافت شد.\n\n🔢 لطفاً ۴ رقم آخر شماره کارت خود را وارد کنید:", null, 'HTML');
-} elseif ($user['step'] == 'card_last4_step') {
+    break;
+case 'card_last_four':
     if (!isset($update['message']) && empty($text)) { return; }
     $_cl4 = trim((string)($text ?? ''));
     if (!preg_match('/^\d{4}$/', $_cl4)) {
@@ -480,7 +606,8 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     }
     $cartMsgResult = rx_send_banner_message($from_id, 'cart', $textcart, $sendresidcart, 'html');
     updatePaymentMessageId($cartMsgResult, $orderId);
-} elseif (preg_match('/^sendresidarze-(.*)/', $datain, $dataget) and $text_inline != null) {
+    break;
+case 'crypto_start':
     $payemntcheck = select("Payment_report", "*", "id_order", $dataget[1], "select");
     if ($payemntcheck['payment_Status'] == "paid") {
         sendmessage($from_id, "❗️ تراکنش شما توسط ربات تایید گردیده است.", null, 'HTML');
@@ -494,7 +621,8 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     sendmessage($from_id, "📌 تصویر واریزی خود یا لینک تراکنش ترون را ارسال نمایید.", $backuser, 'HTML');
     step('getresidcurrency', $from_id);
     update("user", "Processing_value", $dataget[1], "id", $from_id);
-} elseif ($user['step'] == "digitaltron_hash_input") {
+    break;
+case 'crypto_hash':
 
 
     if (isset($datain) && $datain === "cancel_hash_input") {
@@ -591,7 +719,8 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             'HTML'
         );
     }
-} elseif ($user['step'] == "digitaltron_receipt_photo") {
+    break;
+case 'crypto_photo':
 
     if (isset($datain) && $datain === "cancel_hash_input") {
         update("user", "Processing_value_four", "0", "id", $from_id);
@@ -662,7 +791,8 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             'reply_markup' => $receiptAdminKb,
         ]);
     }
-} elseif ($user['step'] == "getresidcurrency") {
+    break;
+case 'crypto_receipt':
     if (!isset($update['message']) && empty($text)) { return; }
     $format_balance = number_format($user['Balance'], 0);
     step('home', $from_id);
@@ -886,7 +1016,8 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     } else {
         sendmessage($from_id, $textbotlang['users']['Balance']['Send-receipt'], $keyboard, 'HTML');
     }
-} elseif ($user['step'] == "cart_to_cart_user") {
+    break;
+case 'legacy_card':
     $format_balance = number_format($user['Balance'], 0);
     if (!$photo or isset($update['message']['media_group_id'])) {
         sendmessage($from_id, faoxima_textbot_get('dyn_errors_single_photo_only', '❌  فقط مجاز به ارسال یک تصویر هستید'), null, 'HTML');
@@ -1175,7 +1306,8 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             'id_order' => $PaymentReport['id_order'],
         ]);
     }
-} elseif ($datain == "Discount") {
+    break;
+case 'discount_prompt':
     $bakinfos = json_encode([
         'inline_keyboard' => [
             [
@@ -1185,7 +1317,8 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     ]);
     Editmessagetext($from_id, $message_id, $textbotlang['users']['Discount']['getcode'], $bakinfos);
     step('get_code_user', $from_id);
-} elseif ($user['step'] == "get_code_user") {
+    break;
+case 'discount_code':
     if (!isset($update['message']) && empty($text)) { return; }
     if (!rxTableValueExists('Discount', 'code', $text)) {
         sendmessage($from_id, $textbotlang['users']['Discount']['notcode'], null, 'HTML');
@@ -1235,13 +1368,16 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             'parse_mode' => "HTML"
         ]);
     }
-} elseif (($text !== '' && $text == $datatextbot['text_Tariff_list']) || $datain == "Tariff_list") {
+    break;
+case 'tariffs':
     rx_section_media_enter('tariff', $from_id, $datain, $message_id, ['Tariff_list']);
     sendmessage($from_id, $datatextbot['text_dec_Tariff_list'], null, 'HTML');
-} elseif ($datain == "colselist") {
+    break;
+case 'close_list':
     deletemessage($from_id, $message_id);
     sendmessage($from_id, $textbotlang['users']['back'], $keyboard, 'HTML');
-} elseif (($text !== '' && $text == $datatextbot['text_affiliates']) || $datain == "affiliatesbtn") {
+    break;
+case 'referral':
     if (!check_active_btn($setting['keyboardmain'], "text_affiliates")) {
         sendmessage($from_id, $datatextbot['dyn_errors_button_disabled'] ?? "❌ این دکمه غیرفعال می باشد", null, 'HTML');
         return;
@@ -1286,8 +1422,6 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
             ],
         ]
     ]);
-    $text_start = "";
-    $text_porsant = "";
     $Percent_porsant = $setting['affiliatespercentage'];
     $sum_order = number_format($total_purchase, 0);
     $rxCommissionEarnedStmt = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM wallet_ledger WHERE id_user = :id_user AND category = 'affiliate_commission' AND direction = 'credit'");
@@ -1296,56 +1430,20 @@ if (preg_match('/^sendresidcart-(.*)/', $datain, $dataget)) {
     $rxPendingGiftStmt = $pdo->prepare("SELECT COUNT(*) FROM reagent_report WHERE reagent = :reagent AND get_gift = 0");
     $rxPendingGiftStmt->execute([':reagent' => $from_id]);
     $rxPendingGiftCount = (int) $rxPendingGiftStmt->fetchColumn();
-    if ($affiliatescommission['Discount'] == "onDiscountaffiliates") {
-        $rxFmtAffiliateDiscount = rxFormatToman($affiliatescommission['price_Discount'] ?? 0);
-        $text_start = "<b>🎁 هدیه عضویت:</b>
-• 🎉 مجموع هدیه: {$rxFmtAffiliateDiscount} تومان
-• 🔻 ۵۰٪ برای شما (معرف)
-• 🔻 ۵۰٪ برای زیرمجموعه (کاربر جدید)
-";
-    }
-    if ($affiliatescommission['status_commission'] == "oncommission") {
-        $text_porsant = "<b>💸 پورسانت خرید:</b>
-•  $Percent_porsant درصد از مبلغ خرید زیرمجموعه به شما تعلق می‌گیره";
-    }
-    $textaffiliates = "<b>💼 زیرمجموعه‌گیری و هدیه خوش‌آمد</b>
-
-با دعوت دوستان از طریق <b>لینک اختصاصی</b>، بدون پرداخت حتی ۱ ریال کیف پولت شارژ میشه و از خدمات ربات استفاده می‌کنی!
-
-$text_start
-$text_porsant
-
-<b>📊 آمار شما:</b>
-• 👥 زیرمجموعه‌ها: {$user['affiliatescount']} نفر
-• 🛒 خریدها: $orders_count عدد
-• 💵 مجموع خرید: $sum_order تومان
-• 💰 مجموع پورسانت دریافتی: $rxCommissionEarned تومان
-• ⏳ هدیه‌های در انتظار دریافت: $rxPendingGiftCount نفر
-
-<b>📢 دعوت کن، هدیه بگیر، رشد کن!</b>
-";
-    $rxAffiliateInfoTpl = (string) ($textbotlang['users']['affiliates']['affiliateinfo'] ?? '');
-    if (trim($rxAffiliateInfoTpl) !== '') {
-        try {
-            $rxAffiliateInfoText = vsprintf($rxAffiliateInfoTpl, [
-                rxFormatToman($affiliatescommission['price_Discount'] ?? 0),
-                $Percent_porsant,
-                $user['affiliatescount'],
-                $orders_count,
-                $sum_order,
-                $rxCommissionEarned,
-                $rxPendingGiftCount,
-            ]);
-        } catch (\Throwable $rxAffiliateInfoErr) {
-            $rxAffiliateInfoText = false;
-        }
-        if (is_string($rxAffiliateInfoText) && trim($rxAffiliateInfoText) !== '') {
-            $textaffiliates = $rxAffiliateInfoText;
-        }
-    }
+    $textaffiliates = rxBotReferralSummary(
+        $affiliatescommission,
+        $Percent_porsant,
+        $user['affiliatescount'],
+        $orders_count,
+        $sum_order,
+        $rxCommissionEarned,
+        $rxPendingGiftCount,
+        (string) ($textbotlang['users']['affiliates']['affiliateinfo'] ?? '')
+    );
 
     sendmessage($from_id, $textaffiliates, $keyboard_share, 'HTML');
-} elseif ($datain == "get_gift_start") {
+    break;
+case 'referral_gift':
     $rxGiftResult = rxReferralGiftPayout($from_id);
     $rxGiftStatus = (string) ($rxGiftResult['status'] ?? 'failed');
     if ($rxGiftStatus === 'paid') {
@@ -1367,7 +1465,8 @@ $text_porsant
     } else {
         sendmessage($from_id, $datatextbot['dyn_affiliates_extra_gift_failed'] ?? "⚠️ پرداخت هدیه عضویت در حال حاضر انجام نشد؛ لطفاً چند لحظه دیگر دوباره تلاش کنید.", $keyboard, 'HTML');
     }
-} elseif (preg_match('/Extra_volumes_(\w+)_(.*)/', $datain, $dataget)) {
+    break;
+case 'legacy_traffic_start':
     $usernamepanel = $dataget[1];
     $locations = select("marzban_panel", "*", "code_panel", $dataget[2], "select");
     $location = $locations['name_panel'];
@@ -1379,7 +1478,8 @@ $text_porsant
     $textextra = sprintf($textbotlang['users']['Extra_volume']['enterextravolume'], $extrapricevalue);
     sendmessage($from_id, $textextra, $backuser, 'HTML');
     step('getvolumeextras', $from_id);
-} elseif ($user['step'] == "getvolumeextras") {
+    break;
+case 'legacy_traffic_amount':
     if (!isset($update['message']) && empty($text)) { return; }
     if (!ctype_digit($text)) {
         sendmessage($from_id, $textbotlang['Admin']['Product']['Invalidvolume'], $backuser, 'HTML');
@@ -1407,7 +1507,8 @@ $text_porsant
     $textextra = sprintf($textbotlang['users']['Extra_volume']['extravolumeinvoice'], $extrapricevalues, $priceextra, $text);
     sendmessage($from_id, $textextra, $keyboardsetting, 'HTML');
     step('home', $from_id);
-} elseif (preg_match('/confirmaextras_(\w+)/', $datain, $dataget)) {
+    break;
+case 'legacy_traffic_confirm':
     $volume = $dataget[1];
     $fxExternalPanel = select("marzban_panel", "*", "name_panel", $user['Processing_value_one'], "select");
     if (!is_array($fxExternalPanel)) {
@@ -1550,13 +1651,16 @@ $text_porsant
             'price'   => number_format((float)$volume),
         ], $setting);
     }
-} elseif ($datain == "searchservice") {
+    break;
+case 'service_search':
     sendmessage($from_id, $textbotlang['users']['search']['usernamgeget'], $backuser, 'HTML');
     step('getuseragnetservice', $from_id);
-} elseif ($datain == "Responseuser") {
+    break;
+case 'user_response':
     step('getmessageAsuser', $from_id);
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['GetTextResponse'], $backuser, 'HTML');
-} elseif ($user['step'] == "getmessageAsuser") {
+    break;
+case 'user_message':
     if (!isset($update['message']) && empty($text)) { return; }
     sendmessage($from_id, $textbotlang['users']['support']['sendmessageadmin'], $keyboard, 'HTML');
     $Response = json_encode([
@@ -1586,16 +1690,19 @@ $text_porsant
         }
     }
     step('home', $from_id);
-} elseif ((($text !== '' && $text == $datatextbot['textpanelagent']) || $datain == "agentpanel") && $user['agent'] != "f") {
+    break;
+case 'agent_panel':
     if ($setting['inlinebtnmain'] == "oninline" || (function_exists('rx_richSectionActive') && rx_richSectionActive('agent'))) {
         Editmessagetext($from_id, $message_id, $textbotlang['Admin']['agent']['agenttext'], $keyboardagent, 'HTML');
     } else {
         sendmessage($from_id, $textbotlang['Admin']['agent']['agenttext'], $keyboardagent, 'HTML');
     }
-} elseif ($text == $textbotlang['users']['agenttext']['customnameusername'] || $datain == "selectname") {
+    break;
+case 'agent_name_prompt':
     sendmessage($from_id, $textbotlang['users']['selectusername'], $backuser, 'html');
     step('selectusernamecustom', $from_id);
-} elseif ($user['step'] == "selectusernamecustom") {
+    break;
+case 'agent_name':
     if (!isset($update['message']) && empty($text)) { return; }
     $text = str_replace('_', '-', $text);
     if (!preg_match('~(?![_-])^[a-z][a-z\d_-]{2,32}(?<![_-])$~i', $text)) {
@@ -1605,7 +1712,8 @@ $text_porsant
     sendmessage($from_id, $textbotlang['Admin']['agent']['submitusername'], $keyboardagent, 'html');
     update("user", "namecustom", $text, "id", $from_id);
     step("home", $from_id);
-} elseif (($text !== '' && $text == $datatextbot['textrequestagent']) || $datain == "requestagent") {
+    break;
+case 'agent_start':
     if ($user['Balance'] < $setting['agentreqprice']) {
         $priceagent = number_format($setting['agentreqprice']);
         sendmessage($from_id, sprintf($textbotlang['users']['agenttext']['insufficientbalanceagent'], $priceagent), $backuser, 'HTML');
@@ -1634,7 +1742,8 @@ $text_porsant
         sendmessage($from_id, $datatextbot['text_request_agent_dec'], $backuser, 'html');
     }
     step("getagentrequest", $from_id);
-} elseif ($user['step'] == "getagentrequest" && $text) {
+    break;
+case 'agent_request':
     if (!isset($update['message']) && empty($text)) { return; }
     // اطمینان از نبود درخواست قدیمیِ رد/تاییدشده تا INSERT جدید با خطای کلید تکراری مواجه نشود.
     $oldReq = select("Requestagent", "*", "id", $from_id, "select", ['cache' => false]);
@@ -1723,9 +1832,11 @@ $text_porsant
     foreach ($admin_ids as $admin) {
         sendmessage($admin, $textrequestagent, $keyboardmanage, 'HTML');
     }
-} elseif ($text == "/privacy") {
+    break;
+case 'privacy':
     sendmessage($from_id, $datatextbot['text_roll'], null, 'HTML');
-} elseif (($text !== '' && $text == $datatextbot['text_wheel_luck']) || $datain == "wheel_luck" || $text == "/gift") {
+    break;
+case 'prize_wheel':
     if (!check_active_btn($setting['keyboardmain'], "text_wheel_luck")) {
         sendmessage($from_id, $datatextbot['dyn_errors_button_disabled'] ?? "❌ این دکمه غیرفعال می باشد", null, 'HTML');
         return;
@@ -1823,7 +1934,8 @@ $text_porsant
     } else {
         sendmessage($from_id, $textbotlang['users']['wheel_luck']['notWinner'], null, 'HTML');
     }
-} elseif ($text == "/tron") {
+    break;
+case 'tron_price':
     $rates = requireTronRates(['TRX']);
     if ($rates === null) {
         sendmessage($from_id, $datatextbot['dyn_wheel_price_unavailable'] ?? "❌ دریافت قیمت در حال حاضر امکان پذیر نیست. لطفاً بعداً تلاش کنید.", null, 'HTML');
@@ -1831,7 +1943,8 @@ $text_porsant
     }
     $price = $rates['TRX'];
     sendmessage($from_id, sprintf($textbotlang['users']['pricearze']['tron-price'], $price), null, 'HTML');
-} elseif ($text == "/usd") {
+    break;
+case 'usd_price':
     $rates = requireTronRates(['USD']);
     if ($rates === null) {
         sendmessage($from_id, $datatextbot['dyn_wheel_price_unavailable'] ?? "❌ دریافت قیمت در حال حاضر امکان پذیر نیست. لطفاً بعداً تلاش کنید.", null, 'HTML');
@@ -1839,7 +1952,8 @@ $text_porsant
     }
     $price = $rates['USD'];
     sendmessage($from_id, sprintf($textbotlang['users']['pricearze']['tether-price'], $price), null, 'HTML');
-} elseif (($text !== '' && $text == $datatextbot['text_extend']) || $datain == "extendbtn") {
+    break;
+case 'renewal_list':
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :id_user AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold')");
     $stmt->bindParam(':id_user', $from_id);
     $stmt->execute();
@@ -1904,7 +2018,8 @@ $text_porsant
     } else {
         sendmessage($from_id, $textbotlang['users']['extend']['selectOrderDirect'], $keyboard_json, 'html');
     }
-} elseif ($datain == 'next_page_extends') {
+    break;
+case 'renewal_next':
     $numpage = select("invoice", "id_user", "id_user", $from_id, "count");
     $page = $user['pagenumber'];
     $items_per_page = 20;
@@ -1966,7 +2081,8 @@ $text_porsant
     $keyboard_json = json_encode($keyboardlists);
     update("user", "pagenumber", $next_page, "id", $from_id);
     Editmessagetext($from_id, $message_id, $textbotlang['users']['extend']['selectOrderDirect'], $keyboard_json);
-} elseif ($datain == 'previous_page_extends') {
+    break;
+case 'renewal_previous':
     $numpage = select("invoice", "id_user", "id_user", $from_id, "count");
     $page = $user['pagenumber'];
     $items_per_page = 20;
@@ -2028,7 +2144,8 @@ $text_porsant
     $keyboard_json = json_encode($keyboardlists);
     update("user", "pagenumber", $previous_page, "id", $from_id);
     Editmessagetext($from_id, $message_id, $textbotlang['users']['extend']['selectOrderDirect'], $keyboard_json);
-} elseif (preg_match('/changenote_(\w+)/', $datain, $dataget)) {
+    break;
+case 'note_start':
     $id_invoice = $dataget[1];
     $rxNoteCheck = select("invoice", "id_user", "id_invoice", $id_invoice, "select");
     if (!is_array($rxNoteCheck) || (string)($rxNoteCheck['id_user'] ?? '') !== (string)$from_id) {
@@ -2049,7 +2166,8 @@ $text_porsant
     ]);
     Editmessagetext($from_id, $message_id, $textbotlang['users']['note']['SendNote'], $backinfoss);
     step("getnotedit", $from_id);
-} elseif ($user['step'] == "getnotedit") {
+    break;
+case 'note_save':
     if (!isset($update['message']) && empty($text)) { return; }
     $invoice = select("invoice", "*", "id_invoice", $user['Processing_value'], "select");
     if (strlen($text) > 150) {
@@ -2085,4 +2203,5 @@ $text_porsant
             'parse_mode' => "HTML"
         ]);
     }
+    break;
 }

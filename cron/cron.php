@@ -335,11 +335,13 @@ $dispatchAsync = static function (array $tasks, bool $useLoopback) use ($rxInter
     foreach ($tasks as $task) {
         $url = (string) ($task['url'] ?? '');
         if ($url === '') {
+            $result['failed'][] = $task;
             continue;
         }
         $bustedUrl = $url . (strpos($url, '?') === false ? '?' : '&') . '_t=' . microtime(true);
         $ch = curl_init($bustedUrl);
         if ($ch === false) {
+            $result['failed'][] = $task;
             continue;
         }
         $rxResolveHost = parse_url($url, PHP_URL_HOST);
@@ -374,8 +376,12 @@ $dispatchAsync = static function (array $tasks, bool $useLoopback) use ($rxInter
             ];
         }
         curl_setopt_array($ch, $curlOpts);
-        curl_multi_add_handle($multi, $ch);
-        $handles[(int) $ch] = ['handle' => $ch, 'task' => $task];
+        if (curl_multi_add_handle($multi, $ch) !== CURLM_OK) {
+            curl_close($ch);
+            $result['failed'][] = $task;
+            continue;
+        }
+        $handles[] = ['handle' => $ch, 'task' => $task];
     }
     if (empty($handles)) {
         curl_multi_close($multi);
@@ -852,8 +858,8 @@ if ($bootstrapLoaded && function_exists('getCronJobDefinitions')) {
 
 $rxHttpBatchSize = $rxSharedProfile ? 2 : 8;
 
-$rxTaskStarted = static function (string $taskKey) use ($pdo, $rxTaskDispatchLease): bool {
-    if ($taskKey === '' || !($pdo instanceof PDO)) {
+$rxTaskStarted = static function (string $taskKey, string $token) use ($pdo, $rxTaskDispatchLease): bool {
+    if ($taskKey === '' || $token === '' || !($pdo instanceof PDO)) {
         return false;
     }
     if (function_exists('rx_cron_task_scan_markers')) {
@@ -862,18 +868,24 @@ $rxTaskStarted = static function (string $taskKey) use ($pdo, $rxTaskDispatchLea
         } catch (Throwable $e) {
         }
     }
-    if (!function_exists('rx_cron_task_state_name')) {
+    if (!function_exists('rx_cron_task_has_started')) {
         return false;
     }
     try {
-        $state = rx_cron_task_state_name($pdo, $taskKey);
+        return rx_cron_task_has_started($pdo, $taskKey, $token);
     } catch (Throwable $e) {
         return false;
     }
-    return in_array($state, ['running', 'completed', 'failed'], true);
 };
 
-$rxDispatchTask = static function (array $task) use ($rxIsCli, $rxSharedProfile, $buildCronUrl, $rxDispatchHttpTasks, $rxDispatchCli, $rxTaskStarted): string {
+$rxHttpDispatchOutcome = static function (array $result, callable $hasStarted): ?string {
+    if (!empty($result['success']) || $hasStarted()) {
+        return 'accepted';
+    }
+    return !empty($result['uncertain']) ? 'uncertain' : null;
+};
+
+$rxDispatchTask = static function (array $task) use ($rxIsCli, $rxSharedProfile, $buildCronUrl, $rxDispatchHttpTasks, $rxDispatchCli, $rxTaskStarted, $rxHttpDispatchOutcome): string {
     $jobKey  = (string) ($task['job_key'] ?? $task['key'] ?? '');
     $script  = (string) ($task['script'] ?? '');
     $worker  = (int) ($task['worker'] ?? 0);
@@ -881,8 +893,8 @@ $rxDispatchTask = static function (array $task) use ($rxIsCli, $rxSharedProfile,
     $taskKey = (string) ($task['task_key'] ?? '');
     $token   = (string) ($task['token'] ?? '');
     $occurrence = (int) ($task['occurrence'] ?? ($task['scheduled_for'] ?? 0));
-    $rxIsStarted = static function () use ($rxTaskStarted, $taskKey): bool {
-        return $taskKey !== '' && $rxTaskStarted($taskKey);
+    $rxIsStarted = static function () use ($rxTaskStarted, $taskKey, $token): bool {
+        return $rxTaskStarted($taskKey, $token);
     };
 
     if ($rxIsCli) {
@@ -908,25 +920,11 @@ $rxDispatchTask = static function (array $task) use ($rxIsCli, $rxSharedProfile,
             'token' => $token,
             'occurrence' => $occurrence,
         ]];
-        $result = $rxDispatchHttpTasks($single, false);
-        if (!empty($result['success'])) {
-            return 'accepted';
-        }
-        if ($rxIsStarted()) {
-            return 'accepted';
-        }
-        if (!empty($result['uncertain'])) {
-            return 'uncertain';
-        }
-        $result = $rxDispatchHttpTasks($single, true);
-        if (!empty($result['success'])) {
-            return 'accepted';
-        }
-        if ($rxIsStarted()) {
-            return 'accepted';
-        }
-        if (!empty($result['uncertain'])) {
-            return 'uncertain';
+        foreach ([false, true] as $loopback) {
+            $outcome = $rxHttpDispatchOutcome($rxDispatchHttpTasks($single, $loopback), $rxIsStarted);
+            if ($outcome !== null) {
+                return $outcome;
+            }
         }
     }
 
@@ -942,16 +940,6 @@ $rxDispatchTask = static function (array $task) use ($rxIsCli, $rxSharedProfile,
 
 if ($rxTaskStateEnabled) {
     $rxDispatchDeadline = microtime(true) + ($rxIsCli ? ($rxSharedProfile ? 240 : 45) : ($rxSharedProfile ? 8 : 15));
-    $rxOnDispatch = static function (array $claim) use (&$runtimeState): void {
-        $jobKey = (string) ($claim['job_key'] ?? '');
-        if ($jobKey === '') {
-            return;
-        }
-        $scheduledFor = (int) ($claim['scheduled_for'] ?? 0);
-        if ($scheduledFor > (int) ($runtimeState[$jobKey] ?? 0)) {
-            $runtimeState[$jobKey] = $scheduledFor;
-        }
-    };
     $rxValidateTask = static function (array $row) use ($rxValidTasks): bool {
         $taskKey = (string) ($row['task_key'] ?? '');
         if ($taskKey === '' || !isset($rxValidTasks[$taskKey])) {
@@ -977,8 +965,9 @@ if ($rxTaskStateEnabled) {
                 'deadline' => $rxDispatchDeadline,
                 'reserved_payment_slots' => max(0, min(2, $rxMaxConcurrency - 1)),
                 'deferred_jobs' => $rxDeferredJobs,
-            ], $rxDispatchTask, $rxValidateTask, $rxOnDispatch);
+            ], $rxDispatchTask, $rxValidateTask);
         } catch (Throwable $e) {
+            error_log('[cron] pending task dispatch failed: ' . get_class($e));
             $rxStats = ['dispatched' => 0];
         }
     }

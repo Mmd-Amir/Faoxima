@@ -74,6 +74,12 @@ final class FaoximaResponse
         }
 
 
+        self::emitJson($statusCode, $payload);
+        exit;
+    }
+
+    public static function emitJson(int $statusCode, array $payload): void
+    {
         while (ob_get_level() > 0) {
             @ob_end_clean();
         }
@@ -83,7 +89,6 @@ final class FaoximaResponse
             header('Cache-Control: no-store, max-age=0');
         }
         echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        exit;
     }
 }
 

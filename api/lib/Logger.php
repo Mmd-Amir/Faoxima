@@ -111,7 +111,7 @@ final class FaoximaLogger
             'msg' => $message,
             'ip' => self::clientIp(),
             'method' => $_SERVER['REQUEST_METHOD'] ?? 'CLI',
-            'uri' => $_SERVER['REQUEST_URI'] ?? '',
+            'uri' => explode('?', (string) ($_SERVER['REQUEST_URI'] ?? ''), 2)[0],
         ];
 
         if (!empty($context)) {
@@ -176,9 +176,9 @@ final class FaoximaLogger
 
     private static function sanitiseContext(array $ctx): array
     {
-        $blocked = ['password', 'passwd', 'token', 'apikey', 'api_key', 'secret', 'authorization'];
+        $blocked = ['password', 'passwd', 'token', 'api_key', 'apikey', 'x_api_key', 'secret', 'authorization', 'dl_token', 'init_data', 'initdata', 'tgwebappdata', 'cookie'];
         foreach ($ctx as $k => $v) {
-            if (in_array(strtolower((string)$k), $blocked, true)) {
+            if (in_array(str_replace('-', '_', strtolower((string) $k)), $blocked, true)) {
                 $ctx[$k] = '***';
             } elseif (is_array($v)) {
                 $ctx[$k] = self::sanitiseContext($v);

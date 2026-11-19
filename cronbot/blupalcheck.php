@@ -4,11 +4,8 @@ rx_cron_boot('blupalcheck', 120);
 
 ini_set('error_log', 'error_log');
 
-$ctx = rx_cron_load_payment_context();
-if (empty($ctx['db_ready'])) {
-    if (function_exists('rx_cron_task_defer')) {
-        rx_cron_task_defer('payment_context_unavailable', 180);
-    }
+$ctx = rx_cron_require_payment_context();
+if ($ctx === null) {
     return;
 }
 require_once __DIR__ . '/../lib/PaymentConfirm.php';
@@ -31,23 +28,20 @@ if (!function_exists('blupalCheckInvoice')) {
 
 try {
     $rxPaymentWindow = rx_pf_cron_window_sql();
-    $rxBlupalCursor = function_exists('rx_cron_invoice_cursor') ? rx_cron_invoice_cursor('blupal_poll') : '';
     $rxBlupalSql = "SELECT id, id_order, blupal_invoice_id, price
            FROM Payment_report
           WHERE $rxPaymentWindow AND payment_Status = 'Unpaid'
             AND Payment_Method = 'blupal'
             AND blupal_invoice_id IS NOT NULL
             AND blupal_invoice_id <> ''
-            AND id > ?
+            AND id > ? AND id <= ?
           ORDER BY id ASC
           LIMIT 30";
     $stmt = $pdo->prepare($rxBlupalSql);
-    $stmt->execute([$rxBlupalCursor]);
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    if (!$rows && $rxBlupalCursor !== '') {
-        $stmt->execute(['']);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
+    $rows = rx_cron_payment_cursor_page($pdo, 'blupal_poll', static function (string $after, $ceiling) use ($stmt): array {
+        $stmt->execute([$after, $ceiling]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    });
 
 } catch (Throwable $e) {
     error_log('[blupalcheck] select pending failed: ' . $e->getMessage());
@@ -64,49 +58,42 @@ if (empty($rows)) {
     return;
 }
 
-$rxBlupalTimedOut = false;
-foreach ($rows as $row) {
-    if (function_exists('rx_cron_time_up') && rx_cron_time_up()) {
-        $rxBlupalTimedOut = true;
-        if (function_exists('rx_cron_task_defer')) {
-            rx_cron_task_defer('time_budget', 60);
-        }
-        break;
-    }
-    try {
+rx_cron_run_poll_batch(
+    $rows,
+    static function (array $row) use ($ctx): void {
         $orderId   = (string) $row['id_order'];
         $invoiceId = trim((string) $row['blupal_invoice_id']);
         if ($invoiceId === '') {
-            continue;
+            return;
         }
 
         $check = blupalCheckInvoice($invoiceId);
         if (!is_array($check) || (int) ($check['invoice_id'] ?? 0) !== (int) $invoiceId) {
-            continue;
+            return;
         }
         if (empty($check['success'])) {
-            continue;
+            return;
         }
 
         $blupalStatus = (string) ($check['status'] ?? '');
         if (in_array($blupalStatus, ['EXPIRED', 'CANCELED'], true)) {
             payment_mark_expired($orderId);
-            continue;
+            return;
         }
         if ($blupalStatus !== 'PAID') {
-            continue;
+            return;
         }
 
         $expectedRial = blupalTomanToRial($row['price']);
         $checkAmountRial = isset($check['amount']) ? (int) $check['amount'] : null;
         if ($checkAmountRial === null || $checkAmountRial !== $expectedRial) {
             error_log('[blupalcheck] amount mismatch on polled invoice, skipping: order=' . $orderId . ' invoice=' . $invoiceId);
-            continue;
+            return;
         }
 
         $finalAmountRial = isset($check['final_amount']) ? (float) $check['final_amount'] : null;
         if ($finalAmountRial === null) {
-            continue;
+            return;
         }
 
         $creditAmountToman = blupalRialToToman($finalAmountRial);
@@ -117,24 +104,21 @@ foreach ($rows as $row) {
         $extra = [
             'method'      => 'blupal',
             'thread_id'   => $ctx['paymentreports'] ?? null,
-            'extra_lines' => array_filter([
-                $creditAmountToman > 0 ? ('💸 مبلغ نهایی تأییدشده توسط بلوپال : ' . number_format($creditAmountToman) . ' تومان') : '',
-                $payerName !== '' ? ('👤 نام واریزکننده : ' . $payerName) : '',
-                $payerCard !== '' ? ('💳 شماره کارت/شبا واریزکننده : ' . $payerCard) : '',
-                $payerBank !== '' ? ('🏦 بانک واریزکننده : ' . $payerBank) : '',
-                '🔁 تایید از طریق پولر (وب‌هوک دیر یا گم‌شده)',
-            ]),
+            'extra_lines' => rx_blupal_confirmation_lines($creditAmountToman, $payerName, $payerCard, $payerBank)
+                + [4 => '🔁 تایید از طریق پولر (وب‌هوک دیر یا گم‌شده)'],
         ];
 
         payment_confirm_paid($orderId, 'chashbackblupal', $extra);
-    } catch (Throwable $e) {
+    },
+    static function (array $row, Throwable $e): void {
         error_log('[blupal_poll] order ' . (string) ($row['id_order'] ?? '') . ': ' . $e->getMessage());
-    } finally {
+    },
+    static function (array $row): void {
         if ((int) ($row['id'] ?? 0) > 0 && function_exists('rx_cron_invoice_cursor')) {
             rx_cron_invoice_cursor('blupal_poll', (string) $row['id']);
         }
     }
-}
+);
 if (function_exists('rx_cron_task_complete')) {
     rx_cron_task_complete('blupal_poll_finished');
 }

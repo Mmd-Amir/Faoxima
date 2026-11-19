@@ -35,116 +35,133 @@ $catQuery = $pdo->prepare("SELECT remark FROM category ORDER BY (position = 0) A
 $catQuery->execute();
 $listcategory = $catQuery->fetchAll(PDO::FETCH_COLUMN);
 
+function fx_product_edit_normalize_list(array $values): array
+{
+    return array_values(array_unique(array_filter(array_map(function ($value) {
+        return htmlspecialchars(trim((string)$value), ENT_QUOTES, 'UTF-8');
+    }, $values), function ($value) { return $value !== ''; })));
+}
+
+function fx_product_edit_limit($value): ?string
+{
+    $raw = trim((string)$value);
+    if ($raw === '' || !ctype_digit($raw) || (int)$raw > 50) {
+        return null;
+    }
+    return (string)(int)$raw;
+}
+
+function fx_product_edit_save(PDO $pdo, $product, string $id_product, array $post): array
+{
+    $statusmessage = false;
+    $infomesssage = "";
+    $name_product = htmlspecialchars($post['name_product'], ENT_QUOTES, 'UTF-8');
+    $prodcutcheck = select("product", "*", "name_product", $name_product, "count");
+    if ($product['name_product'] != $name_product && $prodcutcheck != 0) {
+        $statusmessage = true;
+        $infomesssage  = "نام محصول تکراری است.";
+    } else {
+        if ($product['name_product'] != $name_product) {
+            update("product", "name_product", $name_product, "id", $id_product);
+        }
+    }
+
+    $price_product = htmlspecialchars($post['price_product'], ENT_QUOTES, 'UTF-8');
+    if (!is_numeric($price_product)) {
+        $statusmessage = true; $infomesssage = "مبلغ محصول باید عدد باشد";
+    } elseif ($product['price_product'] != $price_product) {
+        update("product", "price_product", $price_product, "id", $id_product);
+    }
+
+    $Volume_constraint = htmlspecialchars($post['Volume_constraint'], ENT_QUOTES, 'UTF-8');
+    if (!is_numeric($Volume_constraint)) {
+        $statusmessage = true; $infomesssage = "حجم محصول باید عدد باشد";
+    } elseif ($product['Volume_constraint'] != $Volume_constraint) {
+        update("product", "Volume_constraint", $Volume_constraint, "id", $id_product);
+    }
+
+    $Service_time = htmlspecialchars($post['Service_time'], ENT_QUOTES, 'UTF-8');
+    if (!is_numeric($Service_time)) {
+        $statusmessage = true; $infomesssage = "زمان محصول باید عدد باشد";
+    } elseif ($product['Service_time'] != $Service_time) {
+        update("product", "Service_time", $Service_time, "id", $id_product);
+    }
+
+    $agent = htmlspecialchars($post['agent'], ENT_QUOTES, 'UTF-8');
+    if (!in_array($agent, ['f', 'n', 'n2'])) {
+        $statusmessage = true; $infomesssage = "گروه کاربری نامعتبر است";
+    } elseif ($product['agent'] != $agent) {
+        update("product", "agent", $agent, "id", $id_product);
+    }
+
+    $categoryArr = explode(',', (string)($post['category_csv'] ?? ''));
+    $newCategory = trim((string)($post['category_new'] ?? ''));
+    if ($newCategory !== '') $categoryArr[] = $newCategory;
+    $categoryArr = fx_product_edit_normalize_list($categoryArr);
+    $category = implode(',', $categoryArr);
+    foreach ($categoryArr as $catValue) {
+        $catCheck = $pdo->prepare("SELECT COUNT(*) FROM category WHERE remark = :r");
+        $catCheck->execute([':r' => $catValue]);
+        if ((int)$catCheck->fetchColumn() === 0) {
+            $pdo->prepare("INSERT IGNORE INTO category (remark) VALUES (:r)")->execute([':r' => $catValue]);
+        }
+    }
+    if ($product['category'] != $category) {
+        update("product", "category", $category, "id", $id_product);
+    }
+
+    $locationArr = explode(',', (string)($post['Location_csv'] ?? ''));
+    $locationArr = fx_product_edit_normalize_list($locationArr);
+    if (in_array('/all', $locationArr, true)) $locationArr = ['/all'];
+    $locationPost = implode(',', $locationArr);
+    if ($product['Location'] != $locationPost) {
+        update("product", "Location", $locationPost, "id", $id_product);
+    }
+
+    $note = htmlspecialchars($post['note'], ENT_QUOTES, 'UTF-8');
+    if ($product['note'] != $note) {
+        update("product", "note", $note, "id", $id_product);
+    }
+
+    $ipLimit = fx_product_edit_limit($post['ip_limit'] ?? '0');
+    if ($ipLimit === null) {
+        $statusmessage = true; $infomesssage = "محدودیت IP باید عددی بین ۰ تا ۵۰ باشد";
+    } else {
+        if ((string)($product['ip_limit'] ?? '0') != $ipLimit) {
+            update("product", "ip_limit", $ipLimit, "id", $id_product);
+        }
+    }
+
+    $hwidLimit = fx_product_edit_limit($post['hwid_limit'] ?? '0');
+    if ($hwidLimit === null) {
+        $statusmessage = true; $infomesssage = "محدودیت HWID باید عددی بین ۰ تا ۵۰ باشد";
+    } else {
+        if ((string)($product['hwid_limit'] ?? '0') != $hwidLimit) {
+            update("product", "hwid_limit", $hwidLimit, "id", $id_product);
+        }
+    }
+
+    $symbolicLimitUsers = fx_product_edit_limit($post['symbolic_limit_users'] ?? '0');
+    if ($symbolicLimitUsers === null) {
+        $statusmessage = true; $infomesssage = "تعداد کاربر Limiet باید عددی بین ۰ تا ۵۰ باشد";
+    } else {
+        $symbolicLimitEnabled = (!empty($post['symbolic_limit_enabled']) && (int)$symbolicLimitUsers > 0) ? '1' : '0';
+        if ((string)($product['symbolic_limit_users'] ?? '0') != $symbolicLimitUsers) {
+            update("product", "symbolic_limit_users", $symbolicLimitUsers, "id", $id_product);
+        }
+        if ((string)($product['symbolic_limit_enabled'] ?? '0') != $symbolicLimitEnabled) {
+            update("product", "symbolic_limit_enabled", $symbolicLimitEnabled, "id", $id_product);
+        }
+    }
+    return [$statusmessage, $infomesssage];
+}
+
 if ($product == false) {
     $statusmessage = true;
     $infomesssage  = "محصول مورد نظر یافت نشد!";
 } else {
     if (isset($_GET['action']) && $_GET['action'] == "save") {
-        $name_product = htmlspecialchars($_POST['name_product'], ENT_QUOTES, 'UTF-8');
-        $prodcutcheck = select("product", "*", "name_product", $name_product, "count");
-        if ($product['name_product'] != $name_product && $prodcutcheck != 0) {
-            $statusmessage = true;
-            $infomesssage  = "نام محصول تکراری است.";
-        } else {
-            if ($product['name_product'] != $name_product) {
-                update("product", "name_product", $name_product, "id", $id_product);
-            }
-        }
-
-        $price_product = htmlspecialchars($_POST['price_product'], ENT_QUOTES, 'UTF-8');
-        if (!is_numeric($price_product)) {
-            $statusmessage = true; $infomesssage = "مبلغ محصول باید عدد باشد";
-        } elseif ($product['price_product'] != $price_product) {
-            update("product", "price_product", $price_product, "id", $id_product);
-        }
-
-        $Volume_constraint = htmlspecialchars($_POST['Volume_constraint'], ENT_QUOTES, 'UTF-8');
-        if (!is_numeric($Volume_constraint)) {
-            $statusmessage = true; $infomesssage = "حجم محصول باید عدد باشد";
-        } elseif ($product['Volume_constraint'] != $Volume_constraint) {
-            update("product", "Volume_constraint", $Volume_constraint, "id", $id_product);
-        }
-
-        $Service_time = htmlspecialchars($_POST['Service_time'], ENT_QUOTES, 'UTF-8');
-        if (!is_numeric($Service_time)) {
-            $statusmessage = true; $infomesssage = "زمان محصول باید عدد باشد";
-        } elseif ($product['Service_time'] != $Service_time) {
-            update("product", "Service_time", $Service_time, "id", $id_product);
-        }
-
-        $agent = htmlspecialchars($_POST['agent'], ENT_QUOTES, 'UTF-8');
-        if (!in_array($agent, ['f', 'n', 'n2'])) {
-            $statusmessage = true; $infomesssage = "گروه کاربری نامعتبر است";
-        } elseif ($product['agent'] != $agent) {
-            update("product", "agent", $agent, "id", $id_product);
-        }
-
-        $categoryArr = explode(',', (string)($_POST['category_csv'] ?? ''));
-        $newCategory = trim((string)($_POST['category_new'] ?? ''));
-        if ($newCategory !== '') $categoryArr[] = $newCategory;
-        $categoryArr = array_values(array_unique(array_filter(array_map(function ($v) {
-            return htmlspecialchars(trim((string)$v), ENT_QUOTES, 'UTF-8');
-        }, $categoryArr), function ($v) { return $v !== ''; })));
-        $category = implode(',', $categoryArr);
-        foreach ($categoryArr as $catValue) {
-            $catCheck = $pdo->prepare("SELECT COUNT(*) FROM category WHERE remark = :r");
-            $catCheck->execute([':r' => $catValue]);
-            if ((int)$catCheck->fetchColumn() === 0) {
-                $pdo->prepare("INSERT IGNORE INTO category (remark) VALUES (:r)")->execute([':r' => $catValue]);
-            }
-        }
-        if ($product['category'] != $category) {
-            update("product", "category", $category, "id", $id_product);
-        }
-
-        $locationArr = explode(',', (string)($_POST['Location_csv'] ?? ''));
-        $locationArr = array_values(array_unique(array_filter(array_map(function ($v) {
-            return htmlspecialchars(trim((string)$v), ENT_QUOTES, 'UTF-8');
-        }, $locationArr), function ($v) { return $v !== ''; })));
-        if (in_array('/all', $locationArr, true)) $locationArr = ['/all'];
-        $locationPost = implode(',', $locationArr);
-        if ($product['Location'] != $locationPost) {
-            update("product", "Location", $locationPost, "id", $id_product);
-        }
-
-        $note = htmlspecialchars($_POST['note'], ENT_QUOTES, 'UTF-8');
-        if ($product['note'] != $note) {
-            update("product", "note", $note, "id", $id_product);
-        }
-
-        $ipLimitRaw = trim((string)($_POST['ip_limit'] ?? '0'));
-        if ($ipLimitRaw === '' || !ctype_digit($ipLimitRaw) || (int)$ipLimitRaw > 50) {
-            $statusmessage = true; $infomesssage = "محدودیت IP باید عددی بین ۰ تا ۵۰ باشد";
-        } else {
-            $ipLimit = (string)(int)$ipLimitRaw;
-            if ((string)($product['ip_limit'] ?? '0') != $ipLimit) {
-                update("product", "ip_limit", $ipLimit, "id", $id_product);
-            }
-        }
-
-        $hwidLimitRaw = trim((string)($_POST['hwid_limit'] ?? '0'));
-        if ($hwidLimitRaw === '' || !ctype_digit($hwidLimitRaw) || (int)$hwidLimitRaw > 50) {
-            $statusmessage = true; $infomesssage = "محدودیت HWID باید عددی بین ۰ تا ۵۰ باشد";
-        } else {
-            $hwidLimit = (string)(int)$hwidLimitRaw;
-            if ((string)($product['hwid_limit'] ?? '0') != $hwidLimit) {
-                update("product", "hwid_limit", $hwidLimit, "id", $id_product);
-            }
-        }
-
-        $symbolicLimitUsersRaw = trim((string)($_POST['symbolic_limit_users'] ?? '0'));
-        if ($symbolicLimitUsersRaw === '' || !ctype_digit($symbolicLimitUsersRaw) || (int)$symbolicLimitUsersRaw > 50) {
-            $statusmessage = true; $infomesssage = "تعداد کاربر Limiet باید عددی بین ۰ تا ۵۰ باشد";
-        } else {
-            $symbolicLimitUsers = (string)(int)$symbolicLimitUsersRaw;
-            $symbolicLimitEnabled = (!empty($_POST['symbolic_limit_enabled']) && (int)$symbolicLimitUsers > 0) ? '1' : '0';
-            if ((string)($product['symbolic_limit_users'] ?? '0') != $symbolicLimitUsers) {
-                update("product", "symbolic_limit_users", $symbolicLimitUsers, "id", $id_product);
-            }
-            if ((string)($product['symbolic_limit_enabled'] ?? '0') != $symbolicLimitEnabled) {
-                update("product", "symbolic_limit_enabled", $symbolicLimitEnabled, "id", $id_product);
-            }
-        }
+        [$statusmessage, $infomesssage] = fx_product_edit_save($pdo, $product, $id_product, $_POST);
 
         if (!$statusmessage) {
             header('Location: product.php');

@@ -34,9 +34,53 @@ session_start();
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
 require_once __DIR__ . '/lib/icons.php';
+require_once __DIR__ . '/lib/csrf.php';
 require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../jdf.php';
+
+function fx_login_ip_allowed($result, $user_ip): bool
+{
+    $adminIpOk = true;
+    if ($result) {
+        $rawAdminIp = $result['iplogin'] ?? null;
+        if ($rawAdminIp !== null && $rawAdminIp !== '') {
+            $adminIpDecoded = fx_admin_decode_ip_entries((string)$rawAdminIp);
+            if ($adminIpDecoded !== null) {
+                if (in_array('*', $adminIpDecoded, true) || in_array('all', $adminIpDecoded, true) || in_array('unlimited', $adminIpDecoded, true)) {
+                    $adminIpOk = true;
+                } else {
+                    $adminIpOk = in_array($user_ip, $adminIpDecoded, true);
+                }
+            } elseif ($rawAdminIp === '*' || $rawAdminIp === 'all' || $rawAdminIp === 'unlimited') {
+                $adminIpOk = true;
+            } elseif (filter_var($rawAdminIp, FILTER_VALIDATE_IP)) {
+                $adminIpOk = ($rawAdminIp === $user_ip);
+            }
+        }
+    }
+    return $adminIpOk;
+}
+
+function fx_login_verify_password(PDO $pdo, $result, string $password): bool
+{
+    $passwordOk = false;
+    if ($result) {
+        $storedHash = (string)($result["password_hash"] ?? '');
+        if ($storedHash !== '' && password_verify($password, $storedHash)) {
+            $passwordOk = true;
+            if (password_needs_rehash($storedHash, PASSWORD_DEFAULT)) {
+                $rehash = $pdo->prepare("UPDATE admin SET password_hash = :h WHERE id_admin = :id");
+                $rehash->execute([':h' => password_hash($password, PASSWORD_DEFAULT), ':id' => $result['id_admin']]);
+            }
+        } elseif ($storedHash === '' && (string)$password === (string)($result["password"] ?? '') && $password !== '') {
+            $passwordOk = true;
+            $migrate = $pdo->prepare("UPDATE admin SET password_hash = :h WHERE id_admin = :id");
+            $migrate->execute([':h' => password_hash($password, PASSWORD_DEFAULT), ':id' => $result['id_admin']]);
+        }
+    }
+    return $passwordOk;
+}
 
 $user_ip = $_SERVER['REMOTE_ADDR'] ?? '';
 fx_ad_gate();
@@ -52,45 +96,11 @@ if (isset($_POST['login'])) {
     $password = isset($_POST['password']) ? (string)$_POST['password'] : '';
 
     if ($username !== '' && $password !== '') {
-        $query = $pdo->prepare("SELECT * FROM admin WHERE username = :username LIMIT 1");
-        $query->bindValue(':username', $username, PDO::PARAM_STR);
-        $query->execute();
-        $result = $query->fetch(PDO::FETCH_ASSOC);
+        $result = fx_admin_find_by_username($pdo, $username);
 
-        $passwordOk = false;
-        if ($result) {
-            $storedHash = (string)($result["password_hash"] ?? '');
-            if ($storedHash !== '' && password_verify($password, $storedHash)) {
-                $passwordOk = true;
-                if (password_needs_rehash($storedHash, PASSWORD_DEFAULT)) {
-                    $rehash = $pdo->prepare("UPDATE admin SET password_hash = :h WHERE id_admin = :id");
-                    $rehash->execute([':h' => password_hash($password, PASSWORD_DEFAULT), ':id' => $result['id_admin']]);
-                }
-            } elseif ($storedHash === '' && (string)$password === (string)($result["password"] ?? '') && $password !== '') {
-                $passwordOk = true;
-                $migrate = $pdo->prepare("UPDATE admin SET password_hash = :h WHERE id_admin = :id");
-                $migrate->execute([':h' => password_hash($password, PASSWORD_DEFAULT), ':id' => $result['id_admin']]);
-            }
-        }
+        $passwordOk = fx_login_verify_password($pdo, $result, $password);
 
-        $adminIpOk = true;
-        if ($result) {
-            $rawAdminIp = $result['iplogin'] ?? null;
-            if ($rawAdminIp !== null && $rawAdminIp !== '') {
-                $adminIpDecoded = json_decode((string)$rawAdminIp, true);
-                if (is_array($adminIpDecoded)) {
-                    if (in_array('*', $adminIpDecoded, true) || in_array('all', $adminIpDecoded, true) || in_array('unlimited', $adminIpDecoded, true)) {
-                        $adminIpOk = true;
-                    } else {
-                        $adminIpOk = in_array($user_ip, $adminIpDecoded, true);
-                    }
-                } elseif ($rawAdminIp === '*' || $rawAdminIp === 'all' || $rawAdminIp === 'unlimited') {
-                    $adminIpOk = true;
-                } elseif (filter_var($rawAdminIp, FILTER_VALIDATE_IP)) {
-                    $adminIpOk = ($rawAdminIp === $user_ip);
-                }
-            }
-        }
+        $adminIpOk = fx_login_ip_allowed($result, $user_ip);
 
         if (!$result) {
             $texterrr = 'نام کاربری یا رمزعبور وارد شده اشتباه است!';

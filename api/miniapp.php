@@ -52,15 +52,19 @@ $GLOBALS['__miniapp_response_sent'] = false;
 
 function __miniapp_emit(int $http, array $payload): void
 {
-    while (ob_get_level() > 0) {
-        @ob_end_clean();
+    if (class_exists('FaoximaResponse', false)) {
+        FaoximaResponse::emitJson($http, $payload);
+    } else {
+        while (ob_get_level() > 0) {
+            @ob_end_clean();
+        }
+        if (!headers_sent()) {
+            http_response_code($http);
+            header('Content-Type: application/json; charset=utf-8');
+            header('Cache-Control: no-store, max-age=0');
+        }
+        echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
-    if (!headers_sent()) {
-        http_response_code($http);
-        header('Content-Type: application/json; charset=utf-8');
-        header('Cache-Control: no-store, max-age=0');
-    }
-    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     $GLOBALS['__miniapp_response_sent'] = true;
 }
 
@@ -86,17 +90,9 @@ register_shutdown_function(static function () {
     ]);
 });
 
-try {
-    require_once __DIR__ . '/lib/Bootstrap.php';
-    require_once __DIR__ . '/handlers/BaseHandler.php';
-    require_once __DIR__ . '/handlers/service_output.php';
-
-    while (ob_get_level() > 0) {
-        @ob_end_clean();
-    }
-    ob_start();
-
-    $actions = [
+function rx_miniapp_routes(): array
+{
+    return [
         'user_info'              => 'UserInfoHandler',
         'invoices'               => 'InvoicesHandler',
         'service'                => 'ServiceHandler',
@@ -165,14 +161,10 @@ try {
         'checkout_cancel'        => ['class' => 'CheckoutHandler', 'mode' => 'cancel'],
         'checkout_preview'       => ['class' => 'CheckoutHandler', 'mode' => 'preview'],
     ];
+}
 
-    $payload = FaoximaInput::payload();
-    $action = FaoximaInput::string($payload, 'actions');
-
-    if ($action === '' || !isset($actions[$action])) {
-        FaoximaResponse::badRequest('Action invalid');
-    }
-
+function rx_miniapp_user(string $action): array
+{
     $token = FaoximaAuth::extractBearerToken();
     $signedDownloadUser = null;
     if ($token === null && $action === 'config_file') {
@@ -209,16 +201,18 @@ try {
         FaoximaResponse::fail(403, 'user blocked');
     }
 
-    $adminIds = select('admin', 'id_admin', null, null, 'FETCH_COLUMN', ['cache' => false]);
-    $isAdmin = is_array($adminIds) && in_array((int)$user['id'], array_map('intval', $adminIds), true);
+    $isAdmin = FaoximaAuth::isMiniAppAdministrator((int)$user['id']);
     if (!$isAdmin && ($user['joinchannel'] ?? '') !== 'active') {
         $channelsId = select('channels', 'link', null, null, 'FETCH_COLUMN', ['cache' => false]);
         if (!empty($channelsId) && is_array($channelsId)) {
             FaoximaResponse::fail(403, 'join channel required');
         }
     }
+    return $user;
+}
 
-    $entry = $actions[$action];
+function rx_miniapp_handler_route($entry): array
+{
     if (is_string($entry)) {
         $handlerClass = $entry;
         $handlerMode = null;
@@ -232,6 +226,31 @@ try {
         FaoximaLogger::critical('Handler file missing', ['handler' => $handlerClass]);
         FaoximaResponse::serverError('Handler not available');
     }
+    return [$handlerClass, $handlerMode, $handlerFile];
+}
+
+try {
+    require_once __DIR__ . '/lib/Bootstrap.php';
+    require_once __DIR__ . '/handlers/BaseHandler.php';
+    require_once __DIR__ . '/handlers/service_output.php';
+
+    while (ob_get_level() > 0) {
+        @ob_end_clean();
+    }
+    ob_start();
+
+    $actions = rx_miniapp_routes();
+
+    $payload = FaoximaInput::payload();
+    $action = FaoximaInput::string($payload, 'actions');
+
+    if ($action === '' || !isset($actions[$action])) {
+        FaoximaResponse::badRequest('Action invalid');
+    }
+
+    $user = rx_miniapp_user($action);
+
+    [$handlerClass, $handlerMode, $handlerFile] = rx_miniapp_handler_route($actions[$action]);
     require_once $handlerFile;
 
     if (!class_exists($handlerClass)) {

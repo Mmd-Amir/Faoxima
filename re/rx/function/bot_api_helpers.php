@@ -92,6 +92,11 @@ function checkConnection($address, $port)
 function savedata($type, $namefiled, $valuefiled)
 {
     global $from_id, $user;
+    rx_write_conversation_data($from_id, $user, $type, $namefiled, $valuefiled);
+}
+
+function rx_write_conversation_data($from_id, &$user, $type, $namefiled, $valuefiled)
+{
     if ($type == "clear") {
         $datauser = [];
         $datauser[$namefiled] = $valuefiled;

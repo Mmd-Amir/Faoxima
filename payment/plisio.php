@@ -200,9 +200,7 @@ if ($paidCurrency !== '') {
     } catch (\Throwable $e) {}
 }
 
-$paidLine = $paidAmount !== ''
-    ? ("📥 مبلغ واریز شده : <b>{$paidAmount}</b>" . ($paidCurrency !== '' ? ' ' . strtoupper($paidCurrency) : ''))
-    : "📥 مبلغ واریز شده : —";
+$paidLine = rx_plisio_paid_line($paidAmount, $paidCurrency);
 
 $result = payment_confirm_paid(
     $Payment_report['id_order'],

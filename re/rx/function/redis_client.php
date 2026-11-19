@@ -46,6 +46,13 @@ if (!function_exists('rx_redis_extension_available')) {
     }
 }
 
+if (!function_exists('rx_payment_status_cache_key')) {
+    function rx_payment_status_cache_key($orderId, $userId): string
+    {
+        return 'faoxima:paystatus:' . (string) $orderId . ':' . (string) $userId;
+    }
+}
+
 if (!function_exists('rx_redis_state')) {
     function &rx_redis_state()
     {

@@ -39,13 +39,35 @@ final class FaoximaApiCredential
 
     public static function redactHeaders($headers): array
     {
-        if (!is_array($headers)) return [];
-        foreach ($headers as $name => $value) {
-            if (in_array(strtolower((string) $name), ['token', 'authorization', 'x-api-key', 'cookie'], true)) {
-                $headers[$name] = '[redacted]';
+        return is_array($headers) ? self::redactAuditFields($headers) : [];
+    }
+
+    public static function redactAuditFields(array $fields): array
+    {
+        foreach ($fields as $name => $value) {
+            $key = str_replace('-', '_', strtolower((string) $name));
+            if (in_array($key, [
+                'authorization', 'cookie', 'token', 'bot_token', 'api_token', 'x_api_key', 'api_key', 'apikey',
+                'dl_token', 'secret', 'client_secret', 'password', 'passwd', 'api_password', 'initdata',
+                'init_data', 'initdataunsafe', 'tgwebappdata', 'x_cron_token', 'x_cron_task_token',
+            ], true)) {
+                $fields[$name] = '[redacted]';
+            } elseif (is_array($value)) {
+                $fields[$name] = self::redactAuditFields($value);
             }
         }
-        return $headers;
+        return $fields;
+    }
+
+    public static function validBotToken($provided, string $botToken): bool
+    {
+        return is_string($provided) && $botToken !== '' && hash_equals($botToken, $provided);
+    }
+
+    public static function validHeaders($headers, string $botToken): bool
+    {
+        $headers = array_change_key_case($headers, CASE_LOWER);
+        return self::valid($headers['token'] ?? null, $botToken);
     }
 
     public static function valid($provided, string $botToken): bool

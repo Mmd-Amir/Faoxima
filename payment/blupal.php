@@ -145,12 +145,7 @@ function blupal_process_webhook()
     $extra = [
         'method'      => 'blupal',
         'thread_id'   => $paymentReportsThreadId,
-        'extra_lines' => array_filter([
-            $creditAmountToman > 0 ? ('💸 مبلغ نهایی تأییدشده توسط بلوپال : ' . number_format($creditAmountToman) . ' تومان') : '',
-            $payerName !== '' ? ('👤 نام واریزکننده : ' . $payerName) : '',
-            $payerCard !== '' ? ('💳 شماره کارت/شبا واریزکننده : ' . $payerCard) : '',
-            $payerBank !== '' ? ('🏦 بانک واریزکننده : ' . $payerBank) : '',
-        ]),
+        'extra_lines' => rx_blupal_confirmation_lines($creditAmountToman, $payerName, $payerCard, $payerBank),
     ];
 
     $result = payment_confirm_paid($orderId, 'chashbackblupal', $extra);

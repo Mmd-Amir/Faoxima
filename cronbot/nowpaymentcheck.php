@@ -4,18 +4,11 @@ rx_cron_boot('nowpaymentcheck', 120);
 
 ini_set('error_log', 'error_log');
 
-$ctx = rx_cron_load_payment_context();
-if (empty($ctx['db_ready'])) {
-    if (function_exists('rx_cron_task_defer')) {
-        rx_cron_task_defer('payment_context_unavailable', 180);
-    }
+$ctx = rx_cron_require_payment_context();
+if ($ctx === null) {
     return;
 }
-require_once __DIR__ . '/../lib/PaymentConfirm.php';
-
-global $pdo, $setting;
-$setting        = $ctx['setting'];
-$paymentreports = $ctx['paymentreports'];
+global $pdo;
 
 if (!($pdo instanceof PDO)) {
     error_log('[nowpaymentcheck] no PDO connection');
@@ -102,69 +95,4 @@ if ($noticeAge > 86400) {
 }
 if (function_exists('rx_cron_task_complete')) {
     rx_cron_task_complete('polling_disabled_by_provider');
-}
-return;
-$fetchInvoicePayments = static function (string $invoiceId) use ($apiKey, $log): ?array {
-    return null;
-};
-
-foreach ($rows as $row) {
-    $orderId   = (string)$row['id_order'];
-    $invoiceId = trim((string)$row['dec_not_confirmed']);
-
-    if (!preg_match('/^\d{1,20}$/', $invoiceId)) {
-
-        continue;
-    }
-
-    $payments = $fetchInvoicePayments($invoiceId);
-    if (!is_array($payments)) {
-        continue;
-    }
-
-    $finishedPayment = null;
-    foreach ($payments as $p) {
-        $status = strtolower((string)($p['payment_status'] ?? ''));
-        if (in_array($status, ['finished', 'confirmed', 'sending'], true)) {
-            $finishedPayment = $p;
-            break;
-        }
-        if ($status === 'partially_paid') {
-            $price  = (float)($p['price_amount']   ?? 0);
-            $paid   = (float)($p['actually_paid']  ?? 0);
-            if ($price > 0 && $paid >= ($price - 0.000001)) {
-                $finishedPayment = $p;
-                break;
-            }
-        }
-    }
-
-    if ($finishedPayment === null) {
-        continue;
-    }
-
-    $log('INFO', 'detected finished payment via polling', [
-        'order_id'   => $orderId,
-        'invoice_id' => $invoiceId,
-        'status'     => $finishedPayment['payment_status'] ?? null,
-    ]);
-
-    $txHash    = (string)($finishedPayment['payin_hash'] ?? '');
-    $actually  = (float)($finishedPayment['actually_paid'] ?? 0);
-    $extra = [
-        'method'      => 'nowpayment',
-        'link_label'  => 'لینک پرداخت',
-        'link_url'    => $txHash !== '' ? 'https://tronscan.org/#/transaction/' . $txHash : '',
-        'thread_id'   => $paymentreports,
-        'extra_lines' => [
-            '📥 مبلغ واریز شده : ' . ($actually > 0 ? $actually : ($finishedPayment['pay_amount'] ?? '—')),
-            '🔁 تایید از طریق پولر (IPN دیر یا گم‌شده)',
-        ],
-    ];
-
-    $result = payment_confirm_paid($orderId, 'cashbacknowpayment', $extra);
-    $log($result['ok'] ? 'OK' : 'WARN', 'payment_confirm_paid result', $result);
-}
-if (function_exists('rx_cron_task_complete')) {
-    rx_cron_task_complete('nowpayment_poll_finished');
 }

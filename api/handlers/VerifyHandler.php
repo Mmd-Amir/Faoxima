@@ -93,8 +93,7 @@ final class VerifyHandler
 
         $GLOBALS['from_id'] = $userId;
 
-        $adminIds = select('admin', 'id_admin', null, null, 'FETCH_COLUMN', ['cache' => false]);
-        $isAdmin = is_array($adminIds) && in_array($userId, array_map('intval', $adminIds), true);
+        $isAdmin = FaoximaAuth::isMiniAppAdministrator($userId);
 
         if (!$isAdmin) {
             $channelsId = select('channels', 'link', null, null, 'FETCH_COLUMN', ['cache' => false]);

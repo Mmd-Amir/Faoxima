@@ -1651,7 +1651,7 @@ if (!function_exists('rx_sbv_finalize')) {
         if (function_exists('rx_redis_del')) {
             $pr = rx_sbv_payment_report($orderId);
             if (is_array($pr)) {
-                rx_redis_del('faoxima:paystatus:' . $orderId . ':' . (string) $pr['id_user']);
+                rx_redis_del(rx_payment_status_cache_key($orderId, $pr['id_user']));
             }
         }
     }
@@ -1660,15 +1660,9 @@ if (!function_exists('rx_sbv_finalize')) {
 if (!function_exists('rx_sbv_run_claimed')) {
     function rx_sbv_run_claimed(string $orderId, string $token, string $image, string $releaseTo): array
     {
-        $result = null;
-        try {
-            $result = DirectPayment($orderId, $image, $token);
-        } catch (Throwable $e) {
+        $result = rx_pf_attempt_claimed_delivery($orderId, $token, $image, static function (Throwable $e) use ($orderId) {
             rx_sbv_log('SBV_DIRECT_PAYMENT_THROWABLE', $e->getMessage(), ['id_order' => $orderId, 'file' => $e->getFile(), 'line' => $e->getLine()]);
-        }
-        if (!is_array($result)) {
-            $result = rx_pf_result('requires_reconciliation', 'direct_payment_invalid_result');
-        }
+        });
         $settle = rx_pf_settle($orderId, $token, $result, $releaseTo, 'waiting');
         return [
             'result' => $result,
@@ -3286,7 +3280,7 @@ if (!function_exists('rx_sbv_admin_delete_expired_payment')) {
             clearSelectCache('Payment_report');
         }
         if (function_exists('rx_redis_del')) {
-            rx_redis_del('faoxima:paystatus:' . $orderId . ':' . (string) ($out['user_id'] ?? ''));
+            rx_redis_del(rx_payment_status_cache_key($orderId, ($out['user_id'] ?? '')));
         }
         if (function_exists('rx_ck_release_for_order')) {
             try {
@@ -3662,7 +3656,7 @@ if (!function_exists('rx_sbv_admin_reject')) {
             }
         }
         if (function_exists('rx_redis_del')) {
-            rx_redis_del('faoxima:paystatus:' . $orderId . ':' . (string) $report['id_user']);
+            rx_redis_del(rx_payment_status_cache_key($orderId, $report['id_user']));
         }
         $notified = false;
         if (function_exists('rxReceiptRejectSideEffects')) {
@@ -3777,7 +3771,7 @@ if (!function_exists('rx_sbv_link')) {
                 'outcome' => 'linked',
             ]);
             if (function_exists('rx_redis_del')) {
-                rx_redis_del('faoxima:paystatus:' . $orderId . ':' . (string) $out['csp']['id_user']);
+                rx_redis_del(rx_payment_status_cache_key($orderId, $out['csp']['id_user']));
             }
         }
         return $out;

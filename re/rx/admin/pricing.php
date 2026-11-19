@@ -1,5 +1,25 @@
 <?php
 
+if (!function_exists('rxAdminPricingInputStatus')) {
+    function rxAdminPricingInputStatus(string $rxFxAction, $rxFxValue): string
+    {
+        $rxFxRules = [
+            'base'   => [0.0001, 1000000000.0, false],
+            'markup' => [-90.0, 1000.0, true],
+            'round'  => [1.0, 1000000.0, false],
+            'stale'  => [5.0, 10080.0, false],
+            'jump'   => [1.0, 100.0, true],
+            'manual' => [0.0001, 1000000000.0, false],
+            'test'   => [0.0001, 100000000000.0, false],
+        ];
+        if (!isset($rxFxRules[$rxFxAction])) {
+            return 'unknown_action';
+        }
+        [$rxFxMin, $rxFxMax, $rxFxAllowFraction] = $rxFxRules[$rxFxAction];
+        return ($rxFxValue === null || $rxFxValue < $rxFxMin || $rxFxValue > $rxFxMax || (!$rxFxAllowFraction && in_array($rxFxAction, ['round', 'stale'], true) && floor($rxFxValue) != $rxFxValue)) ? 'invalid_value' : 'valid';
+    }
+}
+
 if (function_exists('fx_admin_button_label') && $text == fx_admin_button_label() && $adminrulecheck['rule'] == "administrator") {
     $rxFxPanelName = function_exists('nmResolvePanelNameForUser') ? nmResolvePanelNameForUser($user) : (string)($user['Processing_value'] ?? '');
     $rxFxPanel = $rxFxPanelName !== '' ? select("marzban_panel", "*", "name_panel", $rxFxPanelName, "select", ['cache' => false]) : false;
@@ -148,22 +168,13 @@ if (function_exists('fx_admin_button_label') && $text == fx_admin_button_label()
     $rxFxConfig = fx_panel_config($rxFxPanel);
     $rxFxPromptKb = json_encode(['inline_keyboard' => [[['text' => "🔙 بازگشت", 'callback_data' => 'fxp_menu_' . $rxFxCode]]]], JSON_UNESCAPED_UNICODE);
     $rxFxValue = fx_parse_admin_number((string)$text, $rxFxAction === 'markup');
-    $rxFxRules = [
-        'base'   => [0.0001, 1000000000.0, false],
-        'markup' => [-90.0, 1000.0, true],
-        'round'  => [1.0, 1000000.0, false],
-        'stale'  => [5.0, 10080.0, false],
-        'jump'   => [1.0, 100.0, true],
-        'manual' => [0.0001, 1000000000.0, false],
-        'test'   => [0.0001, 100000000000.0, false],
-    ];
-    if (!isset($rxFxRules[$rxFxAction])) {
+    $rxFxInputStatus = rxAdminPricingInputStatus($rxFxAction, $rxFxValue);
+    if ($rxFxInputStatus === 'unknown_action') {
         step('PanelMenu', $from_id);
         update("user", "Processing_value_tow", "", "id", $from_id);
         return;
     }
-    [$rxFxMin, $rxFxMax, $rxFxAllowFraction] = $rxFxRules[$rxFxAction];
-    if ($rxFxValue === null || $rxFxValue < $rxFxMin || $rxFxValue > $rxFxMax || (!$rxFxAllowFraction && in_array($rxFxAction, ['round', 'stale'], true) && floor($rxFxValue) != $rxFxValue)) {
+    if ($rxFxInputStatus === 'invalid_value') {
         nm_adminInstantReply($from_id, "❌ مقدار نامعتبر است. یک عدد معتبر در بازه مجاز ارسال کنید.", $rxFxPromptKb, 'HTML');
         return;
     }

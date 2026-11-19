@@ -3,13 +3,146 @@
 require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/pagination.php';
 
+if (!function_exists('fx_admin_config_transaction')) {
+    function fx_admin_config_transaction(PDO $pdo, string $source, string $operationName, callable $operation)
+    {
+        $savepoint = null;
+        $ownsTransaction = !$pdo->inTransaction();
+        try {
+            if ($ownsTransaction) {
+                if (!$pdo->beginTransaction()) {
+                    throw new RuntimeException('Inventory transaction could not be started');
+                }
+            } else {
+                $name = 'fx_inventory_' . bin2hex(random_bytes(8));
+                $pdo->exec('SAVEPOINT ' . $name);
+                $savepoint = $name;
+            }
+
+            $result = $operation();
+            if ($ownsTransaction) {
+                if (!$pdo->commit()) {
+                    throw new RuntimeException('Inventory transaction could not be committed');
+                }
+            } else {
+                $pdo->exec('RELEASE SAVEPOINT ' . $savepoint);
+            }
+            return $result;
+        } catch (Throwable $e) {
+            try {
+                if ($pdo->inTransaction()) {
+                    if ($ownsTransaction) {
+                        $pdo->rollBack();
+                    } elseif ($savepoint !== null) {
+                        $pdo->exec('ROLLBACK TO SAVEPOINT ' . $savepoint);
+                        $pdo->exec('RELEASE SAVEPOINT ' . $savepoint);
+                    }
+                }
+            } catch (Throwable $rollbackError) {
+                fx_delete_log_error($operationName . '_rollback', $source, $rollbackError);
+            }
+            fx_delete_log_error($operationName, $source, $e);
+            throw $e;
+        }
+    }
+}
+
+if (!function_exists('fx_admin_delete_configs')) {
+    function fx_admin_delete_configs(PDO $pdo, string $table, string $where, array $params, ?int $deleteShelf = null): int
+    {
+        $byUsername = $table === 'manualsell';
+        if ((!$byUsername && $table !== 'nm_config_stock') || ($byUsername && $deleteShelf !== null)) {
+            throw new InvalidArgumentException('Invalid inventory deletion scope');
+        }
+
+        return fx_admin_config_transaction($pdo, $table, 'config_delete', static function () use ($pdo, $table, $where, $params, $deleteShelf, $byUsername): int {
+            $lockedShelf = null;
+            if ($deleteShelf !== null) {
+                $shelf = $pdo->prepare('SELECT id FROM nm_stock_shelves WHERE id = ? FOR UPDATE');
+                $shelf->execute([$deleteShelf]);
+                $lockedShelf = $shelf->fetchColumn();
+                $shelf->closeCursor();
+            }
+            $column = $byUsername ? 'username' : 'assigned_invoice';
+            $linkedStatus = $byUsername ? "status = 'selled'" : "status IN ('reserved','delivered')";
+            $select = $pdo->prepare("SELECT id, CASE WHEN $linkedStatus THEN `$column` END AS invoice_key FROM `$table` WHERE $where ORDER BY id FOR UPDATE");
+            $select->execute($params);
+            $rows = $select->fetchAll(PDO::FETCH_ASSOC);
+
+            $keys = array_values(array_filter(array_map(static function (array $row): string {
+                return trim((string) ($row['invoice_key'] ?? ''));
+            }, $rows), static function (string $key): bool {
+                return $key !== '';
+            }));
+            if ($keys) {
+                $pdo->query('SELECT id_invoice FROM invoice LIMIT 0')->closeCursor();
+            }
+
+            $tables = [];
+            if ($rows) {
+                $tables[] = $table;
+            }
+            if ($keys) {
+                $tables[] = 'invoice';
+            }
+            if ($lockedShelf !== null && $lockedShelf !== false) {
+                $tables[] = 'nm_stock_shelves';
+            }
+            if ($tables) {
+                $placeholders = implode(',', array_fill(0, count($tables), '?'));
+                $engines = $pdo->prepare("SELECT TABLE_NAME, ENGINE FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ($placeholders)");
+                $engines->execute($tables);
+                $enginesByTable = $engines->fetchAll(PDO::FETCH_KEY_PAIR);
+                foreach ($tables as $targetTable) {
+                    if (strcasecmp((string) ($enginesByTable[$targetTable] ?? ''), 'InnoDB') !== 0) {
+                        throw new RuntimeException('Inventory deletion requires transactional tables');
+                    }
+                }
+            }
+
+            $invoiceColumn = $byUsername ? 'username' : 'id_invoice';
+            foreach (array_chunk(array_values(array_unique($keys)), 500) as $chunk) {
+                $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                $deleteInvoices = $pdo->prepare("DELETE FROM invoice WHERE $invoiceColumn IN ($placeholders)");
+                $deleteInvoices->execute($chunk);
+            }
+            $deleted = 0;
+            foreach (array_chunk(array_column($rows, 'id'), 500) as $ids) {
+                $deleted += fx_bulk_delete_ids($pdo, $table, 'id', $ids, false);
+            }
+            if ($deleteShelf !== null && $lockedShelf !== false) {
+                $shelfDelete = $pdo->prepare('DELETE FROM nm_stock_shelves WHERE id = ?');
+                $shelfDelete->execute([$deleteShelf]);
+            }
+            return $deleted;
+        });
+    }
+}
+
+if (!function_exists('fx_bulk_string_ids')) {
+    function fx_bulk_string_ids($rawIds): array
+    {
+        return is_array($rawIds) ? array_values(array_unique(array_filter(array_map('strval', $rawIds), static function ($value) {
+            return $value !== '';
+        }))) : [];
+    }
+}
+
+if (!function_exists('fx_bulk_positive_ids')) {
+    function fx_bulk_positive_ids(array $rawIds): array
+    {
+        return array_values(array_unique(array_filter(array_map('intval', $rawIds), static function ($value) {
+            return $value > 0;
+        })));
+    }
+}
+
 if (!function_exists('fx_bulk_delete_ids')) {
 
     function fx_bulk_delete_ids(PDO $pdo, string $table, string $pkCol, array $rawIds, bool $castInt = true): int
     {
         if ($castInt) {
-            $ids = array_filter(array_map('intval', $rawIds), function ($v) { return $v > 0; });
-            $ids = array_values(array_unique($ids));
+            $ids = fx_bulk_positive_ids($rawIds);
         } else {
             $ids = array_filter(array_map('strval', $rawIds), function ($v) { return $v !== ''; });
             $ids = array_values(array_unique($ids));

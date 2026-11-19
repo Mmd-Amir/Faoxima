@@ -285,8 +285,7 @@ final class ServiceRenewConfirmHandler extends BaseHandler
         $discountOperationId = 'renew_' . bin2hex(random_bytes(16));
         $balanceCharged = false;
         if ($finalPrice > 0 || $discountCode !== '') {
-            $allowNeg = ($agent === 'n2') ? (int)($this->user['maxbuyagent'] ?? 0) : 0;
-            $charge = MiniDiscount::chargeWallet($discountCode, $this->user, $finalPrice, $allowNeg, $discountOperationId);
+            $charge = MiniDiscount::chargeServiceWallet($discountCode, $this->user, $finalPrice, $agent, $discountOperationId);
             if (empty($charge['ok'])) {
                 FaoximaLogger::warn('Atomic balance charge failed at renew', [
                     'user_id' => $this->user['id'],
@@ -320,11 +319,11 @@ final class ServiceRenewConfirmHandler extends BaseHandler
                 MiniDiscount::releaseWalletDiscount($discountCode, $this->user, $discountOperationId);
                 if (is_array($stockNew) && function_exists('nmStockReleaseReservation')) nmStockReleaseReservation($stockNew);
                 if ($balanceCharged) {
-                    if (balance_atomic_credit($this->user['id'], $finalPrice)) {
-                        if (function_exists('wallet_ledger_record')) {
-                            wallet_ledger_record($this->user['id'], 'credit', $finalPrice, 'refund', faoxima_textbot_get('dyn_renewconfirm_stock_refund_note', 'بازگشت وجه به دلیل خطای انبار'), null, 'invoice', (string)($invoice['id_invoice'] ?? ''));
-                        }
-                    } else {
+                    $refund = rx_wallet_credit_and_record(
+                        $this->user['id'], $finalPrice, 'refund', static fn () => faoxima_textbot_get('dyn_renewconfirm_stock_refund_note', 'بازگشت وجه به دلیل خطای انبار'),
+                        null, 'invoice', (string)($invoice['id_invoice'] ?? '')
+                    );
+                    if ($refund === 'credit_failed') {
                         FaoximaLogger::error('refund credit failed', ['user' => $this->user['id'], 'amount' => $finalPrice]);
                     }
                 }
@@ -427,11 +426,11 @@ final class ServiceRenewConfirmHandler extends BaseHandler
             ]);
             MiniDiscount::releaseWalletDiscount($discountCode, $this->user, $discountOperationId);
             if ($balanceCharged) {
-                if (balance_atomic_credit($this->user['id'], $finalPrice)) {
-                    if (function_exists('wallet_ledger_record')) {
-                        wallet_ledger_record($this->user['id'], 'credit', $finalPrice, 'refund', faoxima_textbot_get('dyn_renewconfirm_extend_refund_note', 'بازگشت وجه به دلیل خطای تمدید سرویس'), null, 'invoice', (string)($invoice['id_invoice'] ?? ''));
-                    }
-                } else {
+                $refund = rx_wallet_credit_and_record(
+                    $this->user['id'], $finalPrice, 'refund', static fn () => faoxima_textbot_get('dyn_renewconfirm_extend_refund_note', 'بازگشت وجه به دلیل خطای تمدید سرویس'),
+                    null, 'invoice', (string)($invoice['id_invoice'] ?? '')
+                );
+                if ($refund === 'credit_failed') {
                     FaoximaLogger::error('refund credit failed', ['user' => $this->user['id'], 'amount' => $finalPrice]);
                 }
             }
@@ -451,11 +450,11 @@ final class ServiceRenewConfirmHandler extends BaseHandler
             ]);
 
             if ($balanceCharged) {
-                if (balance_atomic_credit($this->user['id'], $finalPrice)) {
-                    if (function_exists('wallet_ledger_record')) {
-                        wallet_ledger_record($this->user['id'], 'credit', $finalPrice, 'refund', faoxima_textbot_get('dyn_renewconfirm_extend_refund_note', 'بازگشت وجه به دلیل خطای تمدید سرویس'), null, 'invoice', (string)($invoice['id_invoice'] ?? ''));
-                    }
-                } else {
+                $refund = rx_wallet_credit_and_record(
+                    $this->user['id'], $finalPrice, 'refund', static fn () => faoxima_textbot_get('dyn_renewconfirm_extend_refund_note', 'بازگشت وجه به دلیل خطای تمدید سرویس'),
+                    null, 'invoice', (string)($invoice['id_invoice'] ?? '')
+                );
+                if ($refund === 'credit_failed') {
                     FaoximaLogger::error('refund credit failed', ['user' => $this->user['id'], 'amount' => $finalPrice]);
                 }
             }

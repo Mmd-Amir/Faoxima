@@ -12,20 +12,41 @@ require_once __DIR__ . '/lib/date_filter.php';
 require_once __DIR__ . '/lib/status_filter.php';
 require_once __DIR__ . '/lib/search_filter.php';
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindParam("username", $_SESSION["user"], PDO::PARAM_STR);
-$query->execute();
-$result = $query->fetch(PDO::FETCH_ASSOC);
-
-if (!isset($_SESSION["user"]) || !$result) {
-    header('Location: login.php');
-    return;
-}
+fx_admin_require_access($pdo);
 
 if (!empty($_POST['action']) && $_POST['action'] === 'bulk_delete') {
+    fx_csrf_guard();
     $requestedIds = $_POST['ids'] ?? [];
     $deletedCount = fx_bulk_delete_ids($pdo, 'service_other', 'id', $requestedIds);
     fx_bulk_delete_redirect('service.php', count($requestedIds), $deletedCount);
+}
+
+function fx_service_history_filters(string $svcQ, array $df, $svcStatus, array $svcTypeOptions): array
+{
+    $whereSql = '1=1';
+    $whereParams = [];
+    if ($svcQ !== '') {
+        $svcLike = '%' . $svcQ . '%';
+        $whereSql .= ' AND (id_user LIKE :l1 OR username LIKE :l2)';
+        $whereParams[':l1'] = $svcLike;
+        $whereParams[':l2'] = $svcLike;
+    }
+    $whereSql .= fx_date_filter_sql_mixed_named('time', $df['from'], $df['to'], $whereParams, 'd');
+    $whereSql .= fx_status_filter_sql('type', $svcStatus, $svcTypeOptions, $whereParams, ':typeVal');
+    return [$whereSql, $whereParams];
+}
+
+function fx_service_history_page(PDO $pdo, string $whereSql, array $whereParams): array
+{
+    $pg = fx_paginate($pdo, "SELECT COUNT(*) FROM service_other WHERE $whereSql", $whereParams, 5);
+
+    $query = $pdo->prepare("SELECT * FROM service_other WHERE $whereSql ORDER BY id DESC LIMIT :perPage OFFSET :offset");
+    foreach ($whereParams as $k => $v) $query->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
+    $query->bindValue(':perPage', $pg['perPage'], PDO::PARAM_INT);
+    $query->bindValue(':offset', $pg['offset'], PDO::PARAM_INT);
+    $query->execute();
+    $listservices = $query->fetchAll();
+    return [$pg, $listservices];
 }
 
 $svcQ = trim((string)($_GET['q'] ?? ''));
@@ -41,16 +62,7 @@ $svcTypeOptions = [
 ];
 $svcStatus = fx_status_filter_current();
 
-$whereSql = '1=1';
-$whereParams = [];
-if ($svcQ !== '') {
-    $svcLike = '%' . $svcQ . '%';
-    $whereSql .= ' AND (id_user LIKE :l1 OR username LIKE :l2)';
-    $whereParams[':l1'] = $svcLike;
-    $whereParams[':l2'] = $svcLike;
-}
-$whereSql .= fx_date_filter_sql_mixed_named('time', $df['from'], $df['to'], $whereParams, 'd');
-$whereSql .= fx_status_filter_sql('type', $svcStatus, $svcTypeOptions, $whereParams, ':typeVal');
+[$whereSql, $whereParams] = fx_service_history_filters($svcQ, $df, $svcStatus, $svcTypeOptions);
 
 $svcStatusActive = $svcStatus !== '' && isset($svcTypeOptions[$svcStatus]);
 $svcFilterActive = $svcQ !== '' || $df['active'] || $svcStatusActive;
@@ -58,18 +70,13 @@ $svcDateKeep = fx_filter_delete_date_params('', $df['active']);
 $svcFilterParams = array_merge(['q' => $svcQ !== '' ? $svcQ : null, 'status' => $svcStatusActive ? $svcStatus : null], $svcDateKeep);
 $svcFilterCriteria = fx_filter_delete_criteria($svcStatusActive ? $svcTypeOptions[$svcStatus] : '', $df, $svcQ, 'نوع خدمت');
 if (fx_filter_delete_requested()) {
-    [$fdMatched, $fdDeleted] = $svcFilterActive ? fx_filter_delete_where($pdo, 'service_other', $whereSql, $whereParams) : [0, 0];
-    fx_filter_delete_redirect('service.php', $svcFilterParams, $fdMatched, $fdDeleted);
+    [$fdMatched, $fdDeleted, $fdFailed] = $svcFilterActive
+        ? array_pad(fx_filter_delete_where($pdo, 'service_other', $whereSql, $whereParams), 3, false)
+        : [0, 0, false];
+    fx_filter_delete_redirect('service.php', $svcFilterParams, $fdMatched, $fdDeleted, '', $fdFailed);
 }
 
-$pg = fx_paginate($pdo, "SELECT COUNT(*) FROM service_other WHERE $whereSql", $whereParams, 5);
-
-$query = $pdo->prepare("SELECT * FROM service_other WHERE $whereSql ORDER BY id DESC LIMIT :perPage OFFSET :offset");
-foreach ($whereParams as $k => $v) $query->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
-$query->bindValue(':perPage', $pg['perPage'], PDO::PARAM_INT);
-$query->bindValue(':offset', $pg['offset'], PDO::PARAM_INT);
-$query->execute();
-$listservices = $query->fetchAll();
+[$pg, $listservices] = fx_service_history_page($pdo, $whereSql, $whereParams);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -129,6 +136,7 @@ $listservices = $query->fetchAll();
             <div class="card invoice-results">
                 <div class="invoice-results__head"><div><h2>آرشیو خدمات</h2><p>جزئیات تمدید، انتقال، تغییر لوکیشن و سایر عملیات</p></div><span class="invoice-page-count"><?php echo strtr(number_format(count($listservices)), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?> خدمت در این صفحه</span></div>
                 <form method="POST" action="service.php" id="bulk-form">
+                <?php echo fx_csrf_field(); ?>
                 <input type="hidden" name="action" value="bulk_delete">
                 <div class="table-wrap">
                     <table id="servicesTable" class="display app-table app-table--summary" style="width:100%">

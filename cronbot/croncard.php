@@ -63,6 +63,24 @@ list($rxW, $rxN) = function_exists('rx_cron_shard') ? rx_cron_shard() : [0, 1];
 $rxShard = ($rxN > 1) ? " AND MOD(id, $rxN) = $rxW " : "";
 $rxCroncardWindow = rx_pf_cron_receipt_window_sql();
 $rxCroncardQueue = [];
+$rxOpenReceiptJob = static function (array $job, bool $trustMode, $minimumAge): ?array {
+    if ($job['mode'] === 'recover') {
+        $recovered = rx_pf_recover($job['id_order']);
+        $status = (string) ($recovered['status'] ?? '');
+        if ($status === 'claimed' || $status === 'reconcile') {
+            return ['token' => (string) $recovered['token']];
+        }
+        return $status === 'finalized' ? ['token' => null] : null;
+    }
+
+    $claim = rx_pf_claim($job['id_order'], [
+        'from' => ['waiting'],
+        'to' => 'processing',
+        'dec_not_confirmed' => 'تایید توسط ربات بدون بررسی',
+        'min_age' => $trustMode ? null : $minimumAge,
+    ]);
+    return ($claim['status'] ?? '') === 'claimed' ? ['token' => (string) $claim['token']] : null;
+};
 $rxWaitingLastId = 0;
 $rxCroncardStopped = false;
 $rxRecoverCursor = function_exists('rx_cron_invoice_cursor') ? rx_cron_invoice_cursor('croncard_recover:' . $rxN . ':' . $rxW) : '';
@@ -116,35 +134,16 @@ if ($rxAutoConfirmEnabled) {
     }
 }
 foreach ($rxCroncardQueue as $rxJob) {
-    if (function_exists('rx_cron_time_up') && rx_cron_time_up()) {
+    if (rx_cron_budget_exhausted()) {
         $rxCroncardStopped = true;
-        if (function_exists('rx_cron_task_defer')) {
-            rx_cron_task_defer('time_budget', 60);
-        }
         break;
     }
     try {
-        $rxToken = null;
-        if ($rxJob['mode'] === 'recover') {
-            $recovered = rx_pf_recover($rxJob['id_order']);
-            $recoveredStatus = (string) ($recovered['status'] ?? '');
-            if ($recoveredStatus === 'claimed' || $recoveredStatus === 'reconcile') {
-                $rxToken = (string) $recovered['token'];
-            } elseif ($recoveredStatus !== 'finalized') {
-                continue;
-            }
-        } else {
-            $claim = rx_pf_claim($rxJob['id_order'], [
-                'from' => ['waiting'],
-                'to' => 'processing',
-                'dec_not_confirmed' => 'تایید توسط ربات بدون بررسی',
-                'min_age' => $trustModeOn ? null : $timecheck,
-            ]);
-            if (($claim['status'] ?? '') !== 'claimed') {
-                continue;
-            }
-            $rxToken = (string) $claim['token'];
+        $rxReceiptJob = $rxOpenReceiptJob($rxJob, $trustModeOn, $timecheck);
+        if ($rxReceiptJob === null) {
+            continue;
         }
+        $rxToken = $rxReceiptJob['token'];
         $Payment_report = select("Payment_report", "*", "id_order", $rxJob['id_order'], "select", ['cache' => false]);
         if (!is_array($Payment_report)) {
             continue;
@@ -153,7 +152,7 @@ foreach ($rxCroncardQueue as $rxJob) {
         $balanceBeforeAuto = $rxJob['balance_before'] ?? ($Balance_id['Balance'] ?? 0);
         $textbotlang =languagechange('../text.json');
             if (function_exists('rx_redis_del') && isset($Payment_report['id_user'])) {
-                rx_redis_del('faoxima:paystatus:' . $Payment_report['id_order'] . ':' . (string)$Payment_report['id_user']);
+                rx_redis_del(rx_payment_status_cache_key($Payment_report['id_order'], $Payment_report['id_user']));
             }
             $reportChatId = trim((string)($Payment_report['report_chat_id'] ?? ''));
             $reportMessageId = (int)($Payment_report['report_message_id'] ?? 0);

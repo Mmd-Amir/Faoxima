@@ -7,11 +7,8 @@ rx_cron_boot('tonpaycheck', 60);
 
 ini_set('error_log', 'error_log');
 
-$ctx = rx_cron_load_payment_context();
-if (empty($ctx['db_ready'])) {
-    if (function_exists('rx_cron_task_defer')) {
-        rx_cron_task_defer('payment_context_unavailable', 180);
-    }
+$ctx = rx_cron_require_payment_context();
+if ($ctx === null) {
     return;
 }
 require_once __DIR__ . '/../lib/PaymentConfirm.php';
@@ -89,10 +86,7 @@ $markChecked = $fairPolling
     : null;
 
 foreach ($rows as $row) {
-    if (function_exists('rx_cron_time_up') && rx_cron_time_up()) {
-        if (function_exists('rx_cron_task_defer')) {
-            rx_cron_task_defer('time_budget', 60);
-        }
+    if (rx_cron_budget_exhausted()) {
         break;
     }
 

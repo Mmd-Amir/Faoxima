@@ -49,9 +49,357 @@ if (!function_exists('tk_album_send')) {
     }
 }
 
+function rxHelpTopicButtons($topics): array
+{
+    $rows = [];
+    foreach ($topics as $topic) {
+        $rows[] = [['text' => $topic['name_os'], 'callback_data' => "helpos_{$topic['id']}"]];
+    }
+    return $rows;
+}
+
+function rxTicketMediaChoiceKeyboard($labels)
+{
+    return json_encode(['inline_keyboard' => [
+        [
+            ['text' => $labels['dyn_tickets_media_yes'] ?? '🖼 بله', 'callback_data' => 'tk_media_yes'],
+            ['text' => $labels['dyn_tickets_media_no'] ?? '✏️ فقط متن', 'callback_data' => 'tk_media_no'],
+        ],
+        [['text' => $labels['dyn_tickets_cancel'] ?? '🔙 انصراف', 'callback_data' => 'tk_cancel']],
+    ]], JSON_UNESCAPED_UNICODE);
+}
+
+function rxTicketReportTargets($supportId, string $mainAdmin): array
+{
+    $targets = [];
+    $supportId = (string) $supportId;
+    if ($supportId !== '' && $supportId !== '0') {
+        $targets[$supportId] = true;
+    }
+    if ($mainAdmin !== '' && $mainAdmin !== '0') {
+        $targets[$mainAdmin] = true;
+    }
+    return array_keys($targets);
+}
+
+function rxDeliverTicketReport($supportId, string $mainAdmin, string $channel, $topic, string $report, $keyboard, array $media): void
+{
+    foreach (rxTicketReportTargets($supportId, $mainAdmin) as $chatId) {
+        sendmessage($chatId, $report, $keyboard, 'HTML');
+        tk_album_send($chatId, null, $media);
+    }
+    if ($channel !== '') {
+        telegram('sendmessage', ['chat_id' => $channel, 'message_thread_id' => $topic, 'text' => $report, 'parse_mode' => 'HTML']);
+        tk_album_send($channel, $topic, $media);
+    }
+}
+
+function rxSendPurchaseDurationPrompt($fromId, $panel, $agent, $price, $min, $max, $backKeyboard): void
+{
+    $prompt = "⌛️ زمان سرویس خود را انتخاب نمایید
+📌 تعرفه هر روز  : " . rxFormatToman($price) . "  تومان
+⚠️ حداقل زمان $min روز  و حداکثر $max روز  می توانید تهیه کنید";
+    if (fx_duration_config($panel, $agent)['enabled']) {
+        sendmessage($fromId, 'مدت سرویس را انتخاب کنید:', fx_duration_keyboard($panel, $agent), 'HTML');
+    } else {
+        sendmessage($fromId, $prompt, $backKeyboard, 'html');
+    }
+}
+
+function rxTrialRequestedPanel($callback, $user): ?string
+{
+    if (preg_match('/^locationtest_(.+)$/', (string) $callback, $match)) {
+        return $match[1];
+    }
+    return $user['step'] == 'createusertest' ? (string) $user['Processing_value_one'] : null;
+}
+
+function rxPurchaseUsernameUsesRandomSuffix($method): bool
+{
+    return $method == 'نام کاربری دلخواه + عدد رندوم' || $method == 'متن دلخواه کاربر + رندوم';
+}
+
+function rxPurchaseNeedsUsername($method, $customUsernameLabel): bool
+{
+    return $method == $customUsernameLabel || rxPurchaseUsernameUsesRandomSuffix($method);
+}
+
+function rxSendPaymentGuide($fromId, $guide, bool $withMediaCaption = false): void
+{
+    if ($guide['type'] == 'text') {
+        sendmessage($fromId, $guide['text'], null, 'HTML');
+    } elseif ($guide['type'] == 'photo') {
+        sendphoto($fromId, $guide['photoid'], $withMediaCaption ? $guide['text'] : null);
+    } elseif ($guide['type'] == 'video') {
+        sendvideo($fromId, $guide['videoid'], $withMediaCaption ? $guide['text'] : null);
+    }
+}
+
+function rxBotHandleTransferRecipient($from_id, $text, bool $hasMessage): bool
+{
+    if (!$hasMessage && empty($text)) { return false; }
+    $trRecipientId = trim((string)$text);
+    if (!ctype_digit($trRecipientId)) {
+        sendmessage($from_id, "❌ آیدی عددی نامعتبر است. آیدی عددی تلگرام کاربر مقصد را مجددا ارسال کنید:", null, 'HTML');
+        return false;
+    }
+    if ($trRecipientId === (string)$from_id) {
+        sendmessage($from_id, "❌ نمی‌توانید به خودتان موجودی انتقال دهید. آیدی عددی دیگری ارسال کنید:", null, 'HTML');
+        return false;
+    }
+    $trRecipientUser = select("user", "*", "id", $trRecipientId, "select");
+    if (empty($trRecipientUser)) {
+        sendmessage($from_id, "❌ کاربری با این آیدی یافت نشد. آیدی عددی تلگرام کاربر مقصد را مجددا ارسال کنید:", null, 'HTML');
+        return false;
+    }
+    update("user", "Processing_value_one", $trRecipientId, "id", $from_id);
+    sendmessage($from_id, sprintf("💸 مبلغ مورد نظر برای انتقال را به تومان وارد کنید:\n✅ حداقل مبلغ %s تومان می‌باشد", number_format(RX_MIN_TRANSFER_AMOUNT)), null, 'HTML');
+    step('getTransferAmount', $from_id);
+    return true;
+}
+
+function rxBotHandleTransferAmount($from_id, $text, bool $hasMessage, $user, array $_rx_acc_s): bool
+{
+    if (!$hasMessage && empty($text)) { return false; }
+    $trAmount = trim((string)$text);
+    if (!ctype_digit($trAmount) || (int)$trAmount <= 0) {
+        sendmessage($from_id, "❌ مبلغ نامعتبر است. مبلغ را به تومان و به صورت عدد ارسال کنید:", null, 'HTML');
+        return false;
+    }
+    $trAmount = (int)$trAmount;
+    if ($trAmount < RX_MIN_TRANSFER_AMOUNT) {
+        sendmessage($from_id, sprintf("❌ مبلغ باید حداقل %s تومان باشد. مجددا ارسال کنید:", number_format(RX_MIN_TRANSFER_AMOUNT)), null, 'HTML');
+        return false;
+    }
+    if ((float)$user['Balance'] < $trAmount) {
+        sendmessage($from_id, "❌ موجودی کیف پول شما کافی نیست.", null, 'HTML');
+        step('home', $from_id);
+        return false;
+    }
+    $trRecipientId = $user['Processing_value_one'];
+    $trRecipientUser = select("user", "*", "id", $trRecipientId, "select");
+    if (empty($trRecipientUser)) {
+        sendmessage($from_id, "❌ کاربر مقصد دیگر معتبر نیست. عملیات لغو شد.", null, 'HTML');
+        step('home', $from_id);
+        return false;
+    }
+    update("user", "Processing_value", $trAmount, "id", $from_id);
+    $trOperationId = 'tr_' . bin2hex(random_bytes(16));
+    update("user", "Processing_value_tow", $trOperationId, "id", $from_id);
+    $trRecipientLabel = trim((string)($trRecipientUser['username'] ?? '')) !== ''
+        ? '@' . $trRecipientUser['username']
+        : $trRecipientId;
+    $trConfirmKb = json_encode(['inline_keyboard' => [
+        [
+            rx_kb_style(['text' => '✅ تایید و انتقال', 'callback_data' => 'transferbal_confirm_' . $trOperationId], 'transferbal_confirm', $_rx_acc_s),
+            rx_kb_style(['text' => '❌ انصراف', 'callback_data' => 'transferbal_cancel'], 'transferbal_cancel', $_rx_acc_s),
+        ],
+    ]], JSON_UNESCAPED_UNICODE);
+    sendmessage($from_id, sprintf("🔄 تایید انتقال موجودی\n\n👤 گیرنده: %s\n💰 مبلغ: %s تومان\n\nآیا از انجام این تراکنش اطمینان دارید؟", $trRecipientLabel, number_format($trAmount)), $trConfirmKb, 'HTML');
+    step('getTransferConfirm', $from_id);
+    return true;
+}
+
+function rxBotHandleTransferConfirmation($from_id, $message_id, $datain, $user): bool
+{
+    $trOperationId = trim((string)($user['Processing_value_tow'] ?? ''));
+    if (str_starts_with((string)$datain, 'transferbal_confirm_')) {
+        if (!hash_equals($trOperationId, substr((string)$datain, strlen('transferbal_confirm_')))) {
+            return false;
+        }
+    } elseif ($trOperationId !== '' && $trOperationId !== '0') {
+        return false;
+    } else {
+        $trOperationId = 'tr_' . substr(hash('sha256', $from_id . ':' . $message_id), 0, 32);
+    }
+    $trAmount = (int)$user['Processing_value'];
+    $trRecipientId = $user['Processing_value_one'];
+    if ($trAmount < RX_MIN_TRANSFER_AMOUNT || $trRecipientId === '' || $trRecipientId === null) {
+        Editmessagetext($from_id, $message_id, "❌ اطلاعات تراکنش نامعتبر است. مجددا تلاش کنید.", null, 'HTML');
+        step('home', $from_id);
+        return false;
+    }
+    $trRecipientUser = select("user", "*", "id", $trRecipientId, "select");
+    if (empty($trRecipientUser)) {
+        Editmessagetext($from_id, $message_id, "❌ کاربر مقصد دیگر معتبر نیست. عملیات لغو شد.", null, 'HTML');
+        update("user", "Processing_value", "0", "id", $from_id);
+        update("user", "Processing_value_one", "", "id", $from_id);
+        step('home', $from_id);
+        return false;
+    }
+    $trCharge = rx_wallet_transfer_atomic((string)$from_id, (string)$trRecipientId, $trAmount, $trOperationId);
+    if (empty($trCharge['ok'])) {
+        $trError = ($trCharge['reason'] ?? '') === 'insufficient_balance'
+            ? '❌ موجودی کیف پول شما کافی نیست.'
+            : '❌ انتقال تکمیل نشد؛ با شناسه ' . $trOperationId . ' با پشتیبانی در ارتباط باشید.';
+        Editmessagetext($from_id, $message_id, $trError, null, 'HTML');
+        update("user", "Processing_value", "0", "id", $from_id);
+        update("user", "Processing_value_one", "", "id", $from_id);
+        step('home', $from_id);
+        return false;
+    }
+    if (empty($trCharge['replayed'])) {
+        rx_wallet_transfer_report($trCharge['sender'], $trCharge['recipient'], $trAmount, $trOperationId, (float)$trCharge['new_balance'], (float)$trCharge['recipient_balance']);
+    }
+    update("user", "Processing_value", "0", "id", $from_id);
+    update("user", "Processing_value_one", "", "id", $from_id);
+    update("user", "Processing_value_tow", "0", "id", $from_id);
+    Editmessagetext($from_id, $message_id, sprintf("✅ انتقال موجودی با موفقیت انجام شد.\n\n💰 مبلغ: %s تومان\n👤 گیرنده: %s\n🧾 شناسه انتقال: <code>%s</code>", number_format($trAmount), $trRecipientId, $trOperationId), null, 'HTML');
+    $trSenderUsername = trim((string)($user['username'] ?? ''));
+    $trSenderLines = $trSenderUsername !== '' ? "نام کاربری: @{$trSenderUsername}\n" : '';
+    $trSenderLines .= "آیدی عددی: <code>{$from_id}</code>";
+    $trNotifyText = sprintf("مبلغ %s تومان به کیف پول شما واریز شد.\n\n<blockquote>%s</blockquote>", number_format($trAmount), $trSenderLines);
+    if (empty($trCharge['replayed'])) sendmessage($trRecipientId, $trNotifyText, null, 'HTML');
+    step('home', $from_id);
+    return true;
+}
+
+function rxUserRouteTrial($user, $datain, $text, $datatextbot, &$dataget): ?string
+{
+    return match (true) {
+        (bool) ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $datain, $dataget) || (($text !== '' && $text == $datatextbot['text_usertest']) || $datain == "usertestbtn" || $text == "usertest")) => 'trial',
+        default => null,
+    };
+}
+
+function rxUserRoutePaymentFollowup($user, $datain, $update, &$rialitActionMatch, &$rialitViewMatch, &$apcMatch, &$tpcMatch): ?string
+{
+    return match (true) {
+        (bool) ($datain === 'tpc_list') => 'tonpay_list',
+        (bool) (preg_match('/^rl_(cancel|abandon|retry)_([A-Za-z0-9_\-]{1,64})$/', (string) $datain, $rialitActionMatch)) => 'rialit_action',
+        (bool) (preg_match('/^rl_view_([A-Za-z0-9_\-]{1,64})$/', (string) $datain, $rialitViewMatch)) => 'rialit_view',
+        (bool) (preg_match('/^apc_(chk|can|cny|view)_(\w+)$/', (string) $datain, $apcMatch)) => 'atlaspay_action',
+        (bool) (preg_match('/^tpc_(chk|chg|rcp|can|cny|view|rfd)_(\w+)$/', (string) $datain, $tpcMatch)) => 'tonpay_action',
+        (bool) ($user['step'] == "tpc_receipt" && $datain === '' && isset($update['message'])) => 'tonpay_receipt',
+        (bool) ($user['step'] == "tpc_refund" && $datain === '' && isset($update['message'])) => 'tonpay_refund',
+        (bool) (preg_match('/^ckw_(pick|ok|menu|cancel)_/', (string) $datain)) => 'checkout_wallet',
+        default => null,
+    };
+}
+
+function rxUserRouteHelp($datain, $text, $datatextbot, &$dataget): ?string
+{
+    return match (true) {
+        (bool) (($text !== '' && $text == $datatextbot['text_help']) || $datain == "helpbtn" || $datain == "helpbtns" || $datain == "helpmenubtn" || $text == "/help" || $text == "help") => 'help_menu',
+        (bool) (preg_match('/^helpctgoryـ(.*)/', $datain, $dataget)) => 'help_category',
+        (bool) (preg_match('/^helpos_(.*)/', $datain, $dataget)) => 'help_topic',
+        default => null,
+    };
+}
+
+function rxUserRouteSupport($user, $datain, $text, $datatextbot, $photo, $video, &$dataget): ?string
+{
+    return match (true) {
+        (bool) (($text !== '' && $text == $datatextbot['text_support']) || $datain == "supportbtns" || $text == "/support") => 'support_menu',
+        (bool) ($datain == "support" || $datain == "supporttickets") => 'ticket_list',
+        (bool) ($datain == "ticketnew") => 'ticket_new',
+        (bool) (preg_match('/^departman_(.*)/', $datain, $dataget)) => 'ticket_department',
+        (bool) ($datain == "tk_cancel") => 'ticket_cancel',
+        (bool) ($user['step'] == "getticketsubj" && (string)$text !== '') => 'ticket_subject',
+        (bool) ($user['step'] == "getticketsubj") => 'ticket_subject_invalid',
+        (bool) ($datain == "tk_media_no" && $user['step'] == "tk_media_choice") => 'ticket_text_only',
+        (bool) ($datain == "tk_media_yes" && $user['step'] == "tk_media_choice") => 'ticket_media_choice',
+        (bool) (preg_match('/^tk_cnt_([1-5])$/', $datain, $dataget) && $user['step'] == "tk_media_count") => 'ticket_media_count',
+        (bool) (($user['step'] == "tk_media_choice" || $user['step'] == "tk_media_count") && empty($datain)) => 'ticket_media_invalid',
+        (bool) ($user['step'] == "tk_collect") => 'ticket_collect',
+        (bool) ($user['step'] == "tk_desc" && ((string)$text !== '' || $photo || $video)) => 'ticket_submit',
+        (bool) ($user['step'] == "tk_desc") => 'ticket_body_invalid',
+        (bool) (preg_match('/^ticketopen_(\w+)$/', $datain, $dataget)) => 'ticket_open',
+        (bool) (preg_match('/^(?:ticketmsg|ticketreply)_(\w+)$/', $datain, $dataget)) => 'ticket_reply',
+        (bool) (preg_match('/^tk_album_(\w+)$/', $datain, $dataget)) => 'ticket_album',
+        (bool) (preg_match('/^ticketclose_(\w+)$/', $datain, $dataget)) => 'ticket_close',
+        default => null,
+    };
+}
+
+function rxUserRouteWallet($user, $datain, $text, $datatextbot, &$txRangeMatch): ?string
+{
+    return match (true) {
+        (bool) ($datain == "my_miniapp_pending") => 'miniapp_pending',
+        (bool) ($datain == "fqQuestions") => 'faq',
+        (bool) (($text !== '' && $text == $datatextbot['accountwallet']) || $datain == "account" || $datain == "accountbtn" || $text == "/wallet") => 'wallet',
+        (bool) ($datain == "MyTransactions") => 'transactions',
+        (bool) (preg_match('/^tx_(24h|3d|7d|30d)(?:_(\d+))?$/', (string)$datain, $txRangeMatch)) => 'transaction_range',
+        (bool) ($datain == "TransferBalance") => 'transfer_start',
+        (bool) ($user['step'] == "getTransferRecipient") => 'transfer_recipient',
+        (bool) ($user['step'] == "getTransferAmount") => 'transfer_amount',
+        (bool) ($datain == "transferbal_cancel") => 'transfer_cancel',
+        (bool) (($datain == "transferbal_confirm" || str_starts_with((string)$datain, 'transferbal_confirm_')) && $user['step'] == "getTransferConfirm") => 'transfer_confirm',
+        default => null,
+    };
+}
+
+function rxUserRoutePurchase($user, $datain, $text, $datatextbot, $statusnote, &$dataget): ?string
+{
+    return match (true) {
+        (bool) ((($text !== '' && $text == $datatextbot['text_sell']) || $datain == "buy" || $datain == "buyback" || $text == "/buy" || $text == "buy") && $statusnote) => 'purchase_note',
+        (bool) (($text !== '' && $text == $datatextbot['text_sell']) || $datain == "buy" || $datain == "buybacktow" || $datain == "buyback" || $text == "/buy" || $text == "buy" || $user['step'] == "statusnamecustom") => 'purchase_start',
+        (bool) (preg_match('/^location_(.*)/', $datain, $dataget) || $datain == "backproduct") => 'purchase_panel',
+        (bool) (preg_match('/^categorynames_(.*)/', $datain, $dataget)) => 'purchase_category',
+        (bool) (preg_match('/^productmonth_(\w+)/', $datain, $dataget)) => 'purchase_month',
+        (bool) ($datain == "customsellvolume") => 'purchase_custom',
+        (bool) ($user['step'] == "gettimecustomvol") => 'purchase_duration',
+        (bool) ($user['step'] == "getvolumecustomusername" || preg_match('/^prodcutservices_(.*)/', $datain, $dataget)) => 'purchase_username',
+        (bool) ($user['step'] == "endstepuser" || $user['step'] == "endstepusers" || preg_match('/prodcutservice_(.*)/', $datain, $dataget) || $user['step'] == "getvolumecustomuser") => 'purchase_product',
+        (bool) ($user['step'] == "payment" && in_array($datain, ["confirmandgetservice", "confirmandgetserviceDiscount"], true)) => 'purchase_confirm',
+        (bool) ($datain == "aptdc") => 'purchase_discount_prompt',
+        (bool) ($user['step'] == "getcodesellDiscount") => 'purchase_discount',
+        default => null,
+    };
+}
+
+function rxUserRouteBulkPurchase($user, $datain, $text, &$dataget): ?string
+{
+    return match (true) {
+        (bool) ($text == "🗂 خرید انبوه" || $datain == "kharidanbuh") => 'bulk_start',
+        (bool) ($user['step'] == "getcountconfig") => 'bulk_count',
+        (bool) (preg_match('/^locationom_(.*)/', $datain, $dataget)) => 'bulk_panel',
+        (bool) ($datain == "customsellvolumeom") => 'bulk_custom',
+        (bool) ($user['step'] == "gettimecustomvolom") => 'bulk_duration',
+        (bool) ($user['step'] == "getvolumecustomusernameom" || preg_match('/^prodcutservicesom_(.*)/', $datain, $dataget)) => 'bulk_username',
+        (bool) ($user['step'] == "endstepuserom" || $user['step'] == "endstepusersom" || preg_match('/prodcutserviceom_(.*)/', $datain, $dataget) || $user['step'] == "getvolumecustomuserom") => 'bulk_product',
+        (bool) ($user['step'] == "payments" && $datain == "confirmandgetservice") => 'bulk_confirm',
+        default => null,
+    };
+}
+
+function rxUserRouteRecharge($user, $datain, $photoid, &$rwPickMatch, &$rccPick): ?string
+{
+    return match (true) {
+        (bool) ($datain == "Add_Balance") => 'recharge_start',
+        (bool) (preg_match('/^rw_pick_(\d+)$/', (string)$datain, $rwPickMatch)) => 'recharge_preset',
+        (bool) ($datain == "rw_custom") => 'recharge_custom',
+        (bool) ($datain == "rcc_cancel") => 'crypto_cancel',
+        (bool) ($datain == "recheckcrypto") => 'crypto_recheck',
+        (bool) (strpos((string) $datain, 'rcc_view_') === 0) => 'crypto_view',
+        (bool) (strpos((string) $datain, 'rcc_resubmit_') === 0) => 'crypto_resubmit',
+        (bool) (preg_match('/^rcc_pick_([A-Za-z0-9_]{2,20})$/', (string) $datain, $rccPick)
+            && in_array($rccPick[1], array_column(function_exists('crypto_active_wallets') ? crypto_active_wallets() : [], 'currency'), true)) => 'crypto_pick',
+        (bool) ($user['step'] == "rcc_amount" && empty($datain)) => 'crypto_amount',
+        (bool) ($user['step'] == "rcc_hash" && empty($datain)) => 'crypto_hash',
+        (bool) ($user['step'] == "rcc_photo" && ($datain == "rcc_skip_photo" || !empty($photoid))) => 'crypto_photo',
+        (bool) ($user['step'] == "getprice") => 'recharge_amount',
+        (bool) ($datain == "chargenodiscount") => 'recharge_no_discount',
+        (bool) ($datain == "chargehasdiscount") => 'recharge_discount_prompt',
+        (bool) ($user['step'] == "getcodesellDiscountcharge") => 'recharge_discount',
+        (bool) ($user['step'] == "get_step_payment") => 'recharge_payment',
+        default => null,
+    };
+}
+
 $tkCancelKb = json_encode(['inline_keyboard' => [[['text' => '🔙 انصراف', 'callback_data' => 'tk_cancel']]]], JSON_UNESCAPED_UNICODE);
 
-if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $datain, $dataget) || (($text !== '' && $text == $datatextbot['text_usertest']) || $datain == "usertestbtn" || $text == "usertest")) {
+switch (
+    rxUserRouteTrial($user, $datain, $text, $datatextbot, $dataget)
+    ?? rxUserRoutePaymentFollowup($user, $datain, $update, $rialitActionMatch, $rialitViewMatch, $apcMatch, $tpcMatch)
+    ?? rxUserRouteHelp($datain, $text, $datatextbot, $dataget)
+    ?? rxUserRouteSupport($user, $datain, $text, $datatextbot, $photo, $video, $dataget)
+    ?? rxUserRouteWallet($user, $datain, $text, $datatextbot, $txRangeMatch)
+    ?? rxUserRoutePurchase($user, $datain, $text, $datatextbot, $statusnote, $dataget)
+    ?? rxUserRouteBulkPurchase($user, $datain, $text, $dataget)
+    ?? rxUserRouteRecharge($user, $datain, $photoid, $rwPickMatch, $rccPick)
+) {
+case 'trial':
     $rxTestIsAdmin = in_array($from_id, $admin_ids);
     $userlimit = select("user", "*", "id", $from_id, "select", ['cache' => false]);
     if (!is_array($userlimit) || empty($userlimit)) {
@@ -73,12 +421,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         sendmessage($from_id, $datatextbot['dyn_testaccount_verify_required'] ?? "⚠️ حساب شما هنوز احراز هویت نشده است.", null, 'HTML');
         return;
     }
-    $rxTestCode = null;
-    if (preg_match('/^locationtest_(.+)$/', (string) $datain, $rxTestMatch)) {
-        $rxTestCode = $rxTestMatch[1];
-    } elseif ($user['step'] == "createusertest") {
-        $rxTestCode = (string) $user['Processing_value_one'];
-    }
+    $rxTestCode = rxTrialRequestedPanel($datain, $user);
     $rxTestEligible = rx_test_eligible_panels($userlimit);
     if ($rxTestCode === null && count($rxTestEligible) !== 1) {
         return;
@@ -104,8 +447,8 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         rx_section_media_enter('test', $from_id, $datain, $message_id, ['usertestbtn']);
     }
     $location = $marzban_list_get['code_panel'];
-    $_rx_usernameKb = ($marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") ? $usernamePromptKb : $backuser;
-    if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") {
+    $_rx_usernameKb = (rxPurchaseUsernameUsesRandomSuffix($marzban_list_get['MethodUsername'])) ? $usernamePromptKb : $backuser;
+    if (rxPurchaseNeedsUsername($marzban_list_get['MethodUsername'], $textbotlang['users']['customusername'])) {
         if ($user['step'] != "createusertest") {
             step('createusertest', $from_id);
             update("user", "Processing_value_one", $location, "id", $from_id);
@@ -271,7 +614,8 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
             'reply_markup' => $Response
         ]);
     }
-} elseif ($datain === 'tpc_list') {
+    break;
+case 'tonpay_list':
     if ($user['step'] == "tpc_receipt") {
         step('home', $from_id);
     }
@@ -284,7 +628,8 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     }
     Editmessagetext($from_id, $message_id, $tpcListView['text'], $tpcListView['keyboard'], 'HTML');
     tonpayCustomBotAnswer($callback_query_id);
-} elseif (preg_match('/^rl_(cancel|abandon|retry)_([A-Za-z0-9_\-]{1,64})$/', (string) $datain, $rialitActionMatch)) {
+    break;
+case 'rialit_action':
     $rialitOrder = $rialitActionMatch[2];
     $rialitReport = rialitFetchReport($rialitOrder);
     if ($rialitReport === null || (string) $rialitReport['id_user'] !== (string) $from_id) {
@@ -330,7 +675,8 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         sendmessage($from_id, '💳 روش پرداخت جدید را انتخاب کنید:', $step_payment, 'HTML');
     }
     tonpayCustomBotAnswer($callback_query_id);
-} elseif (preg_match('/^rl_view_([A-Za-z0-9_\-]{1,64})$/', (string) $datain, $rialitViewMatch)) {
+    break;
+case 'rialit_view':
     $rialitReport = rialitFetchReport($rialitViewMatch[1]);
     if ($rialitReport === null || (string) $rialitReport['id_user'] !== (string) $from_id) {
         tonpayCustomBotAnswer($callback_query_id, '❌ این فاکتور پیدا نشد.', true);
@@ -340,7 +686,8 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     $rialitView = rialitBotPaymentView($rialitReport);
     Editmessagetext($from_id, $message_id, $rialitView['text'], $rialitView['keyboard'], 'HTML');
     tonpayCustomBotAnswer($callback_query_id);
-} elseif (preg_match('/^apc_(chk|can|cny|view)_(\w+)$/', (string) $datain, $apcMatch)) {
+    break;
+case 'atlaspay_action':
     $apcAction = $apcMatch[1];
     $apcOrder = $apcMatch[2];
     $apcReport = atlaspayCustomFetchReport($apcOrder);
@@ -377,7 +724,8 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         updatePaymentMessageId(['ok' => true, 'result' => ['message_id' => $message_id]], $apcOrder);
         atlaspayCustomBotAnswer($callback_query_id, '✅ تراکنش لغو شد');
     }
-} elseif (preg_match('/^tpc_(chk|chg|rcp|can|cny|view|rfd)_(\w+)$/', (string) $datain, $tpcMatch)) {
+    break;
+case 'tonpay_action':
     $tpcAction = $tpcMatch[1];
     $tpcOrder = $tpcMatch[2];
     $tpcReport = tonpayCustomFetchReport($tpcOrder);
@@ -447,7 +795,8 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         tonpayCustomBotAnswer($callback_query_id);
         sendmessage($from_id, tonpayCustomReceiptPromptText(), json_encode(['inline_keyboard' => [[rx_payment_button('tonpay', 'receipt_back', ['text' => '🔙 بازگشت به وضعیت پرداخت', 'callback_data' => 'tpc_chk_' . $tpcOrder])]]], JSON_UNESCAPED_UNICODE), 'HTML');
     }
-} elseif ($user['step'] == "tpc_receipt" && $datain === '' && isset($update['message'])) {
+    break;
+case 'tonpay_receipt':
     global $update;
     $tpcOrder = (string) $user['Processing_value'];
     $tpcBackKb = json_encode(['inline_keyboard' => [[rx_payment_button('tonpay', 'receipt_back', ['text' => '🔙 بازگشت به وضعیت پرداخت', 'callback_data' => 'tpc_chk_' . $tpcOrder])]]], JSON_UNESCAPED_UNICODE);
@@ -459,7 +808,8 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     step('home', $from_id);
     sendmessage($from_id, tonpayCustomReceiptSubmittedText(), null, 'HTML');
     tonpayCustomBotRefreshOriginal($from_id, $tpcOrder, 0);
-} elseif ($user['step'] == "tpc_refund" && $datain === '' && isset($update['message'])) {
+    break;
+case 'tonpay_refund':
     global $update;
     $tpcOrder = (string) $user['Processing_value'];
     $tpcRefundView = tonpayCustomBotRefundPromptView($tpcOrder, 'tpc_view_' . $tpcOrder);
@@ -478,9 +828,11 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     step('home', $from_id);
     sendmessage($from_id, '✅ ' . ($tpcResult['message'] ?? 'کارت عودت ثبت شد.'), null, 'HTML');
     tonpayCustomBotRefreshOriginal($from_id, $tpcOrder, 0);
-} elseif (preg_match('/^ckw_(pick|ok|menu|cancel)_/', (string) $datain)) {
+    break;
+case 'checkout_wallet':
     rx_ck_bot_callback($user, (string) $datain, $message_id, $callback_query_id ?? null);
-} elseif (($text !== '' && $text == $datatextbot['text_help']) || $datain == "helpbtn" || $datain == "helpbtns" || $datain == "helpmenubtn" || $text == "/help" || $text == "help") {
+    break;
+case 'help_menu':
     if (!check_active_btn($setting['keyboardmain'], "text_help")) {
         sendmessage($from_id, $textbotlang['users']['help']['disablehelp'], null, 'HTML');
         return;
@@ -495,12 +847,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         }
     } else {
         $helplist = select("help", "*", null, null, "fetchAll");
-        $helpidos = ['inline_keyboard' => []];
-        foreach ($helplist as $result) {
-            $helpidos['inline_keyboard'][] = [
-                ['text' => $result['name_os'], 'callback_data' => "helpos_{$result['id']}"]
-            ];
-        }
+        $helpidos = ['inline_keyboard' => rxHelpTopicButtons($helplist)];
         $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
         $helpidos['inline_keyboard'][] = [
             rx_kb_style(['text' => $textbotlang['users']['backmenu'], 'callback_data' => "backuser"], 'backuser', $_rx_nav_s),
@@ -512,20 +859,17 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
             sendmessage($from_id, $textbotlang['users']['selectoption'], $json_list_help, 'HTML');
         }
     }
-} elseif (preg_match('/^helpctgoryـ(.*)/', $datain, $dataget)) {
+    break;
+case 'help_category':
     $helplist = select("help", "*", "category", $dataget[1], "fetchAll");
-    $helpidos = ['inline_keyboard' => []];
-    foreach ($helplist as $result) {
-        $helpidos['inline_keyboard'][] = [
-            ['text' => $result['name_os'], 'callback_data' => "helpos_{$result['id']}"]
-        ];
-    }
+    $helpidos = ['inline_keyboard' => rxHelpTopicButtons($helplist)];
     $helpidos['inline_keyboard'][] = [
         ['text' => $textbotlang['users']['backmenu'], 'callback_data' => "helpbtns", '_rxcolor' => 'navigation:help_back'],
     ];
     $json_list_help = json_encode($helpidos);
     Editmessagetext($from_id, $message_id, $textbotlang['users']['selectoption'], $json_list_help, 'HTML');
-} elseif (preg_match('/^helpos_(.*)/', $datain, $dataget)) {
+    break;
+case 'help_topic':
     deletemessage($from_id, $message_id);
     $backinfoss = json_encode([
         'inline_keyboard' => [
@@ -601,7 +945,8 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
             sendmessage($from_id, $helpdata['Description_os'], $backinfoss, 'HTML');
         }
     }
-} elseif (($text !== '' && $text == $datatextbot['text_support']) || $datain == "supportbtns" || $text == "/support") {
+    break;
+case 'support_menu':
     if (!check_active_btn($setting['keyboardmain'], "text_support")) {
         sendmessage($from_id, $datatextbot['dyn_errors_button_disabled'] ?? "❌ این دکمه غیرفعال می باشد", null, 'HTML');
         return;
@@ -612,7 +957,8 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     } else {
         sendmessage($from_id, $textbotlang['users']['support']['btnsupport'], $supportoption, 'HTML');
     }
-} elseif ($datain == "support" || $datain == "supporttickets") {
+    break;
+case 'ticket_list':
     if (tk_miniapp_ticket_mode_active()) {
         tk_send_miniapp_redirect($from_id, $message_id, $user);
         return;
@@ -634,19 +980,22 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     } else {
         sendmessage($from_id, $tickethead, $ticketmenu, 'HTML');
     }
-} elseif ($datain == "ticketnew") {
+    break;
+case 'ticket_new':
     if (tk_miniapp_ticket_mode_active()) {
         tk_send_miniapp_redirect($from_id, $message_id, $user);
         return;
     }
     Editmessagetext($from_id, $message_id, $datatextbot['dyn_tickets_select_department'] ?? "📌 بخش پشتیبانی که میخواهید پیام دهید را انتخاب نمایید.", $list_departman, 'HTML');
-} elseif (preg_match('/^departman_(.*)/', $datain, $dataget)) {
+    break;
+case 'ticket_department':
     $iddeparteman = $dataget[1];
-    savedata("clear", "iddeparteman", $iddeparteman);
+    rx_write_conversation_data($from_id, $user, "clear", "iddeparteman", $iddeparteman);
     deletemessage($from_id, $message_id);
     sendmessage($from_id, $datatextbot['dyn_tickets_ask_subject'] ?? "📝 موضوع تیکت را وارد نمایید (مثلاً: مشکل در اتصال):", $backuser, 'HTML');
     step("getticketsubj", $from_id);
-} elseif ($datain == "tk_cancel") {
+    break;
+case 'ticket_cancel':
     update("user", "Processing_value", "0", "id", $from_id);
     step("home", $from_id);
     $rxTkCanceledTxt = $datatextbot['dyn_tickets_operation_canceled'] ?? "❌ عملیات لغو شد.";
@@ -656,25 +1005,25 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     } else {
         sendmessage($from_id, $rxTkCanceledTxt, $keyboard, 'HTML');
     }
-} elseif ($user['step'] == "getticketsubj" && (string)$text !== '') {
+    break;
+case 'ticket_subject':
     if (!isset($update['message']) && empty($text)) { return; }
-    savedata("save", "subject", mb_substr(trim((string)$text), 0, 120, 'UTF-8'));
-    savedata("save", "ctx", "create");
-    savedata("save", "media", []);
+    rx_write_conversation_data($from_id, $user, "save", "subject", mb_substr(trim((string)$text), 0, 120, 'UTF-8'));
+    rx_write_conversation_data($from_id, $user, "save", "ctx", "create");
+    rx_write_conversation_data($from_id, $user, "save", "media", []);
     step("tk_media_choice", $from_id);
-    $rxTkMediaYes = $datatextbot['dyn_tickets_media_yes'] ?? "🖼 بله";
-    $rxTkMediaNo = $datatextbot['dyn_tickets_media_no'] ?? "✏️ فقط متن";
-    $rxTkCancel = $datatextbot['dyn_tickets_cancel'] ?? "🔙 انصراف";
-    sendmessage($from_id, $datatextbot['dyn_tickets_ask_media_new'] ?? "📎 می‌خواهید همراه تیکت عکس/ویدیو هم بفرستید؟", json_encode(['inline_keyboard' => [[['text' => $rxTkMediaYes, 'callback_data' => 'tk_media_yes'], ['text' => $rxTkMediaNo, 'callback_data' => 'tk_media_no']], [['text' => $rxTkCancel, 'callback_data' => 'tk_cancel']]]], JSON_UNESCAPED_UNICODE), 'HTML');
-} elseif ($user['step'] == "getticketsubj") {
+    sendmessage($from_id, $datatextbot['dyn_tickets_ask_media_new'] ?? "📎 می‌خواهید همراه تیکت عکس/ویدیو هم بفرستید؟", rxTicketMediaChoiceKeyboard($datatextbot), 'HTML');
+    break;
+case 'ticket_subject_invalid':
     if (!isset($update['message']) && empty($text)) { return; }
     sendmessage($from_id, $datatextbot['dyn_tickets_invalid_subject_text'] ?? "❌ لطفاً موضوع تیکت را به‌صورت متن وارد کنید.", null, 'HTML');
     return;
-} elseif ($datain == "tk_media_no" && $user['step'] == "tk_media_choice") {
+case 'ticket_text_only':
     if (!isset($update['callback_query'])) { return; }
     step("tk_desc", $from_id);
     Editmessagetext($from_id, $message_id, $datatextbot['dyn_tickets_ask_body_text_short'] ?? "✍️ متن پیام خود را بنویسید:", $tkCancelKb);
-} elseif ($datain == "tk_media_yes" && $user['step'] == "tk_media_choice") {
+    break;
+case 'ticket_media_choice':
     if (!isset($update['callback_query'])) { return; }
     step("tk_media_count", $from_id);
     $rxTkCancel = $datatextbot['dyn_tickets_cancel'] ?? "🔙 انصراف";
@@ -685,18 +1034,20 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         ['text' => '۴', 'callback_data' => 'tk_cnt_4'],
         ['text' => '۵', 'callback_data' => 'tk_cnt_5'],
     ], [['text' => $rxTkCancel, 'callback_data' => 'tk_cancel']]]], JSON_UNESCAPED_UNICODE));
-} elseif (preg_match('/^tk_cnt_([1-5])$/', $datain, $dataget) && $user['step'] == "tk_media_count") {
+    break;
+case 'ticket_media_count':
     if (!isset($update['callback_query'])) { return; }
-    savedata("save", "target", (int)$dataget[1]);
-    savedata("save", "media", []);
+    rx_write_conversation_data($from_id, $user, "save", "target", (int)$dataget[1]);
+    rx_write_conversation_data($from_id, $user, "save", "media", []);
     step("tk_collect", $from_id);
     $rxTkUploadTpl = $datatextbot['dyn_tickets_ask_media_upload'] ?? "📤 رسانهٔ ۱ از %s را بفرستید (فقط عکس یا ویدیو).";
     Editmessagetext($from_id, $message_id, sprintf($rxTkUploadTpl, $dataget[1]), $tkCancelKb);
-} elseif (($user['step'] == "tk_media_choice" || $user['step'] == "tk_media_count") && empty($datain)) {
+    break;
+case 'ticket_media_invalid':
     if (!isset($update['message']) && empty($text)) { return; }
     sendmessage($from_id, $datatextbot['dyn_tickets_invalid_media_choice'] ?? "❌ لطفاً از دکمه‌های بالا انتخاب کنید یا «انصراف» بزنید.", $tkCancelKb, 'HTML');
     return;
-} elseif ($user['step'] == "tk_collect") {
+case 'ticket_collect':
     global $update;
     $mm = $update['message'] ?? [];
     $badMedia = isset($mm['animation']) || isset($mm['sticker']) || isset($mm['document']) || isset($mm['voice']) || isset($mm['audio']) || isset($mm['forward_date']) || isset($mm['forward_origin']) || isset($mm['forward_from']);
@@ -708,7 +1059,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     if (!is_array($ud)) $ud = [];
     $media = is_array($ud['media'] ?? null) ? $ud['media'] : [];
     $media[] = $photo ? ['type' => 'photo', 'file_id' => $photoid] : ['type' => 'video', 'file_id' => $videoid];
-    savedata("save", "media", $media);
+    rx_write_conversation_data($from_id, $user, "save", "media", $media);
     $target = (int)($ud['target'] ?? 1);
     if (count($media) < $target) {
         $nx = count($media) + 1;
@@ -718,7 +1069,8 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     }
     step("tk_desc", $from_id);
     sendmessage($from_id, $datatextbot['dyn_tickets_ask_body_text'] ?? "✍️ حالا متن پیام خود را بنویسید:", $tkCancelKb, 'HTML');
-} elseif ($user['step'] == "tk_desc" && ((string)$text !== '' || $photo || $video)) {
+    break;
+case 'ticket_submit':
     if (!isset($update['message']) && empty($text)) { return; }
     $ud = json_decode($user['Processing_value'], true);
     if (!is_array($ud)) $ud = [];
@@ -747,18 +1099,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         update("support_message", "status", "Customerresponse", "Tracking", $idtraking);
         $textreport = "💬 پاسخ جدید کاربر در تیکت\n\nکاربر : <a href=\"tg://user?id=$from_id\">$from_id</a>\nیوزرنیم : @$username\nدپارتمان : {$tkdetail['name_departman']}\nکد پیگیری : <code>$idtraking</code>\nزمان : $timejalali\n\nمتن : $desc";
         $adminReplyKb = json_encode(['inline_keyboard' => [[['text' => '💬 پاسخ به تیکت', 'callback_data' => 'ticketadminreply_' . $idtraking]]]], JSON_UNESCAPED_UNICODE);
-        $pvTargets = [];
-        $isp = (string)($tkdetail['idsupport'] ?? '');
-        if ($isp !== '' && $isp !== '0') $pvTargets[$isp] = true;
-        if ($mainadmin !== '' && $mainadmin !== '0') $pvTargets[$mainadmin] = true;
-        foreach (array_keys($pvTargets) as $tg) {
-            sendmessage($tg, $textreport, $adminReplyKb, 'HTML');
-            tk_album_send($tg, null, $media);
-        }
-        if ($channel !== '') {
-            telegram('sendmessage', ['chat_id' => $channel, 'message_thread_id' => $reportTopic, 'text' => $textreport, 'parse_mode' => 'HTML']);
-            tk_album_send($channel, $reportTopic, $media);
-        }
+        rxDeliverTicketReport($tkdetail['idsupport'] ?? '', $mainadmin, $channel, $reportTopic, $textreport, $adminReplyKb, $media);
         sendmessage($from_id, $datatextbot['dyn_tickets_reply_recorded'] ?? "✅ پیام شما ثبت شد و پس از بررسی پاسخ داده می‌شود.", $keyboard, 'HTML');
     } else {
         $departeman = select("departman", "*", "id", $ud['iddeparteman'] ?? 0, "select");
@@ -771,28 +1112,18 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         $stmt->execute([$randomString, $departeman['idsupport'], $from_id, $departeman['name_departman'], $body, 'user', $time, 'Unseen']);
         $textreport = "🎫 تیکت جدید پشتیبانی\n\nکاربر : <a href=\"tg://user?id=$from_id\">$from_id</a>\nیوزرنیم : @$username\nدپارتمان : {$departeman['name_departman']}\nموضوع : " . ($subject !== '' ? $subject : '—') . "\nکد پیگیری : <code>$randomString</code>\nزمان : $timejalali\n\nمتن : $desc";
         $adminReplyKb = json_encode(['inline_keyboard' => [[['text' => '💬 پاسخ به تیکت', 'callback_data' => 'ticketadminreply_' . $randomString]]]], JSON_UNESCAPED_UNICODE);
-        $pvTargets = [];
-        $isp = (string)($departeman['idsupport'] ?? '');
-        if ($isp !== '' && $isp !== '0') $pvTargets[$isp] = true;
-        if ($mainadmin !== '' && $mainadmin !== '0') $pvTargets[$mainadmin] = true;
-        foreach (array_keys($pvTargets) as $tg) {
-            sendmessage($tg, $textreport, $adminReplyKb, 'HTML');
-            tk_album_send($tg, null, $media);
-        }
-        if ($channel !== '') {
-            telegram('sendmessage', ['chat_id' => $channel, 'message_thread_id' => $reportTopic, 'text' => $textreport, 'parse_mode' => 'HTML']);
-            tk_album_send($channel, $reportTopic, $media);
-        }
+        rxDeliverTicketReport($departeman['idsupport'] ?? '', $mainadmin, $channel, $reportTopic, $textreport, $adminReplyKb, $media);
         $rxTkCreatedTpl = $datatextbot['dyn_tickets_created'] ?? "✅ تیکت شما با کد پیگیری <code>%s</code> ثبت شد و پس از بررسی پاسخ داده می‌شود.";
         sendmessage($from_id, sprintf($rxTkCreatedTpl, $randomString), $keyboard, 'HTML');
     }
     update("user", "Processing_value", "0", "id", $from_id);
     step("home", $from_id);
-} elseif ($user['step'] == "tk_desc") {
+    break;
+case 'ticket_body_invalid':
     if (!isset($update['message']) && empty($text)) { return; }
     sendmessage($from_id, $datatextbot['dyn_tickets_invalid_body_text'] ?? "❌ لطفاً متن پیام را وارد کنید یا «انصراف» بزنید.", $tkCancelKb, 'HTML');
     return;
-} elseif (preg_match('/^ticketopen_(\w+)$/', $datain, $dataget)) {
+case 'ticket_open':
     if (tk_miniapp_ticket_mode_active()) {
         tk_send_miniapp_redirect($from_id, $message_id, $user);
         return;
@@ -833,7 +1164,8 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
     $kbrows[] = [rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'supporttickets', '_rxcolor' => 'navigation:ticket_back'], 'supporttickets', $_rx_nav_s)];
     Editmessagetext($from_id, $message_id, $tickethead, json_encode(['inline_keyboard' => $kbrows], JSON_UNESCAPED_UNICODE));
-} elseif (preg_match('/^(?:ticketmsg|ticketreply)_(\w+)$/', $datain, $dataget)) {
+    break;
+case 'ticket_reply':
     if (tk_miniapp_ticket_mode_active()) {
         tk_send_miniapp_redirect($from_id, $message_id, $user);
         return;
@@ -850,11 +1182,9 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     }
     update("user", "Processing_value", json_encode(['ctx' => 'reply', 't' => $idtraking, 'media' => []], JSON_UNESCAPED_UNICODE), "id", $from_id);
     step("tk_media_choice", $from_id);
-    $rxTkMediaYes = $datatextbot['dyn_tickets_media_yes'] ?? "🖼 بله";
-    $rxTkMediaNo = $datatextbot['dyn_tickets_media_no'] ?? "✏️ فقط متن";
-    $rxTkCancel = $datatextbot['dyn_tickets_cancel'] ?? "🔙 انصراف";
-    sendmessage($from_id, $datatextbot['dyn_tickets_ask_media_reply'] ?? "📎 می‌خواهید همراه پاسخ عکس/ویدیو هم بفرستید؟", json_encode(['inline_keyboard' => [[['text' => $rxTkMediaYes, 'callback_data' => 'tk_media_yes'], ['text' => $rxTkMediaNo, 'callback_data' => 'tk_media_no']], [['text' => $rxTkCancel, 'callback_data' => 'tk_cancel']]]], JSON_UNESCAPED_UNICODE), 'HTML');
-} elseif (preg_match('/^tk_album_(\w+)$/', $datain, $dataget)) {
+    sendmessage($from_id, $datatextbot['dyn_tickets_ask_media_reply'] ?? "📎 می‌خواهید همراه پاسخ عکس/ویدیو هم بفرستید؟", rxTicketMediaChoiceKeyboard($datatextbot), 'HTML');
+    break;
+case 'ticket_album':
     $idtraking = $dataget[1];
     $tkd = select("support_message", "*", "Tracking", $idtraking);
     if (!is_array($tkd) || (string)($tkd['iduser'] ?? '') !== (string)$from_id) {
@@ -874,7 +1204,8 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         return;
     }
     foreach (array_chunk($allMedia, 10) as $chunk) { tk_album_send($from_id, null, $chunk); }
-} elseif (preg_match('/^ticketclose_(\w+)$/', $datain, $dataget)) {
+    break;
+case 'ticket_close':
     if (tk_miniapp_ticket_mode_active()) {
         tk_send_miniapp_redirect($from_id, $message_id, $user);
         return;
@@ -890,10 +1221,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     $closetext = "🔒 کاربر <a href=\"tg://user?id=$from_id\">$from_id</a> تیکت <code>$idtraking</code> را بست.";
     $adminpv = (string)($tkdetail['idsupport'] ?? '');
     $mainadmin = trim((string)($GLOBALS['adminnumber'] ?? ''));
-    $pvTargets = [];
-    if ($adminpv !== '' && $adminpv !== '0') $pvTargets[$adminpv] = true;
-    if ($mainadmin !== '' && $mainadmin !== '0') $pvTargets[$mainadmin] = true;
-    foreach (array_keys($pvTargets) as $tg) {
+    foreach (rxTicketReportTargets($adminpv, $mainadmin) as $tg) {
         sendmessage($tg, $closetext, null, 'HTML');
     }
     if (strlen($setting['Channel_Report'] ?? '') > 0) {
@@ -902,7 +1230,8 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     $rxTkClosedTpl = $datatextbot['dyn_tickets_closed_confirm'] ?? "🔒 تیکت <code>%s</code> بسته شد. برای ارسال پیام جدید باید پشتیبانی پاسخ دهد یا آن را باز کند.";
     $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
     Editmessagetext($from_id, $message_id, sprintf($rxTkClosedTpl, $idtraking), json_encode(['inline_keyboard' => [[rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'supporttickets', '_rxcolor' => 'navigation:ticket_back'], 'supporttickets', $_rx_nav_s)]]], JSON_UNESCAPED_UNICODE));
-} elseif ($datain == "my_miniapp_pending") {
+    break;
+case 'miniapp_pending':
     $stmtMp = $pdo->prepare(
         "SELECT id_order, price FROM Payment_report
           WHERE id_user = :uid
@@ -932,9 +1261,11 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     $_rx_acc_s = (isset($_rx_acc_styles) && is_array($_rx_acc_styles)) ? $_rx_acc_styles : [];
     $mpKb = json_encode(['inline_keyboard' => [[rx_kb_style(['text' => '🔙 بازگشت', 'callback_data' => 'account', '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true], 'backinfo', $_rx_acc_s)]]], JSON_UNESCAPED_UNICODE);
     Editmessagetext($from_id, $message_id, $mpText, $mpKb);
-} elseif ($datain == "fqQuestions") {
+    break;
+case 'faq':
     sendmessage($from_id, $datatextbot['text_dec_fq'], null, 'HTML');
-} elseif (($text !== '' && $text == $datatextbot['accountwallet']) || $datain == "account" || $datain == "accountbtn" || $text == "/wallet") {
+    break;
+case 'wallet':
     $rxWalletRoute = 'wallet_unknown';
     if ($datain == 'account') {
         $rxWalletRoute = 'account';
@@ -1187,7 +1518,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         rx_richDiag_exitContext($rxWalletCtx);
     }
     return;
-} elseif ($datain == "MyTransactions") {
+case 'transactions':
     $_rx_tx_s = (isset($GLOBALS['_rx_tx_styles']) && is_array($GLOBALS['_rx_tx_styles'])) ? $GLOBALS['_rx_tx_styles'] : [];
     $txRows = [
         [
@@ -1215,7 +1546,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     }
     step('home', $from_id);
     return;
-} elseif (preg_match('/^tx_(24h|3d|7d|30d)(?:_(\d+))?$/', (string)$datain, $txRangeMatch)) {
+case 'transaction_range':
     $txRangeSeconds = [
         '24h' => 24 * 60 * 60,
         '3d'  => 3 * 24 * 60 * 60,
@@ -1310,7 +1641,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     Editmessagetext($from_id, $message_id, $txText, $txBackKeyboard, 'HTML');
     step('home', $from_id);
     return;
-} elseif ($datain == "TransferBalance") {
+case 'transfer_start':
     update("user", "Processing_value", "0", "id", $from_id);
     update("user", "Processing_value_one", "", "id", $from_id);
     update("user", "Processing_value_tow", "0", "id", $from_id);
@@ -1326,120 +1657,28 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     }
     step('getTransferRecipient', $from_id);
     return;
-} elseif ($user['step'] == "getTransferRecipient") {
-    if (!isset($update['message']) && empty($text)) { return; }
-    $trRecipientId = trim((string)$text);
-    if (!ctype_digit($trRecipientId)) {
-        sendmessage($from_id, "❌ آیدی عددی نامعتبر است. آیدی عددی تلگرام کاربر مقصد را مجددا ارسال کنید:", null, 'HTML');
+case 'transfer_recipient':
+    if (!rxBotHandleTransferRecipient($from_id, $text, isset($update['message']))) {
         return;
     }
-    if ($trRecipientId === (string)$from_id) {
-        sendmessage($from_id, "❌ نمی‌توانید به خودتان موجودی انتقال دهید. آیدی عددی دیگری ارسال کنید:", null, 'HTML');
+    break;
+case 'transfer_amount':
+    if (!rxBotHandleTransferAmount($from_id, $text, isset($update['message']), $user, is_array($_rx_acc_styles ?? null) ? $_rx_acc_styles : [])) {
         return;
     }
-    $trRecipientUser = select("user", "*", "id", $trRecipientId, "select");
-    if (empty($trRecipientUser)) {
-        sendmessage($from_id, "❌ کاربری با این آیدی یافت نشد. آیدی عددی تلگرام کاربر مقصد را مجددا ارسال کنید:", null, 'HTML');
-        return;
-    }
-    update("user", "Processing_value_one", $trRecipientId, "id", $from_id);
-    sendmessage($from_id, sprintf("💸 مبلغ مورد نظر برای انتقال را به تومان وارد کنید:\n✅ حداقل مبلغ %s تومان می‌باشد", number_format(RX_MIN_TRANSFER_AMOUNT)), null, 'HTML');
-    step('getTransferAmount', $from_id);
-} elseif ($user['step'] == "getTransferAmount") {
-    if (!isset($update['message']) && empty($text)) { return; }
-    $trAmount = trim((string)$text);
-    if (!ctype_digit($trAmount) || (int)$trAmount <= 0) {
-        sendmessage($from_id, "❌ مبلغ نامعتبر است. مبلغ را به تومان و به صورت عدد ارسال کنید:", null, 'HTML');
-        return;
-    }
-    $trAmount = (int)$trAmount;
-    if ($trAmount < RX_MIN_TRANSFER_AMOUNT) {
-        sendmessage($from_id, sprintf("❌ مبلغ باید حداقل %s تومان باشد. مجددا ارسال کنید:", number_format(RX_MIN_TRANSFER_AMOUNT)), null, 'HTML');
-        return;
-    }
-    if ((float)$user['Balance'] < $trAmount) {
-        sendmessage($from_id, "❌ موجودی کیف پول شما کافی نیست.", null, 'HTML');
-        step('home', $from_id);
-        return;
-    }
-    $trRecipientId = $user['Processing_value_one'];
-    $trRecipientUser = select("user", "*", "id", $trRecipientId, "select");
-    if (empty($trRecipientUser)) {
-        sendmessage($from_id, "❌ کاربر مقصد دیگر معتبر نیست. عملیات لغو شد.", null, 'HTML');
-        step('home', $from_id);
-        return;
-    }
-    update("user", "Processing_value", $trAmount, "id", $from_id);
-    $trOperationId = 'tr_' . bin2hex(random_bytes(16));
-    update("user", "Processing_value_tow", $trOperationId, "id", $from_id);
-    $trRecipientLabel = trim((string)($trRecipientUser['username'] ?? '')) !== ''
-        ? '@' . $trRecipientUser['username']
-        : $trRecipientId;
-    $_rx_acc_s = (isset($_rx_acc_styles) && is_array($_rx_acc_styles)) ? $_rx_acc_styles : [];
-    $trConfirmKb = json_encode(['inline_keyboard' => [
-        [
-            rx_kb_style(['text' => '✅ تایید و انتقال', 'callback_data' => 'transferbal_confirm_' . $trOperationId], 'transferbal_confirm', $_rx_acc_s),
-            rx_kb_style(['text' => '❌ انصراف', 'callback_data' => 'transferbal_cancel'], 'transferbal_cancel', $_rx_acc_s),
-        ],
-    ]], JSON_UNESCAPED_UNICODE);
-    sendmessage($from_id, sprintf("🔄 تایید انتقال موجودی\n\n👤 گیرنده: %s\n💰 مبلغ: %s تومان\n\nآیا از انجام این تراکنش اطمینان دارید؟", $trRecipientLabel, number_format($trAmount)), $trConfirmKb, 'HTML');
-    step('getTransferConfirm', $from_id);
-} elseif ($datain == "transferbal_cancel") {
+    break;
+case 'transfer_cancel':
     update("user", "Processing_value", "0", "id", $from_id);
     update("user", "Processing_value_one", "", "id", $from_id);
     Editmessagetext($from_id, $message_id, "❌ انتقال موجودی لغو شد.", null, 'HTML');
     step('home', $from_id);
-} elseif (($datain == "transferbal_confirm" || str_starts_with((string)$datain, 'transferbal_confirm_')) && $user['step'] == "getTransferConfirm") {
-    $trOperationId = trim((string)($user['Processing_value_tow'] ?? ''));
-    if (str_starts_with((string)$datain, 'transferbal_confirm_')) {
-        if (!hash_equals($trOperationId, substr((string)$datain, strlen('transferbal_confirm_')))) {
-            return;
-        }
-    } elseif ($trOperationId !== '' && $trOperationId !== '0') {
-        return;
-    } else {
-        $trOperationId = 'tr_' . substr(hash('sha256', $from_id . ':' . $message_id), 0, 32);
-    }
-    $trAmount = (int)$user['Processing_value'];
-    $trRecipientId = $user['Processing_value_one'];
-    if ($trAmount < RX_MIN_TRANSFER_AMOUNT || $trRecipientId === '' || $trRecipientId === null) {
-        Editmessagetext($from_id, $message_id, "❌ اطلاعات تراکنش نامعتبر است. مجددا تلاش کنید.", null, 'HTML');
-        step('home', $from_id);
+    break;
+case 'transfer_confirm':
+    if (!rxBotHandleTransferConfirmation($from_id, $message_id, $datain, $user)) {
         return;
     }
-    $trRecipientUser = select("user", "*", "id", $trRecipientId, "select");
-    if (empty($trRecipientUser)) {
-        Editmessagetext($from_id, $message_id, "❌ کاربر مقصد دیگر معتبر نیست. عملیات لغو شد.", null, 'HTML');
-        update("user", "Processing_value", "0", "id", $from_id);
-        update("user", "Processing_value_one", "", "id", $from_id);
-        step('home', $from_id);
-        return;
-    }
-    $trCharge = rx_wallet_transfer_atomic((string)$from_id, (string)$trRecipientId, $trAmount, $trOperationId);
-    if (empty($trCharge['ok'])) {
-        $trError = ($trCharge['reason'] ?? '') === 'insufficient_balance'
-            ? '❌ موجودی کیف پول شما کافی نیست.'
-            : '❌ انتقال تکمیل نشد؛ با شناسه ' . $trOperationId . ' با پشتیبانی در ارتباط باشید.';
-        Editmessagetext($from_id, $message_id, $trError, null, 'HTML');
-        update("user", "Processing_value", "0", "id", $from_id);
-        update("user", "Processing_value_one", "", "id", $from_id);
-        step('home', $from_id);
-        return;
-    }
-    if (empty($trCharge['replayed'])) {
-        rx_wallet_transfer_report($trCharge['sender'], $trCharge['recipient'], $trAmount, $trOperationId, (float)$trCharge['new_balance'], (float)$trCharge['recipient_balance']);
-    }
-    update("user", "Processing_value", "0", "id", $from_id);
-    update("user", "Processing_value_one", "", "id", $from_id);
-    update("user", "Processing_value_tow", "0", "id", $from_id);
-    Editmessagetext($from_id, $message_id, sprintf("✅ انتقال موجودی با موفقیت انجام شد.\n\n💰 مبلغ: %s تومان\n👤 گیرنده: %s\n🧾 شناسه انتقال: <code>%s</code>", number_format($trAmount), $trRecipientId, $trOperationId), null, 'HTML');
-    $trSenderUsername = trim((string)($user['username'] ?? ''));
-    $trSenderLines = $trSenderUsername !== '' ? "نام کاربری: @{$trSenderUsername}\n" : '';
-    $trSenderLines .= "آیدی عددی: <code>{$from_id}</code>";
-    $trNotifyText = sprintf("مبلغ %s تومان به کیف پول شما واریز شد.\n\n<blockquote>%s</blockquote>", number_format($trAmount), $trSenderLines);
-    if (empty($trCharge['replayed'])) sendmessage($trRecipientId, $trNotifyText, null, 'HTML');
-    step('home', $from_id);
-} elseif ((($text !== '' && $text == $datatextbot['text_sell']) || $datain == "buy" || $datain == "buyback" || $text == "/buy" || $text == "buy") && $statusnote) {
+    break;
+case 'purchase_note':
     if ((($setting['get_number'] == "onAuthenticationphone") || ($setting['iran_number'] == "onAuthenticationiran")) && $user['step'] != "get_number" && $user['number'] == "none" && !rx_auth_skip_user($user)) {
         sendmessage($from_id, $textbotlang['users']['number']['Confirming'], $request_contact, 'HTML');
         step('get_number', $from_id);
@@ -1463,7 +1702,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     }
     step("statusnamecustom", $from_id);
     return;
-} elseif (($text !== '' && $text == $datatextbot['text_sell']) || $datain == "buy" || $datain == "buybacktow" || $datain == "buyback" || $text == "/buy" || $text == "buy" || $user['step'] == "statusnamecustom") {
+case 'purchase_start':
     if (!check_active_btn($setting['keyboardmain'], "text_sell")) {
         sendmessage($from_id, $datatextbot['dyn_errors_button_disabled'] ?? "❌ این دکمه غیرفعال می باشد", null, 'HTML');
         return;
@@ -1508,11 +1747,11 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         }
         if ($user['step'] == "statusnamecustom") {
             if (!isset($update['message']) && empty($text)) { return; }
-            savedata('clear', "nameconfig", $text);
-            savedata('save', "name_panel", $location);
+            rx_write_conversation_data($from_id, $user, 'clear', "nameconfig", $text);
+            rx_write_conversation_data($from_id, $user, 'save', "name_panel", $location);
             step("home", $from_id);
         } else {
-            savedata('clear', "name_panel", $location);
+            rx_write_conversation_data($from_id, $user, 'clear', "name_panel", $location);
         }
         if (!panel_feature_enabled($location, 'categorytime')) {
             $marzban_list_get = $locationproduct;
@@ -1562,7 +1801,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
                 ];
                 $marzban_list_get = select("marzban_panel", "*", "name_panel", $location, "select");
                 $statuscustomvolume = json_decode($marzban_list_get['customvolume'], true)[$user['agent']];
-                if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") {
+                if (rxPurchaseNeedsUsername($marzban_list_get['MethodUsername'], $textbotlang['users']['customusername'])) {
                     $datakeyboard = "prodcutservices_";
                 } else {
                     $datakeyboard = "prodcutservice_";
@@ -1614,7 +1853,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     }
     if ($user['step'] == "statusnamecustom") {
         if (!isset($update['message']) && empty($text)) { return; }
-        savedata('clear', "nameconfig", $text);
+        rx_write_conversation_data($from_id, $user, 'clear', "nameconfig", $text);
         step("home", $from_id);
     }
     $rx_loc_kb = ['inline_keyboard' => []];
@@ -1635,7 +1874,8 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     $rx_loc_kb['inline_keyboard'][] = [['text' => $textbotlang['users']['backbtn'], 'callback_data' => $_rx_loc_back_key, '_rxsk' => 'panel_back']];
     $list_marzban_panel_user = json_encode($rx_loc_kb, JSON_UNESCAPED_UNICODE);
     rx_send_buy_first_step($from_id, $message_id, $datain, $datatextbot['textselectlocation'], $list_marzban_panel_user, ($datain == "buy" || $datain == "buybacktow" || $datain == "buyback"));
-} elseif (preg_match('/^location_(.*)/', $datain, $dataget) || $datain == "backproduct") {
+    break;
+case 'purchase_panel':
     $userdate = json_decode($user['Processing_value'], true);
     if ($datain != "backproduct") {
         $location = select("marzban_panel", "*", "code_panel", $dataget[1], "select")['name_panel'];
@@ -1649,9 +1889,9 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         return;
     }
     if ($statusnote) {
-        savedata('save', "name_panel", $location);
+        rx_write_conversation_data($from_id, $user, 'save', "name_panel", $location);
     } else {
-        savedata('clear', "name_panel", $location);
+        rx_write_conversation_data($from_id, $user, 'clear', "name_panel", $location);
     }
     $productCountParams = [
         ':location' => $location,
@@ -1690,7 +1930,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
                 ':agent' => $user['agent']
             ];
             $statuscustomvolume = json_decode($marzban_list_get['customvolume'], true)[$user['agent']];
-            if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") {
+            if (rxPurchaseNeedsUsername($marzban_list_get['MethodUsername'], $textbotlang['users']['customusername'])) {
                 $datakeyboard = "prodcutservices_";
             } else {
                 $datakeyboard = "prodcutservice_";
@@ -1725,7 +1965,8 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         $monthkeyboard = keyboardTimeCategory($marzban_list_get['name_panel'], $user['agent'], "productmonth_", "buybacktow", $statuscustom, false);
         Editmessagetext($from_id, $message_id, $textbotlang['Admin']['month']['title'], $monthkeyboard);
     }
-} elseif (preg_match('/^categorynames_(.*)/', $datain, $dataget)) {
+    break;
+case 'purchase_category':
     $categorynames = $dataget[1];
     $categoryId = $categorynames;
     $categoryRow = select("category", "*", "id", $categoryId, "select");
@@ -1755,7 +1996,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         ], $catParams);
     }
     $statuscustomvolume = json_decode($marzban_list_get['customvolume'], true)[$user['agent']];
-    if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") {
+    if (rxPurchaseNeedsUsername($marzban_list_get['MethodUsername'], $textbotlang['users']['customusername'])) {
         $datakeyboard = "prodcutservices_";
     } else {
         $datakeyboard = "prodcutservice_";
@@ -1770,12 +2011,13 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         'panel' => $marzban_list_get['name_panel'],
     ]);
     Editmessagetext($from_id, $message_id, $textproduct, KeyboardProduct($marzban_list_get['name_panel'], $query, $user['pricediscount'], $datakeyboard, $statuscustom, "backuser", null, "customsellvolume", $user['agent'], $queryParams, true));
-} elseif (preg_match('/^productmonth_(\w+)/', $datain, $dataget)) {
+    break;
+case 'purchase_month':
     $monthenumber = $dataget[1];
     $userdate = json_decode($user['Processing_value'], true);
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
     if (panel_feature_enabled($userdate['name_panel'], 'categorygeneral') && (!function_exists('nmHasSellableCategories') || nmHasSellableCategories($userdate['name_panel'], $user['agent']))) {
-        savedata("save", "monthproduct", $monthenumber);
+        rx_write_conversation_data($from_id, $user, "save", "monthproduct", $monthenumber);
         $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
         $stmt = $pdo->prepare("SELECT * FROM marzban_panel  WHERE status = 'active'");
         $stmt->execute();
@@ -1795,7 +2037,7 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         ];
         $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
         $statuscustomvolume = json_decode($marzban_list_get['customvolume'], true)[$user['agent']];
-        if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") {
+        if (rxPurchaseNeedsUsername($marzban_list_get['MethodUsername'], $textbotlang['users']['customusername'])) {
             $datakeyboard = "prodcutservices_";
         } else {
             $datakeyboard = "prodcutservice_";
@@ -1810,7 +2052,8 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         ]);
         Editmessagetext($from_id, $message_id, $textproduct, KeyboardProduct($marzban_list_get['name_panel'], $query, $user['pricediscount'], $datakeyboard, $statuscustom, "backuser", null, "customsellvolume", $user['agent'], $queryParams, true));
     }
-} elseif ($datain == "customsellvolume") {
+    break;
+case 'purchase_custom':
     $userdate = json_decode($user['Processing_value'], true);
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
@@ -1825,7 +2068,8 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     sendmessage($from_id, $textcustom, $backuser, 'html');
     deletemessage($from_id, $message_id);
     step('gettimecustomvol', $from_id);
-} elseif ($user['step'] == "gettimecustomvol") {
+    break;
+case 'purchase_duration':
     if (!isset($update['message']) && empty($text)) { return; }
     $userdate = json_decode($user['Processing_value'], true);
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
@@ -1850,20 +2094,14 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
     $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
     $customtimevalueprice = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_time');
     update("user", "Processing_value_one", $text, "id", $from_id);
-    $textcustom = "⌛️ زمان سرویس خود را انتخاب نمایید
-📌 تعرفه هر روز  : " . rxFormatToman($customtimevalueprice) . "  تومان
-⚠️ حداقل زمان $maintime روز  و حداکثر $maxtime روز  می توانید تهیه کنید";
-    if (fx_duration_config($marzban_list_get, $user['agent'])['enabled']) {
-        sendmessage($from_id, 'مدت سرویس را انتخاب کنید:', fx_duration_keyboard($marzban_list_get, $user['agent']), 'HTML');
-    } else {
-        sendmessage($from_id, $textcustom, $backuser, 'html');
-    }
-    if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") {
+    rxSendPurchaseDurationPrompt($from_id, $marzban_list_get, $user['agent'], $customtimevalueprice, $maintime, $maxtime, $backuser);
+    if (rxPurchaseNeedsUsername($marzban_list_get['MethodUsername'], $textbotlang['users']['customusername'])) {
         step('getvolumecustomusername', $from_id);
     } else {
         step('getvolumecustomuser', $from_id);
     }
-} elseif ($user['step'] == "getvolumecustomusername" || preg_match('/^prodcutservices_(.*)/', $datain, $dataget)) {
+    break;
+case 'purchase_username':
     $prodcut = $dataget[1];
     $userdate = json_decode($user['Processing_value'], true);
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
@@ -1895,9 +2133,10 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         step('endstepuser', $from_id);
         deletemessage($from_id, $message_id);
     }
-    $_rx_selectusername_kb = ($marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") ? $usernamePromptKb : $backuser;
+    $_rx_selectusername_kb = (rxPurchaseUsernameUsesRandomSuffix($marzban_list_get['MethodUsername'])) ? $usernamePromptKb : $backuser;
     sendmessage($from_id, $textbotlang['users']['selectusername'], $_rx_selectusername_kb, 'html');
-} elseif ($user['step'] == "endstepuser" || $user['step'] == "endstepusers" || preg_match('/prodcutservice_(.*)/', $datain, $dataget) || $user['step'] == "getvolumecustomuser") {
+    break;
+case 'purchase_product':
     $userdate = json_decode($user['Processing_value'], true);
     if (!is_array($userdate) || empty($userdate['name_panel'])) {
         sendmessage($from_id, $datatextbot['dyn_errors_purchase_info_incomplete'] ?? "❌ اطلاعات خرید کامل نیست؛ لطفا مراحل خرید را مجددا انجام دهید.", $keyboard, 'HTML');
@@ -1942,8 +2181,8 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         step("home", $from_id);
         return;
     }
-    if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") {
-        $_rx_usernameKb = ($marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") ? $usernamePromptKb : $backuser;
+    if (rxPurchaseNeedsUsername($marzban_list_get['MethodUsername'], $textbotlang['users']['customusername'])) {
+        $_rx_usernameKb = (rxPurchaseUsernameUsesRandomSuffix($marzban_list_get['MethodUsername'])) ? $usernamePromptKb : $backuser;
         if ($datain === 'gen_random_uname') {
             $text = rx_build_smart_random_username($username ?? '', $from_id);
             if ($callback_query_id && function_exists('telegram')) {
@@ -2079,7 +2318,8 @@ https://t.me/$usernamebot?start={$user['codeInvitation']}";
         sendmessage($from_id, $textin, $__paymentKeyboard, 'HTML');
     }
     step('payment', $from_id);
-} elseif ($user['step'] == "payment" && in_array($datain, ["confirmandgetservice", "confirmandgetserviceDiscount"], true)) {
+    break;
+case 'purchase_confirm':
     $userdate = json_decode($user['Processing_value'], true);
     if (!is_array($userdate) || empty($userdate['name_panel'])) {
         sendmessage($from_id, $datatextbot['dyn_errors_purchase_info_incomplete'] ?? "❌ اطلاعات خرید کامل نیست؛ لطفا مراحل خرید را مجددا انجام دهید.", $keyboard, 'HTML');
@@ -2617,11 +2857,13 @@ $textonebuy
     }
     update("user", "Processing_value_four", "none", "id", $from_id);
     step('home', $from_id);
-} elseif ($datain == "aptdc") {
+    break;
+case 'purchase_discount_prompt':
     sendmessage($from_id, $textbotlang['users']['Discount']['getcodesell'], $backuser, 'HTML');
     step('getcodesellDiscount', $from_id);
     deletemessage($from_id, $message_id);
-} elseif ($user['step'] == "getcodesellDiscount") {
+    break;
+case 'purchase_discount':
     if (!isset($update['message']) && empty($text)) { return; }
     $userdate = json_decode($user['Processing_value'], true);
     if (!isset($userdate['name_panel'])) {
@@ -2750,7 +2992,8 @@ $textonebuy
     update("user", "Processing_value_four", $parametrsendvalue, "id", $from_id);
     fx_quote_store($from_id, fx_quote_context_key('buy_discount', (string) $user['Processing_value_one']), $info_product['price_product'], $marzban_list_get, $fxBuyKinds);
     sendmessage($from_id, $textin, $paymentDiscount, 'HTML');
-} elseif ($text == "🗂 خرید انبوه" || $datain == "kharidanbuh") {
+    break;
+case 'bulk_start':
     if ($setting['bulkbuy'] == "offbulk") {
         sendmessage($from_id, $datatextbot['dyn_errors_section_disabled'] ?? "❌ این بخش در حال غیرفعال می باشد", null, 'HTML');
         return;
@@ -2779,7 +3022,8 @@ $textonebuy
         sendmessage($from_id, $textbotlang['users']['Major']['title'], $backuser, 'HTML');
     }
     step('getcountconfig', $from_id);
-} elseif ($user['step'] == "getcountconfig") {
+    break;
+case 'bulk_count':
     if (!isset($update['message']) && empty($text)) { return; }
     if (intval($text) > 15 || intval($text) < 1)
         return sendmessage($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backuser, 'HTML');
@@ -2788,7 +3032,8 @@ $textonebuy
     sendmessage($from_id, $datatextbot['textselectlocation'], $list_marzban_panel_userom, 'HTML');
     update("user", "Processing_value_four", $text, "id", $from_id);
     step('home', $from_id);
-} elseif (preg_match('/^locationom_(.*)/', $datain, $dataget)) {
+    break;
+case 'bulk_panel':
     $location = select("marzban_panel", "*", "code_panel", $dataget[1], "select")['name_panel'];
     $marzban_list_get = select("marzban_panel", "*", "code_panel", $dataget[1], "select");
     $productCountParams = [
@@ -2804,7 +3049,7 @@ $textonebuy
     }
     update("user", "Processing_value", $location, "id", $from_id);
     $statuscustomvolume = json_decode($marzban_list_get['customvolume'], true)[$user['agent']];
-    if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") {
+    if (rxPurchaseNeedsUsername($marzban_list_get['MethodUsername'], $textbotlang['users']['customusername'])) {
         $datakeyboard = "prodcutservicesom_";
     } else {
         $datakeyboard = "prodcutserviceom_";
@@ -2819,7 +3064,8 @@ $textonebuy
         'panel' => $marzban_list_get['name_panel'],
     ]);
     Editmessagetext($from_id, $message_id, $textproduct, KeyboardProduct($marzban_list_get['name_panel'], $query, $user['pricediscount'], $datakeyboard, $statuscustom, "backuser", null, "customsellvolumeom", $user['agent'], $productCountParams, true));
-} elseif ($datain == "customsellvolumeom") {
+    break;
+case 'bulk_custom':
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
     $custompricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_volume');
@@ -2829,7 +3075,8 @@ $textonebuy
     sendmessage($from_id, $textcustom, $backuser, 'html');
     deletemessage($from_id, $message_id);
     step('gettimecustomvolom', $from_id);
-} elseif ($user['step'] == "gettimecustomvolom") {
+    break;
+case 'bulk_duration':
     if (!isset($update['message']) && empty($text)) { return; }
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
     $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
@@ -2852,21 +3099,15 @@ $textonebuy
         return;
     }
     update("user", "Processing_value_one", $text, "id", $from_id);
-    $textcustom = "⌛️ زمان سرویس خود را انتخاب نمایید
-📌 تعرفه هر روز  : " . rxFormatToman($customtimevalueprice) . "  تومان
-⚠️ حداقل زمان $maintime روز  و حداکثر $maxtime روز  می توانید تهیه کنید";
-    if (fx_duration_config($marzban_list_get, $user['agent'])['enabled']) {
-        sendmessage($from_id, 'مدت سرویس را انتخاب کنید:', fx_duration_keyboard($marzban_list_get, $user['agent']), 'HTML');
-    } else {
-        sendmessage($from_id, $textcustom, $backuser, 'html');
-    }
+    rxSendPurchaseDurationPrompt($from_id, $marzban_list_get, $user['agent'], $customtimevalueprice, $maintime, $maxtime, $backuser);
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
-    if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") {
+    if (rxPurchaseNeedsUsername($marzban_list_get['MethodUsername'], $textbotlang['users']['customusername'])) {
         step('getvolumecustomusernameom', $from_id);
     } else {
         step('getvolumecustomuserom', $from_id);
     }
-} elseif ($user['step'] == "getvolumecustomusernameom" || preg_match('/^prodcutservicesom_(.*)/', $datain, $dataget)) {
+    break;
+case 'bulk_username':
     $prodcut = $dataget[1];
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
     if ($user['step'] == "getvolumecustomusernameom") {
@@ -2896,9 +3137,10 @@ $textonebuy
         update("user", "Processing_value_one", $prodcut, "id", $from_id);
         step('endstepuserom', $from_id);
     }
-    $_rx_selectusername_kb = ($marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") ? $usernamePromptKb : $backuser;
+    $_rx_selectusername_kb = (rxPurchaseUsernameUsesRandomSuffix($marzban_list_get['MethodUsername'])) ? $usernamePromptKb : $backuser;
     sendmessage($from_id, $textbotlang['users']['selectusername'], $_rx_selectusername_kb, 'html');
-} elseif ($user['step'] == "endstepuserom" || $user['step'] == "endstepusersom" || preg_match('/prodcutserviceom_(.*)/', $datain, $dataget) || $user['step'] == "getvolumecustomuserom") {
+    break;
+case 'bulk_product':
     if ($user['step'] == "getvolumecustomuserom") {
         if (!ctype_digit($text)) {
             sendmessage($from_id, $textbotlang['Admin']['customvolume']['invalidtime'] ?? '❌ زمان نامعتبر است', $backuser, 'HTML');
@@ -2927,8 +3169,8 @@ $textonebuy
         $prodcut = $dataget[1];
     }
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
-    if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") {
-        $_rx_usernameKb = ($marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم" || $marzban_list_get['MethodUsername'] == "متن دلخواه کاربر + رندوم") ? $usernamePromptKb : $backuser;
+    if (rxPurchaseNeedsUsername($marzban_list_get['MethodUsername'], $textbotlang['users']['customusername'])) {
+        $_rx_usernameKb = (rxPurchaseUsernameUsesRandomSuffix($marzban_list_get['MethodUsername'])) ? $usernamePromptKb : $backuser;
         if ($datain === 'gen_random_uname') {
             $text = rx_build_smart_random_username($username ?? '', $from_id);
             if ($callback_query_id && function_exists('telegram')) {
@@ -3013,7 +3255,8 @@ $textonebuy
     }
     sendmessage($from_id, $textin, $paymentom, 'HTML');
     step('payments', $from_id);
-} elseif ($user['step'] == "payments" && $datain == "confirmandgetservice") {
+    break;
+case 'bulk_confirm':
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
     $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
     $custompricevalue = fx_adjust_base_toman($eextraprice[$user['agent']], $marzban_list_get, 'custom_volume');
@@ -3426,7 +3669,8 @@ $textonebuy
         ], $setting);
     }
     step('home', $from_id);
-} elseif ($datain == "Add_Balance") {
+    break;
+case 'recharge_start':
     update("user", "Processing_value", "0", "id", $from_id);
     update("user", "Processing_value_one", "0", "id", $from_id);
     update("user", "Processing_value_tow", "0", "id", $from_id);
@@ -3465,13 +3709,16 @@ $textonebuy
         return;
     }
     rx_promptWalletChargeCustomAmount($from_id, $message_id, $user);
-} elseif (preg_match('/^rw_pick_(\d+)$/', (string)$datain, $rwPickMatch)) {
+    break;
+case 'recharge_preset':
     $rwAmount = (int)$rwPickMatch[1];
     deletemessage($from_id, $message_id);
     rx_walletChargeAmountAccepted($from_id, $user, $rwAmount);
-} elseif ($datain == "rw_custom") {
+    break;
+case 'recharge_custom':
     rx_promptWalletChargeCustomAmount($from_id, $message_id, $user);
-} elseif ($datain == "rcc_cancel") {
+    break;
+case 'crypto_cancel':
     update("user", "Processing_value", "0", "id", $from_id);
     update("user", "Processing_value_one", "0", "id", $from_id);
     update("user", "Processing_value_tow", "0", "id", $from_id);
@@ -3482,7 +3729,8 @@ $textonebuy
     } else {
         sendmessage($from_id, $datatextbot['dyn_wallet_recheck_canceled'] ?? "❌ درخواست بررسی مجدد لغو شد.", null, 'HTML');
     }
-} elseif ($datain == "recheckcrypto") {
+    break;
+case 'crypto_recheck':
     if (function_exists('crypto_active_wallets') && empty(crypto_active_wallets())) {
         $rccNoWalletMsg = "⚠️ در حال حاضر هیچ درگاه پرداخت کریپتویی فعال نیست. لطفاً با پشتیبانی تماس بگیرید.";
         if ($message_id) {
@@ -3540,7 +3788,8 @@ $textonebuy
         sendmessage($from_id, $rccListMsg, $rccKb, 'HTML');
     }
     step('home', $from_id);
-} elseif (strpos((string) $datain, 'rcc_view_') === 0) {
+    break;
+case 'crypto_view':
     $rccVOid = substr((string) $datain, strlen('rcc_view_'));
     $rccVRow = null;
     try {
@@ -3594,7 +3843,8 @@ $textonebuy
     } else {
         sendmessage($from_id, $rccVText, $rccVKb, 'HTML');
     }
-} elseif (strpos((string) $datain, 'rcc_resubmit_') === 0) {
+    break;
+case 'crypto_resubmit':
     $rccROid = substr((string) $datain, strlen('rcc_resubmit_'));
     $rccRRow = null;
     try {
@@ -3706,9 +3956,8 @@ $textonebuy
     } else {
         sendmessage($from_id, $rccRUserMsg, null, 'HTML');
     }
-} elseif (preg_match('/^rcc_pick_([A-Za-z0-9_]{2,20})$/', (string) $datain, $rccPick)
-    && in_array($rccPick[1], array_column(function_exists('crypto_active_wallets') ? crypto_active_wallets() : [], 'currency'), true)
-) {
+    break;
+case 'crypto_pick':
     $rccCur = $rccPick[1];
     update("user", "Processing_value_one", $rccCur, "id", $from_id);
     $rccWalletsFa = array_column(function_exists('crypto_active_wallets') ? crypto_active_wallets() : [], 'label', 'currency');
@@ -3727,7 +3976,8 @@ $textonebuy
         sendmessage($from_id, $askAmount, $cancelKb, 'HTML');
     }
     step('rcc_amount', $from_id);
-} elseif ($user['step'] == "rcc_amount" && empty($datain)) {
+    break;
+case 'crypto_amount':
     $coinAmount = trim(str_replace([',', '،'], ['.', '.'], (string) $text));
     if (!is_numeric($coinAmount) || (float) $coinAmount <= 0) {
         sendmessage($from_id, $datatextbot['dyn_wallet_amount_not_numeric'] ?? "❌ مقدار وارد شده عددی نیست. لطفاً عددی مثل <code>0.2</code> ارسال کنید.", null, 'HTML');
@@ -3760,7 +4010,8 @@ $textonebuy
         'HTML'
     );
     step('rcc_hash', $from_id);
-} elseif ($user['step'] == "rcc_hash" && empty($datain)) {
+    break;
+case 'crypto_hash':
     $hashTry = function_exists('crypto_extract_hash') ? crypto_extract_hash((string) $text) : null;
     if ($hashTry === null) {
         sendmessage($from_id, $datatextbot['dyn_wallet_hash_not_found'] ?? "❌ هش معتبر در پیام شما پیدا نشد. لطفاً هش تراکنش (Hash / TxID) یا لینک آن را بفرستید — نه آدرس کیف‌پول.", null, 'HTML');
@@ -3775,7 +4026,8 @@ $textonebuy
     ], JSON_UNESCAPED_UNICODE);
     sendmessage($from_id, $datatextbot['dyn_wallet_ask_receipt_photo'] ?? "📸 <b>عکس رسید/اسکرین‌شات تراکنش</b> را ارسال کنید (اختیاری).\n\nاگر عکسی ندارید، روی دکمه «ارسال بدون عکس» بزنید.", $photoKb, 'HTML');
     step('rcc_photo', $from_id);
-} elseif ($user['step'] == "rcc_photo" && ($datain == "rcc_skip_photo" || !empty($photoid))) {
+    break;
+case 'crypto_photo':
     $rccCur     = (string) $user['Processing_value_one'];
     $rccCoin    = (string) $user['Processing_value_tow'];
     $rccIrr     = (int)    $user['Processing_value'];
@@ -3929,19 +4181,23 @@ $textonebuy
         }
     }
     step('home', $from_id);
-} elseif ($user['step'] == "getprice") {
+    break;
+case 'recharge_amount':
     if (!isset($update['message']) && empty($text)) { return; }
     deletemessage($from_id, $user['Processing_value']);
     rx_walletChargeAmountAccepted($from_id, $user, $text);
-} elseif ($datain == "chargenodiscount") {
+    break;
+case 'recharge_no_discount':
     update("user", "Processing_value_four", "", "id", $from_id);
     Editmessagetext($from_id, $message_id, $textbotlang['users']['Balance']['selectPatment'], $step_payment);
     step('get_step_payment', $from_id);
-} elseif ($datain == "chargehasdiscount") {
+    break;
+case 'recharge_discount_prompt':
     sendmessage($from_id, $textbotlang['users']['Discount']['getcodesell'], $backuser, 'HTML');
     step('getcodesellDiscountcharge', $from_id);
     deletemessage($from_id, $message_id);
-} elseif ($user['step'] == "getcodesellDiscountcharge") {
+    break;
+case 'recharge_discount':
     if (!isset($update['message']) && empty($text)) { return; }
     $__amount = intval($user['Processing_value']);
     if ($__amount <= 0) {
@@ -3972,7 +4228,8 @@ $textonebuy
     $__txt = "🤩 کد تخفیف {$dv['label']} روی شارژ کیف پول اعمال شد.\n\n💎 مبلغ شارژ کیف پول : {$__amountfmt} تومان\n💸 مبلغ قابل پرداخت : {$__gatewayfmt} تومان\n\nروش پرداخت را انتخاب کنید:";
     sendmessage($from_id, $__txt, $step_payment, 'HTML');
     step('get_step_payment', $from_id);
-} elseif ($user['step'] == "get_step_payment") {
+    break;
+case 'recharge_payment':
     if (isset($update['message']) && empty($datain)) { return; }
     if (!preg_match('/^sbv(resume|cancel)_\w+$/', (string) $datain) && !rx_ck_bot_payment_guard($user, $message_id)) { return; }
     $__chargeBonus = function_exists('nm_pending_charge_bonus') ? nm_pending_charge_bonus($user) : 0;
@@ -4218,13 +4475,7 @@ $textonebuy
         $gethelp = select("PaySetting", "ValuePay", "NamePay", "helpcart", "select")['ValuePay'];
         if ($gethelp != 2) {
             $data = json_decode($gethelp, true);
-            if ($data['type'] == "text") {
-                sendmessage($from_id, $data['text'], null, 'HTML');
-            } elseif ($data['type'] == "photo") {
-                sendphoto($from_id, $data['photoid'], $data['text']);
-            } elseif ($data['type'] == "video") {
-                sendvideo($from_id, $data['videoid'], $data['text']);
-            }
+            rxSendPaymentGuide($from_id, $data, true);
         }
         $message_id = rx_send_banner_message($from_id, 'cart', $textcart, $sendresidcart, "html");
         updatePaymentMessageId($message_id, $randomString);
@@ -4324,13 +4575,7 @@ $textonebuy
         $gethelp = select("PaySetting", "ValuePay", "NamePay", "helpzarinpal", "select")['ValuePay'];
         if ($gethelp != 2) {
             $data = json_decode($gethelp, true);
-            if ($data['type'] == "text") {
-                sendmessage($from_id, $data['text'], null, 'HTML');
-            } elseif ($data['type'] == "photo") {
-                sendphoto($from_id, $data['photoid'], null);
-            } elseif ($data['type'] == "video") {
-                sendvideo($from_id, $data['videoid'], null);
-            }
+            rxSendPaymentGuide($from_id, $data);
         }
         $message_id = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
         updatePaymentMessageId($message_id, $randomString);
@@ -4430,13 +4675,7 @@ $textonebuy
         $gethelp = select("PaySetting", "ValuePay", "NamePay", "helpplisio", "select")['ValuePay'];
         if ($gethelp != 2) {
             $data = json_decode($gethelp, true);
-            if ($data['type'] == "text") {
-                sendmessage($from_id, $data['text'], null, 'HTML');
-            } elseif ($data['type'] == "photo") {
-                sendphoto($from_id, $data['photoid'], null);
-            } elseif ($data['type'] == "video") {
-                sendvideo($from_id, $data['videoid'], null);
-            }
+            rxSendPaymentGuide($from_id, $data);
         }
         $message_id = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
         updatePaymentMessageId($message_id, $randomString);
@@ -4534,13 +4773,7 @@ $textonebuy
         $gethelp = select("PaySetting", "ValuePay", "NamePay", "helpnowpayment", "select")['ValuePay'];
         if ($gethelp != 2) {
             $data = json_decode($gethelp, true);
-            if ($data['type'] == "text") {
-                sendmessage($from_id, $data['text'], null, 'HTML');
-            } elseif ($data['type'] == "photo") {
-                sendphoto($from_id, $data['photoid'], null);
-            } elseif ($data['type'] == "video") {
-                sendvideo($from_id, $data['videoid'], null);
-            }
+            rxSendPaymentGuide($from_id, $data);
         }
         $message_id = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
         updatePaymentMessageId($message_id, $randomString);
@@ -4675,13 +4908,7 @@ $textonebuy
         $gethelp = select("PaySetting", "ValuePay", "NamePay", "helpiranpay2", "select")['ValuePay'];
         if ($gethelp != 2) {
             $data = json_decode($gethelp, true);
-            if ($data['type'] == "text") {
-                sendmessage($from_id, $data['text'], null, 'HTML');
-            } elseif ($data['type'] == "photo") {
-                sendphoto($from_id, $data['photoid'], null);
-            } elseif ($data['type'] == "video") {
-                sendvideo($from_id, $data['videoid'], null);
-            }
+            rxSendPaymentGuide($from_id, $data);
         }
         $message_id = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
         updatePaymentMessageId($message_id, $randomString);
@@ -4833,13 +5060,7 @@ $textonebuy
         $gethelp = select("PaySetting", "ValuePay", "NamePay", "helptonpay", "select")['ValuePay'];
         if ($gethelp != 2) {
             $data = json_decode($gethelp, true);
-            if ($data['type'] == "text") {
-                sendmessage($from_id, $data['text'], null, 'HTML');
-            } elseif ($data['type'] == "photo") {
-                sendphoto($from_id, $data['photoid'], null);
-            } elseif ($data['type'] == "video") {
-                sendvideo($from_id, $data['videoid'], null);
-            }
+            rxSendPaymentGuide($from_id, $data);
         }
         $message_id = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
         updatePaymentMessageId($message_id, $randomString);
@@ -5092,13 +5313,7 @@ $textonebuy
         $gethelp = select("PaySetting", "ValuePay", "NamePay", "helpblupal", "select")['ValuePay'];
         if ($gethelp != 2) {
             $data = json_decode($gethelp, true);
-            if ($data['type'] == "text") {
-                sendmessage($from_id, $data['text'], null, 'HTML');
-            } elseif ($data['type'] == "photo") {
-                sendphoto($from_id, $data['photoid'], null);
-            } elseif ($data['type'] == "video") {
-                sendvideo($from_id, $data['videoid'], null);
-            }
+            rxSendPaymentGuide($from_id, $data);
         }
         $message_id = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
         updatePaymentMessageId($message_id, $randomString);
@@ -5254,13 +5469,7 @@ $textonebuy
         $gethelp = select("PaySetting", "ValuePay", "NamePay", "helpatlaspay", "select")['ValuePay'];
         if ($gethelp != 2) {
             $data = json_decode($gethelp, true);
-            if ($data['type'] == "text") {
-                sendmessage($from_id, $data['text'], null, 'HTML');
-            } elseif ($data['type'] == "photo") {
-                sendphoto($from_id, $data['photoid'], null);
-            } elseif ($data['type'] == "video") {
-                sendvideo($from_id, $data['videoid'], null);
-            }
+            rxSendPaymentGuide($from_id, $data);
         }
         $message_id = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
         updatePaymentMessageId($message_id, $randomString);
@@ -5362,13 +5571,7 @@ $textonebuy
         $gethelp = select("PaySetting", "ValuePay", "NamePay", "helpcubepay", "select")['ValuePay'];
         if ($gethelp != 2) {
             $data = json_decode($gethelp, true);
-            if ($data['type'] == "text") {
-                sendmessage($from_id, $data['text'], null, 'HTML');
-            } elseif ($data['type'] == "photo") {
-                sendphoto($from_id, $data['photoid'], null);
-            } elseif ($data['type'] == "video") {
-                sendvideo($from_id, $data['videoid'], null);
-            }
+            rxSendPaymentGuide($from_id, $data);
         }
         $cubepayInvoice = cubepayBotInvoice(
             $randomString,
@@ -5497,13 +5700,7 @@ $textonebuy
         $gethelp = select("PaySetting", "ValuePay", "NamePay", "helpvariza", "select")['ValuePay'];
         if ($gethelp != 2) {
             $data = json_decode($gethelp, true);
-            if ($data['type'] == "text") {
-                sendmessage($from_id, $data['text'], null, 'HTML');
-            } elseif ($data['type'] == "photo") {
-                sendphoto($from_id, $data['photoid'], null);
-            } elseif ($data['type'] == "video") {
-                sendvideo($from_id, $data['videoid'], null);
-            }
+            rxSendPaymentGuide($from_id, $data);
         }
         $message_id = sendmessage($from_id, $textnowpayments, $paymentkeyboard, 'HTML');
         updatePaymentMessageId($message_id, $randomString);
@@ -6018,13 +6215,7 @@ $textonebuy
         $gethelp = select("PaySetting", "ValuePay", "NamePay", "helpstar", "select")['ValuePay'];
         if (intval($gethelp) != 2) {
             $data = json_decode($gethelp, true);
-            if ($data['type'] == "text") {
-                sendmessage($from_id, $data['text'], null, 'HTML');
-            } elseif ($data['type'] == "photo") {
-                sendphoto($from_id, $data['photoid'], null);
-            } elseif ($data['type'] == "video") {
-                sendvideo($from_id, $data['videoid'], null);
-            }
+            rxSendPaymentGuide($from_id, $data);
         }
         $message_id = sendmessage($from_id, $textstar, $paymentkeyboard, 'HTML');
         updatePaymentMessageId($message_id, $randomString);
@@ -6046,4 +6237,5 @@ $textonebuy
             }
         }
     }
+    break;
 }

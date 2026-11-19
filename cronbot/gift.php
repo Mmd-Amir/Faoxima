@@ -61,56 +61,23 @@ $savePendingNotify = function () use (&$pendingNotify, $pendingNotifyFile): void
     }
 };
 $deliverGiftNotification = function ($key) use (&$pendingNotify, $savePendingNotify): bool {
-    $entry = $pendingNotify[$key] ?? null;
-    if (is_array($entry) && ($entry['state'] ?? '') === 'sent') {
-        return true;
-    }
-    if (!is_array($entry) || ($entry['state'] ?? 'uncertain') !== 'pending' || (int) ($entry['next_attempt_at'] ?? 0) > time()) {
-        return false;
-    }
-    if (!rx_cron_catchup_allowed((int) ($entry['created_at'] ?? 0))) {
-        $pendingNotify[$key]['state'] = 'expired';
-        $pendingNotify[$key]['next_attempt_at'] = 0;
-        $pendingNotify[$key]['last_error'] = 'catchup_window_elapsed';
-        $savePendingNotify();
-        return false;
-    }
-    $pendingNotify[$key]['state'] = 'sending';
-    $pendingNotify[$key]['attempts'] = (int) ($entry['attempts'] ?? 0) + 1;
-    $savePendingNotify();
-    try {
-        $result = telegram('sendmessage', [
-            'chat_id' => $entry['id_user'],
-            'text' => (string) $entry['text'],
-            'parse_mode' => 'HTML',
-            '_rx_no_network_retry' => true,
-        ]);
-    } catch (Throwable $e) {
-        $result = ['ok' => false, 'description' => $e->getMessage()];
-    }
-    if (is_array($result) && ($result['ok'] ?? false) === true) {
-        $pendingNotify[$key]['state'] = 'sent';
-        $pendingNotify[$key]['sent_at'] = time();
-        $savePendingNotify();
-        return true;
-    }
-    $code = (int) ($result['error_code'] ?? 0);
-    $pendingNotify[$key]['state'] = $code === 429 && $pendingNotify[$key]['attempts'] < 5 ? 'pending' : ($code >= 400 && $code < 500 ? 'failed' : 'uncertain');
-    $pendingNotify[$key]['next_attempt_at'] = time() + max(60, (int) ($result['parameters']['retry_after'] ?? 300));
-    $pendingNotify[$key]['last_error'] = substr((string) ($result['description'] ?? 'no_response'), 0, 200);
-    $savePendingNotify();
-    return false;
+    return rx_cron_deliver_pending_notification(
+        $pendingNotify,
+        $key,
+        $savePendingNotify,
+        static function (array $entry) {
+            return telegram('sendmessage', [
+                'chat_id' => $entry['id_user'],
+                'text' => (string) $entry['text'],
+                'parse_mode' => 'HTML',
+                '_rx_no_network_retry' => true,
+            ]);
+        },
+        false,
+        true
+    );
 };
-$rxGiftNotificationCount = 0;
-foreach (array_keys($pendingNotify) as $key) {
-    if (rx_cron_time_up() || $rxGiftNotificationCount >= 5) {
-        break;
-    }
-    if (($pendingNotify[$key]['state'] ?? 'uncertain') === 'pending' && (int) ($pendingNotify[$key]['next_attempt_at'] ?? 0) <= time()) {
-        $rxGiftNotificationCount++;
-        $deliverGiftNotification($key);
-    }
-}
+rx_cron_drain_notifications($pendingNotify, 5, $deliverGiftNotification);
 $rxGiftHasPending = static function () use (&$pendingNotify): bool {
     foreach ($pendingNotify as $entry) {
         if (is_array($entry) && ($entry['state'] ?? '') === 'pending') {

@@ -340,7 +340,7 @@ function atlaspayCustomUpdateColumns($orderId, array $columns, $onlyOpen = true)
         if (function_exists('rx_redis_del')) {
             $owner = select('Payment_report', 'id_user', 'id_order', (string) $orderId, 'select');
             if (is_array($owner)) {
-                rx_redis_del('faoxima:paystatus:' . (string) $orderId . ':' . (string) ($owner['id_user'] ?? ''));
+                rx_redis_del(rx_payment_status_cache_key($orderId, ($owner['id_user'] ?? '')));
             }
         }
         return $stmt->rowCount();
@@ -380,7 +380,7 @@ function atlaspayCustomTransition($orderId, array $fromStatuses, $toStatus, $loc
             if (function_exists('rx_redis_del')) {
                 $owner = select('Payment_report', 'id_user', 'id_order', (string) $orderId, 'select');
                 if (is_array($owner)) {
-                    rx_redis_del('faoxima:paystatus:' . (string) $orderId . ':' . (string) ($owner['id_user'] ?? ''));
+                    rx_redis_del(rx_payment_status_cache_key($orderId, ($owner['id_user'] ?? '')));
                 }
             }
         }

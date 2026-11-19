@@ -810,8 +810,7 @@ final class PaymentInitHandler extends BaseHandler
         if ($token === '' || $paymentUrl === '') {
             $errMsg = is_array($pay) ? json_encode($pay, JSON_UNESCAPED_UNICODE) : 'unknown';
             FaoximaLogger::userFacing('trnado() returned bad response', ['raw' => $errMsg]);
-            update('Payment_report', 'payment_Status', 'reject', 'id_order', $orderId);
-            update('Payment_report', 'dec_not_confirmed', $errMsg, 'id_order', $orderId);
+            $this->rejectPaymentReport($orderId, $errMsg);
             FaoximaResponse::fail(502, faoxima_textbot_get('dyn_paymentinit_payment_link_creation_failed', '❌ ساخت لینک پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.'));
         }
 
@@ -869,8 +868,7 @@ final class PaymentInitHandler extends BaseHandler
         if ($invoiceId === '' || $invoiceUrl === '') {
             $errMsg = is_array($pay) ? json_encode($pay, JSON_UNESCAPED_UNICODE) : 'unknown';
             FaoximaLogger::userFacing('tonpayCreateInvoice() returned bad response', ['raw' => $errMsg]);
-            update('Payment_report', 'payment_Status', 'reject', 'id_order', $orderId);
-            update('Payment_report', 'dec_not_confirmed', $errMsg, 'id_order', $orderId);
+            $this->rejectPaymentReport($orderId, $errMsg);
             FaoximaResponse::fail(502, faoxima_textbot_get('dyn_paymentinit_payment_link_creation_failed', '❌ ساخت لینک پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.'));
         }
 
@@ -1113,8 +1111,7 @@ final class PaymentInitHandler extends BaseHandler
         if ($atlaspayOrderId === '' || $paymentUrl === '') {
             $errMsg = is_array($pay) ? json_encode($pay, JSON_UNESCAPED_UNICODE) : 'unknown';
             FaoximaLogger::userFacing('atlaspayCreateOrder() returned bad response', ['raw' => $errMsg]);
-            update('Payment_report', 'payment_Status', 'reject', 'id_order', $orderId);
-            update('Payment_report', 'dec_not_confirmed', $errMsg, 'id_order', $orderId);
+            $this->rejectPaymentReport($orderId, $errMsg);
             FaoximaResponse::fail(502, faoxima_textbot_get('dyn_paymentinit_payment_link_creation_failed', '❌ ساخت لینک پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.'));
         }
 
@@ -1170,8 +1167,7 @@ final class PaymentInitHandler extends BaseHandler
         if ($invoiceId === '' || $paymentLink === '') {
             $errMsg = is_array($pay) ? json_encode($pay, JSON_UNESCAPED_UNICODE) : 'unknown';
             FaoximaLogger::userFacing('blupalCreateInvoice() returned bad response', ['raw' => $errMsg]);
-            update('Payment_report', 'payment_Status', 'reject', 'id_order', $orderId);
-            update('Payment_report', 'dec_not_confirmed', $errMsg, 'id_order', $orderId);
+            $this->rejectPaymentReport($orderId, $errMsg);
             FaoximaResponse::fail(502, faoxima_textbot_get('dyn_paymentinit_payment_link_creation_failed', '❌ ساخت لینک پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.'));
         }
 
@@ -1221,8 +1217,7 @@ final class PaymentInitHandler extends BaseHandler
         if ($slug === '' || $paymentLink === '') {
             $errMsg = is_array($pay) ? json_encode($pay, JSON_UNESCAPED_UNICODE) : 'unknown';
             FaoximaLogger::userFacing('varizaCreatePayment() returned bad response', ['raw' => $errMsg]);
-            update('Payment_report', 'payment_Status', 'reject', 'id_order', $orderId);
-            update('Payment_report', 'dec_not_confirmed', $errMsg, 'id_order', $orderId);
+            $this->rejectPaymentReport($orderId, $errMsg);
             FaoximaResponse::fail(502, faoxima_textbot_get('dyn_paymentinit_payment_link_creation_failed', '❌ ساخت لینک پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.'));
         }
 
@@ -1269,8 +1264,7 @@ final class PaymentInitHandler extends BaseHandler
         if (!is_array($pay) || empty($pay['success'])) {
             $errMsg = is_array($pay) ? json_encode($pay, JSON_UNESCAPED_UNICODE) : 'unknown';
             FaoximaLogger::userFacing('abangatewayCreatePayment() returned bad response', ['raw' => $errMsg]);
-            update('Payment_report', 'payment_Status', 'reject', 'id_order', $orderId);
-            update('Payment_report', 'dec_not_confirmed', $errMsg, 'id_order', $orderId);
+            $this->rejectPaymentReport($orderId, $errMsg);
             FaoximaResponse::fail(502, faoxima_textbot_get('dyn_paymentinit_payment_link_creation_failed', '❌ ساخت لینک پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.'));
         }
 
@@ -1342,8 +1336,7 @@ final class PaymentInitHandler extends BaseHandler
         if ($paymentLink === '') {
             $errMsg = is_array($pay) ? json_encode($pay, JSON_UNESCAPED_UNICODE) : 'unknown';
             FaoximaLogger::userFacing('cubepayCreatePayment() returned bad response', ['raw' => $errMsg]);
-            update('Payment_report', 'payment_Status', 'reject', 'id_order', $orderId);
-            update('Payment_report', 'dec_not_confirmed', $errMsg, 'id_order', $orderId);
+            $this->rejectPaymentReport($orderId, $errMsg);
             FaoximaResponse::fail(502, faoxima_textbot_get('dyn_paymentinit_payment_link_creation_failed', '❌ ساخت لینک پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.'));
         }
 
@@ -1480,6 +1473,12 @@ final class PaymentInitHandler extends BaseHandler
             'order_id' => $orderId,
             'message'  => faoxima_textbot_get('dyn_paymentinit_nowpayment_invoice_created', 'فاکتور ارزی NowPayments ساخته شد. روی لینک کلیک کنید.'),
         ]);
+    }
+
+    private function rejectPaymentReport(string $orderId, $reason): void
+    {
+        update('Payment_report', 'payment_Status', 'reject', 'id_order', $orderId);
+        update('Payment_report', 'dec_not_confirmed', $reason, 'id_order', $orderId);
     }
 
     private function insertPaymentReport(string $method, int $amount, string $orderId, ?string $extId = null): void

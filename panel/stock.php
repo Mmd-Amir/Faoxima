@@ -4,11 +4,6 @@
 if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
     define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
 }
-
-
-if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
-    define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
-}
 ini_set('session.cookie_samesite', 'Lax');
 ini_set('session.cookie_httponly', '1');
 session_start();
@@ -17,16 +12,10 @@ if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); head
 require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/lib/remaining.php';
 require_once __DIR__ . '/lib/item_parser.php';
+require_once __DIR__ . '/lib/bulk_delete.php';
 require_once __DIR__ . '/../re/rx/function/nm_stock.php';
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindValue(":username", $_SESSION["user"] ?? '', PDO::PARAM_STR);
-$query->execute();
-$adminRow = $query->fetch(PDO::FETCH_ASSOC);
-if (!isset($_SESSION["user"]) || !$adminRow) {
-    header('Location: login.php');
-    exit;
-}
+fx_admin_require_access($pdo);
 
 
 $tables = ['nm_stock_shelves' => false, 'nm_config_stock' => false];
@@ -48,7 +37,10 @@ try {
 } catch (\Throwable $e) {
 }
 
-$flash = ['ok' => '', 'err' => ''];
+$flash = ['ok' => '', 'err' => ($_GET['delete_error'] ?? '') === '1' ? 'حذف انجام نشد. جزئیات در لاگ سرور ثبت شد.' : ''];
+if (($_GET['import_error'] ?? '') === '1') {
+    $flash['err'] = 'ورود کانفیگ‌ها انجام نشد. جزئیات در لاگ سرور ثبت شد.';
+}
 
 function faoxima_stock_days_qs(): string
 {
@@ -101,57 +93,6 @@ function faoxima_product_days(array $p): int
     if (isset($p['time_product'])) return (int)$p['time_product'];
     return 0;
 }
-function faoxima_stock_delete_linked_invoices(PDO $pdo, array $where): void
-{
-    $sql = "SELECT assigned_invoice FROM nm_config_stock WHERE status IN ('reserved','delivered') AND assigned_invoice IS NOT NULL AND assigned_invoice <> ''";
-    $params = [];
-    if (isset($where['shelf_id'])) {
-        $sql .= " AND shelf_id = :shelf_id";
-        $params[':shelf_id'] = (int)$where['shelf_id'];
-    }
-    if (isset($where['id'])) {
-        $sql .= " AND id = :id";
-        $params[':id'] = (int)$where['id'];
-    }
-    if (isset($where['ids']) && is_array($where['ids']) && $where['ids']) {
-        $ph = implode(',', array_fill(0, count($where['ids']), '?'));
-        $sql .= " AND id IN ({$ph})";
-    }
-    if (isset($where['status'])) {
-        $sql .= " AND status = :status";
-        $params[':status'] = (string)$where['status'];
-    }
-    try {
-        $stmt = $pdo->prepare($sql);
-        if (isset($where['ids']) && is_array($where['ids']) && $where['ids']) {
-            $i = 1;
-            foreach ($params as $v) {
-                $stmt->bindValue($i, $v);
-                $i++;
-            }
-            foreach ($where['ids'] as $v) {
-                $stmt->bindValue($i, (int)$v, PDO::PARAM_INT);
-                $i++;
-            }
-            $stmt->execute();
-        } else {
-            $stmt->execute($params);
-        }
-        $invoiceIds = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
-    } catch (\Throwable $e) {
-        return;
-    }
-    $invoiceIds = array_values(array_unique(array_filter(array_map('trim', $invoiceIds), static function ($v) {
-        return $v !== '';
-    })));
-    if (!$invoiceIds) return;
-    $ph = implode(',', array_fill(0, count($invoiceIds), '?'));
-    try {
-        $del = $pdo->prepare("DELETE FROM invoice WHERE id_invoice IN ({$ph})");
-        $del->execute($invoiceIds);
-    } catch (\Throwable $e) {
-    }
-}
 function faoxima_product_price(array $p): int
 {
     if (isset($p['Price_product'])) return (int)$p['Price_product'];
@@ -160,51 +101,146 @@ function faoxima_product_price(array $p): int
 }
 
 
+function fx_stock_shelf_input(array $post, array $productByCode, array $nationalPanels, array $panelNameOf): array
+{
+    $name          = trim((string)($post['name']             ?? ''));
+    $selectedPanel = trim((string)($post['source_codepanel'] ?? ''));
+    $codeProduct   = trim((string)($post['codeproduct']      ?? ''));
+
+    $productName = '';
+    $volumeGb    = (float)($post['volume_gb']    ?? 0);
+    $serviceDays = (int)($post['service_days']   ?? 0);
+    $price       = (int)($post['price']          ?? 0);
+    if (isset($productByCode[$codeProduct])) {
+        $p = $productByCode[$codeProduct];
+        $productName = faoxima_product_name($p);
+        if ($volumeGb    <= 0) $volumeGb    = faoxima_product_volume($p);
+        if ($serviceDays <= 0) $serviceDays = faoxima_product_days($p);
+        if ($price       <= 0) $price       = faoxima_product_price($p);
+    }
+
+    $errors = [];
+    if (empty($nationalPanels))                  $errors[] = 'هیچ پنلی با وضعیت شبکه ملی فعال یافت نشد. امکان افزودن انبار وجود ندارد.';
+    if ($name === '')                            $errors[] = 'نام انبار خالی است.';
+    elseif (mb_strlen($name, 'UTF-8') > 190)     $errors[] = 'نام انبار بیش از حد طولانی است.';
+    if ($volumeGb < 0    || $volumeGb > 100000)  $errors[] = 'حجم نامعتبر است.';
+    if ($serviceDays < 0 || $serviceDays > 36500) $errors[] = 'مدت سرویس نامعتبر است.';
+    if ($price < 0)                              $errors[] = 'قیمت نمی‌تواند منفی باشد.';
+
+    $validNationalCodes = [];
+    foreach ($nationalPanels as $pp) $validNationalCodes[(string)$pp['code_panel']] = true;
+    if (!isset($validNationalCodes[$selectedPanel])) $errors[] = 'پنل انتخاب‌شده نامعتبر است.';
+
+    if ($codeProduct === '') {
+        $errors[] = 'انتخاب محصول الزامی است.';
+    } elseif (isset($validNationalCodes[$selectedPanel])) {
+        $selectedPanelName = $panelNameOf[$selectedPanel] ?? '';
+        if (!isset($productByCode[$codeProduct])) {
+            $errors[] = 'محصول انتخاب‌شده نامعتبر است.';
+        } else {
+            $prodLocation = (string)($productByCode[$codeProduct]['Location'] ?? '');
+            if ($prodLocation !== '/all' && $prodLocation !== $selectedPanelName) {
+                $errors[] = 'محصول انتخاب‌شده متعلق به پنل انتخابی نیست.';
+            }
+        }
+    }
+    return [$name, $selectedPanel, $codeProduct, $productName, $volumeGb, $serviceDays, $price, $errors];
+}
+
+function fx_stock_config_metadata(string $cfg, ?string $sub, array $shelf): array
+{
+    $fmt = 'text';
+    if ($cfg === '' && $sub !== null)                                                                      $fmt = 'subscription';
+    elseif (preg_match('/^(vmess|vless|trojan|ss|ssr|hysteria2|hy2|tuic|wireguard):\/\//i', $cfg))           $fmt = 'single';
+    elseif (stripos($cfg, '[Interface]') !== false || stripos($cfg, 'PrivateKey') !== false)                 $fmt = 'wireguard';
+
+    $tier = 'auto';
+    $extractedVol = null;
+    $targetText = $cfg !== '' ? $cfg : ($sub ?? '');
+    if (preg_match('/(?:^|[^0-9])([1-9][0-9]{0,2})\s*(?:gb|g|گیگ|گیگابایت)(?:[^0-9]|$)/iu', $targetText, $m)) {
+        $extractedVol = (int)$m[1];
+    } elseif (preg_match('/(?:^|[^0-9])([1-9][0-9]{0,2})\s*[-_]\s*([1-9][0-9]{0,2})(?:[^0-9]|$)/u', $targetText, $m)) {
+        $tier = ((int)$m[1]) . '-' . ((int)$m[2]);
+    }
+    if ($tier === 'auto') {
+        $vol = $extractedVol !== null ? $extractedVol : (int)ceil((float)$shelf['volume_gb']);
+        if ($vol <= 0)      $tier = 'auto';
+        elseif ($vol <= 10) $tier = '10-10';
+        else {
+            $lower = (int)(floor(($vol - 1) / 10) * 10);
+            $tier  = $lower . '-' . ($lower + 10);
+        }
+    }
+    return [$fmt, $tier];
+}
+
+function fx_stock_import_configs(PDO $pdo, int $shelfId, array $entries): array
+{
+    return fx_admin_config_transaction($pdo, 'nm_config_stock', 'stock_import', static function () use ($pdo, $shelfId, $entries): array {
+        $lockShelf = $pdo->prepare('SELECT * FROM nm_stock_shelves WHERE id = ? FOR UPDATE');
+        $lockShelf->execute([$shelfId]);
+        $shelf = $lockShelf->fetch(PDO::FETCH_ASSOC);
+        $lockShelf->closeCursor();
+        if (!$shelf) {
+            throw new RuntimeException('Stock shelf is no longer available');
+        }
+
+        $ok = 0;
+        $duplicate = 0;
+        $bad = 0;
+        $badSub = 0;
+        foreach ($entries as $entry) {
+            $cfg = $entry['cfg'];
+            $sub = $entry['sub'] !== '' ? $entry['sub'] : null;
+
+            if ($cfg === '' && $sub === null) {
+                $bad++;
+                continue;
+            }
+            if ($cfg !== '' && mb_strlen($cfg, 'UTF-8') < 8) {
+                $bad++;
+                continue;
+            }
+
+            try {
+                [$fmt, $tier] = fx_stock_config_metadata($cfg, $sub, $shelf);
+
+                $stmt = $pdo->prepare(
+                    "INSERT IGNORE INTO nm_config_stock
+                    (shelf_id, codepanel, codeproduct, tier, format, content, sub_link, status, created_at)
+                 VALUES
+                    (:shelf_id, :codepanel, :codeproduct, :tier, :format, :content, :sub_link, 'active', :ct)"
+                );
+                $stmt->execute([
+                    ':shelf_id'    => (int)$shelf['id'],
+                    ':codepanel'   => (string)$shelf['stock_codepanel'],
+                    ':codeproduct' => (string)$shelf['codeproduct'],
+                    ':tier'        => $tier,
+                    ':format'      => $fmt,
+                    ':content'     => $cfg,
+                    ':sub_link'    => $sub,
+                    ':ct'          => time(),
+                ]);
+                if ($stmt->rowCount() > 0) $ok++;
+                else                       $duplicate++;
+            } catch (\Throwable $e) {
+                if (!$pdo->inTransaction()) {
+                    throw $e;
+                }
+                $bad++;
+                fx_delete_log_error('stock_import_item', 'nm_config_stock', $e);
+            }
+        }
+        return [$ok, $duplicate, $bad, $badSub];
+    });
+}
+
 if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    fx_csrf_guard();
     $action = $_POST['_action'] ?? '';
 
     if ($action === 'add_shelf') {
-        $name          = trim((string)($_POST['name']             ?? ''));
-        $selectedPanel = trim((string)($_POST['source_codepanel'] ?? ''));
-        $codeProduct   = trim((string)($_POST['codeproduct']      ?? ''));
-
-        $productName = '';
-        $volumeGb    = (float)($_POST['volume_gb']    ?? 0);
-        $serviceDays = (int)($_POST['service_days']   ?? 0);
-        $price       = (int)($_POST['price']          ?? 0);
-        if (isset($productByCode[$codeProduct])) {
-            $p = $productByCode[$codeProduct];
-            $productName = faoxima_product_name($p);
-            if ($volumeGb    <= 0) $volumeGb    = faoxima_product_volume($p);
-            if ($serviceDays <= 0) $serviceDays = faoxima_product_days($p);
-            if ($price       <= 0) $price       = faoxima_product_price($p);
-        }
-
-        $errors = [];
-        if (empty($nationalPanels))                  $errors[] = 'هیچ پنلی با وضعیت شبکه ملی فعال یافت نشد. امکان افزودن انبار وجود ندارد.';
-        if ($name === '')                            $errors[] = 'نام انبار خالی است.';
-        elseif (mb_strlen($name, 'UTF-8') > 190)     $errors[] = 'نام انبار بیش از حد طولانی است.';
-        if ($volumeGb < 0    || $volumeGb > 100000)  $errors[] = 'حجم نامعتبر است.';
-        if ($serviceDays < 0 || $serviceDays > 36500) $errors[] = 'مدت سرویس نامعتبر است.';
-        if ($price < 0)                              $errors[] = 'قیمت نمی‌تواند منفی باشد.';
-
-        $validNationalCodes = [];
-        foreach ($nationalPanels as $pp) $validNationalCodes[(string)$pp['code_panel']] = true;
-        if (!isset($validNationalCodes[$selectedPanel])) $errors[] = 'پنل انتخاب‌شده نامعتبر است.';
-
-        if ($codeProduct === '') {
-            $errors[] = 'انتخاب محصول الزامی است.';
-        } elseif (isset($validNationalCodes[$selectedPanel])) {
-            $selectedPanelName = $panelNameOf[$selectedPanel] ?? '';
-            if (!isset($productByCode[$codeProduct])) {
-                $errors[] = 'محصول انتخاب‌شده نامعتبر است.';
-            } else {
-                $prodLocation = (string)($productByCode[$codeProduct]['Location'] ?? '');
-                if ($prodLocation !== '/all' && $prodLocation !== $selectedPanelName) {
-                    $errors[] = 'محصول انتخاب‌شده متعلق به پنل انتخابی نیست.';
-                }
-            }
-        }
+        [$name, $selectedPanel, $codeProduct, $productName, $volumeGb, $serviceDays, $price, $errors] = fx_stock_shelf_input($_POST, $productByCode, $nationalPanels, $panelNameOf);
 
         $sourcePanel = $selectedPanel;
         $stockPanel  = $selectedPanel;
@@ -250,12 +286,10 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = (int)($_POST['id'] ?? 0);
         if ($id > 0) {
             try {
-                faoxima_stock_delete_linked_invoices($pdo, ['shelf_id' => $id]);
-                $pdo->prepare("DELETE FROM nm_config_stock WHERE shelf_id = :id")->execute([':id' => $id]);
-                $pdo->prepare("DELETE FROM nm_stock_shelves WHERE id = :id")->execute([':id' => $id]);
+                fx_admin_delete_configs($pdo, 'nm_config_stock', 'shelf_id = ?', [$id], $id);
                 $flash['ok'] = 'انبار و کانفیگ‌های آن حذف شد.';
             } catch (\Throwable $e) {
-                $flash['err'] = 'حذف ناموفق: ' . $e->getMessage();
+                $flash['err'] = 'حذف انجام نشد. جزئیات در لاگ سرور ثبت شد.';
             }
         }
     } elseif ($action === 'add_configs') {
@@ -291,69 +325,11 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 if (!$tooManyInSingleMode) {
-                    $ok = 0;
-                    $duplicate = 0;
-                    $bad = 0;
-                    $badSub = 0;
-                    foreach ($entries as $entry) {
-                        $cfg = $entry['cfg'];
-                        $sub = $entry['sub'] !== '' ? $entry['sub'] : null;
-
-                        if ($cfg === '' && $sub === null) {
-                            $bad++;
-                            continue;
-                        }
-                        if ($cfg !== '' && mb_strlen($cfg, 'UTF-8') < 8) {
-                            $bad++;
-                            continue;
-                        }
-
-                        try {
-                            $fmt = 'text';
-                            if ($cfg === '' && $sub !== null)                                                                      $fmt = 'subscription';
-                            elseif (preg_match('/^(vmess|vless|trojan|ss|ssr|hysteria2|hy2|tuic|wireguard):\/\//i', $cfg))           $fmt = 'single';
-                            elseif (stripos($cfg, '[Interface]') !== false || stripos($cfg, 'PrivateKey') !== false)                 $fmt = 'wireguard';
-
-                            $tier = 'auto';
-                            $extractedVol = null;
-                            $targetText = $cfg !== '' ? $cfg : ($sub ?? '');
-                            if (preg_match('/(?:^|[^0-9])([1-9][0-9]{0,2})\s*(?:gb|g|گیگ|گیگابایت)(?:[^0-9]|$)/iu', $targetText, $m)) {
-                                $extractedVol = (int)$m[1];
-                            } elseif (preg_match('/(?:^|[^0-9])([1-9][0-9]{0,2})\s*[-_]\s*([1-9][0-9]{0,2})(?:[^0-9]|$)/u', $targetText, $m)) {
-                                $tier = ((int)$m[1]) . '-' . ((int)$m[2]);
-                            }
-                            if ($tier === 'auto') {
-                                $vol = $extractedVol !== null ? $extractedVol : (int)ceil((float)$shelf['volume_gb']);
-                                if ($vol <= 0)      $tier = 'auto';
-                                elseif ($vol <= 10) $tier = '10-10';
-                                else {
-                                    $lower = (int)(floor(($vol - 1) / 10) * 10);
-                                    $tier  = $lower . '-' . ($lower + 10);
-                                }
-                            }
-
-                            $stmt = $pdo->prepare(
-                                "INSERT IGNORE INTO nm_config_stock
-                                (shelf_id, codepanel, codeproduct, tier, format, content, sub_link, status, created_at)
-                             VALUES
-                                (:shelf_id, :codepanel, :codeproduct, :tier, :format, :content, :sub_link, 'active', :ct)"
-                            );
-                            $stmt->execute([
-                                ':shelf_id'    => (int)$shelf['id'],
-                                ':codepanel'   => (string)$shelf['stock_codepanel'],
-                                ':codeproduct' => (string)$shelf['codeproduct'],
-                                ':tier'        => $tier,
-                                ':format'      => $fmt,
-                                ':content'     => $cfg,
-                                ':sub_link'    => $sub,
-                                ':ct'          => time(),
-                            ]);
-                            if ($stmt->rowCount() > 0) $ok++;
-                            else                       $duplicate++;
-                        } catch (\Throwable $e) {
-                            $bad++;
-                            error_log('[panel/stock] insert failed: ' . $e->getMessage());
-                        }
+                    try {
+                        [$ok, $duplicate, $bad, $badSub] = fx_stock_import_configs($pdo, $shelfId, $entries);
+                    } catch (Throwable $e) {
+                        header('Location: stock.php?shelf=' . $shelfId . '&import_error=1');
+                        exit;
                     }
 
                     $parts = ["ثبت‌شده: {$ok}"];
@@ -376,15 +352,14 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $configId = (int)($_POST['config_id'] ?? 0);
         $shelfId  = (int)($_POST['shelf_id']  ?? 0);
         $configDeleted = false;
+        $deleteFailed = false;
         if ($configId > 0) {
             try {
-                faoxima_stock_delete_linked_invoices($pdo, ['id' => $configId]);
-                $del = $pdo->prepare("DELETE FROM nm_config_stock WHERE id = :id");
-                $del->execute([':id' => $configId]);
-                $configDeleted = $del->rowCount() > 0;
+                $configDeleted = fx_admin_delete_configs($pdo, 'nm_config_stock', 'id = ?', [$configId]) > 0;
                 $flash['ok'] = $configDeleted ? 'کانفیگ برای همیشه از دیتابیس حذف شد.' : 'کانفیگ پیدا نشد.';
             } catch (\Throwable $e) {
-                $flash['err'] = 'حذف ناموفق: ' . $e->getMessage();
+                $deleteFailed = true;
+                $flash['err'] = 'حذف انجام نشد. جزئیات در لاگ سرور ثبت شد.';
             }
         }
         $redir = 'stock.php?shelf=' . $shelfId;
@@ -392,6 +367,7 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!empty($_POST['cpage']))   $redir .= '&cpage=' . (int)$_POST['cpage'];
         $redir .= faoxima_stock_days_qs();
         if ($configDeleted) $redir .= '&bulkclear=1';
+        if ($deleteFailed) $redir .= '&delete_error=1';
         if ($shelfId > 0) {
             header('Location: ' . $redir);
             exit;
@@ -399,13 +375,9 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'stock_bulk_delete') {
 
         $shelfId = (int)($_POST['shelf_id'] ?? 0);
-        $ids = array_values(array_unique(array_filter(
-            array_map('intval', (array)($_POST['ids'] ?? [])),
-            static function ($v) {
-                return $v > 0;
-            }
-        )));
+        $ids = fx_bulk_positive_ids((array)($_POST['ids'] ?? []));
         $ids = array_slice($ids, 0, 500);
+        $deleteFailed = false;
 
         if (!$ids) {
             $flash['err'] = 'موردی برای حذف انتخاب نشده بود.';
@@ -413,16 +385,14 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $flash['err'] = 'انبار مشخص نشده است.';
         } else {
             try {
-                faoxima_stock_delete_linked_invoices($pdo, ['shelf_id' => $shelfId, 'ids' => $ids]);
                 $ph = implode(',', array_fill(0, count($ids), '?'));
-                $del = $pdo->prepare("DELETE FROM nm_config_stock WHERE shelf_id = ? AND id IN ({$ph})");
-                $del->execute(array_merge([$shelfId], $ids));
-                $n = $del->rowCount();
+                $n = fx_admin_delete_configs($pdo, 'nm_config_stock', "shelf_id = ? AND id IN ($ph)", array_merge([$shelfId], $ids));
                 $flash['ok'] = $n > 0
                     ? $n . ' کانفیگ برای همیشه از دیتابیس حذف شد.'
                     : 'هیچ کانفیگی حذف نشد.';
             } catch (\Throwable $e) {
-                $flash['err'] = 'حذف گروهی ناموفق: ' . $e->getMessage();
+                $deleteFailed = true;
+                $flash['err'] = 'حذف انجام نشد. جزئیات در لاگ سرور ثبت شد.';
             }
         }
 
@@ -431,6 +401,7 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!empty($_POST['cpage']))   $redir .= '&cpage=' . (int)$_POST['cpage'];
         $redir .= faoxima_stock_days_qs();
         if (!empty($n)) $redir .= '&bulkclear=1';
+        if ($deleteFailed) $redir .= '&delete_error=1';
         if ($shelfId > 0) {
             header('Location: ' . $redir);
             exit;
@@ -443,21 +414,17 @@ if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($shelfId > 0) {
             try {
                 if ($cfgFilter !== 'all' && in_array($cfgFilter, $allowed, true)) {
-                    faoxima_stock_delete_linked_invoices($pdo, ['shelf_id' => $shelfId, 'status' => $cfgFilter]);
-                    $stmt = $pdo->prepare("DELETE FROM nm_config_stock WHERE shelf_id = :id AND status = :st");
-                    $stmt->execute([':id' => $shelfId, ':st' => $cfgFilter]);
+                    $filteredDeleted = fx_admin_delete_configs($pdo, 'nm_config_stock', 'shelf_id = ? AND status = ?', [$shelfId, $cfgFilter]);
                 } else {
-                    faoxima_stock_delete_linked_invoices($pdo, ['shelf_id' => $shelfId]);
-                    $stmt = $pdo->prepare("DELETE FROM nm_config_stock WHERE shelf_id = :id");
-                    $stmt->execute([':id' => $shelfId]);
+                    $filteredDeleted = fx_admin_delete_configs($pdo, 'nm_config_stock', 'shelf_id = ?', [$shelfId]);
                 }
-                $filteredDeleted = $stmt->rowCount();
                 $flash['ok'] = $filteredDeleted . ' کانفیگ برای همیشه از دیتابیس حذف شد.';
             } catch (\Throwable $e) {
-                $flash['err'] = 'حذف ناموفق: ' . $e->getMessage();
+                $flash['err'] = 'حذف انجام نشد. جزئیات در لاگ سرور ثبت شد.';
             }
             $redir = 'stock.php?shelf=' . $shelfId . '&cstatus=' . urlencode($cfgFilter);
             if ($filteredDeleted > 0) $redir .= '&bulkclear=1';
+            if ($flash['err'] !== '') $redir .= '&delete_error=1';
             header('Location: ' . $redir);
             exit;
         }
@@ -628,25 +595,10 @@ if (!$tableMissing) {
                     $scanned = $r->fetchAll(PDO::FETCH_ASSOC);
                 } catch (\Throwable $e) {
                 }
-                if (count($scanned) > FAOXIMA_REMAINING_SCAN_CAP) {
-                    $scanTruncated = true;
-                    $scanned = array_slice($scanned, 0, FAOXIMA_REMAINING_SCAN_CAP);
-                }
-
-                $scannedRem = faoxima_stock_resolve_remaining($pdo, $scanned, $shelfDays, $invoiceTableMissing);
-                $matched = [];
-                foreach ($scanned as $row) {
-                    $rem = $scannedRem[(int)$row['id']] ?? null;
-                    if (faoxima_remaining_matches($rem, $daysMode, $daysFilter)) $matched[] = $row;
-                }
-
-                $cfgTotal = count($matched);
-                $cfgPages = max(1, (int)ceil($cfgTotal / $cfgPerPage));
-                if ($cfgPage > $cfgPages) $cfgPage = $cfgPages;
-                $shelfConfigs = array_slice($matched, ($cfgPage - 1) * $cfgPerPage, $cfgPerPage);
-                foreach ($shelfConfigs as $row) {
-                    $remainingOf[(int)$row['id']] = $scannedRem[(int)$row['id']] ?? null;
-                }
+                [$cfgTotal, $cfgPages, $cfgPage, $shelfConfigs, $remainingOf, $scanTruncated] = faoxima_remaining_filter_page(
+                    $scanned, $cfgPage, $cfgPerPage, $daysMode, $daysFilter,
+                    static fn (array $rows) => faoxima_stock_resolve_remaining($pdo, $rows, $shelfDays, $invoiceTableMissing)
+                );
             }
         }
     }
@@ -1160,6 +1112,7 @@ function faoxima_stock_status_label(string $s): array
                                 <?php if ($counts['active'] > 0): ?>
                                     <form method="POST" action="stock.php"
                                         onsubmit="return confirm('همه <?php echo $counts['active']; ?> کانفیگ فعال این انبار برای همیشه از دیتابیس حذف شوند؟ این عمل بازگشت‌پذیر نیست.');">
+                                        <?php echo fx_csrf_field(); ?>
                                         <input type="hidden" name="_action" value="delete_active_configs">
                                         <input type="hidden" name="shelf_id" value="<?php echo $viewShelfId; ?>">
                                         <?php echo $daysHiddenBar; ?>
@@ -1178,6 +1131,7 @@ function faoxima_stock_status_label(string $s): array
                                 <?php else: ?>
                                     <form method="POST" action="stock.php"
                                         onsubmit="return confirm('<?php echo $cfgFilter === 'all' ? 'همه کانفیگ‌های این انبار' : 'کانفیگ‌های فیلترشده'; ?> برای همیشه از دیتابیس حذف شوند؟ این عمل بازگشت‌پذیر نیست.');">
+                                        <?php echo fx_csrf_field(); ?>
                                         <input type="hidden" name="_action" value="delete_filtered_configs">
                                         <input type="hidden" name="shelf_id" value="<?php echo $viewShelfId; ?>">
                                         <input type="hidden" name="cstatus" value="<?php echo htmlspecialchars($cfgFilter, ENT_QUOTES); ?>">
@@ -1201,6 +1155,7 @@ function faoxima_stock_status_label(string $s): array
                         <?php  ?>
                         <form method="POST" action="stock.php" id="stock-bulk-form" style="display:none;"
                             onsubmit="return faoximaStockBulkConfirm();">
+                            <?php echo fx_csrf_field(); ?>
                             <input type="hidden" name="_action" value="stock_bulk_delete">
                             <input type="hidden" name="shelf_id" value="<?php echo $viewShelfId; ?>">
                             <input type="hidden" name="cstatus" value="<?php echo htmlspecialchars($cfgFilter, ENT_QUOTES); ?>">
@@ -1258,6 +1213,7 @@ function faoxima_stock_status_label(string $s): array
                                             }
                                             ?>
                                             <form method="POST" action="stock.php" onsubmit="return confirm('این کانفیگ برای همیشه از دیتابیس حذف شود؟ این عمل بازگشت‌پذیر نیست.');">
+                                                <?php echo fx_csrf_field(); ?>
                                                 <input type="hidden" name="_action" value="delete_config_hard">
                                                 <input type="hidden" name="config_id" value="<?php echo $cfgId; ?>">
                                                 <input type="hidden" name="shelf_id" value="<?php echo $viewShelfId; ?>">
@@ -1306,6 +1262,7 @@ function faoxima_stock_status_label(string $s): array
                                 <button type="button" class="modal-close" onclick="closeModal('modal-add-configs')">&times;</button>
                             </div>
                             <form method="POST" action="stock.php" id="add-configs-form">
+                                <?php echo fx_csrf_field(); ?>
                                 <input type="hidden" name="_action" value="add_configs">
                                 <input type="hidden" name="shelf_id" value="<?php echo $viewShelfId; ?>">
 
@@ -1468,6 +1425,7 @@ function faoxima_stock_status_label(string $s): array
                                                 مدیریت کانفیگ‌ها
                                             </a>
                                             <form method="POST" action="stock.php" onsubmit="return confirm('انبار «<?php echo htmlspecialchars($sh['name'], ENT_QUOTES); ?>» و <?php echo $cnt['total']; ?> کانفیگ آن حذف شوند؟');">
+                                                <?php echo fx_csrf_field(); ?>
                                                 <input type="hidden" name="_action" value="delete_shelf">
                                                 <input type="hidden" name="id" value="<?php echo $sid; ?>">
                                                 <button type="submit" class="btn btn-sm btn-soft-danger">
@@ -1489,6 +1447,7 @@ function faoxima_stock_status_label(string $s): array
                                 <button type="button" class="modal-close" onclick="closeModal('modal-add-shelf')">&times;</button>
                             </div>
                             <form method="POST" action="stock.php">
+                                <?php echo fx_csrf_field(); ?>
                                 <input type="hidden" name="_action" value="add_shelf">
 
                                 <div class="form-group">

@@ -100,7 +100,7 @@ try {
         $upd->execute([':o' => $row['id_order']]);
         if ($upd->rowCount() > 0) {
             if (function_exists('rx_redis_del') && isset($row['id_user'])) {
-                rx_redis_del('faoxima:paystatus:' . $row['id_order'] . ':' . (string)$row['id_user']);
+                rx_redis_del(rx_payment_status_cache_key($row['id_order'], $row['id_user']));
             }
             $textExpire = "⭕️ کاربر گرامی، فاکتور کریپتویی زیر به دلیل عدم پرداخت در مدت مجاز منقضی شد.\n\n"
                 . "🛒 کد فاکتور: <code>{$row['id_order']}</code>\n"
@@ -142,7 +142,7 @@ try {
         $updHash->execute([':o' => $hashRow['id_order']]);
         if ($updHash->rowCount() > 0) {
             if (function_exists('rx_redis_del') && isset($hashRow['id_user'])) {
-                rx_redis_del('faoxima:paystatus:' . $hashRow['id_order'] . ':' . (string)$hashRow['id_user']);
+                rx_redis_del(rx_payment_status_cache_key($hashRow['id_order'], $hashRow['id_user']));
             }
             $textHashExpire = "⭕️ کاربر گرامی، فاکتور کریپتویی زیر به دلیل عدم تایید هش در مدت ۳۰ دقیقه منقضی شد.\n\n"
                 . "🛒 کد فاکتور: <code>{$hashRow['id_order']}</code>\n"
@@ -455,6 +455,22 @@ try {
     return;
 }
 
+$rxCryptoVerificationFailure = static function (string $reason, int $attempt, int $maxChecks): array {
+    $terminal = [
+        'no-currency', 'no-hash', 'no-recipient-on-row', 'no-expected-amount',
+        'unsupported-currency', 'bad-hash-format',
+        'hash-already-used',
+        'wrong-recipient', 'amount-mismatch', 'tx-failed',
+        'not-trx-transfer', 'no-matching-trc20-transfer',
+        'no-matching-jetton-transfer', 'no-in-msg',
+        'sender-mismatch', 'sender-already-bound',
+        'memo-mismatch',
+        'tx-before-invoice',
+    ];
+    $isTerminal = in_array($reason, $terminal, true);
+    return [$isTerminal, !$isTerminal && $attempt >= $maxChecks];
+};
+
 foreach ($rows as $row) {
     if (function_exists('rx_cron_time_up') && rx_cron_time_up()) break;
     if (!rx_pf_cron_payment_allowed($row)) {
@@ -468,7 +484,6 @@ foreach ($rows as $row) {
         'currency' => $currency,
         'hash'     => $hashShort,
         'amount'   => $row['crypto_amount'] ?? null,
-        'to'       => $row['crypto_wallet_to'] ?? null,
         'try'      => (int) ($row['crypto_check_count'] ?? 0) + 1,
     ]);
 
@@ -479,10 +494,26 @@ foreach ($rows as $row) {
               WHERE id_order = :o"
         );
         $bump->execute([':o' => $orderId]);
-    } catch (Throwable $e) {  }
+    } catch (Throwable $e) {
+        $rxCryptoLog('ERROR', 'verification attempt counter could not be persisted', ['order' => $orderId, 'exception' => get_class($e)]);
+    }
 
     $result = crypto_check_payment($row);
-    $rxCryptoLog('INFO', 'verify result', ['order' => $orderId, 'result' => $result]);
+    $verifyReason = is_array($result) ? (string) ($result['reason'] ?? 'unknown') : 'no-result';
+    $verified = is_array($result) && !empty($result['ok']);
+    $verificationLog = [
+        'order' => $orderId,
+        'ok' => $verified,
+        'reason' => $verifyReason,
+    ];
+    if ($verified) {
+        $verificationLog['amount'] = $result['detail']['amount'] ?? null;
+        $verificationLog['tx_timestamp'] = $result['detail']['tx_timestamp'] ?? null;
+    } elseif ($verifyReason === 'amount-mismatch') {
+        $verificationLog['observed'] = $result['detail']['observed'] ?? null;
+        $verificationLog['expected'] = $result['detail']['want'] ?? null;
+    }
+    $rxCryptoLog('INFO', 'verify result', $verificationLog);
 
     if (is_array($result) && !empty($result['ok']) && function_exists('crypto_check_tx_timestamp_after_invoice')) {
         $txTimestamp = isset($result['detail']['tx_timestamp']) ? (int) $result['detail']['tx_timestamp'] : 0;
@@ -525,40 +556,23 @@ foreach ($rows as $row) {
                 "UPDATE Payment_report SET crypto_last_error = :err WHERE id_order = :o"
             );
             $errUpd->execute([':err' => $errStr, ':o' => $orderId]);
-        } catch (Throwable $e) {  }
-
-
-        $terminal = [
-
-            'no-currency', 'no-hash', 'no-recipient-on-row', 'no-expected-amount',
-            'unsupported-currency', 'bad-hash-format',
-
-            'hash-already-used',
-
-            'wrong-recipient', 'amount-mismatch', 'tx-failed',
-            'not-trx-transfer', 'no-matching-trc20-transfer',
-            'no-matching-jetton-transfer', 'no-in-msg',
-
-            'sender-mismatch', 'sender-already-bound',
-
-            'memo-mismatch',
-
-            'tx-before-invoice',
-        ];
+        } catch (Throwable $e) {
+            $rxCryptoLog('ERROR', 'verification error could not be persisted', ['order' => $orderId, 'exception' => get_class($e)]);
+        }
 
 
         $newCount = (int) ($row['crypto_check_count'] ?? 0) + 1;
-        $isTimeout = !in_array($reason, $terminal, true) && $newCount >= $maxChecks;
+        [$isTerminal, $isTimeout] = $rxCryptoVerificationFailure($reason, $newCount, $maxChecks);
 
         $rxCryptoLog('INFO', 'verify decision', [
             'order'    => $orderId,
             'reason'   => $reason,
-            'terminal' => in_array($reason, $terminal, true),
+            'terminal' => $isTerminal,
             'timeout'  => $isTimeout,
             'try'      => $newCount,
         ]);
 
-        if (in_array($reason, $terminal, true) || $isTimeout) {
+        if ($isTerminal || $isTimeout) {
             try {
                 $rej = $pdo->prepare(
                     "UPDATE Payment_report SET payment_Status = 'reject'
@@ -668,7 +682,7 @@ foreach ($rows as $row) {
         if (function_exists('crypto_record_verified_hash')) {
             crypto_record_verified_hash($orderId, 'auto_cron');
         }
-        $rxCryptoLog('OK', 'invoice marked PAID', ['order' => $orderId, 'sender' => $verifiedSender]);
+        $rxCryptoLog('OK', 'invoice marked PAID', ['order' => $orderId]);
     } catch (Throwable $e) {
         $rxCryptoLog('ERROR', 'atomic mark-paid failed', ['order' => $orderId, 'error' => $e->getMessage()]);
         continue;

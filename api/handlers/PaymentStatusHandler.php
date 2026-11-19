@@ -41,75 +41,13 @@ final class PaymentStatusHandler extends BaseHandler
             FaoximaResponse::badRequest('order_id is required');
         }
 
-        $rxPayCacheKey = 'faoxima:paystatus:' . (string)$orderId . ':' . (string)$this->user['id'];
-        $report = null;
-        if (function_exists('rx_redis_is_active') && rx_redis_is_active()) {
-            $rxPayCached = rx_redis_get($rxPayCacheKey);
-            if ($rxPayCached !== null) {
-                $rxPayDecoded = json_decode($rxPayCached, true);
-                if (json_last_error() === JSON_ERROR_NONE) {
-                    $report = $rxPayDecoded;
-                }
-            }
-        }
-
-        $sbvView = function_exists('rx_sbv_public_view') ? rx_sbv_public_view($orderId) : null;
-        if ($report === null) {
-            $report = FaoximaDb::fetchOne(
-                'SELECT * FROM Payment_report WHERE id_order = :o AND id_user = :u AND ' . ($sbvView !== null ? '1 = 1' : '(source = \'miniapp\' OR (Payment_Method = \'tonpay\' AND tonpay_gateway_mode = \'custom\') OR (Payment_Method = \'atlaspay\' AND atlaspay_gateway_mode = \'custom\') OR Payment_Method = \'rialit\')') . ' LIMIT 1',
-                [
-                    ':o' => $orderId,
-                    ':u' => (string)$this->user['id'],
-                ]
-            );
-            if (is_array($report) && function_exists('rx_redis_is_active') && rx_redis_is_active()) {
-                $rxPayEncoded = json_encode($report, JSON_UNESCAPED_UNICODE);
-                if ($rxPayEncoded !== false) {
-                    rx_redis_set($rxPayCacheKey, $rxPayEncoded, 3);
-                }
-            }
-        }
+        $rxPayCacheKey = rx_payment_status_cache_key($orderId, $this->user['id']);
+        [$report, $sbvView] = $this->loadStatusReport($orderId, $rxPayCacheKey);
         if ($report === null) {
             FaoximaResponse::notFound('Payment not found');
         }
 
-        if ($sbvView !== null && (string) ($report['id_user'] ?? '') === (string) $this->user['id']) {
-            $sbvPayment = rx_sbv_get($orderId);
-            if (is_array($sbvPayment) && (string) $sbvPayment['state'] === 'matched' && !empty($sbvPayment['deposit_id'])) {
-                try {
-                    $autoload = dirname(__DIR__, 2) . '/vendor/autoload.php';
-                    if (is_file($autoload)) {
-                        require_once $autoload;
-                    }
-                    rxEnsurePaymentRuntime();
-                    rxPaymentV2PrepareContext();
-                    rx_sbv_process_deposit((int) $sbvPayment['deposit_id'], dirname(__DIR__, 2) . '/images.jpg');
-                } catch (Throwable $e) {
-                    rx_sbv_log('SBV_STATUS_RECOVER_FAILED', $e->getMessage(), ['id_order' => $orderId]);
-                }
-                $report = FaoximaDb::fetchOne(
-                    'SELECT * FROM Payment_report WHERE id_order = :o AND id_user = :u LIMIT 1',
-                    [':o' => $orderId, ':u' => (string) $this->user['id']]
-                );
-                if ($report === null) {
-                    FaoximaResponse::notFound('Payment not found');
-                }
-                $sbvView = rx_sbv_public_view($orderId);
-                if (function_exists('rx_redis_del')) {
-                    rx_redis_del($rxPayCacheKey);
-                }
-            }
-        }
-
-        if ((string) ($report['Payment_Method'] ?? '') === 'rialit' && function_exists('rialitPollThrottled')) {
-            $fresh = rialitPollThrottled($orderId, (string) $this->user['id']);
-            if (is_array($fresh)) {
-                $report = $fresh;
-            }
-            if (function_exists('rx_redis_del')) {
-                rx_redis_del($rxPayCacheKey);
-            }
-        }
+        [$report, $sbvView] = $this->refreshStatusReport($orderId, $rxPayCacheKey, $report, $sbvView);
 
         $paymentStatus = (string)($report['payment_Status'] ?? 'Unpaid');
         $reasonRaw = trim((string)($report['dec_not_confirmed'] ?? ''));
@@ -269,6 +207,82 @@ final class PaymentStatusHandler extends BaseHandler
         FaoximaResponse::ok($payload);
     }
 
+
+    private function loadStatusReport(string $orderId, string $rxPayCacheKey): array
+    {
+        $report = null;
+        if (function_exists('rx_redis_is_active') && rx_redis_is_active()) {
+            $rxPayCached = rx_redis_get($rxPayCacheKey);
+            if ($rxPayCached !== null) {
+                $rxPayDecoded = json_decode($rxPayCached, true);
+                if (is_array($rxPayDecoded)
+                    && (string) ($rxPayDecoded['id_order'] ?? '') === $orderId
+                    && (string) ($rxPayDecoded['id_user'] ?? '') === (string) $this->user['id']) {
+                    $report = $rxPayDecoded;
+                }
+            }
+        }
+
+        $sbvView = function_exists('rx_sbv_public_view') ? rx_sbv_public_view($orderId) : null;
+        if ($report === null) {
+            $report = FaoximaDb::fetchOne(
+                'SELECT * FROM Payment_report WHERE id_order = :o AND id_user = :u AND ' . ($sbvView !== null ? '1 = 1' : '(source = \'miniapp\' OR (Payment_Method = \'tonpay\' AND tonpay_gateway_mode = \'custom\') OR (Payment_Method = \'atlaspay\' AND atlaspay_gateway_mode = \'custom\') OR Payment_Method = \'rialit\')') . ' LIMIT 1',
+                [
+                    ':o' => $orderId,
+                    ':u' => (string)$this->user['id'],
+                ]
+            );
+            if (is_array($report) && function_exists('rx_redis_is_active') && rx_redis_is_active()) {
+                $rxPayEncoded = json_encode($report, JSON_UNESCAPED_UNICODE);
+                if ($rxPayEncoded !== false) {
+                    rx_redis_set($rxPayCacheKey, $rxPayEncoded, 3);
+                }
+            }
+        }
+        return [$report, $sbvView];
+    }
+
+    private function refreshStatusReport(string $orderId, string $rxPayCacheKey, $report, $sbvView): array
+    {
+        if ($sbvView !== null && (string) ($report['id_user'] ?? '') === (string) $this->user['id']) {
+            $sbvPayment = rx_sbv_get($orderId);
+            if (is_array($sbvPayment) && (string) $sbvPayment['state'] === 'matched' && !empty($sbvPayment['deposit_id'])) {
+                try {
+                    $autoload = dirname(__DIR__, 2) . '/vendor/autoload.php';
+                    if (is_file($autoload)) {
+                        require_once $autoload;
+                    }
+                    rxEnsurePaymentRuntime();
+                    rxPaymentV2PrepareContext();
+                    rx_sbv_process_deposit((int) $sbvPayment['deposit_id'], dirname(__DIR__, 2) . '/images.jpg');
+                } catch (Throwable $e) {
+                    rx_sbv_log('SBV_STATUS_RECOVER_FAILED', $e->getMessage(), ['id_order' => $orderId]);
+                }
+                $report = FaoximaDb::fetchOne(
+                    'SELECT * FROM Payment_report WHERE id_order = :o AND id_user = :u LIMIT 1',
+                    [':o' => $orderId, ':u' => (string) $this->user['id']]
+                );
+                if ($report === null) {
+                    FaoximaResponse::notFound('Payment not found');
+                }
+                $sbvView = rx_sbv_public_view($orderId);
+                if (function_exists('rx_redis_del')) {
+                    rx_redis_del($rxPayCacheKey);
+                }
+            }
+        }
+
+        if ((string) ($report['Payment_Method'] ?? '') === 'rialit' && function_exists('rialitPollThrottled')) {
+            $fresh = rialitPollThrottled($orderId, (string) $this->user['id']);
+            if (is_array($fresh)) {
+                $report = $fresh;
+            }
+            if (function_exists('rx_redis_del')) {
+                rx_redis_del($rxPayCacheKey);
+            }
+        }
+        return [$report, $sbvView];
+    }
 
     private function resolveInvoice(array $report, string $orderId): ?array
     {

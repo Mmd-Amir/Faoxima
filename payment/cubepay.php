@@ -26,18 +26,9 @@ function cubepay_finalize_paid_order($orderId, $Payment_report, $methodLabel)
 {
     global $connect;
 
-    $atomic = $connect->prepare(
-        "UPDATE Payment_report SET payment_Status = ? WHERE id_order = ? AND payment_Status NOT IN ('paid', 'cancelled')"
-    );
-    $statusPaid = 'paid';
-    $atomic->bind_param('ss', $statusPaid, $orderId);
-    $atomic->execute();
-    $affected = $atomic->affected_rows;
-    $atomic->close();
+    $affected = RxLegacyPaymentConfirmation::claimOnline($connect, $orderId);
     if ($affected < 1) {
-        $alreadyDone = (int)($Payment_report['direct_payment_done'] ?? 0) === 1;
-        $wasCancelled = strtolower((string)($Payment_report['payment_Status'] ?? '')) === 'cancelled';
-        if ($alreadyDone || $wasCancelled) {
+        if (!RxLegacyPaymentConfirmation::canResumeOnline($Payment_report)) {
             cubepay_log_event('CUBEPAY_DUPLICATE', 'Duplicate or already-paid callback ignored', [
                 'order_id' => $orderId,
             ]);
@@ -91,15 +82,13 @@ function cubepay_finalize_paid_order($orderId, $Payment_report, $methodLabel)
         ]);
         $Balance_id = ['id' => $Payment_report['id_user'] ?? '', 'username' => '—', 'Balance' => 0];
     }
-    $cashbackEligible = !function_exists('rx_cashbackEligibleForKey')
-        || rx_cashbackEligibleForKey("chashbackcubepay", $Balance_id['register'] ?? null, $Payment_report['id_invoice'] ?? null, $Balance_id['id'] ?? null, $Payment_report['id_order'] ?? null);
-    if ($cashbackEligible && $pricecashback != "0") {
-        $result = (int) floor(($Payment_report['price'] * $pricecashback) / 100);
-        if (rx_cashback_credit_once($Payment_report['id_order'], $Balance_id['id'], $result, 'chashbackcubepay', 'هدیه بازگشت وجه کیوب‌پی') === 'credited') {
-            $pricecashback = number_format($pricecashback);
-            $text_report = "🎁 کاربر عزیز مبلغ " . rxFormatToman($result) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
-            sendmessage($Balance_id['id'], $text_report, null, 'HTML');
-        }
+    $result = RxLegacyPaymentConfirmation::creditCashback(
+        $Payment_report, $Balance_id, 'chashbackcubepay', $pricecashback, 'هدیه بازگشت وجه کیوب‌پی'
+    );
+    if ($result !== null) {
+        $pricecashback = number_format($pricecashback);
+        $text_report = "🎁 کاربر عزیز مبلغ " . rxFormatToman($result) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
+        sendmessage($Balance_id['id'], $text_report, null, 'HTML');
     }
 
     $paymentreports = select("topicid", "idreport", "report", "paymentreport", "select")['idreport'];

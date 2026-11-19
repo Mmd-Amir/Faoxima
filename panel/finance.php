@@ -142,19 +142,32 @@ try {
 }
 
 
-$savedCount = 0;
-$edgeRejectedCount = 0;
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_save'])) {
-    fx_admin_require_access($pdo, ['administrator']);
-    foreach ($FIN_GROUPS as $group) {
+function fx_finance_posted_setting(array $post, array $field, string $key, string $fieldType): ?string
+{
+    $name = 'f_' . $key;
+    if ($fieldType === 'toggle') {
+        return isset($post[$name]) ? $field['on'] : $field['off'];
+    }
+    if (!array_key_exists($name, $post)) {
+        return null;
+    }
+    $value = (string)$post[$name];
+    return $fieldType === 'secret' && $value === '' ? null : $value;
+}
+
+function fx_finance_save_settings(PDO $pdo, array $groups, array $post, array $paySettings, array $textbotRows): array
+{
+    $savedCount = 0;
+    $edgeRejectedCount = 0;
+    foreach ($groups as $group) {
         foreach ($group['fields'] as $f) {
             $key = $f['name'];
             $fieldType = $f['type'] ?? 'text';
 
 
             if ($fieldType === 'textbot') {
-                if (!array_key_exists('f_' . $key, $_POST)) continue;
-                $new = (string)$_POST['f_' . $key];
+                if (!array_key_exists('f_' . $key, $post)) continue;
+                $new = (string)$post['f_' . $key];
                 $cur = $textbotRows[$key] ?? '';
                 if ((string)$cur === $new) continue;
                 if (fx_textbot_edge_violation($key, $new) !== '') {
@@ -182,14 +195,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_save'])) {
 
 
             $cur = $paySettings[$key] ?? '';
-            if ($fieldType === 'toggle') {
-                $new = isset($_POST['f_' . $key]) ? $f['on'] : $f['off'];
-            } else {
-                if (!array_key_exists('f_' . $key, $_POST)) continue;
-                $new = (string)$_POST['f_' . $key];
-
-                if ($fieldType === 'secret' && $new === '') continue;
-            }
+            $new = fx_finance_posted_setting($post, $f, $key, $fieldType);
+            if ($new === null) continue;
 
             if ((string)$cur === (string)$new) continue;
 
@@ -211,6 +218,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_save'])) {
             }
         }
     }
+    return [$savedCount, $edgeRejectedCount];
+}
+
+$savedCount = 0;
+$edgeRejectedCount = 0;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_save'])) {
+    fx_admin_require_access($pdo, ['administrator']);
+    [$savedCount, $edgeRejectedCount] = fx_finance_save_settings($pdo, $FIN_GROUPS, $_POST, $paySettings, $textbotRows);
     header('Location: finance.php?saved=' . $savedCount . ($edgeRejectedCount > 0 ? '&edge_rejected=' . $edgeRejectedCount : ''));
     exit;
 }

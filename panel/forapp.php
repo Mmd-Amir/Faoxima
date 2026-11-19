@@ -15,6 +15,7 @@ require_once __DIR__ . '/lib/status_filter.php';
 require_once __DIR__ . '/lib/search_filter.php';
 require_once __DIR__ . '/lib/extra_filter.php';
 require_once __DIR__ . '/lib/csrf.php';
+require_once __DIR__ . '/lib/bulk_delete.php';
 
 if (!function_exists('fxForappJdate')) {
     function fxForappJdate($raw): string
@@ -184,13 +185,13 @@ if (isset($_GET['media']) && $_GET['media'] !== '') {
 }
 
 $fxFlash = null;
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_fx_action'])) {
-    $fxAction = (string) $_POST['_fx_action'];
-    $fxActor = (string) ($_SESSION['user'] ?? '');
-    $fxPostOrder = trim((string) ($_POST['id_order'] ?? ''));
-    $fxPostDeposit = (int) ($_POST['deposit_id'] ?? 0);
-    $fxPostReason = trim((string) ($_POST['reason'] ?? ''));
-    $fxPostCpage = max(0, (int) ($_POST['cpage'] ?? 0));
+function fxForappRunAction(array $post, string $fxActor): array
+{
+    $fxAction = (string) $post['_fx_action'];
+    $fxPostOrder = trim((string) ($post['id_order'] ?? ''));
+    $fxPostDeposit = (int) ($post['deposit_id'] ?? 0);
+    $fxPostReason = trim((string) ($post['reason'] ?? ''));
+    $fxPostCpage = max(0, (int) ($post['cpage'] ?? 0));
     $fxFlash = ['type' => 'err', 'text' => 'درخواست نامعتبر است.'];
 
     if ($fxAction === 'refresh') {
@@ -218,7 +219,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_fx_action'])) {
             }
         }
     } elseif ($fxAction === 'set_received' && $fxPostOrder !== '') {
-        $fxReceived = fxForappAmount($_POST['received'] ?? '');
+        $fxReceived = fxForappAmount($post['received'] ?? '');
         if ($fxReceived === null) {
             $fxFlash = ['type' => 'err', 'text' => 'مبلغ دریافتی واردشده معتبر نیست.'];
         } elseif ($fxPostReason === '') {
@@ -303,8 +304,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_fx_action'])) {
                 : ['type' => 'err', 'text' => fxForappErrorText((string) ($res['reason'] ?? 'error'))];
         }
     } elseif ($fxAction === 'bulk_cancel') {
-        $fxRequestedIds = $_POST['ids'] ?? [];
-        $fxRequestedIds = is_array($fxRequestedIds) ? array_values(array_unique(array_filter(array_map('strval', $fxRequestedIds), function ($v) { return $v !== ''; }))) : [];
+        $fxRequestedIds = fx_bulk_string_ids($post['ids'] ?? []);
         $fxCancelledCount = 0;
         foreach ($fxRequestedIds as $fxBulkOrderId) {
             if (!function_exists('rx_sbv_admin_delete_expired_payment')) {
@@ -325,6 +325,154 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_fx_action'])) {
         } else {
             $fxFlash = ['type' => 'ok', 'text' => 'از ' . number_format($fxRequestedCount) . ' پرداخت انتخاب‌شده، ' . number_format($fxCancelledCount) . ' مورد لغو شد و ' . number_format($fxRequestedCount - $fxCancelledCount) . ' مورد به‌دلیل تسویه‌شده بودن، اتصال به واریز یا عدم انقضا قابل لغو نبود.'];
         }
+        return [$fxFlash, $fxCancelledCount];
+    }
+    return [$fxFlash, null];
+}
+
+function fxForappReceiptQuery(bool $fxSchemaReady, array $filters): array
+{
+    $fxQ = $filters['fxQ'];
+    $fxStatus = $filters['fxStatus'];
+    $fxMatch = $filters['fxMatch'];
+    $fxType = $filters['fxType'];
+    $fxUserId = $filters['fxUserId'];
+    $fxOrderFilter = $filters['fxOrderFilter'];
+    $fxDepositFilter = $filters['fxDepositFilter'];
+    $fxDf = $filters['fxDf'];
+    $fxLife = $filters['fxLife'];
+    $fxRFrom = " FROM card_sms_payment csp JOIN Payment_report pr ON pr.id_order = csp.id_order LEFT JOIN user u ON u.id = csp.id_user LEFT JOIN card_sms_deposit d ON d.id = csp.deposit_id";
+    $fxRWhere = " WHERE 1 = 1";
+    $fxRParams = [];
+    if ($fxSchemaReady) {
+        if ($fxQ !== '') {
+            $like = '%' . $fxQ . '%';
+            $fxRWhere .= ' AND (pr.id_order LIKE :rq1 OR pr.id_user LIKE :rq2 OR csp.id_user LIKE :rq3 OR u.username LIKE :rq4 OR u.namecustom LIKE :rq5 OR pr.card_last4 LIKE :rq6)';
+            $fxRParams[':rq1'] = $like;
+            $fxRParams[':rq2'] = $like;
+            $fxRParams[':rq3'] = $like;
+            $fxRParams[':rq4'] = $like;
+            $fxRParams[':rq5'] = $like;
+            $fxRParams[':rq6'] = $like;
+        }
+        if ($fxStatus !== '') {
+            $fxRWhere .= ' AND pr.payment_Status = :rstatus';
+            $fxRParams[':rstatus'] = $fxStatus;
+        }
+        if ($fxMatch !== '') {
+            $fxRWhere .= ' AND csp.state = :rmstate';
+            $fxRParams[':rmstate'] = $fxMatch;
+        }
+        if ($fxType === 'wallet') {
+            $fxRWhere .= " AND (pr.id_invoice IS NULL OR CAST(SUBSTRING_INDEX(pr.id_invoice, '|', 1) AS BINARY) NOT IN ('getconfigafterpay', 'getextenduser', 'getextravolumeuser', 'getextratimeuser'))";
+        } elseif ($fxType !== '') {
+            $fxRWhere .= " AND CAST(SUBSTRING_INDEX(pr.id_invoice, '|', 1) AS BINARY) = :rtype";
+            $fxRParams[':rtype'] = $fxType;
+        }
+        if ($fxUserId !== '') {
+            $fxRWhere .= ' AND csp.id_user = :ruid';
+            $fxRParams[':ruid'] = $fxUserId;
+        }
+        if ($fxOrderFilter !== '') {
+            $fxRWhere .= ' AND pr.id_order = :roid';
+            $fxRParams[':roid'] = $fxOrderFilter;
+        }
+        if ($fxDepositFilter !== '') {
+            $fxRWhere .= ' AND csp.deposit_id = :rdid';
+            $fxRParams[':rdid'] = (int) $fxDepositFilter;
+        }
+        if ($fxDf['active']) {
+            $fxRWhere .= " AND ((pr.`time` REGEXP '^[0-9]+$' AND CAST(pr.`time` AS UNSIGNED) BETWEEN :rd1 AND :rd2) OR (pr.`time` NOT REGEXP '^[0-9]+$' AND STR_TO_DATE(REPLACE(pr.`time`, '/', '-'), '%Y-%m-%d %H:%i:%s') BETWEEN FROM_UNIXTIME(:rd3) AND FROM_UNIXTIME(:rd4)))";
+            $fxRParams[':rd1'] = $fxDf['from'];
+            $fxRParams[':rd2'] = $fxDf['to'];
+            $fxRParams[':rd3'] = $fxDf['from'];
+            $fxRParams[':rd4'] = $fxDf['to'];
+        }
+        if ($fxLife !== '') {
+            $fxExpiredExpr = "(pr.payment_Status = 'expire' OR (csp.state = 'closed' AND csp.resolution = 'expired') OR (csp.state IN ('open', 'review', 'matched') AND csp.expires_at > 0 AND csp.expires_at < :rlnow))";
+            $fxRWhere .= $fxLife === 'expired' ? (' AND ' . $fxExpiredExpr) : (' AND NOT ' . $fxExpiredExpr);
+            $fxRParams[':rlnow'] = time();
+        }
+    }
+    return [$fxRFrom, $fxRWhere, $fxRParams];
+}
+
+function fxForappDepositQuery(bool $fxSchemaReady, array $filters): array
+{
+    $fxQ = $filters['fxQ'];
+    $fxStatus = $filters['fxStatus'];
+    $fxUserId = $filters['fxUserId'];
+    $fxOrderFilter = $filters['fxOrderFilter'];
+    $fxDepositFilter = $filters['fxDepositFilter'];
+    $fxDf = $filters['fxDf'];
+    $fxDFrom = " FROM card_sms_deposit d LEFT JOIN card_sms_payment csp ON csp.deposit_id = d.id";
+    $fxDWhere = " WHERE d.is_test = 0 AND d.is_deposit = 1";
+    $fxDParams = [];
+    if ($fxSchemaReady) {
+        if ($fxQ !== '') {
+            $like = '%' . $fxQ . '%';
+            $fxDWhere .= ' AND (d.event_id LIKE :dq1 OR d.bank LIKE :dq2 OR d.sender LIKE :dq3 OR d.code LIKE :dq4 OR COALESCE(d.id_order, csp.id_order) LIKE :dq5 OR CAST(d.id AS CHAR) LIKE :dq6)';
+            $fxDParams[':dq1'] = $like;
+            $fxDParams[':dq2'] = $like;
+            $fxDParams[':dq3'] = $like;
+            $fxDParams[':dq4'] = $like;
+            $fxDParams[':dq5'] = $like;
+            $fxDParams[':dq6'] = $like;
+        }
+        if ($fxStatus !== '') {
+            $fxDWhere .= ' AND d.state = :dstatus';
+            $fxDParams[':dstatus'] = $fxStatus;
+        }
+        if ($fxUserId !== '') {
+            $fxDWhere .= ' AND csp.id_user = :duid';
+            $fxDParams[':duid'] = $fxUserId;
+        }
+        if ($fxOrderFilter !== '') {
+            $fxDWhere .= ' AND COALESCE(d.id_order, csp.id_order) = :doid';
+            $fxDParams[':doid'] = $fxOrderFilter;
+        }
+        if ($fxDepositFilter !== '') {
+            $fxDWhere .= ' AND d.id = :ddid';
+            $fxDParams[':ddid'] = (int) $fxDepositFilter;
+        }
+        if ($fxDf['active']) {
+            $fxDWhere .= ' AND d.stored_at BETWEEN :ds1 AND :ds2';
+            $fxDParams[':ds1'] = $fxDf['from'];
+            $fxDParams[':ds2'] = $fxDf['to'];
+        }
+    }
+    return [$fxDFrom, $fxDWhere, $fxDParams];
+}
+
+function fxForappReceiptPage(PDO $pdo, string $fxRFrom, string $fxRWhere, array $fxRParams): array
+{
+    $fxPg = fx_paginate($pdo, "SELECT COUNT(*)" . $fxRFrom . $fxRWhere, $fxRParams, 20);
+    $fxRSelect = "SELECT pr.*, csp.id AS csp_id, csp.principal_toman, csp.fee_toman, csp.payable_toman, csp.payable_rial, csp.created_at AS csp_created_at, csp.receipt_after, csp.expires_at, csp.state AS csp_state, csp.deposit_id, csp.received_rial, csp.resolution, csp.resolved_by, csp.resolved_at, csp.resolution_note, csp.updated_at AS csp_updated_at, u.username, u.namecustom, d.amount_rial AS deposit_amount_rial, d.bank AS deposit_bank, d.sender AS deposit_sender, d.stored_at AS deposit_stored_at, d.state AS deposit_state";
+    $fxListStmt = $pdo->prepare($fxRSelect . $fxRFrom . $fxRWhere . " ORDER BY CASE WHEN pr.payment_Status = 'waiting' THEN 0 ELSE 1 END, pr.id DESC LIMIT :perPage OFFSET :offset");
+    foreach ($fxRParams as $k => $v) $fxListStmt->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
+    $fxListStmt->bindValue(':perPage', $fxPg['perPage'], PDO::PARAM_INT);
+    $fxListStmt->bindValue(':offset', $fxPg['offset'], PDO::PARAM_INT);
+    $fxListStmt->execute();
+    $fxRows = $fxListStmt->fetchAll(PDO::FETCH_ASSOC);
+    return [$fxPg, $fxRows];
+}
+
+function fxForappDepositPage(PDO $pdo, string $fxDFrom, string $fxDWhere, array $fxDParams): array
+{
+    $fxDpg = fx_paginate($pdo, "SELECT COUNT(*)" . $fxDFrom . $fxDWhere, $fxDParams, 20);
+    $fxDSelect = "SELECT d.*, csp.id_order AS csp_order, csp.id_user AS csp_user, csp.state AS csp_state";
+    $fxDStmt = $pdo->prepare($fxDSelect . $fxDFrom . $fxDWhere . " ORDER BY d.id DESC LIMIT :perPage OFFSET :offset");
+    foreach ($fxDParams as $k => $v) $fxDStmt->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
+    $fxDStmt->bindValue(':perPage', $fxDpg['perPage'], PDO::PARAM_INT);
+    $fxDStmt->bindValue(':offset', $fxDpg['offset'], PDO::PARAM_INT);
+    $fxDStmt->execute();
+    $fxDRows = $fxDStmt->fetchAll(PDO::FETCH_ASSOC);
+    return [$fxDpg, $fxDRows];
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_fx_action'])) {
+    [$fxFlash, $fxCancelledCount] = fxForappRunAction($_POST, (string) ($_SESSION['user'] ?? ''));
+    if ($fxCancelledCount !== null) {
         $_SESSION['_forapp_flash'] = $fxFlash;
         $fxKeepQs = str_replace(["\r", "\n"], '', (string) ($_POST['_keep_qs'] ?? ''));
         $fxBulkFlag = 'bulk=' . ($fxCancelledCount > 0 ? 'ok' : 'err');
@@ -471,120 +619,20 @@ if ($fxSchemaReady) {
     } catch (\Throwable $e) {}
 }
 
-$fxRFrom = " FROM card_sms_payment csp JOIN Payment_report pr ON pr.id_order = csp.id_order LEFT JOIN user u ON u.id = csp.id_user LEFT JOIN card_sms_deposit d ON d.id = csp.deposit_id";
-$fxRWhere = " WHERE 1 = 1";
-$fxRParams = [];
-if ($fxSchemaReady) {
-    if ($fxQ !== '') {
-        $like = '%' . $fxQ . '%';
-        $fxRWhere .= ' AND (pr.id_order LIKE :rq1 OR pr.id_user LIKE :rq2 OR csp.id_user LIKE :rq3 OR u.username LIKE :rq4 OR u.namecustom LIKE :rq5 OR pr.card_last4 LIKE :rq6)';
-        $fxRParams[':rq1'] = $like;
-        $fxRParams[':rq2'] = $like;
-        $fxRParams[':rq3'] = $like;
-        $fxRParams[':rq4'] = $like;
-        $fxRParams[':rq5'] = $like;
-        $fxRParams[':rq6'] = $like;
-    }
-    if ($fxStatus !== '') {
-        $fxRWhere .= ' AND pr.payment_Status = :rstatus';
-        $fxRParams[':rstatus'] = $fxStatus;
-    }
-    if ($fxMatch !== '') {
-        $fxRWhere .= ' AND csp.state = :rmstate';
-        $fxRParams[':rmstate'] = $fxMatch;
-    }
-    if ($fxType === 'wallet') {
-        $fxRWhere .= " AND (pr.id_invoice IS NULL OR CAST(SUBSTRING_INDEX(pr.id_invoice, '|', 1) AS BINARY) NOT IN ('getconfigafterpay', 'getextenduser', 'getextravolumeuser', 'getextratimeuser'))";
-    } elseif ($fxType !== '') {
-        $fxRWhere .= " AND CAST(SUBSTRING_INDEX(pr.id_invoice, '|', 1) AS BINARY) = :rtype";
-        $fxRParams[':rtype'] = $fxType;
-    }
-    if ($fxUserId !== '') {
-        $fxRWhere .= ' AND csp.id_user = :ruid';
-        $fxRParams[':ruid'] = $fxUserId;
-    }
-    if ($fxOrderFilter !== '') {
-        $fxRWhere .= ' AND pr.id_order = :roid';
-        $fxRParams[':roid'] = $fxOrderFilter;
-    }
-    if ($fxDepositFilter !== '') {
-        $fxRWhere .= ' AND csp.deposit_id = :rdid';
-        $fxRParams[':rdid'] = (int) $fxDepositFilter;
-    }
-    if ($fxDf['active']) {
-        $fxRWhere .= " AND ((pr.`time` REGEXP '^[0-9]+$' AND CAST(pr.`time` AS UNSIGNED) BETWEEN :rd1 AND :rd2) OR (pr.`time` NOT REGEXP '^[0-9]+$' AND STR_TO_DATE(REPLACE(pr.`time`, '/', '-'), '%Y-%m-%d %H:%i:%s') BETWEEN FROM_UNIXTIME(:rd3) AND FROM_UNIXTIME(:rd4)))";
-        $fxRParams[':rd1'] = $fxDf['from'];
-        $fxRParams[':rd2'] = $fxDf['to'];
-        $fxRParams[':rd3'] = $fxDf['from'];
-        $fxRParams[':rd4'] = $fxDf['to'];
-    }
-    if ($fxLife !== '') {
-        $fxExpiredExpr = "(pr.payment_Status = 'expire' OR (csp.state = 'closed' AND csp.resolution = 'expired') OR (csp.state IN ('open', 'review', 'matched') AND csp.expires_at > 0 AND csp.expires_at < :rlnow))";
-        $fxRWhere .= $fxLife === 'expired' ? (' AND ' . $fxExpiredExpr) : (' AND NOT ' . $fxExpiredExpr);
-        $fxRParams[':rlnow'] = time();
-    }
-}
+$fxReportFilters = compact('fxQ', 'fxStatus', 'fxMatch', 'fxType', 'fxUserId', 'fxOrderFilter', 'fxDepositFilter', 'fxDf', 'fxLife');
+[$fxRFrom, $fxRWhere, $fxRParams] = fxForappReceiptQuery($fxSchemaReady, $fxReportFilters);
 
 if ($fxSchemaReady && $fxTab === 'receipts') {
-    $fxPg = fx_paginate($pdo, "SELECT COUNT(*)" . $fxRFrom . $fxRWhere, $fxRParams, 20);
-    $fxRSelect = "SELECT pr.*, csp.id AS csp_id, csp.principal_toman, csp.fee_toman, csp.payable_toman, csp.payable_rial, csp.created_at AS csp_created_at, csp.receipt_after, csp.expires_at, csp.state AS csp_state, csp.deposit_id, csp.received_rial, csp.resolution, csp.resolved_by, csp.resolved_at, csp.resolution_note, csp.updated_at AS csp_updated_at, u.username, u.namecustom, d.amount_rial AS deposit_amount_rial, d.bank AS deposit_bank, d.sender AS deposit_sender, d.stored_at AS deposit_stored_at, d.state AS deposit_state";
-    $fxListStmt = $pdo->prepare($fxRSelect . $fxRFrom . $fxRWhere . " ORDER BY CASE WHEN pr.payment_Status = 'waiting' THEN 0 ELSE 1 END, pr.id DESC LIMIT :perPage OFFSET :offset");
-    foreach ($fxRParams as $k => $v) $fxListStmt->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
-    $fxListStmt->bindValue(':perPage', $fxPg['perPage'], PDO::PARAM_INT);
-    $fxListStmt->bindValue(':offset', $fxPg['offset'], PDO::PARAM_INT);
-    $fxListStmt->execute();
-    $fxRows = $fxListStmt->fetchAll(PDO::FETCH_ASSOC);
+    [$fxPg, $fxRows] = fxForappReceiptPage($pdo, $fxRFrom, $fxRWhere, $fxRParams);
 } else {
     $fxPg = ['page' => 1, 'perPage' => 20, 'offset' => 0, 'total' => 0, 'pages' => 1];
     $fxRows = [];
 }
 
-$fxDFrom = " FROM card_sms_deposit d LEFT JOIN card_sms_payment csp ON csp.deposit_id = d.id";
-$fxDWhere = " WHERE d.is_test = 0 AND d.is_deposit = 1";
-$fxDParams = [];
-if ($fxSchemaReady) {
-    if ($fxQ !== '') {
-        $like = '%' . $fxQ . '%';
-        $fxDWhere .= ' AND (d.event_id LIKE :dq1 OR d.bank LIKE :dq2 OR d.sender LIKE :dq3 OR d.code LIKE :dq4 OR COALESCE(d.id_order, csp.id_order) LIKE :dq5 OR CAST(d.id AS CHAR) LIKE :dq6)';
-        $fxDParams[':dq1'] = $like;
-        $fxDParams[':dq2'] = $like;
-        $fxDParams[':dq3'] = $like;
-        $fxDParams[':dq4'] = $like;
-        $fxDParams[':dq5'] = $like;
-        $fxDParams[':dq6'] = $like;
-    }
-    if ($fxStatus !== '') {
-        $fxDWhere .= ' AND d.state = :dstatus';
-        $fxDParams[':dstatus'] = $fxStatus;
-    }
-    if ($fxUserId !== '') {
-        $fxDWhere .= ' AND csp.id_user = :duid';
-        $fxDParams[':duid'] = $fxUserId;
-    }
-    if ($fxOrderFilter !== '') {
-        $fxDWhere .= ' AND COALESCE(d.id_order, csp.id_order) = :doid';
-        $fxDParams[':doid'] = $fxOrderFilter;
-    }
-    if ($fxDepositFilter !== '') {
-        $fxDWhere .= ' AND d.id = :ddid';
-        $fxDParams[':ddid'] = (int) $fxDepositFilter;
-    }
-    if ($fxDf['active']) {
-        $fxDWhere .= ' AND d.stored_at BETWEEN :ds1 AND :ds2';
-        $fxDParams[':ds1'] = $fxDf['from'];
-        $fxDParams[':ds2'] = $fxDf['to'];
-    }
-}
+[$fxDFrom, $fxDWhere, $fxDParams] = fxForappDepositQuery($fxSchemaReady, $fxReportFilters);
 
 if ($fxSchemaReady && $fxTab === 'deposits') {
-    $fxDpg = fx_paginate($pdo, "SELECT COUNT(*)" . $fxDFrom . $fxDWhere, $fxDParams, 20);
-    $fxDSelect = "SELECT d.*, csp.id_order AS csp_order, csp.id_user AS csp_user, csp.state AS csp_state";
-    $fxDStmt = $pdo->prepare($fxDSelect . $fxDFrom . $fxDWhere . " ORDER BY d.id DESC LIMIT :perPage OFFSET :offset");
-    foreach ($fxDParams as $k => $v) $fxDStmt->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
-    $fxDStmt->bindValue(':perPage', $fxDpg['perPage'], PDO::PARAM_INT);
-    $fxDStmt->bindValue(':offset', $fxDpg['offset'], PDO::PARAM_INT);
-    $fxDStmt->execute();
-    $fxDRows = $fxDStmt->fetchAll(PDO::FETCH_ASSOC);
+    [$fxDpg, $fxDRows] = fxForappDepositPage($pdo, $fxDFrom, $fxDWhere, $fxDParams);
 } else {
     $fxDpg = ['page' => 1, 'perPage' => 20, 'offset' => 0, 'total' => 0, 'pages' => 1];
     $fxDRows = [];

@@ -48,10 +48,7 @@ class ServiceMonitor
         if ($invoices == false) return;
         $this->deletionAttempts = 0;
         foreach ($invoices as $invoice) {
-            if (function_exists('rx_cron_time_up') && rx_cron_time_up()) {
-                if (function_exists('rx_cron_task_defer')) {
-                    rx_cron_task_defer('time_budget', 60);
-                }
+            if (rx_cron_budget_exhausted()) {
                 break;
             }
             if ($invoice['time_cron'] != null) {
@@ -60,61 +57,84 @@ class ServiceMonitor
             }
             if ($this->deletionAttempts >= self::DELETE_BUDGET) break;
             try {
-            $data = $this->processInvoice($invoice);
-            if (!is_array($data)) {
-                $delay = ($data === false) ? 3600 : self::FAILED_CHECK_DELAY;
-                update("invoice", "time_cron", time() - 3600 + $delay, "id_invoice", $invoice['id_invoice']);
-                continue;
-            }
-            update("invoice", "time_cron", time(), "id_invoice", $invoice['id_invoice']);
-            $check_send = json_decode($invoice['notifctions'], true);
-            $currentUStatus = strtolower((string)($data['userData']['status'] ?? ''));
-            $currentUExp = is_numeric($data['userData']['expire'] ?? null) ? (int)$data['userData']['expire'] : 0;
-            $currentUDl = is_numeric($data['userData']['data_limit'] ?? null) ? (float)$data['userData']['data_limit'] : 0.0;
-            $currentUUt = is_numeric($data['userData']['used_traffic'] ?? null) ? (float)$data['userData']['used_traffic'] : 0.0;
-            if ($currentUExp > 0 && $currentUExp <= time()) {
-                $currentUStatus = 'expired';
-                $data['userData']['status'] = 'expired';
-            } elseif ($currentUDl > 0.0 && $currentUUt >= $currentUDl) {
-                $currentUStatus = 'limited';
-                $data['userData']['status'] = 'limited';
-            }
-            try {
-                update("invoice", "user_info", json_encode($data['userData'], JSON_UNESCAPED_UNICODE), "id_invoice", $invoice['id_invoice']);
+                $this->runInvoiceCheck($invoice);
             } catch (Throwable $e) {
-            }
-            if ($currentUStatus === 'expired' && ($data['invoice']['Status'] ?? '') !== 'end_of_time') {
-                update("invoice", "Status", "end_of_time", "id_invoice", $invoice['id_invoice']);
-                $data['invoice']['Status'] = 'end_of_time';
-            } elseif ($currentUStatus === 'limited' && ($data['invoice']['Status'] ?? '') !== 'end_of_volume') {
-                update("invoice", "Status", "end_of_volume", "id_invoice", $invoice['id_invoice']);
-                $data['invoice']['Status'] = 'end_of_volume';
-            } elseif ($currentUStatus === 'on_hold' && ($data['invoice']['Status'] ?? '') !== 'send_on_hold') {
-                update("invoice", "Status", "send_on_hold", "id_invoice", $invoice['id_invoice']);
-                $data['invoice']['Status'] = 'send_on_hold';
-            }
-            $result = false;
-            if (!$check_send['volume']) {
-                if ($this->status_cron['volume']) $result = $this->checkVolumeThreshold($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
-            }
-            if ($result) $data['invoice'] = select("invoice", "id_invoice,id_user,username,Service_location,name_product,bottype,Status,notifctions,uuid", "id_invoice", $invoice['id_invoice']);
-            if (!$check_send['time']) {
-                if ($this->status_cron['day']) $this->checkTimeExpiration($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
-            }
-            $removalResult = false;
-            if ($this->status_cron['remove']) $removalResult = $this->shouldRemoveService($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
-            if ($removalResult === false && $this->status_cron['remove_volume']) {
-                $removalResult = $this->shouldRemoveServiceـvolume($data['invoice'], $data['user'], $data['userData'], $invoice['username'], $data['panel']);
-            }
-            if ($removalResult === null) {
-                update("invoice", "time_cron", time() - 3600 + self::FAILED_CHECK_DELAY, "id_invoice", $invoice['id_invoice']);
-            }
-            if ($removalResult === false && !rx_cron_time_up() && $data['panel']['inboundstatus'] == "oninbounddisable" && $data['panel']['type'] == "marzban") $this->active_inbound_expire($data['invoice'],  $data['userData'], $data['panel']);
-            } catch (Throwable $e) {
-                update("invoice", "time_cron", time() - 3600 + self::FAILED_CHECK_DELAY, "id_invoice", $invoice['id_invoice']);
+                $this->rescheduleInvoiceCheck($invoice['id_invoice'], self::FAILED_CHECK_DELAY);
                 error_log('[cron:notifications] invoice ' . $invoice['id_invoice'] . ': ' . $e->getMessage());
             }
         }
+    }
+
+    private function runInvoiceCheck(array $invoice): void
+    {
+        $data = $this->processInvoice($invoice);
+        if (!is_array($data)) {
+            $delay = ($data === false) ? 3600 : self::FAILED_CHECK_DELAY;
+            $this->rescheduleInvoiceCheck($invoice['id_invoice'], $delay);
+            return;
+        }
+
+        update("invoice", "time_cron", time(), "id_invoice", $invoice['id_invoice']);
+        $check_send = json_decode($invoice['notifctions'], true);
+        $data = $this->persistProviderState($data, $invoice);
+        $this->applyMaintenancePolicy($data, $invoice, $check_send);
+    }
+
+    private function persistProviderState(array $data, array $invoice): array
+    {
+        $currentUStatus = strtolower((string)($data['userData']['status'] ?? ''));
+        $currentUExp = is_numeric($data['userData']['expire'] ?? null) ? (int)$data['userData']['expire'] : 0;
+        $currentUDl = is_numeric($data['userData']['data_limit'] ?? null) ? (float)$data['userData']['data_limit'] : 0.0;
+        $currentUUt = is_numeric($data['userData']['used_traffic'] ?? null) ? (float)$data['userData']['used_traffic'] : 0.0;
+        if ($currentUExp > 0 && $currentUExp <= time()) {
+            $currentUStatus = 'expired';
+            $data['userData']['status'] = 'expired';
+        } elseif ($currentUDl > 0.0 && $currentUUt >= $currentUDl) {
+            $currentUStatus = 'limited';
+            $data['userData']['status'] = 'limited';
+        }
+        try {
+            update("invoice", "user_info", json_encode($data['userData'], JSON_UNESCAPED_UNICODE), "id_invoice", $invoice['id_invoice']);
+        } catch (Throwable $e) {
+            error_log('[cron:notifications] provider snapshot persistence failed for invoice ' . $invoice['id_invoice'] . ': ' . get_class($e));
+        }
+        if ($currentUStatus === 'expired' && ($data['invoice']['Status'] ?? '') !== 'end_of_time') {
+            update("invoice", "Status", "end_of_time", "id_invoice", $invoice['id_invoice']);
+            $data['invoice']['Status'] = 'end_of_time';
+        } elseif ($currentUStatus === 'limited' && ($data['invoice']['Status'] ?? '') !== 'end_of_volume') {
+            update("invoice", "Status", "end_of_volume", "id_invoice", $invoice['id_invoice']);
+            $data['invoice']['Status'] = 'end_of_volume';
+        } elseif ($currentUStatus === 'on_hold' && ($data['invoice']['Status'] ?? '') !== 'send_on_hold') {
+            update("invoice", "Status", "send_on_hold", "id_invoice", $invoice['id_invoice']);
+            $data['invoice']['Status'] = 'send_on_hold';
+        }
+        return $data;
+    }
+
+    private function applyMaintenancePolicy(array $data, array $invoice, $check_send): void
+    {
+        $result = false;
+        if (!$check_send['volume']) {
+            if ($this->status_cron['volume']) $result = $this->checkVolumeThreshold($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
+        }
+        if ($result) $data['invoice'] = select("invoice", "id_invoice,id_user,username,Service_location,name_product,bottype,Status,notifctions,uuid", "id_invoice", $invoice['id_invoice']);
+        if (!$check_send['time']) {
+            if ($this->status_cron['day']) $this->checkTimeExpiration($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
+        }
+        $removalResult = false;
+        if ($this->status_cron['remove']) $removalResult = $this->shouldRemoveService($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
+        if ($removalResult === false && $this->status_cron['remove_volume']) {
+            $removalResult = $this->shouldRemoveServiceـvolume($data['invoice'], $data['user'], $data['userData'], $invoice['username'], $data['panel']);
+        }
+        if ($removalResult === null) {
+            $this->rescheduleInvoiceCheck($invoice['id_invoice'], self::FAILED_CHECK_DELAY);
+        }
+        if ($removalResult === false && !rx_cron_time_up() && $data['panel']['inboundstatus'] == "oninbounddisable" && $data['panel']['type'] == "marzban") $this->active_inbound_expire($data['invoice'],  $data['userData'], $data['panel']);
+    }
+
+    private function rescheduleInvoiceCheck($invoiceId, int $delay): void
+    {
+        update("invoice", "time_cron", time() - 3600 + $delay, "id_invoice", $invoiceId);
     }
 
 

@@ -151,6 +151,31 @@ function nmCategoryLookupValues($category)
 
     return array_values(array_unique(array_filter($values, static function($v) { return trim((string)$v) !== ''; })));
 }
+
+function nmProductCategoryPredicate(array $catValues): array
+{
+    if (!$catValues) {
+        return ['', []];
+    }
+
+    [$catSql, $params] = nmBuildFindInSetClause('category', $catValues, 'cat');
+    if ($catSql === '') {
+        return ['', []];
+    }
+
+    if (nmTableHasColumn('product', 'category_id')) {
+        $inId = [];
+        foreach ($catValues as $j => $value) {
+            $key = ':cat_id' . $j;
+            $inId[] = $key;
+            $params[$key] = $value;
+        }
+        $catSql .= ' OR category_id IN (' . implode(',', $inId) . ')';
+    }
+
+    return [" AND ({$catSql})", $params];
+}
+
 function nmProductsForPanelCategory(array $panel, $agent = 'all', $category = null)
 {
     global $pdo;
@@ -170,23 +195,9 @@ function nmProductsForPanelCategory(array $panel, $agent = 'all', $category = nu
     }
 
     $catValues = nmCategoryLookupValues($category);
-    if ($catValues) {
-        [$catSql, $catParams] = nmBuildFindInSetClause('category', $catValues, 'cat');
-        if ($catSql !== '') {
-            $sql .= " AND ({$catSql}";
-            $params += $catParams;
-            if (nmTableHasColumn('product', 'category_id')) {
-                $inId = [];
-                foreach ($catValues as $j => $value) {
-                    $key = ':cat_id' . $j;
-                    $inId[] = $key;
-                    $params[$key] = $value;
-                }
-                $sql .= ' OR category_id IN (' . implode(',', $inId) . ')';
-            }
-            $sql .= ')';
-        }
-    }
+    [$catSql, $catParams] = nmProductCategoryPredicate($catValues);
+    $sql .= $catSql;
+    $params += $catParams;
     $sql .= " ORDER BY CASE WHEN FIND_IN_SET(:loc_order, Location) > 0 THEN 0 ELSE 1 END, CAST(price_product AS UNSIGNED) ASC, id DESC";
     try {
         $stmt = $pdo->prepare($sql);
@@ -272,23 +283,9 @@ function nmProductByNameForPanel($productName, $panelName, $agent = null, $categ
         ];
         $sql = "SELECT * FROM product WHERE name_product = :name_product AND (FIND_IN_SET(:location_where, Location) > 0 OR Location = '/all')";
         $catValues = nmCategoryLookupValues($category);
-        if ($catValues) {
-            [$catSql, $catParams] = nmBuildFindInSetClause('category', $catValues, 'cat');
-            if ($catSql !== '') {
-                $sql .= " AND ({$catSql}";
-                $params += $catParams;
-                if (nmTableHasColumn('product', 'category_id')) {
-                    $inId = [];
-                    foreach ($catValues as $j => $value) {
-                        $key = ':cat_id' . $j;
-                        $inId[] = $key;
-                        $params[$key] = $value;
-                    }
-                    $sql .= ' OR category_id IN (' . implode(',', $inId) . ')';
-                }
-                $sql .= ')';
-            }
-        }
+        [$catSql, $catParams] = nmProductCategoryPredicate($catValues);
+        $sql .= $catSql;
+        $params += $catParams;
         $agent = trim((string)($agent ?? ''));
         if (!in_array($agent, ['', 'all', '*', 'any'], true)) {
             $sql .= " AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))";
@@ -306,6 +303,38 @@ function nmProductByNameForPanel($productName, $panelName, $agent = null, $categ
         error_log('nmProductByNameForPanel failed: ' . $e->getMessage());
         return false;
     }
+}
+
+function nmInfoCardUsageFields(array $data): array
+{
+    $used = (float) ($data['used_traffic'] ?? 0);
+    $total = (float) ($data['data_limit'] ?? 0);
+    $expire = $data['expire'] ?? 0;
+    $unlimitedTime = empty($expire);
+    $daysLeft = 0;
+    if (!$unlimitedTime) {
+        $diff = (int) $expire - time();
+        $daysLeft = max(0, (int) floor($diff / 86400));
+    }
+    return [
+        'active' => in_array((string) ($data['status'] ?? 'active'), ['active', 'on_hold'], true),
+        'used_bytes' => $used,
+        'total_bytes' => $total,
+        'days_left' => $daysLeft,
+        'unlimited_time' => $unlimitedTime,
+    ];
+}
+
+function nmInfoCardConfiguredBotUsername($settings): string
+{
+    if (is_array($settings)) {
+        foreach (['bot_username', 'username_bot', 'usernamebot', 'BotUsername', 'bot_user'] as $key) {
+            if (isset($settings[$key]) && is_string($settings[$key]) && trim($settings[$key]) !== '') {
+                return ltrim($settings[$key], '@');
+            }
+        }
+    }
+    return '';
 }
 
 function nm_renderInfoCardForInvoice($panel_info, $username_service, $invoice_id, $user_id)
@@ -335,28 +364,8 @@ function nm_renderInfoCardForInvoice($panel_info, $username_service, $invoice_id
         if (!is_array($data) || (isset($data['status']) && $data['status'] === 'Unsuccessful')) {
             return null;
         }
-        $used  = (float)($data['used_traffic'] ?? 0);
-        $total = (float)($data['data_limit']   ?? 0);
-        $expire = $data['expire'] ?? 0;
-        $unlimitedTime = empty($expire);
-        $daysLeft = 0;
-        if (!$unlimitedTime) {
-            $diff = (int)$expire - time();
-            $daysLeft = max(0, (int) floor($diff / 86400));
-        }
-        $statusVal = (string)($data['status'] ?? 'active');
-        $isActive = in_array($statusVal, ['active', 'on_hold'], true);
-
-
-        $botUsername = '';
-        if (is_array($setting ?? null)) {
-            foreach (['bot_username', 'username_bot', 'usernamebot', 'BotUsername', 'bot_user'] as $k) {
-                if (isset($setting[$k]) && is_string($setting[$k]) && trim($setting[$k]) !== '') {
-                    $botUsername = ltrim((string)$setting[$k], '@');
-                    break;
-                }
-            }
-        }
+        $usage = nmInfoCardUsageFields($data);
+        $botUsername = nmInfoCardConfiguredBotUsername($setting ?? null);
         if ($botUsername === '' && function_exists('telegram')) {
             $me = @telegram('getMe', []);
             if (is_array($me) && isset($me['result']['username'])) {
@@ -369,12 +378,7 @@ function nm_renderInfoCardForInvoice($panel_info, $username_service, $invoice_id
             'config_name'    => (string)$username_service,
             'bot_username'   => $botUsername,
             'user_id'        => (string)$user_id,
-            'active'         => $isActive,
-            'used_bytes'     => $used,
-            'total_bytes'    => $total,
-            'days_left'      => $daysLeft,
-            'unlimited_time' => $unlimitedTime,
-        ];
+        ] + $usage;
         $outPath = (defined('REFACTORED_LEGACY_ROOT') ? REFACTORED_LEGACY_ROOT : __DIR__)
             . DIRECTORY_SEPARATOR . 'infocard_' . $user_id . '_' . bin2hex(random_bytes(3)) . '.png';
         $written = createServiceInfoCard($params, $color, $outPath);
@@ -463,6 +467,28 @@ if (!function_exists('rx_cleanEmojiAndSymbols')) {
     }
 }
 
+function nmMatchingPanelRow(array $panels, string $cleanInput): ?array
+{
+    if ($cleanInput === '') {
+        return null;
+    }
+    foreach ($panels as $panel) {
+        if (isset($panel['name_panel']) && rx_cleanEmojiAndSymbols($panel['name_panel']) === $cleanInput) {
+            return $panel;
+        }
+    }
+    foreach ($panels as $panel) {
+        if (!isset($panel['name_panel'])) {
+            continue;
+        }
+        $cleanPanel = rx_cleanEmojiAndSymbols($panel['name_panel']);
+        if ($cleanPanel !== '' && ($cleanPanel === $cleanInput || strpos($cleanPanel, $cleanInput) !== false || strpos($cleanInput, $cleanPanel) !== false)) {
+            return $panel;
+        }
+    }
+    return null;
+}
+
 if (!function_exists('rx_resolvePanelFromInput')) {
     function rx_resolvePanelFromInput($input, $pdo = null) {
         if (!is_string($input) || trim($input) === '') {
@@ -490,7 +516,7 @@ if (!function_exists('rx_resolvePanelFromInput')) {
             }
         }
         if ($pdo === null) {
-            global $pdo;
+            $pdo = $GLOBALS['pdo'] ?? null;
         }
         if (!($pdo instanceof PDO)) {
             return null;
@@ -507,27 +533,10 @@ if (!function_exists('rx_resolvePanelFromInput')) {
             if (!is_array($allPanels) || empty($allPanels)) {
                 return null;
             }
-            $cleanInput = rx_cleanEmojiAndSymbols($rawInput);
-            if ($cleanInput !== '') {
-                foreach ($allPanels as $p) {
-                    if (!isset($p['name_panel'])) continue;
-                    $cleanP = rx_cleanEmojiAndSymbols($p['name_panel']);
-                    if ($cleanP === $cleanInput) {
-                        return $p;
-                    }
-                }
-                foreach ($allPanels as $p) {
-                    if (!isset($p['name_panel'])) continue;
-                    $cleanP = rx_cleanEmojiAndSymbols($p['name_panel']);
-                    if ($cleanP !== '' && ($cleanP === $cleanInput || strpos($cleanP, $cleanInput) !== false || strpos($cleanInput, $cleanP) !== false)) {
-                        return $p;
-                    }
-                }
-            }
+            return nmMatchingPanelRow($allPanels, rx_cleanEmojiAndSymbols($rawInput));
         } catch (Throwable $e) {
             return null;
         }
-        return null;
     }
 }
 

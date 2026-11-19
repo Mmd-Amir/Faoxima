@@ -64,45 +64,22 @@ $rxQrSavePending = function () use (&$rxQrPending, $rxQrPendingFile): void {
     }
 };
 $rxQrDeliver = function (string $key) use (&$rxQrPending, $rxQrSavePending): bool {
-    $entry = $rxQrPending[$key] ?? null;
-    if (is_array($entry) && ($entry['state'] ?? '') === 'sent') {
-        return true;
-    }
-    if (!is_array($entry) || ($entry['state'] ?? 'uncertain') !== 'pending' || (int) ($entry['next_attempt_at'] ?? 0) > time() || rx_cron_time_up()) {
-        return false;
-    }
-    if (!rx_cron_catchup_allowed((int) ($entry['created_at'] ?? 0))) {
-        $rxQrPending[$key]['state'] = 'expired';
-        $rxQrPending[$key]['next_attempt_at'] = 0;
-        $rxQrPending[$key]['last_error'] = 'catchup_window_elapsed';
-        $rxQrSavePending();
-        return false;
-    }
-    $rxQrPending[$key]['state'] = 'sending';
-    $rxQrPending[$key]['attempts'] = (int) ($entry['attempts'] ?? 0) + 1;
-    $rxQrSavePending();
-    try {
-        $result = telegram('sendmessage', [
-            'chat_id' => (string) $entry['chat_id'],
-            'message_thread_id' => $entry['thread_id'] ?? null,
-            'text' => (string) $entry['text'],
-            'parse_mode' => 'HTML',
-            '_rx_no_network_retry' => true,
-        ], ($entry['kind'] ?? '') === 'report' ? null : ($entry['bottype'] ?? null));
-    } catch (Throwable $e) {
-        $result = ['ok' => false, 'description' => $e->getMessage()];
-    }
-    if (is_array($result) && ($result['ok'] ?? false) === true) {
-        $rxQrPending[$key]['state'] = 'sent';
-        $rxQrSavePending();
-        return true;
-    }
-    $code = (int) ($result['error_code'] ?? 0);
-    $rxQrPending[$key]['state'] = $code === 429 && $rxQrPending[$key]['attempts'] < 5 ? 'pending' : ($code >= 400 && $code < 500 ? 'failed' : 'uncertain');
-    $rxQrPending[$key]['next_attempt_at'] = time() + max(60, (int) ($result['parameters']['retry_after'] ?? 300));
-    $rxQrPending[$key]['last_error'] = substr((string) ($result['description'] ?? 'no_response'), 0, 200);
-    $rxQrSavePending();
-    return false;
+    return rx_cron_deliver_pending_notification(
+        $rxQrPending,
+        $key,
+        $rxQrSavePending,
+        static function (array $entry) {
+            return telegram('sendmessage', [
+                'chat_id' => (string) $entry['chat_id'],
+                'message_thread_id' => $entry['thread_id'] ?? null,
+                'text' => (string) $entry['text'],
+                'parse_mode' => 'HTML',
+                '_rx_no_network_retry' => true,
+            ], ($entry['kind'] ?? '') === 'report' ? null : ($entry['bottype'] ?? null));
+        },
+        true,
+        false
+    );
 };
 $rxQrQueueDelivery = function (string $key, array $entry) use (&$rxQrPending, $rxQrSavePending): string {
     if (isset($rxQrPending[$key])) {
@@ -130,16 +107,7 @@ $rxQrQueueDelivery = function (string $key, array $entry) use (&$rxQrPending, $r
 $rxQrSendOnce = function (string $key, array $entry) use ($rxQrQueueDelivery, $rxQrDeliver): bool {
     return $rxQrDeliver($rxQrQueueDelivery($key, $entry));
 };
-$rxQrNotificationCount = 0;
-foreach (array_keys($rxQrPending) as $rxQrPendingKey) {
-    if (rx_cron_time_up() || $rxQrNotificationCount >= 3) {
-        break;
-    }
-    if (($rxQrPending[$rxQrPendingKey]['state'] ?? 'uncertain') === 'pending' && (int) ($rxQrPending[$rxQrPendingKey]['next_attempt_at'] ?? 0) <= time()) {
-        $rxQrNotificationCount++;
-        $rxQrDeliver((string) $rxQrPendingKey);
-    }
-}
+rx_cron_drain_notifications($rxQrPending, 3, $rxQrDeliver);
 
 $now = time();
 rxReservationRecoverStale($now);
@@ -148,10 +116,7 @@ list($w, $n) = function_exists('rx_cron_shard') ? rx_cron_shard() : [0, 1];
 $queuedRows = rxReservationDueRows($now, 30, (int) $w, (int) $n);
 
 foreach ($queuedRows as $row) {
-    if (function_exists('rx_cron_time_up') && rx_cron_time_up()) {
-        if (function_exists('rx_cron_task_defer')) {
-            rx_cron_task_defer('time_budget', 60);
-        }
+    if (rx_cron_budget_exhausted()) {
         break;
     }
 

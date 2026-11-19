@@ -136,6 +136,61 @@ if (!function_exists('rx_detect_host_profile')) {
     }
 }
 
+function rxHostProfileApplySettings(array &$profile, array $settings): void
+{
+    $override = isset($settings['host_profile']) ? strtolower(trim((string) $settings['host_profile'])) : '';
+    if (($override === 'shared' || $override === 'vps') && $override !== ($profile['profile'] ?? '')) {
+        $profile = array_merge($profile, ['profile' => $override], rx_resize_for_profile((int) ($profile['max_connections'] ?? 0), $override));
+    }
+    foreach (['cron_db_budget', 'cron_time_budget', 'cron_max_concurrency'] as $key) {
+        if (isset($settings[$key]) && (int) $settings[$key] > 0) {
+            $profile[$key] = $key === 'cron_max_concurrency'
+                ? max(1, min(8, (int) $settings[$key]))
+                : (int) $settings[$key];
+        }
+    }
+}
+
+function rxHostProfilePersist(string $path, array &$profile): void
+{
+    if ($path === '') {
+        return;
+    }
+    $lock = @fopen($path . '.workers.lock', 'c');
+    if (!is_resource($lock)) {
+        return;
+    }
+    if (@flock($lock, LOCK_EX | LOCK_NB)) {
+        $tmp = null;
+        try {
+            $current = (@is_file($path)) ? (string) @file_get_contents($path) : '';
+            $latest = json_decode($current, true);
+            if (is_array($latest)) {
+                if (isset($latest['manual_workers']) && is_array($latest['manual_workers'])) {
+                    $profile['manual_workers'] = $latest['manual_workers'];
+                } else {
+                    unset($profile['manual_workers']);
+                }
+            }
+            $new = json_encode($profile, JSON_UNESCAPED_UNICODE);
+            if ($new !== false && $new !== $current) {
+                $tmp = $path . '.tmp.' . bin2hex(random_bytes(8));
+                if (@file_put_contents($tmp, $new, LOCK_EX) === strlen($new)) {
+                    $mode = @fileperms($path);
+                    @chmod($tmp, $mode === false ? 0660 : ($mode & 0666));
+                    @rename($tmp, $path);
+                }
+            }
+        } finally {
+            if ($tmp !== null && is_file($tmp)) {
+                @unlink($tmp);
+            }
+            @flock($lock, LOCK_UN);
+        }
+    }
+    @fclose($lock);
+}
+
 if (!function_exists('rx_host_profile')) {
     function rx_host_profile()
     {
@@ -176,57 +231,12 @@ if (!function_exists('rx_host_profile')) {
         try {
             $s = function_exists('select') ? select('setting', '*') : null;
             if (is_array($s)) {
-                $override = isset($s['host_profile']) ? strtolower(trim((string) $s['host_profile'])) : '';
-                if (($override === 'shared' || $override === 'vps') && $override !== ($resolved['profile'] ?? '')) {
-                    $resolved = array_merge($resolved, ['profile' => $override], rx_resize_for_profile((int) ($resolved['max_connections'] ?? 0), $override));
-                }
-                if (isset($s['cron_db_budget']) && (int) $s['cron_db_budget'] > 0) {
-                    $resolved['cron_db_budget'] = (int) $s['cron_db_budget'];
-                }
-                if (isset($s['cron_time_budget']) && (int) $s['cron_time_budget'] > 0) {
-                    $resolved['cron_time_budget'] = (int) $s['cron_time_budget'];
-                }
-                if (isset($s['cron_max_concurrency']) && (int) $s['cron_max_concurrency'] > 0) {
-                    $resolved['cron_max_concurrency'] = max(1, min(8, (int) $s['cron_max_concurrency']));
-                }
+                rxHostProfileApplySettings($resolved, $s);
             }
         } catch (\Throwable $e) {
         }
 
-        if ($path !== '') {
-            $profileLock = @fopen($path . '.workers.lock', 'c');
-            if (is_resource($profileLock)) {
-                if (@flock($profileLock, LOCK_EX | LOCK_NB)) {
-                    $profileTmp = null;
-                    try {
-                        $current = (@is_file($path)) ? (string) @file_get_contents($path) : '';
-                        $latest = json_decode($current, true);
-                        if (is_array($latest)) {
-                            if (isset($latest['manual_workers']) && is_array($latest['manual_workers'])) {
-                                $resolved['manual_workers'] = $latest['manual_workers'];
-                            } else {
-                                unset($resolved['manual_workers']);
-                            }
-                        }
-                        $new = json_encode($resolved, JSON_UNESCAPED_UNICODE);
-                        if ($new !== false && $new !== $current) {
-                            $profileTmp = $path . '.tmp.' . bin2hex(random_bytes(8));
-                            if (@file_put_contents($profileTmp, $new, LOCK_EX) === strlen($new)) {
-                                $mode = @fileperms($path);
-                                @chmod($profileTmp, $mode === false ? 0660 : ($mode & 0666));
-                                @rename($profileTmp, $path);
-                            }
-                        }
-                    } finally {
-                        if ($profileTmp !== null && is_file($profileTmp)) {
-                            @unlink($profileTmp);
-                        }
-                        @flock($profileLock, LOCK_UN);
-                    }
-                }
-                @fclose($profileLock);
-            }
-        }
+        rxHostProfilePersist($path, $resolved);
 
         $cache = $resolved;
         return $cache;
@@ -372,6 +382,20 @@ if (!function_exists('rx_release_unpaid_discount')) {
 }
 
 
+function rx_wallet_read_balance($pdo, $userId)
+{
+    $stmt = $pdo->prepare("SELECT Balance FROM user WHERE id = :u");
+    $stmt->execute([':u' => $userId]);
+    return $stmt->fetchColumn();
+}
+
+function rx_wallet_increment_locked(PDO $pdo, $userId, $amount): PDOStatement
+{
+    $stmt = $pdo->prepare("UPDATE user SET Balance = Balance + ? WHERE id = ?");
+    $stmt->execute([$amount, $userId]);
+    return $stmt;
+}
+
 if (!function_exists('balance_atomic_charge')) {
 
     function balance_atomic_charge($userId, $delta, $allowNegativeUpTo = 0) {
@@ -391,9 +415,7 @@ if (!function_exists('balance_atomic_charge')) {
             if (function_exists('clearSelectCacheRow')) {
                 clearSelectCacheRow('user', 'id', $userId);
             }
-            $sel = $pdo->prepare("SELECT Balance FROM user WHERE id = :u");
-            $sel->execute([':u' => $userId]);
-            $newBal = $sel->fetchColumn();
+            $newBal = rx_wallet_read_balance($pdo, $userId);
             return ['ok' => true, 'reason' => 'charged', 'new_balance' => (float) $newBal];
         } catch (Throwable $e) {
             error_log('balance_atomic_charge failed: ' . $e->getMessage());
@@ -627,6 +649,37 @@ if (!function_exists('balance_atomic_credit')) {
     }
 }
 
+function rx_wallet_write_transfer_ledger(PDO $pdo, bool $hasKey, string $senderId, string $recipientId, int $amount, string $operationId, float $senderAfter, float $recipientAfter): void
+{
+    $key = hash('sha256', $senderId . ':' . $operationId);
+    $sql = 'INSERT INTO wallet_ledger (id_user, direction, amount, balance_after, category, description, id_order, ref_table, ref_id'
+        . ($hasKey ? ', fulfillment_key' : '') . ") VALUES (?, ?, ?, ?, ?, ?, ?, 'user', ?" . ($hasKey ? ', ?' : '') . ')';
+    $ledger = $pdo->prepare($sql);
+    $out = [$senderId, 'debit', $amount, (int)$senderAfter, 'transfer_out', 'انتقال موجودی به کاربر ' . $recipientId, $operationId, $recipientId];
+    $in = [$recipientId, 'credit', $amount, (int)$recipientAfter, 'transfer_in', 'انتقال موجودی از کاربر ' . $senderId, $operationId, $senderId];
+    if ($hasKey) {
+        $out[] = 'transfer_out:' . $key;
+        $in[] = 'transfer_in:' . $key;
+    }
+    $ledger->execute($out);
+    $ledger->execute($in);
+}
+
+function rx_wallet_lock_transfer_accounts(PDO $pdo, string $senderId, string $recipientId): array
+{
+    $ids = [$senderId, $recipientId];
+    usort($ids, static fn($a, $b) => (int)$a <=> (int)$b);
+    $users = [];
+    $lock = $pdo->prepare('SELECT id, Balance, username FROM user WHERE id = ? FOR UPDATE');
+    foreach ($ids as $id) {
+        $lock->execute([$id]);
+        $row = $lock->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($row)) throw new RuntimeException('user_missing');
+        $users[(string)$row['id']] = $row;
+    }
+    return $users;
+}
+
 if (!function_exists('rx_wallet_transfer_atomic')) {
     function rx_wallet_transfer_atomic(string $senderId, string $recipientId, int $amount, string $operationId): array
     {
@@ -638,16 +691,7 @@ if (!function_exists('rx_wallet_transfer_atomic')) {
             $column = $pdo->query("SHOW COLUMNS FROM wallet_ledger LIKE 'fulfillment_key'");
             $hasKey = $column !== false && $column->fetch(PDO::FETCH_ASSOC) !== false;
             $pdo->beginTransaction();
-            $ids = [$senderId, $recipientId];
-            usort($ids, static fn($a, $b) => (int)$a <=> (int)$b);
-            $users = [];
-            $lock = $pdo->prepare('SELECT id, Balance, username FROM user WHERE id = ? FOR UPDATE');
-            foreach ($ids as $id) {
-                $lock->execute([$id]);
-                $row = $lock->fetch(PDO::FETCH_ASSOC);
-                if (!is_array($row)) throw new RuntimeException('user_missing');
-                $users[(string)$row['id']] = $row;
-            }
+            $users = rx_wallet_lock_transfer_accounts($pdo, $senderId, $recipientId);
             $seen = $pdo->prepare("SELECT amount, ref_id FROM wallet_ledger WHERE id_user = ? AND id_order = ? AND category = 'transfer_out' ORDER BY id ASC LIMIT 1 FOR UPDATE");
             $seen->execute([$senderId, $operationId]);
             $previous = $seen->fetch(PDO::FETCH_ASSOC);
@@ -666,18 +710,7 @@ if (!function_exists('rx_wallet_transfer_atomic')) {
             if ($credit->rowCount() !== 1) throw new RuntimeException('recipient_missing');
             $senderAfter = (float)$users[$senderId]['Balance'] - $amount;
             $recipientAfter = (float)$users[$recipientId]['Balance'] + $amount;
-            $key = hash('sha256', $senderId . ':' . $operationId);
-            $sql = 'INSERT INTO wallet_ledger (id_user, direction, amount, balance_after, category, description, id_order, ref_table, ref_id'
-                . ($hasKey ? ', fulfillment_key' : '') . ") VALUES (?, ?, ?, ?, ?, ?, ?, 'user', ?" . ($hasKey ? ', ?' : '') . ')';
-            $ledger = $pdo->prepare($sql);
-            $out = [$senderId, 'debit', $amount, (int)$senderAfter, 'transfer_out', 'انتقال موجودی به کاربر ' . $recipientId, $operationId, $recipientId];
-            $in = [$recipientId, 'credit', $amount, (int)$recipientAfter, 'transfer_in', 'انتقال موجودی از کاربر ' . $senderId, $operationId, $senderId];
-            if ($hasKey) {
-                $out[] = 'transfer_out:' . $key;
-                $in[] = 'transfer_in:' . $key;
-            }
-            $ledger->execute($out);
-            $ledger->execute($in);
+            rx_wallet_write_transfer_ledger($pdo, $hasKey, $senderId, $recipientId, $amount, $operationId, $senderAfter, $recipientAfter);
             $pdo->commit();
             try {
                 if (function_exists('clearSelectCacheRow')) {
@@ -966,9 +999,7 @@ if (!function_exists('wallet_ledger_record')) {
         if ($amount <= 0 || !in_array($direction, ['credit', 'debit'], true)) return false;
         try {
             $balanceAfter = null;
-            $sel = $pdo->prepare("SELECT Balance FROM user WHERE id = :u");
-            $sel->execute([':u' => $userId]);
-            $bal = $sel->fetchColumn();
+            $bal = rx_wallet_read_balance($pdo, $userId);
             if ($bal !== false) {
                 $balanceAfter = (int) $bal;
             }
@@ -992,6 +1023,29 @@ if (!function_exists('wallet_ledger_record')) {
             error_log('wallet_ledger_record failed: ' . $e->getMessage());
             return false;
         }
+    }
+}
+
+function rx_wallet_credit_and_record($userId, $amount, string $category, callable $description, ?string $orderId, string $refTable, string $refId): string
+{
+    if (!balance_atomic_credit($userId, $amount)) {
+        return 'credit_failed';
+    }
+    if (!function_exists('wallet_ledger_record')
+        || !wallet_ledger_record($userId, 'credit', $amount, $category, $description(), $orderId, $refTable, $refId)) {
+        return 'ledger_failed';
+    }
+    return 'credited';
+}
+
+function rx_wallet_credit_with_ledger(string $userId, int $amount, string $category, string $description, ?string $orderId, string $refTable, string $refId): void
+{
+    $outcome = rx_wallet_credit_and_record($userId, $amount, $category, static fn () => $description, $orderId, $refTable, $refId);
+    if ($outcome === 'credit_failed') {
+        throw new RuntimeException('balance_atomic_credit returned false');
+    }
+    if ($outcome === 'ledger_failed') {
+        throw new RuntimeException('wallet_ledger_record failed');
     }
 }
 
@@ -1032,13 +1086,7 @@ if (!function_exists('rx_refund_payment_once')) {
                 }
                 return 'duplicate';
             }
-            if (!balance_atomic_credit($userId, $amount)) {
-                throw new RuntimeException('balance_atomic_credit returned false');
-            }
-            if (!function_exists('wallet_ledger_record')
-                || !wallet_ledger_record($userId, 'credit', $amount, 'refund', $description, $orderId, $invoiceId !== null ? 'invoice' : 'Payment_report', $invoiceId ?? $orderId)) {
-                throw new RuntimeException('wallet_ledger_record failed');
-            }
+            rx_wallet_credit_with_ledger($userId, $amount, 'refund', $description, $orderId, $invoiceId !== null ? 'invoice' : 'Payment_report', $invoiceId ?? $orderId);
             if ($ownTx) {
                 $pdo->commit();
             }
@@ -1086,13 +1134,7 @@ if (!function_exists('rx_refund_invoice_once')) {
                 return 'claimed';
             }
             if ($amount > 0) {
-                if (!balance_atomic_credit($userId, $amount)) {
-                    throw new RuntimeException('balance_atomic_credit returned false');
-                }
-                if (!function_exists('wallet_ledger_record')
-                    || !wallet_ledger_record($userId, 'credit', $amount, 'refund', $description, null, 'invoice', $invoiceId)) {
-                    throw new RuntimeException('wallet_ledger_record failed');
-                }
+                rx_wallet_credit_with_ledger($userId, $amount, 'refund', $description, null, 'invoice', $invoiceId);
             }
             if ($ownTx) {
                 $pdo->commit();
@@ -1163,13 +1205,7 @@ if (!function_exists('rx_cashback_credit_once')) {
                 }
                 return 'duplicate';
             }
-            if (!balance_atomic_credit($userId, $amount)) {
-                throw new RuntimeException('balance_atomic_credit returned false');
-            }
-            if (!function_exists('wallet_ledger_record')
-                || !wallet_ledger_record($userId, 'credit', $amount, 'cashback', $description, $orderId, 'cashback', $cashbackKey)) {
-                throw new RuntimeException('wallet_ledger_record failed');
-            }
+            rx_wallet_credit_with_ledger($userId, $amount, 'cashback', $description, $orderId, 'cashback', $cashbackKey);
             if ($ownTx) {
                 $pdo->commit();
             }
@@ -3743,10 +3779,15 @@ function outputlunksub($url)
 }
 function normalizeServiceConfigs($configs, $subscriptionUrl = null)
 {
-    $normalized = [];
-
-    if (is_array($configs)) {
-        foreach ($configs as $item) {
+    $normalizeEntries = static function ($entries): array {
+        if (is_string($entries)) {
+            $entries = preg_split("/\r\n|\n|\r/", $entries);
+        }
+        if (!is_array($entries)) {
+            return [];
+        }
+        $normalized = [];
+        foreach ($entries as $item) {
             if (!is_string($item)) {
                 continue;
             }
@@ -3756,19 +3797,10 @@ function normalizeServiceConfigs($configs, $subscriptionUrl = null)
             }
             $normalized[] = $item;
         }
-    } elseif (is_string($configs)) {
-        $parts = preg_split("/\r\n|\n|\r/", $configs);
-        if (is_array($parts)) {
-            foreach ($parts as $part) {
-                $part = trim($part);
-                if ($part === '') {
-                    continue;
-                }
-                $normalized[] = $part;
-            }
-        }
-    }
+        return $normalized;
+    };
 
+    $normalized = $normalizeEntries($configs);
     $subscriptionUrl = is_string($subscriptionUrl) ? trim($subscriptionUrl) : '';
     if (empty($normalized) && $subscriptionUrl !== '') {
         if (preg_match('/^https?:/i', $subscriptionUrl)) {
@@ -3777,16 +3809,7 @@ function normalizeServiceConfigs($configs, $subscriptionUrl = null)
                 if (isBase64($fetched)) {
                     $fetched = base64_decode($fetched);
                 }
-                $parts = preg_split("/\r\n|\n|\r/", $fetched);
-                if (is_array($parts)) {
-                    foreach ($parts as $part) {
-                        $part = trim($part);
-                        if ($part === '') {
-                            continue;
-                        }
-                        $normalized[] = $part;
-                    }
-                }
+                $normalized = $normalizeEntries($fetched);
             }
         } else {
             $normalized[] = $subscriptionUrl;
@@ -3986,7 +4009,103 @@ function DirectPayment($order_id, $image = 'images.jpg', $rxToken = null)
             return rx_pf_fail($order_id, $rxToken, 'checkout_denied:' . $rxGateCode, $__refundCk);
         }
     }
+    $receipt = [
+        'chat_id' => $_receipt_chat_id,
+        'message_id' => &$message_id,
+        'keyboard' => &$Confirm_pay,
+        'thread_id' => $_receipt_report_thread,
+    ];
+    $context = [
+        'payment' => [
+            'order_id' => $order_id,
+            'report' => $Payment_report,
+            'invoice_tag' => $steppay,
+            'customer' => $Balance_id,
+            'checkout' => $rxCk,
+        ],
+        'fulfillment' => [
+            'token' => $rxToken,
+            'phase' => $rxPhase,
+            'before' => $rxBeforeState,
+            'target' => $rxTargetState,
+        ],
+        'provider' => [
+            'database' => &$pdo,
+            'panel' => &$ManagePanel,
+        ],
+        'presentation' => [
+            'settings' => $setting,
+            'language' => &$textbotlang,
+            'templates' => &$datatextbot,
+            'keyboard' => &$keyboard,
+            'renewal_keyboard' => &$keyboardextendfnished,
+            'request_user' => &$from_id,
+            'image' => $image,
+            'price_display' => $format_price_cart,
+            'payment_note' => $paymentNote,
+            'receipt' => $receipt,
+        ],
+        'reporting' => [
+            'administrators' => $admin_ids,
+            'purchase' => $buyreport,
+            'extension' => $otherservice,
+            'general' => $otherreport,
+            'error' => $errorreport,
+            'affiliate' => $porsantreport,
+        ],
+    ];
     if ($steppay[0] == "getconfigafterpay") {
+        return RxDirectPaymentOperations::purchase($context);
+    }
+    if ($steppay[0] == "getextenduser") {
+        return RxDirectPaymentOperations::renew($context);
+    }
+    if ($steppay[0] == "getextravolumeuser") {
+        return RxDirectPaymentOperations::addVolume($context);
+    }
+    if ($steppay[0] == "getextratimeuser") {
+        return RxDirectPaymentOperations::addTime($context);
+    }
+    return RxDirectPaymentOperations::topUp($context);
+}
+
+final class RxDirectPaymentOperations
+{
+    private static function updateReceipt(array $receipt, $text): void
+    {
+        Editmessagetext(
+            $receipt['chat_id'], $receipt['message_id'], $text, $receipt['keyboard'],
+            'HTML', $receipt['thread_id'] > 0 ? $receipt['thread_id'] : null
+        );
+    }
+
+    public static function purchase(array $context)
+    {
+        $order_id = $context['payment']['order_id'];
+        $Payment_report = $context['payment']['report'];
+        $steppay = $context['payment']['invoice_tag'];
+        $Balance_id = $context['payment']['customer'];
+        $rxCk = $context['payment']['checkout'];
+        $rxToken = $context['fulfillment']['token'];
+        $rxPhase = $context['fulfillment']['phase'];
+        $rxBeforeState = $context['fulfillment']['before'];
+        $rxTargetState = $context['fulfillment']['target'];
+        $pdo =& $context['provider']['database'];
+        $ManagePanel =& $context['provider']['panel'];
+        $setting = $context['presentation']['settings'];
+        $textbotlang =& $context['presentation']['language'];
+        $datatextbot =& $context['presentation']['templates'];
+        $keyboard =& $context['presentation']['keyboard'];
+        $image = $context['presentation']['image'];
+        $format_price_cart = $context['presentation']['price_display'];
+        $paymentNote = $context['presentation']['payment_note'];
+        $receipt = $context['presentation']['receipt'];
+        $admin_ids = $context['reporting']['administrators'];
+        $buyreport = $context['reporting']['purchase'];
+        $otherreport = $context['reporting']['general'];
+        $errorreport = $context['reporting']['error'];
+        $porsantreport = $context['reporting']['affiliate'];
+
         $__invUsername = isset($steppay[1]) ? trim((string)$steppay[1]) : '';
         $__invOwner = trim((string)($Payment_report['id_user'] ?? ''));
         $get_invoice = false;
@@ -4466,9 +4585,36 @@ $textonebuy
 ✍️ توضیحات : {$paymentNote}
 
 ";
-            Editmessagetext($_receipt_chat_id, $message_id, $textconfrom, $Confirm_pay, 'HTML', $_receipt_report_thread > 0 ? $_receipt_report_thread : null);
+            self::updateReceipt($receipt, $textconfrom);
         }
-    } elseif ($steppay[0] == "getextenduser") {
+        return rx_pf_result('completed');
+    }
+
+    public static function renew(array $context)
+    {
+        $order_id = $context['payment']['order_id'];
+        $Payment_report = $context['payment']['report'];
+        $steppay = $context['payment']['invoice_tag'];
+        $Balance_id = $context['payment']['customer'];
+        $rxCk = $context['payment']['checkout'];
+        $rxToken = $context['fulfillment']['token'];
+        $rxPhase = $context['fulfillment']['phase'];
+        $rxBeforeState = $context['fulfillment']['before'];
+        $rxTargetState = $context['fulfillment']['target'];
+        $pdo =& $context['provider']['database'];
+        $ManagePanel =& $context['provider']['panel'];
+        $setting = $context['presentation']['settings'];
+        $textbotlang =& $context['presentation']['language'];
+        $keyboard =& $context['presentation']['keyboard'];
+        $keyboardextendfnished =& $context['presentation']['renewal_keyboard'];
+        $format_price_cart = $context['presentation']['price_display'];
+        $paymentNote = $context['presentation']['payment_note'];
+        $receipt = $context['presentation']['receipt'];
+        $admin_ids = $context['reporting']['administrators'];
+        $otherservice = $context['reporting']['extension'];
+        $otherreport = $context['reporting']['general'];
+        $errorreport = $context['reporting']['error'];
+
         $balanceformatsell = number_format(select("user", "Balance", "id", $Balance_id['id'], "select")['Balance'], 0);
         $partsdic = explode("%", $steppay[1]);
         $usernamepanel = $partsdic[0];
@@ -4867,9 +5013,103 @@ $textonebuy
 ✍️ توضیحات : {$paymentNote}
 
 ";
-            Editmessagetext($_receipt_chat_id, $message_id, $textconfrom, $Confirm_pay, 'HTML', $_receipt_report_thread > 0 ? $_receipt_report_thread : null);
+            self::updateReceipt($receipt, $textconfrom);
         }
-    } elseif ($steppay[0] == "getextravolumeuser") {
+        return rx_pf_result('completed');
+    }
+
+    private static function prepareExtension(
+        &$ManagePanel, $nameloc, $marzban_list_get, $lookupUsername, $order_id, $rxToken,
+        $rxPhase, &$rxBeforeState, &$rxTargetState, $operation, callable $targetFor
+    ): array {
+        $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $lookupUsername);
+        $rxReconcilable = rx_pf_panel_reconcilable($marzban_list_get);
+        $rxSnap = rx_pf_snapshot_from_datauser($DataUserOut);
+        $rxApply = true;
+        $result = null;
+        if ($rxPhase === 'reconcile') {
+            if (!$rxReconcilable || !is_array($rxBeforeState) || !is_array($rxTargetState)) {
+                return ['stop' => rx_pf_manual_review($order_id, $rxToken, $operation . '_result_unverifiable', ['username' => (string) $nameloc['username']])];
+            }
+            $rxClass = rx_pf_classify($rxSnap, $rxBeforeState, $rxTargetState);
+            if ($rxClass === 'unknown') {
+                return ['stop' => rx_pf_defer($order_id, $rxToken, $operation . '_panel_read_failed: ' . (string) ($rxSnap['error'] ?? ''))];
+            }
+            if ($rxClass === 'ambiguous') {
+                return ['stop' => rx_pf_manual_review($order_id, $rxToken, $operation . '_panel_state_ambiguous', ['username' => (string) $nameloc['username']])];
+            }
+            if ($rxClass === 'target') {
+                $rxApply = false;
+                $result = ['status' => true, 'reconciled' => true];
+            } elseif (!rx_pf_mark_applying($order_id, $rxToken)) {
+                return ['stop' => rx_pf_result('already_processing', 'ownership_lost')];
+            }
+        } else {
+            $rxBeforeState = null;
+            $rxTargetState = null;
+            if ($rxReconcilable) {
+                if (empty($rxSnap['ok'])) {
+                    return ['stop' => rx_pf_abort($order_id, $rxToken, $operation . '_panel_read_failed', true)];
+                }
+                if (!empty($rxSnap['exists'])) {
+                    $rxBeforeState = rx_pf_limits($rxSnap);
+                    $rxTargetState = $targetFor($rxBeforeState);
+                }
+            }
+            if (!rx_pf_prepare($order_id, $rxToken, $rxBeforeState, $rxTargetState)) {
+                return ['stop' => rx_pf_abort($order_id, $rxToken, 'fulfillment_prepare_failed', true)];
+            }
+        }
+        if (is_array($rxBeforeState) && is_array($DataUserOut)) {
+            $DataUserOut['data_limit'] = $rxBeforeState['data_limit'] ?? ($DataUserOut['data_limit'] ?? null);
+            $DataUserOut['expire'] = $rxBeforeState['expire'] ?? ($DataUserOut['expire'] ?? null);
+        }
+        return ['apply' => $rxApply, 'result' => $result, 'before_data' => $DataUserOut];
+    }
+
+    private static function applyExtension(
+        &$ManagePanel, $nameloc, $panel, $lookupUsername, $order_id, $rxToken, $rxBeforeState,
+        $rxTargetState, $operation, $amount, $rxApply, $result
+    ): array {
+        if ($rxApply) {
+            try {
+                $result = $ManagePanel->{$operation}($nameloc['username'], $panel['code_panel'], $amount, $rxTargetState);
+            } catch (Throwable $rxPanelError) {
+                return ['stop' => rx_pf_reconcile_later($order_id, $rxToken, $operation . '_panel_exception: ' . $rxPanelError->getMessage())];
+            }
+        }
+        if (($result['status'] ?? false) == false && is_array($rxBeforeState) && is_array($rxTargetState)) {
+            $rxClass = rx_pf_classify(rx_pf_panel_snapshot($ManagePanel, (string) $nameloc['Service_location'], (string) $lookupUsername), $rxBeforeState, $rxTargetState);
+            if ($rxClass === 'target') {
+                $result = ['status' => true, 'reconciled' => true];
+            } elseif ($rxClass !== 'before') {
+                return ['stop' => rx_pf_reconcile_later($order_id, $rxToken, $operation . '_result_unknown: ' . (is_scalar($result['msg'] ?? null) ? (string) $result['msg'] : ''))];
+            }
+        }
+        return ['result' => $result];
+    }
+
+    public static function addVolume(array $context)
+    {
+        $order_id = $context['payment']['order_id'];
+        $Payment_report = $context['payment']['report'];
+        $steppay = $context['payment']['invoice_tag'];
+        $Balance_id = $context['payment']['customer'];
+        $rxCk = $context['payment']['checkout'];
+        $rxToken = $context['fulfillment']['token'];
+        $rxPhase = $context['fulfillment']['phase'];
+        $rxBeforeState = $context['fulfillment']['before'];
+        $rxTargetState = $context['fulfillment']['target'];
+        $pdo =& $context['provider']['database'];
+        $ManagePanel =& $context['provider']['panel'];
+        $setting = $context['presentation']['settings'];
+        $textbotlang =& $context['presentation']['language'];
+        $format_price_cart = $context['presentation']['price_display'];
+        $receipt = $context['presentation']['receipt'];
+        $admin_ids = $context['reporting']['administrators'];
+        $otherservice = $context['reporting']['extension'];
+        $errorreport = $context['reporting']['error'];
+
         $steppay = explode("%", $steppay[1]);
         $volume = $steppay[1];
         $nameloc = select("invoice", "*", "username", $steppay[0], "select");
@@ -4886,47 +5126,14 @@ $textonebuy
             }
             return rx_pf_abort($order_id, $rxToken, 'manage_panel_unavailable', true);
         }
-        $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $steppay[0]);
-        $rxReconcilable = rx_pf_panel_reconcilable($marzban_list_get);
-        $rxSnap = rx_pf_snapshot_from_datauser($DataUserOut);
-        $rxApply = true;
-        if ($rxPhase === 'reconcile') {
-            if (!$rxReconcilable || !is_array($rxBeforeState) || !is_array($rxTargetState)) {
-                return rx_pf_manual_review($order_id, $rxToken, 'extra_volume_result_unverifiable', ['username' => (string) $nameloc['username']]);
-            }
-            $rxClass = rx_pf_classify($rxSnap, $rxBeforeState, $rxTargetState);
-            if ($rxClass === 'unknown') {
-                return rx_pf_defer($order_id, $rxToken, 'extra_volume_panel_read_failed: ' . (string) ($rxSnap['error'] ?? ''));
-            }
-            if ($rxClass === 'ambiguous') {
-                return rx_pf_manual_review($order_id, $rxToken, 'extra_volume_panel_state_ambiguous', ['username' => (string) $nameloc['username']]);
-            }
-            if ($rxClass === 'target') {
-                $rxApply = false;
-                $extra_volume = ['status' => true, 'reconciled' => true];
-            } elseif (!rx_pf_mark_applying($order_id, $rxToken)) {
-                return rx_pf_result('already_processing', 'ownership_lost');
-            }
-        } else {
-            $rxBeforeState = null;
-            $rxTargetState = null;
-            if ($rxReconcilable) {
-                if (empty($rxSnap['ok'])) {
-                    return rx_pf_abort($order_id, $rxToken, 'extra_volume_panel_read_failed', true);
-                }
-                if (!empty($rxSnap['exists'])) {
-                    $rxBeforeState = rx_pf_limits($rxSnap);
-                    $rxTargetState = rx_pf_extra_volume_target($rxBeforeState, $volume);
-                }
-            }
-            if (!rx_pf_prepare($order_id, $rxToken, $rxBeforeState, $rxTargetState)) {
-                return rx_pf_abort($order_id, $rxToken, 'fulfillment_prepare_failed', true);
-            }
+        $prepared = self::prepareExtension(
+            $ManagePanel, $nameloc, $marzban_list_get, $steppay[0], $order_id, $rxToken,
+            $rxPhase, $rxBeforeState, $rxTargetState, 'extra_volume', static fn($before) => rx_pf_extra_volume_target($before, $volume)
+        );
+        if (array_key_exists('stop', $prepared)) {
+            return $prepared['stop'];
         }
-        if (is_array($rxBeforeState) && is_array($DataUserOut)) {
-            $DataUserOut['data_limit'] = $rxBeforeState['data_limit'] ?? ($DataUserOut['data_limit'] ?? null);
-            $DataUserOut['expire'] = $rxBeforeState['expire'] ?? ($DataUserOut['expire'] ?? null);
-        }
+        $DataUserOut = $prepared['before_data'];
         $data_for_database = json_encode(array(
             'volume_value' => $volume,
             'old_volume' => $DataUserOut['data_limit'],
@@ -4934,21 +5141,14 @@ $textonebuy
         ));
         $dateacc = date('Y/m/d H:i:s');
         $type = "extra_user";
-        if ($rxApply) {
-            try {
-                $extra_volume = $ManagePanel->extra_volume($nameloc['username'], $marzban_list_get['code_panel'], $volume, $rxTargetState);
-            } catch (Throwable $rxPanelError) {
-                return rx_pf_reconcile_later($order_id, $rxToken, 'extra_volume_panel_exception: ' . $rxPanelError->getMessage());
-            }
+        $applied = self::applyExtension(
+            $ManagePanel, $nameloc, $marzban_list_get, $steppay[0], $order_id, $rxToken, $rxBeforeState,
+            $rxTargetState, 'extra_volume', $volume, $prepared['apply'], $prepared['result']
+        );
+        if (array_key_exists('stop', $applied)) {
+            return $applied['stop'];
         }
-        if (($extra_volume['status'] ?? false) == false && is_array($rxBeforeState) && is_array($rxTargetState)) {
-            $rxClass = rx_pf_classify(rx_pf_panel_snapshot($ManagePanel, (string) $nameloc['Service_location'], (string) $steppay[0]), $rxBeforeState, $rxTargetState);
-            if ($rxClass === 'target') {
-                $extra_volume = ['status' => true, 'reconciled' => true];
-            } elseif ($rxClass !== 'before') {
-                return rx_pf_reconcile_later($order_id, $rxToken, 'extra_volume_result_unknown: ' . (is_scalar($extra_volume['msg'] ?? null) ? (string) $extra_volume['msg'] : ''));
-            }
-        }
+        $extra_volume = $applied['result'];
         if ($extra_volume['status'] == false) {
             $__refundVx = rx_refund_payment_once($Payment_report['id_order'], $Balance_id['id'], $Payment_report['price'], 'بازگشت وجه - خطا در خرید حجم اضافه', (string)($nameloc['id_invoice'] ?? ''));
             if ($__refundVx === 'duplicate') {
@@ -5028,7 +5228,7 @@ $textonebuy
 💎 موجودی قبل ازافزایش موجودی : {$rxFmtBalanceBeforeVolume}
 💸 مبلغ پرداختی: $format_price_cart تومان
 ";
-            Editmessagetext($_receipt_chat_id, $message_id, $textconfrom, $Confirm_pay, 'HTML', $_receipt_report_thread > 0 ? $_receipt_report_thread : null);
+            self::updateReceipt($receipt, $textconfrom);
         }
         update("invoice", "Status", "active", "id_invoice", $nameloc['id_invoice']);
         $text_report = "⭕️ یک کاربر حجم اضافه خریده است
@@ -5053,7 +5253,30 @@ $textonebuy
                 'price'   => $volumesformat,
             ], $setting);
         }
-    } elseif ($steppay[0] == "getextratimeuser") {
+        return rx_pf_result('completed');
+    }
+
+    public static function addTime(array $context)
+    {
+        $order_id = $context['payment']['order_id'];
+        $Payment_report = $context['payment']['report'];
+        $steppay = $context['payment']['invoice_tag'];
+        $Balance_id = $context['payment']['customer'];
+        $rxCk = $context['payment']['checkout'];
+        $rxToken = $context['fulfillment']['token'];
+        $rxPhase = $context['fulfillment']['phase'];
+        $rxBeforeState = $context['fulfillment']['before'];
+        $rxTargetState = $context['fulfillment']['target'];
+        $pdo =& $context['provider']['database'];
+        $ManagePanel =& $context['provider']['panel'];
+        $setting = $context['presentation']['settings'];
+        $textbotlang =& $context['presentation']['language'];
+        $format_price_cart = $context['presentation']['price_display'];
+        $receipt = $context['presentation']['receipt'];
+        $admin_ids = $context['reporting']['administrators'];
+        $otherservice = $context['reporting']['extension'];
+        $errorreport = $context['reporting']['error'];
+
         $steppay = explode("%", $steppay[1]);
         $tmieextra = $steppay[1];
         $nameloc = select("invoice", "*", "username", $steppay[0], "select");
@@ -5070,47 +5293,14 @@ $textonebuy
             }
             return rx_pf_abort($order_id, $rxToken, 'manage_panel_unavailable', true);
         }
-        $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $steppay[0]);
-        $rxReconcilable = rx_pf_panel_reconcilable($marzban_list_get);
-        $rxSnap = rx_pf_snapshot_from_datauser($DataUserOut);
-        $rxApply = true;
-        if ($rxPhase === 'reconcile') {
-            if (!$rxReconcilable || !is_array($rxBeforeState) || !is_array($rxTargetState)) {
-                return rx_pf_manual_review($order_id, $rxToken, 'extra_time_result_unverifiable', ['username' => (string) $nameloc['username']]);
-            }
-            $rxClass = rx_pf_classify($rxSnap, $rxBeforeState, $rxTargetState);
-            if ($rxClass === 'unknown') {
-                return rx_pf_defer($order_id, $rxToken, 'extra_time_panel_read_failed: ' . (string) ($rxSnap['error'] ?? ''));
-            }
-            if ($rxClass === 'ambiguous') {
-                return rx_pf_manual_review($order_id, $rxToken, 'extra_time_panel_state_ambiguous', ['username' => (string) $nameloc['username']]);
-            }
-            if ($rxClass === 'target') {
-                $rxApply = false;
-                $extra_time = ['status' => true, 'reconciled' => true];
-            } elseif (!rx_pf_mark_applying($order_id, $rxToken)) {
-                return rx_pf_result('already_processing', 'ownership_lost');
-            }
-        } else {
-            $rxBeforeState = null;
-            $rxTargetState = null;
-            if ($rxReconcilable) {
-                if (empty($rxSnap['ok'])) {
-                    return rx_pf_abort($order_id, $rxToken, 'extra_time_panel_read_failed', true);
-                }
-                if (!empty($rxSnap['exists'])) {
-                    $rxBeforeState = rx_pf_limits($rxSnap);
-                    $rxTargetState = rx_pf_extra_time_target($rxBeforeState, $tmieextra, time());
-                }
-            }
-            if (!rx_pf_prepare($order_id, $rxToken, $rxBeforeState, $rxTargetState)) {
-                return rx_pf_abort($order_id, $rxToken, 'fulfillment_prepare_failed', true);
-            }
+        $prepared = self::prepareExtension(
+            $ManagePanel, $nameloc, $marzban_list_get, $steppay[0], $order_id, $rxToken,
+            $rxPhase, $rxBeforeState, $rxTargetState, 'extra_time', static fn($before) => rx_pf_extra_time_target($before, $tmieextra, time())
+        );
+        if (array_key_exists('stop', $prepared)) {
+            return $prepared['stop'];
         }
-        if (is_array($rxBeforeState) && is_array($DataUserOut)) {
-            $DataUserOut['data_limit'] = $rxBeforeState['data_limit'] ?? ($DataUserOut['data_limit'] ?? null);
-            $DataUserOut['expire'] = $rxBeforeState['expire'] ?? ($DataUserOut['expire'] ?? null);
-        }
+        $DataUserOut = $prepared['before_data'];
         $data_for_database = json_encode(array(
             'day' => $tmieextra,
             'old_volume' => $DataUserOut['data_limit'],
@@ -5120,21 +5310,14 @@ $textonebuy
         $type = "extra_time_user";
         $timeservice = $DataUserOut['expire'] - time();
         $day = floor($timeservice / 86400);
-        if ($rxApply) {
-            try {
-                $extra_time = $ManagePanel->extra_time($nameloc['username'], $marzban_list_get['code_panel'], $tmieextra, $rxTargetState);
-            } catch (Throwable $rxPanelError) {
-                return rx_pf_reconcile_later($order_id, $rxToken, 'extra_time_panel_exception: ' . $rxPanelError->getMessage());
-            }
+        $applied = self::applyExtension(
+            $ManagePanel, $nameloc, $marzban_list_get, $steppay[0], $order_id, $rxToken, $rxBeforeState,
+            $rxTargetState, 'extra_time', $tmieextra, $prepared['apply'], $prepared['result']
+        );
+        if (array_key_exists('stop', $applied)) {
+            return $applied['stop'];
         }
-        if (($extra_time['status'] ?? false) == false && is_array($rxBeforeState) && is_array($rxTargetState)) {
-            $rxClass = rx_pf_classify(rx_pf_panel_snapshot($ManagePanel, (string) $nameloc['Service_location'], (string) $steppay[0]), $rxBeforeState, $rxTargetState);
-            if ($rxClass === 'target') {
-                $extra_time = ['status' => true, 'reconciled' => true];
-            } elseif ($rxClass !== 'before') {
-                return rx_pf_reconcile_later($order_id, $rxToken, 'extra_time_result_unknown: ' . (is_scalar($extra_time['msg'] ?? null) ? (string) $extra_time['msg'] : ''));
-            }
-        }
+        $extra_time = $applied['result'];
         if ($extra_time['status'] == false) {
             $__refundEt = rx_refund_payment_once($Payment_report['id_order'], $Payment_report['id_user'], $Payment_report['price'], 'بازگشت وجه - خطا در خرید زمان اضافه', (string)($nameloc['id_invoice'] ?? ''));
             if ($__refundEt === 'duplicate') {
@@ -5148,7 +5331,7 @@ $textonebuy
 <blockquote>نام پنل : {$marzban_list_get['name_panel']}</blockquote>
 <blockquote>نام کاربری سرویس : {$nameloc['username']}</blockquote>
 <blockquote>دلیل خطا : {$extra_time['msg']}</blockquote>";
-            sendmessage($from_id, faoxima_textbot_get('dyn_errors_extra_volume_purchase_error', "❌خطایی در خرید حجم اضافه سرویس رخ داده با پشتیبانی در ارتباط باشید"), null, 'HTML');
+            sendmessage($context['presentation']['request_user'], faoxima_textbot_get('dyn_errors_extra_volume_purchase_error', "❌خطایی در خرید حجم اضافه سرویس رخ داده با پشتیبانی در ارتباط باشید"), null, 'HTML');
             if (strlen($setting['Channel_Report']) > 0) {
                 telegram('sendmessage', [
                     'chat_id' => $setting['Channel_Report'],
@@ -5214,7 +5397,7 @@ $textonebuy
 💎 موجودی قبل ازافزایش موجودی : {$rxFmtBalanceBeforeTime}
 💸 مبلغ پرداختی: $format_price_cart تومان
 ";
-            Editmessagetext($_receipt_chat_id, $message_id, $textconfrom, $Confirm_pay, 'HTML', $_receipt_report_thread > 0 ? $_receipt_report_thread : null);
+            self::updateReceipt($receipt, $textconfrom);
         }
         update("invoice", "Status", "active", "id_invoice", $nameloc['id_invoice']);
         $text_report = "⭕️ یک کاربر زمان اضافه خریده است
@@ -5238,7 +5421,19 @@ $textonebuy
                 'price'   => $volumesformat,
             ], $setting);
         }
-    } else {
+        return rx_pf_result('completed');
+    }
+
+    public static function topUp(array $context)
+    {
+        $order_id = $context['payment']['order_id'];
+        $Payment_report = $context['payment']['report'];
+        $Balance_id = $context['payment']['customer'];
+        $rxToken = $context['fulfillment']['token'];
+        $setting = $context['presentation']['settings'];
+        $paymentNote = $context['presentation']['payment_note'];
+        $receipt = $context['presentation']['receipt'];
+
         $__chargeBonus = isset($Payment_report['charge_bonus']) ? intval($Payment_report['charge_bonus']) : 0;
         $__paidAmount = intval($Payment_report['price']);
         $__creditAmount = $__paidAmount + $__chargeBonus;
@@ -5300,7 +5495,7 @@ $textonebuy
 💸 مبلغ پرداختی: $format_price_cart تومان
 💎 موجودی قبل ازافزایش موجودی : {$rxFmtBalanceBeforeTopup}
 ✍️ توضیحات : {$paymentNote}";
-            Editmessagetext($_receipt_chat_id, $message_id, $textconfrom, $Confirm_pay, 'HTML', $_receipt_report_thread > 0 ? $_receipt_report_thread : null);
+            self::updateReceipt($receipt, $textconfrom);
         }
         $__creditFmt = number_format($__creditAmount, 0);
         sendmessage($Payment_report['id_user'], "💎 کاربر گرامی مبلغ {$__creditFmt} تومان به کیف پول شما واریز گردید با تشکراز پرداخت شما.
@@ -5313,8 +5508,8 @@ $textonebuy
                 'price'   => $__creditFmt,
             ], $setting);
         }
+        return rx_pf_result('completed');
     }
-    return rx_pf_result('completed');
 }
 
 if (!function_exists('rxReferralRegister')) {

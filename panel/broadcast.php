@@ -46,86 +46,92 @@ function faoxima_target_sql(string $target): array {
 }
 
 
+function fx_broadcast_count(PDO $pdo, array $query): array
+{
+    $target = (string)($query['target'] ?? 'all_users');
+    [$whereSql, $params] = faoxima_target_sql($target);
+    try {
+        $sql = "SELECT COUNT(*) FROM user" . $whereSql;
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        return ['ok' => true, 'count' => (int)$stmt->fetchColumn()];
+    } catch (\Throwable $e) {
+        return ['ok' => false, 'error' => $e->getMessage()];
+    }
+}
+
+function fx_broadcast_send_batch(PDO $pdo, array $query, array $post): array
+{
+    $target  = (string)($query['target'] ?? 'all_users');
+    $offset  = max(0, (int)($query['offset'] ?? 0));
+    $batch   = max(1, min(30, (int)($query['batch'] ?? 15)));
+    $message = (string)($post['message'] ?? '');
+    $parse   = (string)($post['parse'] ?? 'HTML');
+    if ($parse !== 'HTML' && $parse !== 'Markdown' && $parse !== 'plain') $parse = 'HTML';
+    $parseMode = $parse === 'plain' ? '' : $parse;
+
+
+    if (!in_array($target, ['all_users', 'active', 'agents'], true)) {
+        return ['ok' => false, 'error' => 'target_invalid'];
+    }
+
+    $trim = trim($message);
+    if ($trim === '') {
+        return ['ok' => false, 'error' => 'message_empty'];
+    }
+
+    if (mb_strlen($message, 'UTF-8') > 4000) {
+        return ['ok' => false, 'error' => 'message_too_long'];
+    }
+
+    [$whereSql, $params] = faoxima_target_sql($target);
+    $sql = "SELECT id FROM user" . $whereSql . " ORDER BY id ASC LIMIT :lim OFFSET :off";
+    try {
+        $stmt = $pdo->prepare($sql);
+        foreach ($params as $k => $v) $stmt->bindValue($k, $v);
+        $stmt->bindValue(':lim', $batch, PDO::PARAM_INT);
+        $stmt->bindValue(':off', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (\Throwable $e) {
+        return ['ok' => false, 'error' => 'query: ' . $e->getMessage()];
+    }
+
+    $sent = 0; $failed = 0;
+    foreach ($rows as $r) {
+        $uid = (int)$r['id'];
+        if ($uid <= 0) continue;
+        try {
+            $res = sendmessage($uid, $message, null, $parseMode);
+            if (is_array($res) && !empty($res['ok'])) $sent++;
+            else $failed++;
+        } catch (\Throwable $e) {
+            $failed++;
+        }
+    }
+
+    return [
+        'ok'       => true,
+        'sent'     => $sent,
+        'failed'   => $failed,
+        'next_off' => $offset + count($rows),
+        'done'     => count($rows) < $batch,
+    ];
+}
+
 if (isset($_GET['ajax'])) {
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store');
     $ajax = (string)$_GET['ajax'];
 
     if ($ajax === 'count') {
-        $target = (string)($_GET['target'] ?? 'all_users');
-        [$whereSql, $params] = faoxima_target_sql($target);
-        try {
-            $sql = "SELECT COUNT(*) FROM user" . $whereSql;
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            echo json_encode(['ok' => true, 'count' => (int)$stmt->fetchColumn()]);
-        } catch (\Throwable $e) {
-            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
-        }
+        echo json_encode(fx_broadcast_count($pdo, $_GET));
         exit;
     }
 
     if ($ajax === 'send_batch') {
         @set_time_limit(20);
-        $target  = (string)($_GET['target'] ?? 'all_users');
-        $offset  = max(0, (int)($_GET['offset'] ?? 0));
-        $batch   = max(1, min(30, (int)($_GET['batch'] ?? 15)));
-        $message = (string)($_POST['message'] ?? '');
-        $parse   = (string)($_POST['parse'] ?? 'HTML');
-        if ($parse !== 'HTML' && $parse !== 'Markdown' && $parse !== 'plain') $parse = 'HTML';
-        $parseMode = $parse === 'plain' ? '' : $parse;
-
-
-        if (!in_array($target, ['all_users', 'active', 'agents'], true)) {
-            echo json_encode(['ok' => false, 'error' => 'target_invalid']);
-            exit;
-        }
-
-        $trim = trim($message);
-        if ($trim === '') {
-            echo json_encode(['ok' => false, 'error' => 'message_empty']);
-            exit;
-        }
-
-        if (mb_strlen($message, 'UTF-8') > 4000) {
-            echo json_encode(['ok' => false, 'error' => 'message_too_long']);
-            exit;
-        }
-
-        [$whereSql, $params] = faoxima_target_sql($target);
-        $sql = "SELECT id FROM user" . $whereSql . " ORDER BY id ASC LIMIT :lim OFFSET :off";
-        try {
-            $stmt = $pdo->prepare($sql);
-            foreach ($params as $k => $v) $stmt->bindValue($k, $v);
-            $stmt->bindValue(':lim', $batch, PDO::PARAM_INT);
-            $stmt->bindValue(':off', $offset, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\Throwable $e) {
-            echo json_encode(['ok' => false, 'error' => 'query: ' . $e->getMessage()]);
-            exit;
-        }
-
-        $sent = 0; $failed = 0;
-        foreach ($rows as $r) {
-            $uid = (int)$r['id'];
-            if ($uid <= 0) continue;
-            try {
-                $res = sendmessage($uid, $message, null, $parseMode);
-                if (is_array($res) && !empty($res['ok'])) $sent++;
-                else $failed++;
-            } catch (\Throwable $e) {
-                $failed++;
-            }
-        }
-
-        echo json_encode([
-            'ok'       => true,
-            'sent'     => $sent,
-            'failed'   => $failed,
-            'next_off' => $offset + count($rows),
-            'done'     => count($rows) < $batch,
-        ]);
+        echo json_encode(fx_broadcast_send_batch($pdo, $_GET, $_POST));
         exit;
     }
 

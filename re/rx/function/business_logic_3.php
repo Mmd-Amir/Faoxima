@@ -1,6 +1,20 @@
 <?php
 
 
+function nmSellableCategoryProductTokens(array $values, callable $normalize): array
+{
+    $tokens = [];
+    foreach ($values as $value) {
+        foreach (explode(',', (string) $value) as $piece) {
+            $token = $normalize($piece);
+            if ($token !== '' && $token !== '0') {
+                $tokens[$token] = true;
+            }
+        }
+    }
+    return $tokens;
+}
+
 if (!function_exists('nmSellableCategoryRows')) {
 function nmSellableCategoryRows($location, $agent)
 {
@@ -11,7 +25,6 @@ function nmSellableCategoryRows($location, $agent)
         return function_exists('nmNormalizeText') ? nmNormalizeText($v) : trim((string)$v);
     };
     // 1) Collect the (normalised) category tokens that products for this panel use.
-    $prodSet = [];
     try {
         $stmt = $pdo->prepare(
             "SELECT category FROM product "
@@ -20,12 +33,7 @@ function nmSellableCategoryRows($location, $agent)
             . "AND category IS NOT NULL AND TRIM(category) <> ''"
         );
         $stmt->execute([':loc' => $location, ':agent' => $agent]);
-        foreach (($stmt->fetchAll(PDO::FETCH_COLUMN) ?: []) as $pc) {
-            foreach (explode(',', (string) $pc) as $piece) {
-                $n = $norm($piece);
-                if ($n !== '' && $n !== '0') $prodSet[$n] = true;
-            }
-        }
+        $prodSet = nmSellableCategoryProductTokens($stmt->fetchAll(PDO::FETCH_COLUMN) ?: [], $norm);
     } catch (Throwable $e) {
         error_log('nmSellableCategoryRows products failed: ' . $e->getMessage());
         return $out;

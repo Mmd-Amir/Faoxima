@@ -38,14 +38,8 @@ if (!function_exists('rx_payment_retry_kb')) {
 if (!function_exists('payment_confirm_paid')) {
 
 
-    function payment_confirm_paid(string $orderId, string $cashbackKey, array $reportData = []): array
+    function rx_pc_record_paid(PDO $pdo, string $orderId): array
     {
-        global $pdo, $connect, $setting;
-
-        if (!($pdo instanceof PDO)) {
-            return ['ok' => false, 'reason' => 'pdo unavailable'];
-        }
-
         $schemaReady = false;
         if (!$pdo->inTransaction()) {
             $schemaReady = function_exists('rx_pf_ensure_schema') && rx_pf_ensure_schema();
@@ -146,31 +140,11 @@ if (!function_exists('payment_confirm_paid')) {
             return ['ok' => false, 'reason' => 'db_error'];
         }
 
-        if (!is_array($report)) {
-            return ['ok' => false, 'reason' => 'report missing'];
-        }
-        if (function_exists('rx_pf_clear_cache')) {
-            rx_pf_clear_cache(['Payment_report']);
-        } elseif (function_exists('clearSelectCache')) {
-            clearSelectCache('Payment_report');
-        }
-        if (function_exists('rx_redis_del') && isset($report['id_user'])) {
-            rx_redis_del('faoxima:paystatus:' . $orderId . ':' . (string)$report['id_user']);
-        }
+        return ['ok' => true, 'report' => $report, 'transitioned' => $transitioned, 'was_delivered' => $wasDelivered];
+    }
 
-        if (function_exists('crypto_record_verified_hash')) {
-            $methodLower = strtolower((string)($report['Payment_Method'] ?? ''));
-            if (in_array($methodLower, ['plisio', 'nowpayment', 'digitaltron', 'arze digital offline'], true)) {
-                $srcMap = [
-                    'plisio' => 'plisio_ipn',
-                    'nowpayment' => 'nowpayment_ipn',
-                    'digitaltron' => 'nowpayment_ipn',
-                    'arze digital offline' => 'manual_admin',
-                ];
-                crypto_record_verified_hash($orderId, $srcMap[$methodLower] ?? 'gateway_ipn');
-            }
-        }
-
+    function rx_pc_attempt_delivery(string $orderId, array $report, bool $wasDelivered): array
+    {
         $deliveryStatus = $wasDelivered ? 'already_completed' : 'unknown';
         $delivered = $wasDelivered;
         if (!$wasDelivered && function_exists('DirectPayment')) {
@@ -182,7 +156,9 @@ if (!function_exists('payment_confirm_paid')) {
                 $delivery = DirectPayment($report['id_order'], $imagePath);
                 if (is_array($delivery)) {
                     $deliveryStatus = (string)($delivery['status'] ?? 'unknown');
-                    $delivered = $deliveryStatus === 'completed' || $deliveryStatus === 'already_completed';
+                    $delivered = function_exists('rx_pf_delivery_completed')
+                        ? rx_pf_delivery_completed($deliveryStatus)
+                        : ($deliveryStatus === 'completed' || $deliveryStatus === 'already_completed');
                 }
             } catch (Throwable $e) {
                 $deliveryStatus = 'requires_reconciliation';
@@ -191,13 +167,11 @@ if (!function_exists('payment_confirm_paid')) {
                 }
             }
         }
+        return [$deliveryStatus, $delivered];
+    }
 
-        $userId = (string)($report['id_user'] ?? '');
-        $balanceUser = select('user', '*', 'id', $userId, 'select');
-        if (!is_array($balanceUser)) {
-            $balanceUser = ['id' => $userId, 'username' => '—', 'Balance' => 0];
-        }
-
+    function rx_pc_apply_cashback(array $report, array $balanceUser, string $cashbackKey): int
+    {
         $cashbackPercent = '0';
         if ($cashbackKey !== '') {
             $row = select('PaySetting', 'ValuePay', 'NamePay', $cashbackKey, 'select');
@@ -217,6 +191,59 @@ if (!function_exists('payment_confirm_paid')) {
                 $cashbackAmount = 0;
             }
         }
+        return $cashbackAmount;
+    }
+
+    function payment_confirm_paid(string $orderId, string $cashbackKey, array $reportData = []): array
+    {
+        global $pdo, $setting;
+
+        if (!($pdo instanceof PDO)) {
+            return ['ok' => false, 'reason' => 'pdo unavailable'];
+        }
+
+        $recorded = rx_pc_record_paid($pdo, $orderId);
+        if (!$recorded['ok']) {
+            return $recorded;
+        }
+        $report = $recorded['report'];
+        $transitioned = $recorded['transitioned'];
+        $wasDelivered = $recorded['was_delivered'];
+
+        if (!is_array($report)) {
+            return ['ok' => false, 'reason' => 'report missing'];
+        }
+        if (function_exists('rx_pf_clear_cache')) {
+            rx_pf_clear_cache(['Payment_report']);
+        } elseif (function_exists('clearSelectCache')) {
+            clearSelectCache('Payment_report');
+        }
+        if (function_exists('rx_redis_del') && isset($report['id_user'])) {
+            rx_redis_del(rx_payment_status_cache_key($orderId, $report['id_user']));
+        }
+
+        if (function_exists('crypto_record_verified_hash')) {
+            $methodLower = strtolower((string)($report['Payment_Method'] ?? ''));
+            if (in_array($methodLower, ['plisio', 'nowpayment', 'digitaltron', 'arze digital offline'], true)) {
+                $srcMap = [
+                    'plisio' => 'plisio_ipn',
+                    'nowpayment' => 'nowpayment_ipn',
+                    'digitaltron' => 'nowpayment_ipn',
+                    'arze digital offline' => 'manual_admin',
+                ];
+                crypto_record_verified_hash($orderId, $srcMap[$methodLower] ?? 'gateway_ipn');
+            }
+        }
+
+        [$deliveryStatus, $delivered] = rx_pc_attempt_delivery($orderId, $report, $wasDelivered);
+
+        $userId = (string)($report['id_user'] ?? '');
+        $balanceUser = select('user', '*', 'id', $userId, 'select');
+        if (!is_array($balanceUser)) {
+            $balanceUser = ['id' => $userId, 'username' => '—', 'Balance' => 0];
+        }
+
+        $cashbackAmount = rx_pc_apply_cashback($report, $balanceUser, $cashbackKey);
         if ($cashbackAmount > 0) {
             if (function_exists('sendmessage')) {
                 sendmessage(
@@ -279,30 +306,62 @@ if (!function_exists('payment_confirm_paid')) {
 }
 
 
+if (!function_exists('rx_blupal_confirmation_lines')) {
+    function rx_blupal_confirmation_lines($creditAmountToman, string $payerName, string $payerCard, string $payerBank): array
+    {
+        return array_filter([
+            $creditAmountToman > 0 ? ('💸 مبلغ نهایی تأییدشده توسط بلوپال : ' . number_format($creditAmountToman) . ' تومان') : '',
+            $payerName !== '' ? ('👤 نام واریزکننده : ' . $payerName) : '',
+            $payerCard !== '' ? ('💳 شماره کارت/شبا واریزکننده : ' . $payerCard) : '',
+            $payerBank !== '' ? ('🏦 بانک واریزکننده : ' . $payerBank) : '',
+        ]);
+    }
+}
+
+if (!function_exists('rx_plisio_paid_line')) {
+    function rx_plisio_paid_line(string $paidAmount, string $paidCurrency): string
+    {
+        return $paidAmount !== ''
+            ? ("📥 مبلغ واریز شده : <b>{$paidAmount}</b>" . ($paidCurrency !== '' ? ' ' . strtoupper($paidCurrency) : ''))
+            : "📥 مبلغ واریز شده : —";
+    }
+}
+
+if (!function_exists('rx_pc_mark_unsettled_terminal')) {
+    function rx_pc_mark_unsettled_terminal($pdo, string $orderId, string $target): ?array
+    {
+        $report = select('Payment_report', '*', 'id_order', $orderId, 'select');
+        if (!is_array($report)) return null;
+        $status = strtolower((string)($report['payment_Status'] ?? ''));
+        if ($status === 'paid' || $status === 'cancelled' || !($pdo instanceof PDO)) return null;
+
+        $stmt = $pdo->prepare(
+            "UPDATE Payment_report SET payment_Status = ? "
+            . "WHERE id_order = ? AND COALESCE(direct_payment_done, 0) = 0 "
+            . "AND LOWER(COALESCE(payment_Status, '')) NOT IN ('paid', 'cancelled')"
+        );
+        $stmt->execute([$target, $orderId]);
+        if ($stmt->rowCount() < 1) {
+            return null;
+        }
+        if (function_exists('clearSelectCache')) {
+            clearSelectCache('Payment_report');
+        }
+        if (function_exists('rx_redis_del') && isset($report['id_user'])) {
+            rx_redis_del(rx_payment_status_cache_key($orderId, $report['id_user']));
+        }
+        return $report;
+    }
+}
+
 if (!function_exists('payment_notify_user_failed')) {
 
 
     function payment_notify_user_failed(string $orderId, string $reason = ''): bool
     {
         global $pdo;
-        $report = select('Payment_report', '*', 'id_order', $orderId, 'select');
-        if (!is_array($report)) return false;
-        $status = strtolower((string)($report['payment_Status'] ?? ''));
-        if ($status === 'paid' || $status === 'cancelled') return false;
-        if (!($pdo instanceof PDO)) return false;
-
-        $stmt = $pdo->prepare(
-            "UPDATE Payment_report SET payment_Status = 'reject' "
-            . "WHERE id_order = ? AND COALESCE(direct_payment_done, 0) = 0 "
-            . "AND LOWER(COALESCE(payment_Status, '')) NOT IN ('paid', 'cancelled')"
-        );
-        $stmt->execute([$orderId]);
-        if ($stmt->rowCount() < 1) {
-            return false;
-        }
-        if (function_exists('clearSelectCache')) {
-            clearSelectCache('Payment_report');
-        }
+        $report = rx_pc_mark_unsettled_terminal($pdo, $orderId, 'reject');
+        if ($report === null) return false;
 
         if (!function_exists('telegram')) return true;
 
@@ -332,27 +391,8 @@ if (!function_exists('payment_mark_expired')) {
     function payment_mark_expired(string $orderId, ?string $textExpire = null): bool
     {
         global $pdo;
-        $report = select('Payment_report', '*', 'id_order', $orderId, 'select');
-        if (!is_array($report)) return false;
-        $status = strtolower((string)($report['payment_Status'] ?? ''));
-        if ($status === 'paid' || $status === 'cancelled') return false;
-        if (!($pdo instanceof PDO)) return false;
-
-        $stmt = $pdo->prepare(
-            "UPDATE Payment_report SET payment_Status = 'expire' "
-            . "WHERE id_order = ? AND COALESCE(direct_payment_done, 0) = 0 "
-            . "AND LOWER(COALESCE(payment_Status, '')) NOT IN ('paid', 'cancelled')"
-        );
-        $stmt->execute([$orderId]);
-        if ($stmt->rowCount() < 1) {
-            return false;
-        }
-        if (function_exists('clearSelectCache')) {
-            clearSelectCache('Payment_report');
-        }
-        if (function_exists('rx_redis_del') && isset($report['id_user'])) {
-            rx_redis_del('faoxima:paystatus:' . $orderId . ':' . (string)$report['id_user']);
-        }
+        $report = rx_pc_mark_unsettled_terminal($pdo, $orderId, 'expire');
+        if ($report === null) return false;
 
         if (!function_exists('telegram')) return true;
 

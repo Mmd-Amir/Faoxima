@@ -1,6 +1,18 @@
 <?php
 
 
+if (!function_exists('rxAdminTicketFind')) {
+    function rxAdminTicketFind($tracking)
+    {
+        return select("support_message", "*", "Tracking", $tracking);
+    }
+
+    function rxAdminTicketStatus(string $tracking, string $status): void
+    {
+        update("support_message", "status", $status, "Tracking", $tracking);
+    }
+}
+
 if (!function_exists('safe_divide')) {
     function safe_divide($numerator, $denominator, $fallback = 0)
     {
@@ -1322,25 +1334,28 @@ if (!function_exists('rx_broadcast_classify_exception')) {
     }
 }
 
+function rx_broadcast_pause_reason(string $class, int $code, array $classification): array
+{
+    if ($class === 'temporary_telegram' && $code === 429) {
+        return ['paused_rate_limit', 'telegram_429'];
+    }
+    if ($class === 'temporary_telegram' || $class === 'temporary_network') {
+        return ['paused_network', $code >= 500 ? 'telegram_5xx' : 'network'];
+    }
+    if ($class === 'temporary_database') {
+        return ['paused_database', 'database'];
+    }
+    $detail = $classification['detail'] ?? '';
+    return ['paused_system', in_array($detail, ['message_invalid', 'telegram_auth'], true) ? (string) $detail : 'system'];
+}
+
 if (!function_exists('rx_broadcast_apply_pause')) {
     function rx_broadcast_apply_pause(array &$c, array $cls, ?int $now = null): void
     {
         $now = $now ?? time();
         $class = (string) ($cls['class'] ?? 'system_error');
         $code = (int) ($cls['code'] ?? 0);
-        if ($class === 'temporary_telegram' && $code === 429) {
-            $status = 'paused_rate_limit';
-            $reason = 'telegram_429';
-        } elseif ($class === 'temporary_telegram' || $class === 'temporary_network') {
-            $status = 'paused_network';
-            $reason = $code >= 500 ? 'telegram_5xx' : 'network';
-        } elseif ($class === 'temporary_database') {
-            $status = 'paused_database';
-            $reason = 'database';
-        } else {
-            $status = 'paused_system';
-            $reason = in_array($cls['detail'] ?? '', ['message_invalid', 'telegram_auth'], true) ? (string) $cls['detail'] : 'system';
-        }
+        [$status, $reason] = rx_broadcast_pause_reason($class, $code, $cls);
         $retryAfter = (int) ($cls['retry_after'] ?? 0);
         $current = (string) ($c['status'] ?? '');
         $currentUntil = (int) ($c['pause_until'] ?? 0);

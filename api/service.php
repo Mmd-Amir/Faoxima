@@ -36,12 +36,13 @@ if(!is_array($data)){
 }
 $data = sanitize_recursive($data);
 $stmt = $pdo->prepare("INSERT IGNORE INTO logs_api (header,data,time,ip,actions) VALUES (:header,:data,:time,:ip,:actions)");
-$stmt->bindParam(':header',json_encode(FaoximaApiCredential::redactHeaders($headrs)));
-$stmt->bindParam(':data',json_encode($data));
-$stmt->bindParam(':time',date('Y/m/d H:i:s'));
-$stmt->bindParam(':ip',$_SERVER['REMOTE_ADDR']);
-$stmt->bindParam(':actions',$data['actions']);
-$stmt->execute();
+$stmt->execute([
+    ':header' => json_encode(FaoximaApiCredential::redactHeaders($headrs)),
+    ':data' => json_encode(FaoximaApiCredential::redactAuditFields($data)),
+    ':time' => date('Y/m/d H:i:s'),
+    ':ip' => $_SERVER['REMOTE_ADDR'] ?? null,
+    ':actions' => $data['actions'] ?? null,
+]);
 switch ($data['actions']) {
     case 'services':
         if($method != "GET"){

@@ -180,7 +180,7 @@ final class PaymentReceiptHandler extends BaseHandler
             FaoximaResponse::fail(409, faoxima_textbot_get('dyn_receipt_already_pending_review', '⏳ رسید این پرداخت قبلاً ارسال شده و در انتظار بررسی ادمین است.'));
         }
         if (function_exists('rx_redis_del')) {
-            rx_redis_del('faoxima:paystatus:' . $orderId . ':' . (string)$this->user['id']);
+            rx_redis_del(rx_payment_status_cache_key($orderId, $this->user['id']));
         }
 
         $reqCardTmp  = null;
@@ -441,7 +441,7 @@ final class PaymentReceiptHandler extends BaseHandler
             FaoximaLogger::error('Receipt reservation release failed', ['err' => $e->getMessage(), 'order' => $orderId, 'user_id' => $this->user['id']]);
         }
         if (function_exists('rx_redis_del')) {
-            rx_redis_del('faoxima:paystatus:' . $orderId . ':' . (string)$this->user['id']);
+            rx_redis_del(rx_payment_status_cache_key($orderId, $this->user['id']));
         }
     }
 

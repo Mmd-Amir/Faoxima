@@ -625,6 +625,32 @@ if (!function_exists('rx_ck_find_for_report')) {
     }
 }
 
+if (!function_exists('rx_ck_resolve_wallet_shortfall')) {
+    function rx_ck_resolve_wallet_shortfall(PDO $pdo, array $ck, string $orderId, string $userId, int $paid, int $now): array
+    {
+        rx_wallet_increment_locked($pdo, $userId, $paid);
+        $after = $pdo->prepare("SELECT Balance FROM user WHERE id = ?");
+        $after->execute([$userId]);
+        $balanceAfter = (int) $after->fetchColumn();
+        $pdo->prepare(
+            "INSERT INTO wallet_ledger (id_user, direction, amount, balance_after, category, description, id_order, ref_table, ref_id, fulfillment_key) VALUES (?, 'credit', ?, ?, 'checkout_credit', ?, ?, 'checkout_order', ?, ?)"
+        )->execute([$userId, $paid, $balanceAfter, 'اعتبار پرداخت تأییدشده - موجودی کیف پول برای تکمیل خرید کافی نبود', $orderId, (string) $ck['checkout_id'], 'ckcredit:' . $orderId]);
+        $pdo->prepare(
+            "UPDATE checkout_order SET status = 'resolved_credit', resolution = 'wallet_credit', wallet_state = 'none', settle_order_id = ?, payment_order_id = ?, fulfillment_state = 'credited', updated_at = ? WHERE checkout_id = ?"
+        )->execute([$orderId, $orderId, $now, $ck['checkout_id']]);
+        $pdo->prepare(
+            "UPDATE payment_fulfillment SET state = 'completed', result_state = ?, lease_expires_at = NULL, completed_at = ?, updated_at = ? WHERE id_order = ?"
+        )->execute([json_encode(['resolved' => 'wallet_credit', 'credited' => $paid, 'balance_after' => $balanceAfter]), $now, $now, $orderId]);
+        $paidRow = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'paid', direct_payment_done = 1 WHERE id_order = ? AND COALESCE(direct_payment_done, 0) = 0");
+        $paidRow->execute([$orderId]);
+        if ($paidRow->rowCount() < 1) {
+            throw new RuntimeException('checkout_credit_finalize_failed');
+        }
+        $ck['status'] = 'resolved_credit';
+        return ['action' => 'resolved_credit', 'checkout' => $ck, 'code' => 'wallet_insufficient', 'credited' => $paid];
+    }
+}
+
 if (!function_exists('rx_ck_gate_fulfillment')) {
     function rx_ck_gate_fulfillment(array $report, string $token): array
     {
@@ -687,26 +713,7 @@ if (!function_exists('rx_ck_gate_fulfillment')) {
                         if ($paid <= 0) {
                             return $deny('amount_mismatch');
                         }
-                        $pdo->prepare("UPDATE user SET Balance = Balance + ? WHERE id = ?")->execute([$paid, $userId]);
-                        $after = $pdo->prepare("SELECT Balance FROM user WHERE id = ?");
-                        $after->execute([$userId]);
-                        $balanceAfter = (int) $after->fetchColumn();
-                        $pdo->prepare(
-                            "INSERT INTO wallet_ledger (id_user, direction, amount, balance_after, category, description, id_order, ref_table, ref_id, fulfillment_key) VALUES (?, 'credit', ?, ?, 'checkout_credit', ?, ?, 'checkout_order', ?, ?)"
-                        )->execute([$userId, $paid, $balanceAfter, 'اعتبار پرداخت تأییدشده - موجودی کیف پول برای تکمیل خرید کافی نبود', $orderId, (string) $ck['checkout_id'], 'ckcredit:' . $orderId]);
-                        $pdo->prepare(
-                            "UPDATE checkout_order SET status = 'resolved_credit', resolution = 'wallet_credit', wallet_state = 'none', settle_order_id = ?, payment_order_id = ?, fulfillment_state = 'credited', updated_at = ? WHERE checkout_id = ?"
-                        )->execute([$orderId, $orderId, $now, $ck['checkout_id']]);
-                        $pdo->prepare(
-                            "UPDATE payment_fulfillment SET state = 'completed', result_state = ?, lease_expires_at = NULL, completed_at = ?, updated_at = ? WHERE id_order = ?"
-                        )->execute([json_encode(['resolved' => 'wallet_credit', 'credited' => $paid, 'balance_after' => $balanceAfter]), $now, $now, $orderId]);
-                        $paidRow = $pdo->prepare("UPDATE Payment_report SET payment_Status = 'paid', direct_payment_done = 1 WHERE id_order = ? AND COALESCE(direct_payment_done, 0) = 0");
-                        $paidRow->execute([$orderId]);
-                        if ($paidRow->rowCount() < 1) {
-                            throw new RuntimeException('checkout_credit_finalize_failed');
-                        }
-                        $ck['status'] = 'resolved_credit';
-                        return ['action' => 'resolved_credit', 'checkout' => $ck, 'code' => 'wallet_insufficient', 'credited' => $paid];
+                        return rx_ck_resolve_wallet_shortfall($pdo, $ck, $orderId, $userId, $paid, $now);
                     }
                     $pdo->prepare("UPDATE user SET Balance = Balance - ? WHERE id = ? AND Balance >= ?")->execute([$wallet, $userId, $wallet]);
                     $after = $pdo->prepare("SELECT Balance FROM user WHERE id = ?");
@@ -832,7 +839,7 @@ if (!function_exists('rx_ck_release_failed_fulfillment')) {
                 if ((string) $ck['wallet_state'] === 'debited' && $wallet > 0) {
                     $userId = (string) $ck['id_user'];
                     $pdo->prepare("SELECT Balance FROM user WHERE id = ? FOR UPDATE")->execute([$userId]);
-                    $pdo->prepare("UPDATE user SET Balance = Balance + ? WHERE id = ?")->execute([$wallet, $userId]);
+                    rx_wallet_increment_locked($pdo, $userId, $wallet);
                     $after = $pdo->prepare("SELECT Balance FROM user WHERE id = ?");
                     $after->execute([$userId]);
                     $pdo->prepare(

@@ -1,5 +1,58 @@
 <?php
 
+if (!function_exists('rxAdminInvoicePageResult')) {
+    function rxAdminInvoicePageResult($connect, $id_user, $start_index, $items_per_page)
+    {
+        $_s = (int)$start_index; $_p = (int)$items_per_page;
+        $_stmt = $connect->prepare("SELECT * FROM invoice WHERE id_user = ? LIMIT ?, ?");
+        $_stmt->bind_param("sii", $id_user, $_s, $_p);
+        $_stmt->execute();
+        $result = $_stmt->get_result();
+        $_stmt->close();
+        return $result;
+    }
+
+    function rxAdminInvoicePageKeyboard($result, $id_user, $textbotlang)
+    {
+        $keyboardlists = [
+            'inline_keyboard' => [],
+        ];
+        $keyboardlists['inline_keyboard'][] = [
+            ['text' => "عملیات", 'callback_data' => "action"],
+            ['text' => "وضعیت سرویس", 'callback_data' => "Status"],
+            ['text' => "نام کاربری", 'callback_data' => "username"],
+        ];
+        while ($row = mysqli_fetch_assoc($result)) {
+            $keyboardlists['inline_keyboard'][] = [
+                [
+                    'text' => "مشاهده‌اطلاعات",
+                    'callback_data' => "manageinvoice_" . $row['id_invoice']
+                ],
+                [
+                    'text' => $row['Status'],
+                    'callback_data' => "username"
+                ],
+                [
+                    'text' => $row['username'],
+                    'callback_data' => $row['username']
+                ],
+            ];
+        }
+        $pagination_buttons = [
+            [
+                'text' => $textbotlang['users']['page']['next'],
+                'callback_data' => 'next_pageinvoice_' . $id_user
+            ],
+            [
+                'text' => $textbotlang['users']['page']['previous'],
+                'callback_data' => 'previous_pageinvoice_' . $id_user
+            ]
+        ];
+        $keyboardlists['inline_keyboard'][] = $pagination_buttons;
+        return json_encode($keyboardlists);
+    }
+}
+
 if (isset($update["inline_query"])) {
     $sql = "SELECT * FROM invoice WHERE (username LIKE CONCAT('%', :username, '%') OR note  LIKE CONCAT('%', :notes, '%') OR Volume LIKE CONCAT('%',:Volume, '%') OR Service_time LIKE CONCAT('%',:Service_time, '%')) AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold')";
     $stmt = $pdo->prepare($sql);
@@ -52,48 +105,8 @@ if (isset($update["inline_query"])) {
     $page = 1;
     $items_per_page = 10;
     $start_index = ($page - 1) * $items_per_page;
-    $_s = (int)$start_index; $_p = (int)$items_per_page;
-    $_stmt = $connect->prepare("SELECT * FROM invoice WHERE id_user = ? LIMIT ?, ?");
-    $_stmt->bind_param("sii", $id_user, $_s, $_p);
-    $_stmt->execute();
-    $result = $_stmt->get_result();
-    $_stmt->close();
-    $keyboardlists = [
-        'inline_keyboard' => [],
-    ];
-    $keyboardlists['inline_keyboard'][] = [
-        ['text' => "عملیات", 'callback_data' => "action"],
-        ['text' => "وضعیت سرویس", 'callback_data' => "Status"],
-        ['text' => "نام کاربری", 'callback_data' => "username"],
-    ];
-    while ($row = mysqli_fetch_assoc($result)) {
-        $keyboardlists['inline_keyboard'][] = [
-            [
-                'text' => "مشاهده‌اطلاعات",
-                'callback_data' => "manageinvoice_" . $row['id_invoice']
-            ],
-            [
-                'text' => $row['Status'],
-                'callback_data' => "username"
-            ],
-            [
-                'text' => $row['username'],
-                'callback_data' => $row['username']
-            ],
-        ];
-    }
-    $pagination_buttons = [
-        [
-            'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_pageinvoice_' . $id_user
-        ],
-        [
-            'text' => $textbotlang['users']['page']['previous'],
-            'callback_data' => 'previous_pageinvoice_' . $id_user
-        ]
-    ];
-    $keyboardlists['inline_keyboard'][] = $pagination_buttons;
-    $keyboard_json = json_encode($keyboardlists);
+    $result = rxAdminInvoicePageResult($connect, $id_user, $start_index, $items_per_page);
+    $keyboard_json = rxAdminInvoicePageKeyboard($result, $id_user, $textbotlang);
     nm_adminInstantReply($from_id, $textbotlang['Admin']['ManageUser']['mangebtnuserdec'], $keyboard_json, 'html');
 } elseif (preg_match('/next_pageinvoice_(\w+)/', $datain, $datagetr)) {
     $id_user = $datagetr[1];
@@ -107,48 +120,8 @@ if (isset($update["inline_query"])) {
         $next_page = $page + 1;
     }
     $start_index = ($next_page - 1) * $items_per_page;
-    $_s = (int)$start_index; $_p = (int)$items_per_page;
-    $_stmt = $connect->prepare("SELECT * FROM invoice WHERE id_user = ? LIMIT ?, ?");
-    $_stmt->bind_param("sii", $id_user, $_s, $_p);
-    $_stmt->execute();
-    $result = $_stmt->get_result();
-    $_stmt->close();
-    $keyboardlists = [
-        'inline_keyboard' => [],
-    ];
-    $keyboardlists['inline_keyboard'][] = [
-        ['text' => "عملیات", 'callback_data' => "action"],
-        ['text' => "وضعیت سرویس", 'callback_data' => "Status"],
-        ['text' => "نام کاربری", 'callback_data' => "username"],
-    ];
-    while ($row = mysqli_fetch_assoc($result)) {
-        $keyboardlists['inline_keyboard'][] = [
-            [
-                'text' => "مشاهده‌اطلاعات",
-                'callback_data' => "manageinvoice_" . $row['id_invoice']
-            ],
-            [
-                'text' => $row['Status'],
-                'callback_data' => "username"
-            ],
-            [
-                'text' => $row['username'],
-                'callback_data' => $row['username']
-            ],
-        ];
-    }
-    $pagination_buttons = [
-        [
-            'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_pageinvoice_' . $id_user
-        ],
-        [
-            'text' => $textbotlang['users']['page']['previous'],
-            'callback_data' => 'previous_pageinvoice_' . $id_user
-        ]
-    ];
-    $keyboardlists['inline_keyboard'][] = $pagination_buttons;
-    $keyboard_json = json_encode($keyboardlists);
+    $result = rxAdminInvoicePageResult($connect, $id_user, $start_index, $items_per_page);
+    $keyboard_json = rxAdminInvoicePageKeyboard($result, $id_user, $textbotlang);
     update("user", "pagenumber", $next_page, "id", $from_id);
     Editmessagetext($from_id, $message_id, $textbotlang['Admin']['ManageUser']['mangebtnuserdec'], $keyboard_json);
 } elseif (preg_match('/previous_pageinvoice_(\w+)/', $datain, $datagetr)) {
@@ -162,48 +135,8 @@ if (isset($update["inline_query"])) {
         $next_page = $page - 1;
     }
     $start_index = ($next_page - 1) * $items_per_page;
-    $_s = (int)$start_index; $_p = (int)$items_per_page;
-    $_stmt = $connect->prepare("SELECT * FROM invoice WHERE id_user = ? LIMIT ?, ?");
-    $_stmt->bind_param("sii", $id_user, $_s, $_p);
-    $_stmt->execute();
-    $result = $_stmt->get_result();
-    $_stmt->close();
-    $keyboardlists = [
-        'inline_keyboard' => [],
-    ];
-    $keyboardlists['inline_keyboard'][] = [
-        ['text' => "عملیات", 'callback_data' => "action"],
-        ['text' => "وضعیت سرویس", 'callback_data' => "Status"],
-        ['text' => "نام کاربری", 'callback_data' => "username"],
-    ];
-    while ($row = mysqli_fetch_assoc($result)) {
-        $keyboardlists['inline_keyboard'][] = [
-            [
-                'text' => "مشاهده‌اطلاعات",
-                'callback_data' => "manageinvoice_" . $row['id_invoice']
-            ],
-            [
-                'text' => $row['Status'],
-                'callback_data' => "username"
-            ],
-            [
-                'text' => $row['username'],
-                'callback_data' => $row['username']
-            ],
-        ];
-    }
-    $pagination_buttons = [
-        [
-            'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_pageinvoice_' . $id_user
-        ],
-        [
-            'text' => $textbotlang['users']['page']['previous'],
-            'callback_data' => 'previous_pageinvoice_' . $id_user
-        ]
-    ];
-    $keyboardlists['inline_keyboard'][] = $pagination_buttons;
-    $keyboard_json = json_encode($keyboardlists);
+    $result = rxAdminInvoicePageResult($connect, $id_user, $start_index, $items_per_page);
+    $keyboard_json = rxAdminInvoicePageKeyboard($result, $id_user, $textbotlang);
     update("user", "pagenumber", $next_page, "id", $from_id);
     Editmessagetext($from_id, $message_id, $textbotlang['Admin']['ManageUser']['mangebtnuserdec'], $keyboard_json);
 } elseif ($datain == "cartuserlist") {

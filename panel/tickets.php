@@ -24,19 +24,8 @@ function tk_jdate($raw)
     return jdate('Y/m/d H:i', $ts, '', 'Asia/Tehran', 'fa');
 }
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindParam("username", $_SESSION["user"], PDO::PARAM_STR);
-$query->execute();
-$admin = $query->fetch(PDO::FETCH_ASSOC);
-if (!isset($_SESSION["user"]) || !$admin) {
-    header('Location: login.php');
-    return;
-}
-
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-$_csrf = $_SESSION['csrf_token'];
+$admin = fx_admin_require_access($pdo);
+$_csrf = fx_csrf_token();
 
 $setting = select("setting", "*", null, null);
 
@@ -89,6 +78,119 @@ function tk_delete_trackings(PDO $pdo, array $trackings): int
         $deleted += count(array_unique(array_column($rows, 'Tracking')));
     }
     return $deleted;
+}
+
+function tk_validate_reply_target(PDO $pdo, string $T, int $replyToId): ?int
+{
+    if ($replyToId > 0) {
+        $rtChk = $pdo->prepare("SELECT id FROM support_message WHERE id = ? AND Tracking = ?");
+        $rtChk->execute([$replyToId, $T]);
+        if (!$rtChk->fetchColumn()) $replyToId = 0;
+    }
+    return $replyToId > 0 ? $replyToId : null;
+}
+
+function tk_store_admin_message(PDO $pdo, $T, $departmentId, $recipient, $department, $body, string $time, ?int $replyToId): void
+{
+    $ins = $pdo->prepare("INSERT INTO support_message (Tracking,idsupport,iduser,name_departman,text,result,time,status,reply_to_id) VALUES (?,?,?,?,?,?,?,?,?)");
+    $ins->execute([$T, $departmentId, $recipient, $department, $body, 'admin', $time, 'Answered', $replyToId]);
+}
+
+function tk_uploads(array $files): array
+{
+    $uploads = [];
+    if (isset($files['media']) && is_array($files['media']['tmp_name'] ?? null)) {
+        $F = $files['media'];
+        $n = count($F['tmp_name']);
+        for ($i = 0; $i < $n && count($uploads) < 5; $i++) {
+            if ((int)($F['error'][$i] ?? 1) !== 0) continue;
+            $tmp = (string)($F['tmp_name'][$i] ?? '');
+            if ($tmp === '' || !is_uploaded_file($tmp)) continue;
+            $mime = function_exists('mime_content_type') ? (string)(mime_content_type($tmp) ?: '') : (string)($F['type'][$i] ?? '');
+            $uploads[] = ['tmp' => $tmp, 'mime' => $mime, 'name' => (string)($F['name'][$i] ?? 'file'), 'video' => stripos($mime, 'video') === 0];
+        }
+    }
+    return $uploads;
+}
+
+function tk_deliver_uploads(array $uploads, string $recipient, string $text): array
+{
+    $mediaTokens = [];
+    if (count($uploads) === 1) {
+        $u = $uploads[0];
+        $cf = new CURLFile($u['tmp'], $u['mime'] !== '' ? $u['mime'] : ($u['video'] ? 'video/mp4' : 'image/jpeg'), $u['name']);
+        if ($u['video']) {
+            $res = telegram('sendVideo', ['chat_id' => $recipient, 'video' => $cf, 'caption' => $text, 'parse_mode' => 'HTML']);
+            $fid = $res['result']['video']['file_id'] ?? '';
+            if ($fid !== '') $mediaTokens[] = "[[video:$fid]]";
+        } else {
+            $res = telegram('sendPhoto', ['chat_id' => $recipient, 'photo' => $cf, 'caption' => $text, 'parse_mode' => 'HTML']);
+            $ph = $res['result']['photo'] ?? [];
+            $fid = (is_array($ph) && $ph) ? (end($ph)['file_id'] ?? '') : '';
+            if ($fid !== '') $mediaTokens[] = "[[photo:$fid]]";
+        }
+    } elseif (count($uploads) >= 2) {
+        $mediaArr = [];
+        $filesPayload = [];
+        foreach ($uploads as $i => $u) {
+            $key = 'tkf' . $i;
+            $type = $u['video'] ? 'video' : 'photo';
+            $entry = ['type' => $type, 'media' => 'attach://' . $key];
+            if ($i === 0 && $text !== '') { $entry['caption'] = $text; $entry['parse_mode'] = 'HTML'; }
+            $mediaArr[] = $entry;
+            $filesPayload[$key] = new CURLFile($u['tmp'], $u['mime'] !== '' ? $u['mime'] : ($u['video'] ? 'video/mp4' : 'image/jpeg'), $u['name']);
+        }
+        $res = telegram('sendMediaGroup', array_merge(['chat_id' => $recipient, 'media' => $mediaArr], $filesPayload));
+        foreach (($res['result'] ?? []) as $r) {
+            if (isset($r['photo']) && is_array($r['photo'])) {
+                $fid = end($r['photo'])['file_id'] ?? '';
+                if ($fid !== '') $mediaTokens[] = "[[photo:$fid]]";
+            } elseif (isset($r['video']['file_id'])) {
+                $mediaTokens[] = "[[video:" . $r['video']['file_id'] . "]]";
+            }
+        }
+    }
+    return $mediaTokens;
+}
+
+function tk_thread_reactions(PDO $pdo, array $thread, string $adminActorId): array
+{
+    $ids = array_map(function ($r) { return (int)$r['id']; }, $thread);
+    $reactionsByMsg = [];
+    if ($ids) {
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $rq = $pdo->prepare("SELECT message_id, actor, actor_id, emoji FROM support_message_reaction WHERE message_id IN ($ph)");
+        $rq->execute($ids);
+        foreach ($rq->fetchAll(PDO::FETCH_ASSOC) as $rr) {
+            $mid = (int)$rr['message_id'];
+            if (!isset($reactionsByMsg[$mid])) $reactionsByMsg[$mid] = [];
+            $reactionsByMsg[$mid][] = ['emoji' => $rr['emoji'], 'actor' => $rr['actor'], 'mine' => $rr['actor_id'] === $adminActorId];
+        }
+    }
+    return $reactionsByMsg;
+}
+
+function tk_admin_ticket_page(PDO $pdo, string $tkWhereSql, array $tkParams): array
+{
+    $ticketSubjects = [];
+    $tkPg = fx_paginate($pdo, "SELECT COUNT(*) FROM (SELECT 1 FROM support_message WHERE $tkWhereSql GROUP BY Tracking, iduser, name_departman) t", $tkParams, 5);
+    $tkStmt = $pdo->prepare("SELECT Tracking, iduser, name_departman, MAX(id) last_id, MAX(time) last_time, MAX(status) status, COUNT(*) cnt FROM support_message WHERE $tkWhereSql GROUP BY Tracking, iduser, name_departman ORDER BY last_id DESC LIMIT :perPage OFFSET :offset");
+    foreach ($tkParams as $k => $v) $tkStmt->bindValue($k, $v, PDO::PARAM_STR);
+    $tkStmt->bindValue(':perPage', $tkPg['perPage'], PDO::PARAM_INT);
+    $tkStmt->bindValue(':offset', $tkPg['offset'], PDO::PARAM_INT);
+    $tkStmt->execute();
+    $tickets = $tkStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $tkTrackings = array_column($tickets, 'Tracking');
+    if ($tkTrackings) {
+        $tkPh = implode(',', array_fill(0, count($tkTrackings), '?'));
+        $tkSubjStmt = $pdo->prepare("SELECT s.Tracking, s.text FROM support_message s INNER JOIN (SELECT Tracking, MIN(id) mid FROM support_message WHERE Tracking IN ($tkPh) GROUP BY Tracking) f ON s.id = f.mid");
+        $tkSubjStmt->execute($tkTrackings);
+        foreach ($tkSubjStmt->fetchAll(PDO::FETCH_ASSOC) as $fr) {
+            $ticketSubjects[$fr['Tracking']] = tk_subject((string)$fr['text']);
+        }
+    }
+    return [$tkPg, $tickets, $ticketSubjects];
 }
 
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'mark_ticket_seen') {
@@ -178,19 +280,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'poll_state') {
         $rows = $pdo->prepare("SELECT id, result, seen_by_user FROM support_message WHERE Tracking = ?");
         $rows->execute([$T]);
         $thread = $rows->fetchAll(PDO::FETCH_ASSOC);
-        $ids = array_map(function ($r) { return (int)$r['id']; }, $thread);
-        $reactionsByMsg = [];
-        if ($ids) {
-            $ph = implode(',', array_fill(0, count($ids), '?'));
-            $rq = $pdo->prepare("SELECT message_id, actor, actor_id, emoji FROM support_message_reaction WHERE message_id IN ($ph)");
-            $rq->execute($ids);
-            $adminActorId = 'admin:' . (string)($_SESSION['user'] ?? '');
-            foreach ($rq->fetchAll(PDO::FETCH_ASSOC) as $rr) {
-                $mid = (int)$rr['message_id'];
-                if (!isset($reactionsByMsg[$mid])) $reactionsByMsg[$mid] = [];
-                $reactionsByMsg[$mid][] = ['emoji' => $rr['emoji'], 'actor' => $rr['actor'], 'mine' => $rr['actor_id'] === $adminActorId];
-            }
-        }
+        $reactionsByMsg = tk_thread_reactions($pdo, $thread, 'admin:' . (string)($_SESSION['user'] ?? ''));
         $out = [];
         foreach ($thread as $r) {
             $mid = (int)$r['id'];
@@ -238,60 +328,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['_action']) && $_POST[
     $act = (string)$_POST['_action'];
     $T = trim((string)($_POST['t'] ?? ''));
     if ($T === '') { header("Location: tickets.php"); exit; }
-    $tk = select("support_message", "*", "Tracking", $T);
+    $tk = rxAdminTicketFind($T);
     if (!is_array($tk)) { header("Location: tickets.php"); exit; }
     $iduser = (string)$tk['iduser'];
     $reportTopic = select("topicid", "idreport", "report", "otherservice", "select")['idreport'] ?? null;
 
     if ($act === 'reply') {
         $text = trim((string)($_POST['text'] ?? ''));
-        $uploads = [];
-        if (isset($_FILES['media']) && is_array($_FILES['media']['tmp_name'] ?? null)) {
-            $F = $_FILES['media'];
-            $n = count($F['tmp_name']);
-            for ($i = 0; $i < $n && count($uploads) < 5; $i++) {
-                if ((int)($F['error'][$i] ?? 1) !== 0) continue;
-                $tmp = (string)($F['tmp_name'][$i] ?? '');
-                if ($tmp === '' || !is_uploaded_file($tmp)) continue;
-                $mime = function_exists('mime_content_type') ? (string)(mime_content_type($tmp) ?: '') : (string)($F['type'][$i] ?? '');
-                $uploads[] = ['tmp' => $tmp, 'mime' => $mime, 'name' => (string)($F['name'][$i] ?? 'file'), 'video' => stripos($mime, 'video') === 0];
-            }
-        }
-        $mediaTokens = [];
-        if (count($uploads) === 1) {
-            $u = $uploads[0];
-            $cf = new CURLFile($u['tmp'], $u['mime'] !== '' ? $u['mime'] : ($u['video'] ? 'video/mp4' : 'image/jpeg'), $u['name']);
-            if ($u['video']) {
-                $res = telegram('sendVideo', ['chat_id' => $iduser, 'video' => $cf, 'caption' => $text, 'parse_mode' => 'HTML']);
-                $fid = $res['result']['video']['file_id'] ?? '';
-                if ($fid !== '') $mediaTokens[] = "[[video:$fid]]";
-            } else {
-                $res = telegram('sendPhoto', ['chat_id' => $iduser, 'photo' => $cf, 'caption' => $text, 'parse_mode' => 'HTML']);
-                $ph = $res['result']['photo'] ?? [];
-                $fid = (is_array($ph) && $ph) ? (end($ph)['file_id'] ?? '') : '';
-                if ($fid !== '') $mediaTokens[] = "[[photo:$fid]]";
-            }
-        } elseif (count($uploads) >= 2) {
-            $mediaArr = [];
-            $filesPayload = [];
-            foreach ($uploads as $i => $u) {
-                $key = 'tkf' . $i;
-                $type = $u['video'] ? 'video' : 'photo';
-                $entry = ['type' => $type, 'media' => 'attach://' . $key];
-                if ($i === 0 && $text !== '') { $entry['caption'] = $text; $entry['parse_mode'] = 'HTML'; }
-                $mediaArr[] = $entry;
-                $filesPayload[$key] = new CURLFile($u['tmp'], $u['mime'] !== '' ? $u['mime'] : ($u['video'] ? 'video/mp4' : 'image/jpeg'), $u['name']);
-            }
-            $res = telegram('sendMediaGroup', array_merge(['chat_id' => $iduser, 'media' => $mediaArr], $filesPayload));
-            foreach (($res['result'] ?? []) as $r) {
-                if (isset($r['photo']) && is_array($r['photo'])) {
-                    $fid = end($r['photo'])['file_id'] ?? '';
-                    if ($fid !== '') $mediaTokens[] = "[[photo:$fid]]";
-                } elseif (isset($r['video']['file_id'])) {
-                    $mediaTokens[] = "[[video:" . $r['video']['file_id'] . "]]";
-                }
-            }
-        }
+        $mediaTokens = tk_deliver_uploads(tk_uploads($_FILES), $iduser, $text);
         $miniappOnly = (string)($setting['miniapp_ticket_mode'] ?? '0') === '1';
         if ($miniappOnly) {
             $host = isset($domainhosts) ? rtrim(preg_replace('#^https?://#', '', (string)$domainhosts), '/') : '';
@@ -309,26 +353,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['_action']) && $_POST[
         }
         $body = trim($text . (count($mediaTokens) ? "\n" . implode(' ', $mediaTokens) : ''));
         $time = date('Y/m/d H:i:s');
-        $replyToId = (int)($_POST['reply_to_id'] ?? 0);
-        if ($replyToId > 0) {
-            $rtChk = $pdo->prepare("SELECT id FROM support_message WHERE id = ? AND Tracking = ?");
-            $rtChk->execute([$replyToId, $T]);
-            if (!$rtChk->fetchColumn()) $replyToId = 0;
-        }
-        $ins = $pdo->prepare("INSERT INTO support_message (Tracking,idsupport,iduser,name_departman,text,result,time,status,reply_to_id) VALUES (?,?,?,?,?,?,?,?,?)");
-        $ins->execute([$T, $tk['idsupport'], $iduser, $tk['name_departman'], $body, 'admin', $time, 'Answered', $replyToId > 0 ? $replyToId : null]);
-        update("support_message", "status", "Answered", "Tracking", $T);
+        $replyToId = tk_validate_reply_target($pdo, $T, (int)($_POST['reply_to_id'] ?? 0));
+        tk_store_admin_message($pdo, $T, $tk['idsupport'], $iduser, $tk['name_departman'], $body, $time, $replyToId);
+        rxAdminTicketStatus($T, 'Answered');
         header("Location: tickets.php?t=" . urlencode($T));
         exit;
     }
     if ($act === 'close') {
-        update("support_message", "status", "close", "Tracking", $T);
+        rxAdminTicketStatus($T, 'close');
         sendmessage($iduser, faoxima_render_text(faoxima_textbot_get('dyn_panel_tickets_closed_by_support_tpl', '🔒 تیکت شما (کد <code>{tracking}</code>) توسط پشتیبانی بسته شد.'), ['tracking' => $T]), null, 'HTML');
         header("Location: tickets.php?t=" . urlencode($T));
         exit;
     }
     if ($act === 'reopen') {
-        update("support_message", "status", "Answered", "Tracking", $T);
+        rxAdminTicketStatus($T, 'Answered');
         if ((string)($setting['miniapp_ticket_mode'] ?? '0') === '1') {
             $host = isset($domainhosts) ? rtrim(preg_replace('#^https?://#', '', (string)$domainhosts), '/') : '';
             $reopenKb = ($host !== '') ? json_encode(['inline_keyboard' => [[['text' => faoxima_textbot_get('dyn_panel_tickets_continue_in_miniapp_btn', '🚀 ادامه گفتگو در مینی‌اپ'), 'web_app' => ['url' => 'https://' . $host . '/app/#/tickets/' . $T]]]]], JSON_UNESCAPED_UNICODE) : null;
@@ -385,53 +423,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['_action'] ?? '') === 'admi
         exit;
     }
 
-    $uploads = [];
-    if (isset($_FILES['media']) && is_array($_FILES['media']['tmp_name'] ?? null)) {
-        $F = $_FILES['media'];
-        $n = count($F['tmp_name']);
-        for ($i = 0; $i < $n && count($uploads) < 5; $i++) {
-            if ((int)($F['error'][$i] ?? 1) !== 0) continue;
-            $tmp = (string)($F['tmp_name'][$i] ?? '');
-            if ($tmp === '' || !is_uploaded_file($tmp)) continue;
-            $mime = function_exists('mime_content_type') ? (string)(mime_content_type($tmp) ?: '') : (string)($F['type'][$i] ?? '');
-            $uploads[] = ['tmp' => $tmp, 'mime' => $mime, 'name' => (string)($F['name'][$i] ?? 'file'), 'video' => stripos($mime, 'video') === 0];
-        }
-    }
-    $mediaTokens = [];
-    if (count($uploads) === 1) {
-        $u = $uploads[0];
-        $cf = new CURLFile($u['tmp'], $u['mime'] !== '' ? $u['mime'] : ($u['video'] ? 'video/mp4' : 'image/jpeg'), $u['name']);
-        if ($u['video']) {
-            $res = telegram('sendVideo', ['chat_id' => $targetUserId, 'video' => $cf, 'caption' => $text, 'parse_mode' => 'HTML']);
-            $fid = $res['result']['video']['file_id'] ?? '';
-            if ($fid !== '') $mediaTokens[] = "[[video:$fid]]";
-        } else {
-            $res = telegram('sendPhoto', ['chat_id' => $targetUserId, 'photo' => $cf, 'caption' => $text, 'parse_mode' => 'HTML']);
-            $ph = $res['result']['photo'] ?? [];
-            $fid = (is_array($ph) && $ph) ? (end($ph)['file_id'] ?? '') : '';
-            if ($fid !== '') $mediaTokens[] = "[[photo:$fid]]";
-        }
-    } elseif (count($uploads) >= 2) {
-        $mediaArr = [];
-        $filesPayload = [];
-        foreach ($uploads as $i => $u) {
-            $key = 'tkf' . $i;
-            $type = $u['video'] ? 'video' : 'photo';
-            $entry = ['type' => $type, 'media' => 'attach://' . $key];
-            if ($i === 0 && $text !== '') { $entry['caption'] = $text; $entry['parse_mode'] = 'HTML'; }
-            $mediaArr[] = $entry;
-            $filesPayload[$key] = new CURLFile($u['tmp'], $u['mime'] !== '' ? $u['mime'] : ($u['video'] ? 'video/mp4' : 'image/jpeg'), $u['name']);
-        }
-        $res = telegram('sendMediaGroup', array_merge(['chat_id' => $targetUserId, 'media' => $mediaArr], $filesPayload));
-        foreach (($res['result'] ?? []) as $r) {
-            if (isset($r['photo']) && is_array($r['photo'])) {
-                $fid = end($r['photo'])['file_id'] ?? '';
-                if ($fid !== '') $mediaTokens[] = "[[photo:$fid]]";
-            } elseif (isset($r['video']['file_id'])) {
-                $mediaTokens[] = "[[video:" . $r['video']['file_id'] . "]]";
-            }
-        }
-    }
+    $mediaTokens = tk_deliver_uploads(tk_uploads($_FILES), $targetUserId, $text);
 
     if ($text === '' && count($mediaTokens) === 0) {
         header("Location: tickets.php?admin_create_error=" . urlencode('متن پیام یا تصویر را وارد کنید.'));
@@ -442,8 +434,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['_action'] ?? '') === 'admi
     $mediaBlock = count($mediaTokens) ? "\n" . implode(' ', $mediaTokens) : '';
     $body = trim("[[subj:$subject]]" . $mediaBlock . ($text !== '' ? "\n" . $text : ''));
     $time = date('Y/m/d H:i:s');
-    $ins = $pdo->prepare("INSERT INTO support_message (Tracking,idsupport,iduser,name_departman,text,result,time,status,reply_to_id) VALUES (?,?,?,?,?,?,?,?,?)");
-    $ins->execute([$T, (string)$deptRow['idsupport'], $targetUserId, (string)$deptRow['name_departman'], $body, 'admin', $time, 'Answered', null]);
+    tk_store_admin_message($pdo, $T, (string)$deptRow['idsupport'], $targetUserId, (string)$deptRow['name_departman'], $body, $time, null);
 
     if ((string)($setting['miniapp_ticket_mode'] ?? '0') === '1') {
         $host = isset($domainhosts) ? rtrim(preg_replace('#^https?://#', '', (string)$domainhosts), '/') : '';
@@ -477,17 +468,7 @@ if ($viewT !== '' && $thread) {
     $pdo->prepare("UPDATE support_message SET seen_by_admin = 1 WHERE Tracking = ? AND result = 'user' AND seen_by_admin = 0")->execute([$viewT]);
     $ids = array_map(function ($r) { return (int)$r['id']; }, $thread);
     foreach ($thread as $r) { $tkBodyById[(int)$r['id']] = tk_media((string)$r['text'])['body']; }
-    if ($ids) {
-        $ph = implode(',', array_fill(0, count($ids), '?'));
-        $rq = $pdo->prepare("SELECT message_id, actor, actor_id, emoji FROM support_message_reaction WHERE message_id IN ($ph)");
-        $rq->execute($ids);
-        $adminActorId = 'admin:' . (string)($_SESSION['user'] ?? '');
-        foreach ($rq->fetchAll(PDO::FETCH_ASSOC) as $rr) {
-            $mid = (int)$rr['message_id'];
-            if (!isset($tkReactionsByMsg[$mid])) $tkReactionsByMsg[$mid] = [];
-            $tkReactionsByMsg[$mid][] = ['emoji' => $rr['emoji'], 'actor' => $rr['actor'], 'mine' => $rr['actor_id'] === $adminActorId];
-        }
-    }
+    $tkReactionsByMsg = tk_thread_reactions($pdo, $thread, 'admin:' . (string)($_SESSION['user'] ?? ''));
 }
 $ticketSubject = $ticketRow ? tk_subject((string)$ticketRow['text']) : '';
 $ticketSubjects = [];
@@ -551,23 +532,7 @@ if ($viewT === '') {
         fx_filter_delete_redirect('tickets.php', $tkFilterParams, $fdMatched, $fdDeleted);
     }
 
-    $tkPg = fx_paginate($pdo, "SELECT COUNT(*) FROM (SELECT 1 FROM support_message WHERE $tkWhereSql GROUP BY Tracking, iduser, name_departman) t", $tkParams, 5);
-    $tkStmt = $pdo->prepare("SELECT Tracking, iduser, name_departman, MAX(id) last_id, MAX(time) last_time, MAX(status) status, COUNT(*) cnt FROM support_message WHERE $tkWhereSql GROUP BY Tracking, iduser, name_departman ORDER BY last_id DESC LIMIT :perPage OFFSET :offset");
-    foreach ($tkParams as $k => $v) $tkStmt->bindValue($k, $v, PDO::PARAM_STR);
-    $tkStmt->bindValue(':perPage', $tkPg['perPage'], PDO::PARAM_INT);
-    $tkStmt->bindValue(':offset', $tkPg['offset'], PDO::PARAM_INT);
-    $tkStmt->execute();
-    $tickets = $tkStmt->fetchAll(PDO::FETCH_ASSOC);
-
-    $tkTrackings = array_column($tickets, 'Tracking');
-    if ($tkTrackings) {
-        $tkPh = implode(',', array_fill(0, count($tkTrackings), '?'));
-        $tkSubjStmt = $pdo->prepare("SELECT s.Tracking, s.text FROM support_message s INNER JOIN (SELECT Tracking, MIN(id) mid FROM support_message WHERE Tracking IN ($tkPh) GROUP BY Tracking) f ON s.id = f.mid");
-        $tkSubjStmt->execute($tkTrackings);
-        foreach ($tkSubjStmt->fetchAll(PDO::FETCH_ASSOC) as $fr) {
-            $ticketSubjects[$fr['Tracking']] = tk_subject((string)$fr['text']);
-        }
-    }
+    [$tkPg, $tickets, $ticketSubjects] = tk_admin_ticket_page($pdo, $tkWhereSql, $tkParams);
 }
 ?>
 <!DOCTYPE html>

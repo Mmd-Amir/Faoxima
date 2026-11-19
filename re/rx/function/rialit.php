@@ -1101,7 +1101,7 @@ if (!function_exists('rialitCancelLocally')) {
                 clearSelectCacheRow('Payment_report', 'id_order', (string) $orderId);
             }
             if (function_exists('rx_redis_del')) {
-                rx_redis_del('faoxima:paystatus:' . (string) $orderId . ':' . (string) $userId);
+                rx_redis_del(rx_payment_status_cache_key($orderId, $userId));
             }
             return ['ok' => true, 'message' => 'انصراف ثبت شد؛ می‌توانید پرداخت جدید بسازید. این کار لینک ریالیت را باطل نمی‌کند؛ اگر پرداخت قبلی بعداً تأیید شود، مبلغ سفارش به کیف پول اضافه می‌شود.'];
         } catch (Throwable $e) {

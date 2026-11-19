@@ -7,9 +7,15 @@ function rxRenderCronWorkerSettings($from_id, string $group = '', ?array $profil
     $profile = $profile ?? rx_host_profile();
     $settings = function_exists('select') ? select('setting', '*') : [];
     $counts = rx_cron_worker_counts($profile, is_array($settings) ? $settings : []);
+    [$text, $rows] = rxCronWorkerSettingsView($counts, !empty($profile['manual_workers']), $group);
+    step('home', $from_id);
+    nm_adminInstantReply($from_id, $text, json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE), 'HTML');
+}
+
+function rxCronWorkerSettingsView(array $counts, bool $manual, string $group): array
+{
     $broadcast = $counts['broadcast_workers'];
     $payment = $counts['payment_workers'];
-    $manual = !empty($profile['manual_workers']);
     $text = "⚙️ <b>تنظیم ورکرهای کرون</b>\n\n"
         . "ابتدا «بهینه‌سازی هاست» را بزنید تا بر اساس بار قابل‌اندازه‌گیری CPU، حافظه و دیتابیس، تنظیم خودکار انجام شود.\n"
         . "برای سرعت بیشتر ارسال همگانی می‌توانید ورکر پخش را بین <b>۱ تا ۸</b> انتخاب کنید.\n"
@@ -37,8 +43,7 @@ function rxRenderCronWorkerSettings($from_id, string $group = '', ?array $profil
     }
     $rows[] = [['text' => '🖥 بهینه‌سازی هاست / خودکار', 'callback_data' => 'run_host_optimizer']];
     $rows[] = [['text' => '🔙 کرون‌ها و زمان‌بندی', 'callback_data' => 'featcat_crons']];
-    step('home', $from_id);
-    nm_adminInstantReply($from_id, $text, json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE), 'HTML');
+    return [$text, $rows];
 }
 
 function nm_sendInfoCardsForServiceList($from_id, array $services)
@@ -460,26 +465,14 @@ function rxRenderFeatureStatus($rxFeatView, $from_id) {
     return true;
 }
 
-function rxRenderPremiumEmojiPanel($from_id, $page = 1) {
-    global $pdo, $setting;
+function rxPremiumEmojiPanelView(array $rows, int $page, string $statusVal): array {
     $pageSize = 10;
-    $page = max(1, (int)$page);
-
-    $rows = [];
-    try {
-        $stmt = $pdo->query("SELECT id, emoji, custom_emoji_id FROM premium_emojis ORDER BY id ASC");
-        if ($stmt) {
-            while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) { $rows[] = $r; }
-        }
-    } catch (Throwable $e) { $rows = []; }
-
     $total = count($rows);
     $totalPages = max(1, (int)ceil($total / $pageSize));
     if ($page > $totalPages) { $page = $totalPages; }
     $sliceStart = ($page - 1) * $pageSize;
     $pageItems = array_slice($rows, $sliceStart, $pageSize);
 
-    $statusVal = (string)($setting['premium_emoji_status'] ?? '0');
     $statusText = ($statusVal === '1') ? "☑️ فعال" : "🚫 غیرفعال";
 
     $msg  = "🌟 <b>تنظیمات ایموجی پرمیوم</b>\n\n";
@@ -541,8 +534,22 @@ function rxRenderPremiumEmojiPanel($from_id, $page = 1) {
         ['text' => "🔄 رفرش", 'callback_data' => "premium_emoji_settings_{$page}"],
         ['text' => "❌ بستن", 'callback_data' => "close_stat"],
     ];
+    return [$msg, $kb];
+}
 
+function rxRenderPremiumEmojiPanel($from_id, $page = 1) {
+    global $pdo, $setting;
+    $page = max(1, (int)$page);
 
+    $rows = [];
+    try {
+        $stmt = $pdo->query("SELECT id, emoji, custom_emoji_id FROM premium_emojis ORDER BY id ASC");
+        if ($stmt) {
+            while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) { $rows[] = $r; }
+        }
+    } catch (Throwable $e) { $rows = []; }
+
+    [$msg, $kb] = rxPremiumEmojiPanelView($rows, $page, (string)($setting['premium_emoji_status'] ?? '0'));
     global $callback_query_id, $message_id;
     if (function_exists('rxNavSetState')) {
         rxNavSetState($from_id, 'premium_emoji');
@@ -1004,6 +1011,28 @@ function rxStartMediaReloadSetting() {
     return is_array($setting) ? $setting : [];
 }
 
+function rxSectionMediaBuildWrite($section, array $fields): array {
+    if ($section === 'start') {
+        $assignments = [];
+        foreach (array_keys($fields) as $name) {
+            $assignments[] = "start_media_{$name} = ?";
+        }
+        return ["UPDATE setting SET " . implode(', ', $assignments), array_values($fields)];
+    }
+
+    $columns = ['section_id'];
+    $placeholders = ['?'];
+    $updates = [];
+    $params = [$section];
+    foreach ($fields as $name => $value) {
+        $columns[] = "media_{$name}";
+        $placeholders[] = '?';
+        $updates[] = "media_{$name} = VALUES(media_{$name})";
+        $params[] = $value;
+    }
+    return ["INSERT INTO section_media (" . implode(', ', $columns) . ") VALUES (" . implode(', ', $placeholders) . ") ON DUPLICATE KEY UPDATE " . implode(', ', $updates), $params];
+}
+
 function rxSectionMediaApply($section, array $fields, $clearBanner = false) {
     global $pdo;
     if (!($pdo instanceof PDO) || !rx_section_media_is_valid_section($section)) {
@@ -1017,27 +1046,8 @@ function rxSectionMediaApply($section, array $fields, $clearBanner = false) {
     $bannerKey = $clearBanner ? rxStartMediaBannerKey($section) : null;
     try {
         $pdo->beginTransaction();
-        if ($section === 'start') {
-            $assignments = [];
-            $params = [];
-            foreach ($fields as $name => $value) {
-                $assignments[] = "start_media_{$name} = ?";
-                $params[] = $value;
-            }
-            $pdo->prepare("UPDATE setting SET " . implode(', ', $assignments))->execute($params);
-        } else {
-            $columns = ['section_id'];
-            $placeholders = ['?'];
-            $updates = [];
-            $params = [$section];
-            foreach ($fields as $name => $value) {
-                $columns[] = "media_{$name}";
-                $placeholders[] = '?';
-                $updates[] = "media_{$name} = VALUES(media_{$name})";
-                $params[] = $value;
-            }
-            $pdo->prepare("INSERT INTO section_media (" . implode(', ', $columns) . ") VALUES (" . implode(', ', $placeholders) . ") ON DUPLICATE KEY UPDATE " . implode(', ', $updates))->execute($params);
-        }
+        [$sql, $params] = rxSectionMediaBuildWrite($section, $fields);
+        $pdo->prepare($sql)->execute($params);
         if ($bannerKey !== null) {
             $pdo->exec("UPDATE setting SET banner_{$bannerKey}_status = '0'");
         }

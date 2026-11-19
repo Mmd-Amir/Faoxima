@@ -224,8 +224,7 @@ final class ServiceExtraHandler extends BaseHandler
             if ($pendingRowId <= 0) {
                 throw new RuntimeException('operation_not_saved');
             }
-            $allowNeg = ($agent === 'n2') ? (int)($this->user['maxbuyagent'] ?? 0) : 0;
-            $charge = MiniDiscount::chargeWallet($discountCode, $this->user, $finalPrice, $allowNeg, $operationId);
+            $charge = MiniDiscount::chargeServiceWallet($discountCode, $this->user, $finalPrice, $agent, $operationId);
             if (empty($charge['ok'])) {
                 throw new RuntimeException((string)($charge['reason'] ?? 'charge_failed'));
             }

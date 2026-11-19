@@ -1089,6 +1089,53 @@ if (!function_exists('rxReservationProcessRow')) {
     }
 }
 
+if (!function_exists('rx_reservation_execute_manual')) {
+    function rx_reservation_execute_manual($managePanel, array $row, array $panel, string $username, string $from, string $token, string $serviceKey, int $now): array
+    {
+        $id = (int) $row['id'];
+        if ($from === 'reconciling') {
+            return rxReservationFail($row, $token, 'manual_delivery_result_unverifiable', true, $now);
+        }
+        rxReservationTransition($id, $token, 'processing', ['stage' => 'applying', 'lease' => $now + RX_RN_LOCK_SECONDS]);
+        $res = $managePanel->extend('ریست حجم و زمان', $row['new_limit_gb'], $row['time_day'], $username, (string) $row['code_product'], (string) $panel['code_panel'], null, ['lock_owner' => $token, 'service_key' => $serviceKey, 'source' => 'reservation', 'ref' => 'reservation:' . $id]);
+        if (is_array($res) && !empty($res['status'])) {
+            rxReservationTransition($id, $token, 'applied', ['stage' => 'done', 'applied_at' => date('Y/m/d H:i:s', $now), 'output' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR), 'active_key_clear' => true]);
+            return ['outcome' => 'applied', 'reason' => 'ok', 'row' => $row, 'result' => $res];
+        }
+        return rxReservationFail($row, $token, 'manual_delivery_failed: ' . (is_array($res) ? (string) ($res['code'] ?? ($res['msg'] ?? '')) : ''), false, $now);
+    }
+}
+
+if (!function_exists('rx_reservation_settle_execution')) {
+    function rx_reservation_settle_execution(array $row, string $from, string $token, int $now, $res): array
+    {
+        $id = (int) $row['id'];
+        if (is_array($res) && !empty($res['status'])) {
+            $after = $res['rx_renewal']['after'] ?? null;
+            rxReservationTransition($id, $token, 'applied', [
+                'stage' => 'done',
+                'applied_at' => date('Y/m/d H:i:s', $now),
+                'result_state' => $after,
+                'output' => json_encode(['status' => true, 'operation_id' => $token, 'after' => $after], JSON_UNESCAPED_UNICODE),
+                'active_key_clear' => true,
+            ]);
+            return ['outcome' => 'applied', 'reason' => 'ok', 'row' => $row, 'before' => $res['rx_renewal']['before'] ?? null, 'after' => $after];
+        }
+        if (rxRenewalIsPending($res)) {
+            return rxReservationFail($row, $token, 'result_unverified: ' . (string) ($res['msg'] ?? ''), false, $now, ['status' => 'reconciling']);
+        }
+        $code = is_array($res) ? (string) ($res['code'] ?? '') : '';
+        $msg = is_array($res) ? (is_scalar($res['msg'] ?? null) ? (string) $res['msg'] : json_encode($res['msg'] ?? '')) : (string) $res;
+        if ($code === 'admin_blocked') {
+            return rxReservationFail($row, $token, 'admin_blocked', false, $now, ['status' => 'retry', 'delay' => RX_RN_BLOCKED_RECHECK]);
+        }
+        if (in_array($code, ['pending_unsupported', 'result_not_usable', 'invalid_purchase', 'unknown_policy'], true)) {
+            return rxReservationFail($row, $token, 'plan_refused: ' . $code, true, $now);
+        }
+        return rxReservationFail($row, $token, 'apply_failed: ' . ($code !== '' ? $code . ' ' : '') . $msg, false, $now, ['status' => $from === 'reconciling' ? 'reconciling' : 'retry']);
+    }
+}
+
 if (!function_exists('rxReservationExecute')) {
     function rxReservationExecute($managePanel, array $row, $panel, string $from, string $token, string $serviceKey, int $now): array
     {
@@ -1100,16 +1147,7 @@ if (!function_exists('rxReservationExecute')) {
         $username = (string) $row['username'];
         $fulfillment = rx_pf_decode($row['fulfillment'] ?? null) ?? [];
         if ($panelType === 'Manualsale') {
-            if ($from === 'reconciling') {
-                return rxReservationFail($row, $token, 'manual_delivery_result_unverifiable', true, $now);
-            }
-            rxReservationTransition($id, $token, 'processing', ['stage' => 'applying', 'lease' => $now + RX_RN_LOCK_SECONDS]);
-            $res = $managePanel->extend('ریست حجم و زمان', $row['new_limit_gb'], $row['time_day'], $username, (string) $row['code_product'], (string) $panel['code_panel'], null, ['lock_owner' => $token, 'service_key' => $serviceKey, 'source' => 'reservation', 'ref' => 'reservation:' . $id]);
-            if (is_array($res) && !empty($res['status'])) {
-                rxReservationTransition($id, $token, 'applied', ['stage' => 'done', 'applied_at' => date('Y/m/d H:i:s', $now), 'output' => json_encode($res, JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR), 'active_key_clear' => true]);
-                return ['outcome' => 'applied', 'reason' => 'ok', 'row' => $row, 'result' => $res];
-            }
-            return rxReservationFail($row, $token, 'manual_delivery_failed: ' . (is_array($res) ? (string) ($res['code'] ?? ($res['msg'] ?? '')) : ''), false, $now);
+            return rx_reservation_execute_manual($managePanel, $row, $panel, $username, $from, $token, $serviceKey, $now);
         }
         $snapshot = rx_pf_panel_snapshot($managePanel, (string) $panel['name_panel'], $username, $panelType);
         if (empty($snapshot['ok'])) {
@@ -1166,29 +1204,7 @@ if (!function_exists('rxReservationExecute')) {
             'code_product' => (string) ($row['code_product'] ?? ''),
             'fulfillment' => $fulfillment,
         ]);
-        if (is_array($res) && !empty($res['status'])) {
-            $after = $res['rx_renewal']['after'] ?? null;
-            rxReservationTransition($id, $token, 'applied', [
-                'stage' => 'done',
-                'applied_at' => date('Y/m/d H:i:s', $now),
-                'result_state' => $after,
-                'output' => json_encode(['status' => true, 'operation_id' => $token, 'after' => $after], JSON_UNESCAPED_UNICODE),
-                'active_key_clear' => true,
-            ]);
-            return ['outcome' => 'applied', 'reason' => 'ok', 'row' => $row, 'before' => $res['rx_renewal']['before'] ?? null, 'after' => $after];
-        }
-        if (rxRenewalIsPending($res)) {
-            return rxReservationFail($row, $token, 'result_unverified: ' . (string) ($res['msg'] ?? ''), false, $now, ['status' => 'reconciling']);
-        }
-        $code = is_array($res) ? (string) ($res['code'] ?? '') : '';
-        $msg = is_array($res) ? (is_scalar($res['msg'] ?? null) ? (string) $res['msg'] : json_encode($res['msg'] ?? '')) : (string) $res;
-        if ($code === 'admin_blocked') {
-            return rxReservationFail($row, $token, 'admin_blocked', false, $now, ['status' => 'retry', 'delay' => RX_RN_BLOCKED_RECHECK]);
-        }
-        if (in_array($code, ['pending_unsupported', 'result_not_usable', 'invalid_purchase', 'unknown_policy'], true)) {
-            return rxReservationFail($row, $token, 'plan_refused: ' . $code, true, $now);
-        }
-        return rxReservationFail($row, $token, 'apply_failed: ' . ($code !== '' ? $code . ' ' : '') . $msg, false, $now, ['status' => $from === 'reconciling' ? 'reconciling' : 'retry']);
+        return rx_reservation_settle_execution($row, $from, $token, $now, $res);
     }
 }
 

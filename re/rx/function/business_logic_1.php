@@ -1346,6 +1346,39 @@ if (!function_exists('rxPrepareSafeMediaCaption')) {
 }
 
 
+function rxServiceDeliveryDiagnosticContext(array $components, string $status, array $extra, ?array $autoFilesSummary): array
+{
+    $deliveryStatus = rxDeliveryAggregate(array_values($components));
+    $summary = rxDeliveryComponentContext($components);
+    if ($deliveryStatus === 'completed' && empty($summary['required_components']) && empty($summary['confirmed_components'])) {
+        $deliveryStatus = 'failed';
+    }
+    $summary['delivery_status'] = $deliveryStatus;
+    $context = array_merge(['branch_status' => $status], $extra, $summary);
+    $context += [
+        'delivery_mode' => null,
+        'files_delivery_status' => null,
+        'file_states' => [],
+        'caption_valid' => null,
+        'caption_complete' => null,
+        'caption_contains_required_content' => null,
+        'caption_delivery_confirmed' => null,
+        'caption_source' => null,
+        'caption_validation_status' => null,
+        'caption_fallback_reason' => null,
+    ];
+    if ($autoFilesSummary !== null) {
+        $context['auto_files'] = $autoFilesSummary;
+        if (empty($context['files_delivery_status']) && isset($autoFilesSummary['delivery_status'])) {
+            $context['files_delivery_status'] = $autoFilesSummary['delivery_status'];
+        }
+        if (empty($context['file_states'])) {
+            $context['file_states'] = $autoFilesSummary['file_states'] ?? [];
+        }
+    }
+    return [$deliveryStatus, $context];
+}
+
 function sendMessageService($panel_info, $config, $sub_link, $username_service, $reply_markup, $caption, $invoice_id, $user_id = null, $image = 'images.jpg', $auto_files = false)
 {
     global $setting, $from_id;
@@ -1392,34 +1425,7 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
     }
     $rxAutoFilesSummary = null;
     $rxDiagDone = static function (string $status, array $extra = []) use (&$rxDiagOwn, &$rxDeliveryComponents, &$rxAutoFilesSummary) {
-        $deliveryStatus = rxDeliveryAggregate(array_values($rxDeliveryComponents));
-        $summary = rxDeliveryComponentContext($rxDeliveryComponents);
-        if ($deliveryStatus === 'completed' && empty($summary['required_components']) && empty($summary['confirmed_components'])) {
-            $deliveryStatus = 'failed';
-        }
-        $summary['delivery_status'] = $deliveryStatus;
-        $context = array_merge(['branch_status' => $status], $extra, $summary);
-        $context += [
-            'delivery_mode' => null,
-            'files_delivery_status' => null,
-            'file_states' => [],
-            'caption_valid' => null,
-            'caption_complete' => null,
-            'caption_contains_required_content' => null,
-            'caption_delivery_confirmed' => null,
-            'caption_source' => null,
-            'caption_validation_status' => null,
-            'caption_fallback_reason' => null,
-        ];
-        if (is_array($rxAutoFilesSummary)) {
-            $context['auto_files'] = $rxAutoFilesSummary;
-            if (empty($context['files_delivery_status']) && isset($rxAutoFilesSummary['delivery_status'])) {
-                $context['files_delivery_status'] = $rxAutoFilesSummary['delivery_status'];
-            }
-            if (empty($context['file_states'])) {
-                $context['file_states'] = $rxAutoFilesSummary['file_states'] ?? [];
-            }
-        }
+        [$deliveryStatus, $context] = rxServiceDeliveryDiagnosticContext($rxDeliveryComponents, $status, $extra, $rxAutoFilesSummary);
         if (!array_key_exists('fallback_reason', $context)) {
             $context['fallback_reason'] = $GLOBALS['rx_rich_diag_validation_reason'] ?? ($GLOBALS['rx_rich_diag_fallback_reason'] ?? null);
         }
@@ -1957,7 +1963,7 @@ function sendMessageService($panel_info, $config, $sub_link, $username_service, 
 }
 function isValidInvitationCode($setting, $fromId, $verfy_status)
 {
-    global $textbotlang, $datatextbot;
+    global $datatextbot;
 
     if ($setting['verifybucodeuser'] == "onverify" && $verfy_status != 1) {
         sendmessage($fromId, $datatextbot['dyn_wallet_prompt_auth_success'] ?? "حساب کاربری شما با موفقیت احرازهویت گردید", null, 'html');

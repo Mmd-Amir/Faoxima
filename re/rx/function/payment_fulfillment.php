@@ -386,7 +386,7 @@ if (!function_exists('rx_pf_result')) {
     function rx_pf_result(string $status, string $reason = '', array $extra = []): array
     {
         return array_merge([
-            'success' => in_array($status, ['completed', 'already_completed'], true),
+            'success' => rx_pf_delivery_completed($status),
             'completed' => $status === 'completed',
             'already_completed' => $status === 'already_completed',
             'retryable' => in_array($status, ['retryable', 'already_processing'], true),
@@ -1396,6 +1396,112 @@ if (!function_exists('rx_pf_settle')) {
     }
 }
 
+if (!function_exists('rx_pf_recover_locked')) {
+    function rx_pf_recover_locked(PDO $pdo, string $orderId, ?string &$alert): array
+    {
+        $now = time();
+        $payment = rx_pf_lock_payment($pdo, $orderId);
+        if ($payment === null) {
+            return ['status' => 'skip'];
+        }
+        if (!rx_pf_cron_payment_allowed($payment, $now)) {
+            return ['status' => 'not_eligible', 'reason' => 'cron_window_elapsed'];
+        }
+        $status = (string) ($payment['payment_Status'] ?? '');
+        $paidUndelivered = $status === 'paid' && (int) ($payment['direct_payment_done'] ?? 0) === 0;
+        if (!in_array($status, ['processing', 'reconciling'], true) && !$paidUndelivered) {
+            return ['status' => 'skip'];
+        }
+        if ((int) ($payment['direct_payment_done'] ?? 0) === 1) {
+            rx_pf_mark_paid_done($pdo, $orderId);
+            return ['status' => 'finalized', 'report' => $payment];
+        }
+        $record = rx_pf_lock_record($pdo, $orderId);
+        if ($record === null && $paidUndelivered && defined('RX_CRON_INIT_LOADED')) {
+            return ['status' => 'manual_review', 'reason' => 'legacy_payment_requires_review'];
+        }
+        if ($record === null && $paidUndelivered) {
+            $token = rx_pf_new_token();
+            $stmt = $pdo->prepare(
+                "INSERT INTO payment_fulfillment (id_order, payment_report_id, operation_type, state, processing_token, lease_expires_at, attempt_count, created_at, updated_at) VALUES (?, ?, ?, 'claimed', ?, ?, 1, ?, ?)"
+            );
+            $stmt->execute([
+                $orderId,
+                isset($payment['id']) && is_numeric($payment['id']) ? (int) $payment['id'] : null,
+                rx_pf_operation_type($payment['id_invoice'] ?? ''),
+                $token,
+                $now + RX_PF_LEASE_SECONDS,
+                $now,
+                $now,
+            ]);
+            return ['status' => 'claimed', 'token' => $token, 'report' => $payment];
+        }
+        if ($record === null) {
+            $stmt = $pdo->prepare(
+                "INSERT INTO payment_fulfillment (id_order, payment_report_id, operation_type, state, attempt_count, last_error, created_at, updated_at) VALUES (?, ?, ?, 'manual_review', 0, ?, ?, ?)"
+            );
+            $stmt->execute([
+                $orderId,
+                isset($payment['id']) && is_numeric($payment['id']) ? (int) $payment['id'] : null,
+                rx_pf_operation_type($payment['id_invoice'] ?? ''),
+                'processing_without_fulfillment_record',
+                $now,
+                $now,
+            ]);
+            rx_pf_set_payment_status($pdo, $orderId, 'manual_review', ['processing', 'reconciling']);
+            $alert = 'processing_without_fulfillment_record';
+            return ['status' => 'manual_review'];
+        }
+        $state = (string) $record['state'];
+        if ($state === 'completed') {
+            rx_pf_mark_paid_done($pdo, $orderId);
+            return ['status' => 'finalized', 'report' => $payment];
+        }
+        if ($state === 'manual_review') {
+            rx_pf_set_payment_status($pdo, $orderId, 'manual_review', ['processing', 'reconciling']);
+            return ['status' => 'manual_review'];
+        }
+        if ((int) ($record['lease_expires_at'] ?? 0) > $now && in_array($state, ['claimed', 'applying', 'reconciling'], true)) {
+            return ['status' => 'busy'];
+        }
+        if ($state === 'released') {
+            if ($paidUndelivered) {
+                $token = rx_pf_new_token();
+                rx_pf_write_claim($pdo, $record, $orderId, $payment, 'claimed', $token, $now, true);
+                return ['status' => 'claimed', 'token' => $token, 'report' => $payment];
+            }
+            rx_pf_set_payment_status($pdo, $orderId, 'waiting', ['processing', 'reconciling']);
+            return ['status' => 'released'];
+        }
+        if ($state === 'failed') {
+            $reason = (string) ($record['last_error'] ?? '');
+            if ($paidUndelivered) {
+                $stmt = $pdo->prepare("UPDATE payment_fulfillment SET state = 'manual_review', lease_expires_at = NULL, updated_at = ? WHERE id_order = ?");
+                $stmt->execute([$now, $orderId]);
+                $alert = 'paid_fulfillment_failed';
+                return ['status' => 'manual_review'];
+            }
+            rx_pf_set_payment_status($pdo, $orderId, 'reject', ['processing', 'reconciling'], $reason !== '' ? $reason : 'fulfillment_failed');
+            return ['status' => 'rejected'];
+        }
+        $token = rx_pf_new_token();
+        if ($state === 'claimed') {
+            rx_pf_write_claim($pdo, $record, $orderId, $payment, 'claimed', $token, $now, true);
+            return ['status' => 'claimed', 'token' => $token, 'report' => $payment];
+        }
+        if ((int) ($record['attempt_count'] ?? 0) >= RX_PF_MAX_ATTEMPTS) {
+            $stmt = $pdo->prepare("UPDATE payment_fulfillment SET state = 'manual_review', last_error = ?, lease_expires_at = NULL, updated_at = ? WHERE id_order = ?");
+            $stmt->execute(['max_attempts_exceeded', $now, $orderId]);
+            rx_pf_set_payment_status($pdo, $orderId, 'manual_review', ['processing', 'reconciling']);
+            $alert = 'max_attempts_exceeded';
+            return ['status' => 'manual_review'];
+        }
+        rx_pf_write_claim($pdo, $record, $orderId, $payment, 'reconciling', $token, $now, false);
+        rx_pf_set_payment_status($pdo, $orderId, 'reconciling', ['processing']);
+        return ['status' => 'reconcile', 'token' => $token, 'report' => $payment];
+    }
+}
+
 if (!function_exists('rx_pf_recover')) {
     function rx_pf_recover(string $orderId): array
     {
@@ -1408,106 +1514,7 @@ if (!function_exists('rx_pf_recover')) {
         $alert = null;
         try {
             $out = rx_pf_tx(function (PDO $pdo) use ($orderId, &$alert) {
-                $now = time();
-                $payment = rx_pf_lock_payment($pdo, $orderId);
-                if ($payment === null) {
-                    return ['status' => 'skip'];
-                }
-                if (!rx_pf_cron_payment_allowed($payment, $now)) {
-                    return ['status' => 'not_eligible', 'reason' => 'cron_window_elapsed'];
-                }
-                $status = (string) ($payment['payment_Status'] ?? '');
-                $paidUndelivered = $status === 'paid' && (int) ($payment['direct_payment_done'] ?? 0) === 0;
-                if (!in_array($status, ['processing', 'reconciling'], true) && !$paidUndelivered) {
-                    return ['status' => 'skip'];
-                }
-                if ((int) ($payment['direct_payment_done'] ?? 0) === 1) {
-                    rx_pf_mark_paid_done($pdo, $orderId);
-                    return ['status' => 'finalized', 'report' => $payment];
-                }
-                $record = rx_pf_lock_record($pdo, $orderId);
-                if ($record === null && $paidUndelivered && defined('RX_CRON_INIT_LOADED')) {
-                    return ['status' => 'manual_review', 'reason' => 'legacy_payment_requires_review'];
-                }
-                if ($record === null && $paidUndelivered) {
-                    $token = rx_pf_new_token();
-                    $stmt = $pdo->prepare(
-                        "INSERT INTO payment_fulfillment (id_order, payment_report_id, operation_type, state, processing_token, lease_expires_at, attempt_count, created_at, updated_at) VALUES (?, ?, ?, 'claimed', ?, ?, 1, ?, ?)"
-                    );
-                    $stmt->execute([
-                        $orderId,
-                        isset($payment['id']) && is_numeric($payment['id']) ? (int) $payment['id'] : null,
-                        rx_pf_operation_type($payment['id_invoice'] ?? ''),
-                        $token,
-                        $now + RX_PF_LEASE_SECONDS,
-                        $now,
-                        $now,
-                    ]);
-                    return ['status' => 'claimed', 'token' => $token, 'report' => $payment];
-                }
-                if ($record === null) {
-                    $stmt = $pdo->prepare(
-                        "INSERT INTO payment_fulfillment (id_order, payment_report_id, operation_type, state, attempt_count, last_error, created_at, updated_at) VALUES (?, ?, ?, 'manual_review', 0, ?, ?, ?)"
-                    );
-                    $stmt->execute([
-                        $orderId,
-                        isset($payment['id']) && is_numeric($payment['id']) ? (int) $payment['id'] : null,
-                        rx_pf_operation_type($payment['id_invoice'] ?? ''),
-                        'processing_without_fulfillment_record',
-                        $now,
-                        $now,
-                    ]);
-                    rx_pf_set_payment_status($pdo, $orderId, 'manual_review', ['processing', 'reconciling']);
-                    $alert = 'processing_without_fulfillment_record';
-                    return ['status' => 'manual_review'];
-                }
-                $state = (string) $record['state'];
-                if ($state === 'completed') {
-                    rx_pf_mark_paid_done($pdo, $orderId);
-                    return ['status' => 'finalized', 'report' => $payment];
-                }
-                if ($state === 'manual_review') {
-                    rx_pf_set_payment_status($pdo, $orderId, 'manual_review', ['processing', 'reconciling']);
-                    return ['status' => 'manual_review'];
-                }
-                if ((int) ($record['lease_expires_at'] ?? 0) > $now && in_array($state, ['claimed', 'applying', 'reconciling'], true)) {
-                    return ['status' => 'busy'];
-                }
-                if ($state === 'released') {
-                    if ($paidUndelivered) {
-                        $token = rx_pf_new_token();
-                        rx_pf_write_claim($pdo, $record, $orderId, $payment, 'claimed', $token, $now, true);
-                        return ['status' => 'claimed', 'token' => $token, 'report' => $payment];
-                    }
-                    rx_pf_set_payment_status($pdo, $orderId, 'waiting', ['processing', 'reconciling']);
-                    return ['status' => 'released'];
-                }
-                if ($state === 'failed') {
-                    $reason = (string) ($record['last_error'] ?? '');
-                    if ($paidUndelivered) {
-                        $stmt = $pdo->prepare("UPDATE payment_fulfillment SET state = 'manual_review', lease_expires_at = NULL, updated_at = ? WHERE id_order = ?");
-                        $stmt->execute([$now, $orderId]);
-                        $alert = 'paid_fulfillment_failed';
-                        return ['status' => 'manual_review'];
-                    }
-                    rx_pf_set_payment_status($pdo, $orderId, 'reject', ['processing', 'reconciling'], $reason !== '' ? $reason : 'fulfillment_failed');
-                    return ['status' => 'rejected'];
-                }
-                $token = rx_pf_new_token();
-                if ($state === 'claimed') {
-                    rx_pf_write_claim($pdo, $record, $orderId, $payment, 'claimed', $token, $now, true);
-                    return ['status' => 'claimed', 'token' => $token, 'report' => $payment];
-                }
-                if ((int) ($record['attempt_count'] ?? 0) >= RX_PF_MAX_ATTEMPTS) {
-                    $stmt = $pdo->prepare("UPDATE payment_fulfillment SET state = 'manual_review', last_error = ?, lease_expires_at = NULL, updated_at = ? WHERE id_order = ?");
-                    $stmt->execute(['max_attempts_exceeded', $now, $orderId]);
-                    rx_pf_set_payment_status($pdo, $orderId, 'manual_review', ['processing', 'reconciling']);
-                    $alert = 'max_attempts_exceeded';
-                    return ['status' => 'manual_review'];
-                }
-                rx_pf_write_claim($pdo, $record, $orderId, $payment, 'reconciling', $token, $now, false);
-                rx_pf_set_payment_status($pdo, $orderId, 'reconciling', ['processing']);
-                return ['status' => 'reconcile', 'token' => $token, 'report' => $payment];
+                return rx_pf_recover_locked($pdo, $orderId, $alert);
             });
         } catch (Throwable $e) {
             rx_pf_log('PAYMENT_FULFILLMENT_RECOVER_FAILED', $e->getMessage(), ['id_order' => $orderId]);
@@ -1522,23 +1529,110 @@ if (!function_exists('rx_pf_recover')) {
     }
 }
 
-if (!function_exists('rx_pf_run_claimed')) {
-    function rx_pf_run_claimed(string $orderId, string $token, string $image, string $failedTo): array
+if (!class_exists('RxLegacyPaymentConfirmation', false)) {
+    final class RxLegacyPaymentConfirmation
+    {
+        public static function claimCard($connect, $order_id)
+        {
+            $_claim = $connect->prepare("UPDATE Payment_report SET payment_Status = 'paid' WHERE id_order = ? AND (payment_Status = 'Unpaid' OR payment_Status = 'waiting')");
+            $_claim->bind_param("s", $order_id);
+            $_claim->execute();
+            $_claimed = $_claim->affected_rows;
+            $_claim->close();
+            return $_claimed;
+        }
+
+        public static function claimZarinpal($pdo, $invoice_id)
+        {
+            $atomic = $pdo->prepare(
+                "UPDATE Payment_report SET payment_Status = 'paid' "
+                . "WHERE id_order = :id AND payment_Status NOT IN ('paid', 'cancelled')"
+            );
+            $atomic->bindValue(':id', $invoice_id, PDO::PARAM_STR);
+            $atomic->execute();
+            return $atomic->rowCount();
+        }
+
+        public static function claimOnline($connect, $orderId)
+        {
+            $atomic = $connect->prepare(
+                "UPDATE Payment_report SET payment_Status = ? WHERE id_order = ? AND payment_Status NOT IN ('paid', 'cancelled')"
+            );
+            $statusPaid = 'paid';
+            $atomic->bind_param('ss', $statusPaid, $orderId);
+            $atomic->execute();
+            $affected = $atomic->affected_rows;
+            $atomic->close();
+            return $affected;
+        }
+
+        public static function claimTronado($connect, $paymentId, $dedupeKey)
+        {
+            $atomic = $connect->prepare(
+                "UPDATE Payment_report SET payment_Status = ?, dec_not_confirmed = ? "
+                . "WHERE id_order = ? AND payment_Status <> 'paid'"
+            );
+            $statusPaid = 'paid';
+            $atomic->bind_param('sss', $statusPaid, $dedupeKey, $paymentId);
+            $atomic->execute();
+            $affected = $atomic->affected_rows;
+            $atomic->close();
+            return $affected;
+        }
+
+        public static function creditCashback($report, $user, string $key, $percentage, string $description): ?int
+        {
+            $eligible = !function_exists('rx_cashbackEligibleForKey')
+                || rx_cashbackEligibleForKey($key, $user['register'] ?? null, $report['id_invoice'] ?? null, $user['id'] ?? null, $report['id_order'] ?? null);
+            if (!$eligible || $percentage == "0") {
+                return null;
+            }
+            $amount = (int) floor(($report['price'] * $percentage) / 100);
+            return rx_cashback_credit_once($report['id_order'], $user['id'], $amount, $key, $description) === 'credited'
+                ? $amount
+                : null;
+        }
+
+        public static function canResumeOnline(array $report): bool
+        {
+            $alreadyDone = (int)($report['direct_payment_done'] ?? 0) === 1;
+            $wasCancelled = strtolower((string)($report['payment_Status'] ?? '')) === 'cancelled';
+            return !$alreadyDone && !$wasCancelled;
+        }
+    }
+}
+
+if (!function_exists('rx_pf_attempt_claimed_delivery')) {
+    function rx_pf_attempt_claimed_delivery(string $orderId, string $token, string $image, callable $onError): array
     {
         $result = null;
         try {
             $result = DirectPayment($orderId, $image, $token);
         } catch (Throwable $e) {
+            $onError($e);
+        }
+        return is_array($result) ? $result : rx_pf_result('requires_reconciliation', 'direct_payment_invalid_result');
+    }
+}
+
+if (!function_exists('rx_pf_delivery_completed')) {
+    function rx_pf_delivery_completed(string $status): bool
+    {
+        return $status === 'completed' || $status === 'already_completed';
+    }
+}
+
+if (!function_exists('rx_pf_run_claimed')) {
+    function rx_pf_run_claimed(string $orderId, string $token, string $image, string $failedTo): array
+    {
+        $result = rx_pf_attempt_claimed_delivery($orderId, $token, $image, static function (Throwable $e) use ($orderId) {
             rx_pf_log('PAYMENT_FULFILLMENT_DIRECT_PAYMENT_THROWABLE', $e->getMessage(), [
                 'id_order' => $orderId,
                 'class' => get_class($e),
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
             ]);
-        }
-        if (!is_array($result)) {
-            $result = rx_pf_result('requires_reconciliation', 'direct_payment_invalid_result');
-        }
+        });
         $settle = rx_pf_settle($orderId, $token, $result, 'waiting', $failedTo);
         return [
             'result' => $result,
@@ -2873,8 +2967,7 @@ if (!function_exists('rx_pf_wallet_credit')) {
                     $stmt->execute([$now, $now, $orderId]);
                     return 'already_completed';
                 }
-                $credit = $pdo->prepare("UPDATE user SET Balance = Balance + ? WHERE id = ?");
-                $credit->execute([$amount, (string) $userId]);
+                $credit = rx_wallet_increment_locked($pdo, (string) $userId, $amount);
                 if ($credit->rowCount() < 1) {
                     throw new RuntimeException('wallet_user_not_found');
                 }

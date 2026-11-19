@@ -4,11 +4,8 @@ rx_cron_boot('atlaspaycheck', 60);
 
 ini_set('error_log', 'error_log');
 
-$ctx = rx_cron_load_payment_context();
-if (empty($ctx['db_ready'])) {
-    if (function_exists('rx_cron_task_defer')) {
-        rx_cron_task_defer('payment_context_unavailable', 180);
-    }
+$ctx = rx_cron_require_payment_context();
+if ($ctx === null) {
     return;
 }
 require_once __DIR__ . '/../lib/PaymentConfirm.php';
@@ -36,7 +33,6 @@ if (function_exists('atlaspayCustomRunCron')) {
 
 try {
     $rxPaymentWindow = rx_pf_cron_window_sql();
-    $rxAtlasCursor = function_exists('rx_cron_invoice_cursor') ? rx_cron_invoice_cursor('atlaspay_poll') : '';
     $stmt = $pdo->prepare(
         "SELECT id, id_order, atlaspay_order_id, price, payment_Status, payment_processing_version, atlaspay_total_amount, atlaspay_local_state, id_user
            FROM Payment_report
@@ -45,16 +41,14 @@ try {
             AND (atlaspay_gateway_mode IS NULL OR atlaspay_gateway_mode <> 'custom')
             AND atlaspay_order_id IS NOT NULL
             AND atlaspay_order_id <> ''
-            AND id > ?
+            AND id > ? AND id <= ?
           ORDER BY id ASC
           LIMIT 30"
     );
-    $stmt->execute([$rxAtlasCursor]);
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    if (!$rows && $rxAtlasCursor !== '') {
-        $stmt->execute(['']);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
+    $rows = rx_cron_payment_cursor_page($pdo, 'atlaspay_poll', static function (string $after, $ceiling) use ($stmt): array {
+        $stmt->execute([$after, $ceiling]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    });
 
     $lateStmt = $pdo->prepare(
         "SELECT id_order, atlaspay_order_id, price, payment_Status, payment_processing_version, atlaspay_total_amount, atlaspay_local_state, id_user
@@ -90,21 +84,13 @@ if (empty($rows)) {
 $successStatuses = ['confirmed', 'settled'];
 $deadStatuses = ['rejected', 'expired', 'cancelled'];
 
-$rxAtlasTimedOut = false;
-foreach ($rows as $row) {
-    if (function_exists('rx_cron_time_up') && rx_cron_time_up()) {
-        $rxAtlasTimedOut = true;
-        if (function_exists('rx_cron_task_defer')) {
-            rx_cron_task_defer('time_budget', 60);
-        }
-        break;
-    }
-
-    try {
+rx_cron_run_poll_batch(
+    $rows,
+    static function (array $row) use ($deadStatuses, $successStatuses, &$setting, $ctx): void {
         $orderId = (string) $row['id_order'];
         $atlaspayOrderId = trim((string) $row['atlaspay_order_id']);
         if ($atlaspayOrderId === '') {
-            continue;
+            return;
         }
 
         $check = atlaspayCheckOrder($atlaspayOrderId);
@@ -113,10 +99,10 @@ foreach ($rows as $row) {
                 atlaspayCustomUpdateOfficialChecked($orderId);
             }
             atlaspayOfficialV2Process($row, $check);
-            continue;
+            return;
         }
         if (!is_array($check) || (int) ($check['id'] ?? 0) !== (int) $atlaspayOrderId) {
-            continue;
+            return;
         }
 
         $status = (string) ($check['status'] ?? '');
@@ -127,11 +113,11 @@ foreach ($rows as $row) {
             } else {
                 payment_notify_user_failed($orderId, 'پرداخت توسط اطلس‌پی رد شد');
             }
-            continue;
+            return;
         }
 
         if (!in_array($status, $successStatuses, true)) {
-            continue;
+            return;
         }
 
         if (!empty($check['requiresManualDelivery'])) {
@@ -149,7 +135,7 @@ foreach ($rows as $row) {
                     'parse_mode' => 'HTML',
                 ]);
             }
-            continue;
+            return;
         }
 
         $actualReceived = isset($check['actualReceivedAmountToman']) ? (int) $check['actualReceivedAmountToman'] : null;
@@ -163,14 +149,16 @@ foreach ($rows as $row) {
         ];
 
         payment_confirm_paid($orderId, 'chashbackatlaspay', $extra);
-    } catch (Throwable $e) {
+    },
+    static function (array $row, Throwable $e): void {
         error_log('[atlaspay_poll] order ' . (string) ($row['id_order'] ?? '') . ': ' . $e->getMessage());
-    } finally {
+    },
+    static function (array $row): void {
         if ((int) ($row['id'] ?? 0) > 0 && function_exists('rx_cron_invoice_cursor')) {
             rx_cron_invoice_cursor('atlaspay_poll', (string) $row['id']);
         }
     }
-}
+);
 if (function_exists('rx_cron_task_complete')) {
     rx_cron_task_complete('atlaspay_poll_finished');
 }

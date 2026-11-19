@@ -3056,6 +3056,13 @@ if (!function_exists('rx_mergeKeyboardSectionDefaults')) {
     }
 }
 
+function rxPrepareTelegramTextAndKeyboard($chatId, $text, $keyboard, $parseMode): array
+{
+    $text = applyPremiumEmojiTransform($text, $parseMode);
+    $keyboard = processKeyboardStyles($keyboard, function_exists('rx_isAdminChat') && rx_isAdminChat($chatId), $chatId);
+    return [$text, applyPremiumEmojiToKeyboard($keyboard)];
+}
+
 function sendmessage($chat_id,$text,$keyboard,$parse_mode,$bot_token = null){
     if(intval($chat_id) == 0)return ['ok' => false];
     $rxDiagOwn = false;
@@ -3078,9 +3085,7 @@ function sendmessage($chat_id,$text,$keyboard,$parse_mode,$bot_token = null){
             $rxDiagOwn = true;
         }
     }
-    $text = applyPremiumEmojiTransform($text, $parse_mode);
-    $keyboard = processKeyboardStyles($keyboard, function_exists('rx_isAdminChat') && rx_isAdminChat($chat_id), $chat_id);
-    $keyboard = applyPremiumEmojiToKeyboard($keyboard);
+    [$text, $keyboard] = rxPrepareTelegramTextAndKeyboard($chat_id, $text, $keyboard, $parse_mode);
     $rxSendResult = telegram('sendmessage',[
         'chat_id' => $chat_id,
         'text' => $text,
@@ -3459,9 +3464,7 @@ function Editmessagetext($chat_id, $message_id, $text, $keyboard,$parse_mode = '
         ], 'info');
     }
     $__sendFallback = function ($fbChatId, $fbText, $fbKeyboard, $fbParseMode) use ($__origThreadId) {
-        $fbText = applyPremiumEmojiTransform($fbText, $fbParseMode);
-        $fbKeyboard = processKeyboardStyles($fbKeyboard, function_exists('rx_isAdminChat') && rx_isAdminChat($fbChatId), $fbChatId);
-        $fbKeyboard = applyPremiumEmojiToKeyboard($fbKeyboard);
+        [$fbText, $fbKeyboard] = rxPrepareTelegramTextAndKeyboard($fbChatId, $fbText, $fbKeyboard, $fbParseMode);
         $fbPayload = [
             'chat_id' => $fbChatId,
             'text' => $fbText,
@@ -3507,9 +3510,7 @@ function Editmessagetext($chat_id, $message_id, $text, $keyboard,$parse_mode = '
         }
         return $__fallbackResult;
     }
-    $text = applyPremiumEmojiTransform($text, $parse_mode);
-    $keyboard = processKeyboardStyles($keyboard, function_exists('rx_isAdminChat') && rx_isAdminChat($chat_id), $chat_id);
-    $keyboard = applyPremiumEmojiToKeyboard($keyboard);
+    [$text, $keyboard] = rxPrepareTelegramTextAndKeyboard($chat_id, $text, $keyboard, $parse_mode);
 
     $__isPhotoMsg = $__callbackMsg && (
         !empty($__callbackMsg['photo'])
@@ -3834,6 +3835,77 @@ function isDuplicateUpdate($updateId)
 }
 
 
+final class FxTelegramUpdateContext
+{
+    public static function sender(array $update): array
+    {
+        $fromId = $update['message']['from']['id'] ?? $update['callback_query']['from']['id'] ?? $update['inline_query']['from']['id'] ?? 0;
+        $time = $update['message']['date'] ?? $update['callback_query']['date'] ?? $update['inline_query']['date'] ?? 0;
+        $isBot = $update['message']['from']['is_bot'] ?? false;
+        $chatMember = $update['chat_member'] ?? null;
+        $language = strtolower($update['message']['from']['language_code'] ?? $update['callback_query']['from']['language_code'] ?? 'fa');
+        $chatType = $update['message']['chat']['type'] ?? $update['callback_query']['message']['chat']['type'] ?? '';
+        $text = $update['message']['text'] ?? '';
+        if (isset($update['pre_checkout_query'])) {
+            $chatType = 'private';
+            $fromId = $update['pre_checkout_query']['from']['id'];
+        }
+        return [$fromId, $time, $isBot, $chatMember, $language, $chatType, $text];
+    }
+
+    public static function message(array $update): array
+    {
+        $inlineText = $update['callback_query']['message']['text'] ?? '';
+        if ($inlineText === '' && isset($update['callback_query']['message']['rich_message']) && function_exists('rx_richUi_extractText')) {
+            $inlineText = rx_richUi_extractText($update['callback_query']['message']['rich_message']);
+        }
+        $messageId = self::numericId($update['message']['message_id'] ?? $update['callback_query']['message']['message_id'] ?? 0);
+        $time = $update['message']['date'] ?? $update['callback_query']['date'] ?? 0;
+        $photo = $update['message']['photo'] ?? 0;
+        $document = $update['message']['document'] ?? 0;
+        $documentId = $update['message']['document']['file_id'] ?? 0;
+        $photoId = $photo ? end($photo)['file_id'] : '';
+        $caption = $update['message']['caption'] ?? '';
+        $video = $update['message']['video'] ?? 0;
+        $videoId = $video ? $video['file_id'] : 0;
+        $forwardId = self::numericId($update['message']['reply_to_message']['forward_from']['id'] ?? 0);
+        return [
+            'inline_text' => $inlineText,
+            'message_id' => $messageId,
+            'time' => $time,
+            'photo' => $photo,
+            'document' => $document,
+            'document_id' => $documentId,
+            'photo_id' => $photoId,
+            'caption' => $caption,
+            'video' => $video,
+            'video_id' => $videoId,
+            'forward_id' => $forwardId,
+        ];
+    }
+
+    public static function queryId($value)
+    {
+        if ((!is_string($value) && !is_int($value)) || !preg_match('/^\d{1,32}$/', (string) $value)) {
+            return '';
+        }
+        return $value;
+    }
+
+    public static function contactId(array $update): int
+    {
+        return self::numericId($update['message']['contact']['user_id'] ?? 0);
+    }
+
+    private static function numericId($value): int
+    {
+        if (!is_numeric($value) || (string)(int) $value !== (string) $value) {
+            return 0;
+        }
+        return (int) $value;
+    }
+}
+
 $rx_request_method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? ''));
 
 
@@ -3875,28 +3947,7 @@ if (!defined('RX_DEFER_UPDATE_DEDUPE') && isDuplicateUpdate($update_id)) {
     exit;
 }
 
-$from_id = $update['message']['from']['id'] ?? $update['callback_query']['from']['id'] ?? $update["inline_query"]['from']['id'] ?? 0;
-$time_message = $update['message']['date'] ?? $update['callback_query']['date'] ?? $update["inline_query"]['date'] ?? 0;
-$is_bot = $update['message']['from']['is_bot'] ?? false;
-$chat_member = $update['chat_member'] ?? null;
-$language_code = strtolower($update['message']['from']['language_code'] ?? $update['callback_query']['from']['language_code'] ?? "fa");
-$Chat_type = $update["message"]["chat"]["type"] ?? $update['callback_query']['message']['chat']['type'] ?? '';
-$text = $update["message"]["text"]  ?? '';
-if(isset($update['pre_checkout_query'])){
-    $Chat_type = "private";
-    $from_id = $update['pre_checkout_query']['from']['id'];
-}
-
-
-$rx_assertNumericId = static function ($value): int {
-    if (!is_numeric($value)) {
-        return 0;
-    }
-    if ((string)(int) $value !== (string) $value) {
-        return 0;
-    }
-    return (int) $value;
-};
+[$from_id, $time_message, $is_bot, $chat_member, $language_code, $Chat_type, $text] = FxTelegramUpdateContext::sender($update);
 if (!is_numeric($from_id) || (string)(int) $from_id !== (string) $from_id) {
     error_log('[botapi] Rejected non-numeric from_id from webhook payload');
     if (!headers_sent()) {
@@ -3911,42 +3962,26 @@ if (function_exists('rx_cron_health_webhook_tick')) {
 }
 $text =convertPersianNumbersToEnglish($text);
 
-$text_inline = $update["callback_query"]["message"]['text'] ?? '';
-if ($text_inline === '' && isset($update["callback_query"]["message"]['rich_message']) && function_exists('rx_richUi_extractText')) {
-    $text_inline = rx_richUi_extractText($update["callback_query"]["message"]['rich_message']);
-}
-$message_id = $update["message"]["message_id"] ?? $update["callback_query"]["message"]["message_id"] ?? 0;
-$message_id = $rx_assertNumericId($message_id);
-$time_message = $update["message"]["date"] ?? $update["callback_query"]["date"] ?? 0;
-$photo = $update["message"]["photo"] ?? 0;
-$document = $update["message"]["document"] ?? 0;
-$fileid = $update["message"]["document"]["file_id"] ?? 0;
-$photoid = $photo ? end($photo)["file_id"] : '';
-$caption = $update["message"]["caption"] ?? '';
-$video = $update["message"]["video"] ?? 0;
-$videoid = $video ? $video["file_id"] : 0;
-$forward_from_id = $update["message"]["reply_to_message"]["forward_from"]["id"] ?? 0;
-$forward_from_id = $rx_assertNumericId($forward_from_id);
+[
+    'inline_text' => $text_inline,
+    'message_id' => $message_id,
+    'time' => $time_message,
+    'photo' => $photo,
+    'document' => $document,
+    'document_id' => $fileid,
+    'photo_id' => $photoid,
+    'caption' => $caption,
+    'video' => $video,
+    'video_id' => $videoid,
+    'forward_id' => $forward_from_id,
+] = FxTelegramUpdateContext::message($update);
 $datain = $update["callback_query"]["data"] ?? '';
 $last_name = $update['message']['from']['last_name']  ?? $update["callback_query"]["from"]["last_name"] ?? $update["inline_query"]['from']['last_name'] ?? '';
 $first_name = $update['message']['from']['first_name']  ?? $update["callback_query"]["from"]["first_name"] ?? $update["inline_query"]['from']['first_name'] ?? '';
 $username = $update['message']['from']['username'] ?? $update['callback_query']['from']['username'] ?? $update["callback_query"]["from"]["username"] ?? 'NOT_USERNAME';
 $user_phone =$update["message"]["contact"]["phone_number"] ?? 0;
-$contact_id = $update["message"]["contact"]["user_id"] ?? 0;
-$contact_id = $rx_assertNumericId($contact_id);
-$callback_query_id = $update["callback_query"]["id"] ?? 0;
-
-
-if (!is_string($callback_query_id) && !is_int($callback_query_id)) {
-    $callback_query_id = '';
-} elseif (!preg_match('/^\d{1,32}$/', (string) $callback_query_id)) {
-    $callback_query_id = '';
-}
-$inline_query_id = $update["inline_query"]["id"] ?? 0;
-if (!is_string($inline_query_id) && !is_int($inline_query_id)) {
-    $inline_query_id = '';
-} elseif (!preg_match('/^\d{1,32}$/', (string) $inline_query_id)) {
-    $inline_query_id = '';
-}
+$contact_id = FxTelegramUpdateContext::contactId($update);
+$callback_query_id = FxTelegramUpdateContext::queryId($update["callback_query"]["id"] ?? 0);
+$inline_query_id = FxTelegramUpdateContext::queryId($update["inline_query"]["id"] ?? 0);
 
 $query = $update["inline_query"]["query"] ?? 0;

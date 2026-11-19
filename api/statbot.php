@@ -11,7 +11,7 @@ ini_set('error_log', 'error_log');
 
 $headrs = getallheaders();
 $setting = select("setting", "*");
-if(!isset($headrs['Token']) or $APIKEY != $headrs['Token']){
+if (!FaoximaApiCredential::validBotToken($headrs['Token'] ?? null, (string) ($APIKEY ?? ''))) {
     http_response_code(403);
     echo json_encode(array(
         'status' => false,
@@ -21,12 +21,13 @@ if(!isset($headrs['Token']) or $APIKEY != $headrs['Token']){
 }
 
 $stmt = $pdo->prepare("INSERT IGNORE INTO logs_api (header,data,time,ip,actions) VALUES (:header,:data,:time,:ip,:actions)");
-$stmt->bindParam(':header',json_encode(FaoximaApiCredential::redactHeaders($headrs)));
-$stmt->bindParam(':data',json_encode($data));
-$stmt->bindParam(':time',date('Y/m/d H:i:s'));
-$stmt->bindParam(':ip',$_SERVER['REMOTE_ADDR']);
-$stmt->bindParam(':actions',$data['actions']);
-$stmt->execute();
+$stmt->execute([
+    ':header' => json_encode(FaoximaApiCredential::redactHeaders($headrs)),
+    ':data' => json_encode(is_array($data ?? null) ? FaoximaApiCredential::redactAuditFields($data) : ($data ?? null)),
+    ':time' => date('Y/m/d H:i:s'),
+    ':ip' => $_SERVER['REMOTE_ADDR'] ?? null,
+    ':actions' => $data['actions'] ?? null,
+]);
 
 
 $count_user = select("user","*",null,null,"count");

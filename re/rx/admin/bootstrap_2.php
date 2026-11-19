@@ -1,5 +1,113 @@
 <?php
 
+if (!function_exists('rxAdminTelegramTicketReply')) {
+    function rxAdminTelegramTicketReply(string $T, $text, $caption, $photo, $video, $photoid, $videoid): array
+    {
+        $mediaToken = $photo ? "\n[[photo:$photoid]]" : ($video ? "\n[[video:$videoid]]" : "");
+        $bodytext = trim(((string)$text !== '' ? (string)$text : (string)$caption) . $mediaToken);
+        $userKb = json_encode(['inline_keyboard' => [[['text' => '💬 پاسخ', 'callback_data' => 'ticketreply_' . $T]]]], JSON_UNESCAPED_UNICODE);
+        $userMsgText = (string)$text !== '' ? (string)$text : (string)$caption;
+        $toUser = "📩 پاسخ پشتیبانی به تیکت <code>$T</code> :" . ($userMsgText !== '' ? "\n\n" . $userMsgText : ($photo ? "\n\n(تصویر پیوست ارسال شد)" : ($video ? "\n\n(ویدیو پیوست ارسال شد)" : "")));
+        return [$bodytext, $userKb, $toUser];
+    }
+}
+
+if (!function_exists('rxAdminClearPanelCredentials')) {
+    function rxAdminClearPanelCredentials(): void
+    {
+        savedata("save", "username", "null");
+        savedata("save", "password", "null");
+    }
+}
+
+if (!function_exists('rxAdminPanelUrlInput')) {
+    function rxAdminPanelUrlInput($text, $user, string $typeKey): array
+    {
+        if (!filter_var($text, FILTER_VALIDATE_URL)) {
+            return ['status' => 'invalid_url'];
+        }
+        $state = json_decode($user['Processing_value'], true);
+        $warning = rxPanelUrlPathWarning($text, is_array($state) ? ($state[$typeKey] ?? '') : '');
+        if ($warning !== '') {
+            return ['status' => 'invalid_path', 'warning' => $warning];
+        }
+        return ['status' => 'valid', 'url' => rtrim($text, '/')];
+    }
+}
+
+if (!function_exists('rxAdminPeriodStatistics')) {
+    function rxAdminPeriodStatistics(PDO $pdo, string $start_time, string $end_time): array
+    {
+        $start_time_timestamp = strtotime($start_time);
+        $end_time_timestamp = strtotime($end_time);
+        $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM " . rx_stats_sales_source($pdo) . " sales WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND " . rx_stats_historical_sale_predicate();
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindParam(':requestedDate', $start_time_timestamp);
+        $stmt->bindParam(':requestedDateend', $end_time_timestamp);
+        $stmt->execute();
+        $statorder = $stmt->fetch(PDO::FETCH_ASSOC);
+        $count_order = $statorder['count'];
+        $sum_order = number_format($statorder['sum'], 0);
+        $sql = "SELECT COUNT(*) AS count FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend)  AND name_product = 'سرویس تست'";
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindParam(':requestedDate', $start_time_timestamp);
+        $stmt->bindParam(':requestedDateend', $end_time_timestamp);
+        $stmt->execute();
+        $count_test = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
+        $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extend_user' AND status = 'paid'";
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindParam(':requestedDate', $start_time);
+        $stmt->bindParam(':requestedDateend', $end_time);
+        $stmt->execute();
+        $extend_stat = $stmt->fetch(PDO::FETCH_ASSOC);
+        $count_extend = $extend_stat['count'];
+        $sum_extend = number_format($extend_stat['sum'], 0);
+        $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_user'";
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindParam(':requestedDate', $start_time);
+        $stmt->bindParam(':requestedDateend', $end_time);
+        $stmt->execute();
+        $extra_volume_stat = $stmt->fetch(PDO::FETCH_ASSOC);
+        $count_extra_volume = $extra_volume_stat['count'];
+        $sum_extra_volume = number_format($extra_volume_stat['sum'], 0);
+        $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_time_user'";
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindParam(':requestedDate', $start_time);
+        $stmt->bindParam(':requestedDateend', $end_time);
+        $stmt->execute();
+        $extra_time_stat = $stmt->fetch(PDO::FETCH_ASSOC);
+        $count_extra_time = $extra_time_stat['count'];
+        $sum_extrat_time = number_format($extra_time_stat['sum'], 0);
+        $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'change_location'";
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindParam(':requestedDate', $start_time);
+        $stmt->bindParam(':requestedDateend', $end_time);
+        $stmt->execute();
+        $change_location_stat = $stmt->fetch(PDO::FETCH_ASSOC);
+        $count_change_location = $change_location_stat['count'];
+        $sum_change_location = number_format($change_location_stat['sum'], 0);
+        $stmt = $pdo->prepare("SELECT * FROM user WHERE  (register BETWEEN :requestedDate AND :requestedDateend)  AND register != 'none'");
+        $stmt->bindParam(':requestedDate', $start_time_timestamp);
+        $stmt->bindParam(':requestedDateend', $end_time_timestamp);
+        $stmt->execute();
+        $countuser_new = $stmt->rowCount();
+        return [
+            'count_order' => $count_order,
+            'sum_order' => $sum_order,
+            'count_test' => $count_test,
+            'count_extend' => $count_extend,
+            'sum_extend' => $sum_extend,
+            'count_extra_volume' => $count_extra_volume,
+            'sum_extra_volume' => $sum_extra_volume,
+            'count_extra_time' => $count_extra_time,
+            'sum_extrat_time' => $sum_extrat_time,
+            'count_change_location' => $count_change_location,
+            'sum_change_location' => $sum_change_location,
+            'countuser_new' => $countuser_new,
+        ];
+    }
+}
+
 if (!function_exists('rx_featCategoryRows')) {
     function rx_featCategoryRows($cat)
     {
@@ -17,25 +125,41 @@ if (!function_exists('rx_featCategoryRows')) {
             $crondaystatustext, $cronon_holdtext, $cronvolumestatustext,
             $cronremovestatustext, $cronremovevolumestatustext;
 
+        return rxAdminBuildFeatureRows($cat, $textbotlang, $setting, $status_cron, compact(
+            'name_status', 'name_status_role', 'Authenticationphone', 'Authenticationiran', 'statusverify',
+            'statusverifybyuser', 'authScopeBtn', 'authScopeVal', 'name_status_username', 'name_status_notifnewuser',
+            'name_status_showagent', 'statuspvsupport', 'statusnameconfig', 'statusnotef', 'statusnamebulk',
+            'btnstatuscategory', 'keyboard_config_text', 'status_copy_cart', 'statusDebtsettlement', 'statuslimitchangeloc',
+            'infocardColorEmoji', 'infocardStatusText', 'infocardStatusValue', 'forced_miniapp_status', 'randomWalletStatusText',
+            'randomWalletStatusValue', 'wheel_luck', 'statusfirstwheel', 'wheelagent', 'score',
+            'Lotteryagent', 'refralstatus', 'statusDice', 'cronteststatustext', 'cronuptime_nodestatustext',
+            'cronuptime_panelstatustext', 'crondaystatustext', 'cronon_holdtext', 'cronvolumestatustext', 'cronremovestatustext',
+            'cronremovevolumestatustext',
+        ));
+    }
+
+    function rxAdminBuildFeatureRows($cat, $textbotlang, $setting, $status_cron, array $labels): array
+    {
+
         if ($cat === 'bot') {
             return [
                 [['text' => $textbotlang['Admin']['Status']['subject'], 'callback_data' => "subject"],
                  ['text' => $textbotlang['Admin']['Status']['statussubject'], 'callback_data' => "subjectde"]],
-                [['text' => $name_status, 'callback_data' => "editstsuts-statusbot-{$setting['Bot_Status']}"],
+                [['text' => $labels['name_status'], 'callback_data' => "editstsuts-statusbot-{$setting['Bot_Status']}"],
                  ['text' => $textbotlang['Admin']['Status']['stautsbot'], 'callback_data' => "statusbot"]],
-                [['text' => $name_status_role, 'callback_data' => "editstsuts-role-{$setting['roll_Status']}"],
+                [['text' => $labels['name_status_role'], 'callback_data' => "editstsuts-role-{$setting['roll_Status']}"],
                  ['text' => $textbotlang['Admin']['Status']['stautsrolee'], 'callback_data' => "stautsrolee"]],
-                [['text' => $Authenticationphone, 'callback_data' => "editstsuts-get_number-{$setting['get_number']}"],
+                [['text' => $labels['Authenticationphone'], 'callback_data' => "editstsuts-get_number-{$setting['get_number']}"],
                  ['text' => $textbotlang['Admin']['Status']['Authenticationphone'], 'callback_data' => "Authenticationphone"]],
-                [['text' => $Authenticationiran, 'callback_data' => "editstsuts-Authenticationiran-{$setting['iran_number']}"],
+                [['text' => $labels['Authenticationiran'], 'callback_data' => "editstsuts-Authenticationiran-{$setting['iran_number']}"],
                  ['text' => $textbotlang['Admin']['Status']['Authenticationiran'], 'callback_data' => "Authenticationiran"]],
-                [['text' => $statusverify, 'callback_data' => "editstsuts-verifystart-{$setting['verifystart']}"],
+                [['text' => $labels['statusverify'], 'callback_data' => "editstsuts-verifystart-{$setting['verifystart']}"],
                  ['text' => "🔒 احراز هویت", 'callback_data' => "verify"]],
-                [['text' => $statusverifybyuser, 'callback_data' => "editstsuts-verifybyuser-{$setting['verifybucodeuser']}"],
+                [['text' => $labels['statusverifybyuser'], 'callback_data' => "editstsuts-verifybyuser-{$setting['verifybucodeuser']}"],
                  ['text' => "🔑 احراز با لینک", 'callback_data' => "verifybyuser"]],
-                [['text' => $authScopeBtn, 'callback_data' => "editstsuts-authscope-{$authScopeVal}"]],
+                [['text' => $labels['authScopeBtn'], 'callback_data' => "editstsuts-authscope-{$labels['authScopeVal']}"]],
                 [['text' => "🛡 تنظیمات حالت شیشه‌ای بخش کاربر", 'callback_data' => "glass_mode_settings"]],
-                [['text' => $forced_miniapp_status, 'callback_data' => "editstsuts-forced_miniapp-{$setting['forced_miniapp_mode']}"],
+                [['text' => $labels['forced_miniapp_status'], 'callback_data' => "editstsuts-forced_miniapp-{$setting['forced_miniapp_mode']}"],
                  ['text' => "📱 حالت اجباری مینی‌اپ", 'callback_data' => "forced_miniapp_info"]],
                 [['text' => (((string)($setting['miniapp_ticket_mode'] ?? '0')) === '1')
                         ? (string)($textbotlang['Admin']['Status']['statuson']  ?? '✅ روشن')
@@ -51,83 +175,83 @@ if (!function_exists('rx_featCategoryRows')) {
             ];
         } elseif ($cat === 'users') {
             return [
-                [['text' => $name_status_username, 'callback_data' => "editstsuts-usernamebtn-{$setting['NotUser']}"],
+                [['text' => $labels['name_status_username'], 'callback_data' => "editstsuts-usernamebtn-{$setting['NotUser']}"],
                  ['text' => $textbotlang['Admin']['Status']['statususernamebtn'], 'callback_data' => "usernamebtn"]],
-                [['text' => $name_status_notifnewuser, 'callback_data' => "editstsuts-notifnew-{$setting['statusnewuser']}"],
+                [['text' => $labels['name_status_notifnewuser'], 'callback_data' => "editstsuts-notifnew-{$setting['statusnewuser']}"],
                  ['text' => $textbotlang['Admin']['Status']['statusnotifnewuser'], 'callback_data' => "statusnewuser"]],
-                [['text' => $name_status_showagent, 'callback_data' => "editstsuts-showagent-{$setting['statusagentrequest']}"],
+                [['text' => $labels['name_status_showagent'], 'callback_data' => "editstsuts-showagent-{$setting['statusagentrequest']}"],
                  ['text' => $textbotlang['Admin']['Status']['statusshowagent'], 'callback_data' => "statusnewuser"]],
-                [['text' => $statuspvsupport, 'callback_data' => "editstsuts-statussupportpv-{$setting['statussupportpv']}"],
+                [['text' => $labels['statuspvsupport'], 'callback_data' => "editstsuts-statussupportpv-{$setting['statussupportpv']}"],
                  ['text' => "👤 پشتیبانی پیوی", 'callback_data' => "statussupportpv"]],
-                [['text' => $statusnameconfig, 'callback_data' => "editstsuts-statusnamecustom-{$setting['statusnamecustom']}"],
+                [['text' => $labels['statusnameconfig'], 'callback_data' => "editstsuts-statusnamecustom-{$setting['statusnamecustom']}"],
                  ['text' => "📨 یادداشت کانفیگ", 'callback_data' => "statusnamecustom"]],
-                [['text' => $statusnotef, 'callback_data' => "editstsuts-statusnamecustomf-{$setting['statusnoteforf']}"],
+                [['text' => $labels['statusnotef'], 'callback_data' => "editstsuts-statusnamecustomf-{$setting['statusnoteforf']}"],
                  ['text' => "📨 یادداشت کاربر", 'callback_data' => "statusnamecustomf"]],
             ];
         } elseif ($cat === 'shop') {
             return [
-                [['text' => $statusnamebulk, 'callback_data' => "editstsuts-bulkbuy-{$setting['bulkbuy']}"],
+                [['text' => $labels['statusnamebulk'], 'callback_data' => "editstsuts-bulkbuy-{$setting['bulkbuy']}"],
                  ['text' => "🛍 خرید عمده", 'callback_data' => "bulkbuy"]],
-                [['text' => $btnstatuscategory, 'callback_data' => "editstsuts-btn_status_category-{$setting['categoryhelp']}"],
+                [['text' => $labels['btnstatuscategory'], 'callback_data' => "editstsuts-btn_status_category-{$setting['categoryhelp']}"],
                  ['text' => "📗 دسته آموزش", 'callback_data' => "btn_status_category"]],
-                [['text' => $keyboard_config_text, 'callback_data' => "editstsuts-keyconfig-{$setting['status_keyboard_config']}"],
+                [['text' => $labels['keyboard_config_text'], 'callback_data' => "editstsuts-keyconfig-{$setting['status_keyboard_config']}"],
                  ['text' => "🔗 کیبورد کانفیگی", 'callback_data' => "keyconfig"]],
-                [['text' => $status_copy_cart, 'callback_data' => "editstsuts-compycart-{$setting['statuscopycart']}"],
+                [['text' => $labels['status_copy_cart'], 'callback_data' => "editstsuts-compycart-{$setting['statuscopycart']}"],
                  ['text' => "💳 کپی شماره کارت", 'callback_data' => "copycart"]],
-                [['text' => $statusDebtsettlement, 'callback_data' => "editstsuts-Debtsettlement-{$setting['Debtsettlement']}"],
+                [['text' => $labels['statusDebtsettlement'], 'callback_data' => "editstsuts-Debtsettlement-{$setting['Debtsettlement']}"],
                  ['text' => "💎 تسویه بدهی", 'callback_data' => "Debtsettlement"]],
                 [['text' => "⚙️ تنظیمات", 'callback_data' => "changeloclimit"],
-                 ['text' => $statuslimitchangeloc, 'callback_data' => "editstsuts-changeloc-{$setting['statuslimitchangeloc']}"],
+                 ['text' => $labels['statuslimitchangeloc'], 'callback_data' => "editstsuts-changeloc-{$setting['statuslimitchangeloc']}"],
                  ['text' => "🌍 قفل مکان", 'callback_data' => "changeloc"]],
-                [['text' => "{$infocardColorEmoji} رنگ کارت", 'callback_data' => "infocard_color_menu"],
-                 ['text' => $infocardStatusText, 'callback_data' => "editstsuts-infocard-{$infocardStatusValue}"],
+                [['text' => "{$labels['infocardColorEmoji']} رنگ کارت", 'callback_data' => "infocard_color_menu"],
+                 ['text' => $labels['infocardStatusText'], 'callback_data' => "editstsuts-infocard-{$labels['infocardStatusValue']}"],
                  ['text' => "📊 کارت سرویس", 'callback_data' => "infocard_status"]],
                 [['text' => "⚙️ تنظیمات", 'callback_data' => "randomwalletlimit"],
-                 ['text' => $randomWalletStatusText, 'callback_data' => "editstsuts-randomwallet-{$randomWalletStatusValue}"],
+                 ['text' => $labels['randomWalletStatusText'], 'callback_data' => "editstsuts-randomwallet-{$labels['randomWalletStatusValue']}"],
                  ['text' => "🎯 رندوم کیف پول", 'callback_data' => "randomwallet_status"]],
             ];
         } elseif ($cat === 'lottery') {
             return [
                 [['text' => "⚙️ تنظیمات", 'callback_data' => "gradonhshans"],
-                 ['text' => $wheel_luck, 'callback_data' => "editstsuts-wheel_luck-{$setting['wheelـluck']}"],
+                 ['text' => $labels['wheel_luck'], 'callback_data' => "editstsuts-wheel_luck-{$setting['wheelـluck']}"],
                  ['text' => "🎲 گردونه شانس", 'callback_data' => "none"]],
-                [['text' => $statusfirstwheel, 'callback_data' => "editstsuts-wheelagentfirst-{$setting['statusfirstwheel']}"],
+                [['text' => $labels['statusfirstwheel'], 'callback_data' => "editstsuts-wheelagentfirst-{$setting['statusfirstwheel']}"],
                  ['text' => "🎲 گردونه خرید اول", 'callback_data' => "wheelagentfirst"]],
-                [['text' => $wheelagent, 'callback_data' => "editstsuts-wheelagent-{$setting['wheelagent']}"],
+                [['text' => $labels['wheelagent'], 'callback_data' => "editstsuts-wheelagent-{$setting['wheelagent']}"],
                  ['text' => "🎲 گردونه نماینده", 'callback_data' => "wheelagent"]],
                 [['text' => "⚙️ تنظیمات", 'callback_data' => "scoresetting"],
-                 ['text' => $score, 'callback_data' => "editstsuts-score-{$setting['scorestatus']}"],
+                 ['text' => $labels['score'], 'callback_data' => "editstsuts-score-{$setting['scorestatus']}"],
                  ['text' => "🎁 قرعه شبانه", 'callback_data' => "score"]],
-                [['text' => $Lotteryagent, 'callback_data' => "editstsuts-Lotteryagent-{$setting['Lotteryagent']}"],
+                [['text' => $labels['Lotteryagent'], 'callback_data' => "editstsuts-Lotteryagent-{$setting['Lotteryagent']}"],
                  ['text' => "🎁 قرعه نماینده", 'callback_data' => "Lotteryagent"]],
                 [['text' => "⚙️ تنظیمات", 'callback_data' => "settingaffiliatesf"],
-                 ['text' => $refralstatus, 'callback_data' => "editstsuts-affiliatesstatus-{$setting['affiliatesstatus']}"],
+                 ['text' => $labels['refralstatus'], 'callback_data' => "editstsuts-affiliatesstatus-{$setting['affiliatesstatus']}"],
                  ['text' => "🎁 زیرمجموعه", 'callback_data' => "affiliatesstatus"]],
-                [['text' => $statusDice, 'callback_data' => "editstsuts-Dice-{$setting['Dice']}"],
+                [['text' => $labels['statusDice'], 'callback_data' => "editstsuts-Dice-{$setting['Dice']}"],
                  ['text' => "🎰 نمایش تاس", 'callback_data' => "Dice"]],
             ];
         } elseif ($cat === 'crons') {
             return [
-                [['text' => $cronteststatustext, 'callback_data' => "editstsuts-crontest-{$status_cron['test']}"],
+                [['text' => $labels['cronteststatustext'], 'callback_data' => "editstsuts-crontest-{$status_cron['test']}"],
                  ['text' => "🔓 کرون تست", 'callback_data' => "none"]],
-                [['text' => $cronuptime_nodestatustext, 'callback_data' => "editstsuts-uptime_node-{$status_cron['uptime_node']}"],
+                [['text' => $labels['cronuptime_nodestatustext'], 'callback_data' => "editstsuts-uptime_node-{$status_cron['uptime_node']}"],
                  ['text' => "🎛 آپتایم نود", 'callback_data' => "none"]],
-                [['text' => $cronuptime_panelstatustext, 'callback_data' => "editstsuts-uptime_panel-{$status_cron['uptime_panel']}"],
+                [['text' => $labels['cronuptime_panelstatustext'], 'callback_data' => "editstsuts-uptime_panel-{$status_cron['uptime_panel']}"],
                  ['text' => "🎛 آپتایم پنل", 'callback_data' => "none"]],
                 [['text' => "⚙️ زمان هشدار", 'callback_data' => "settimecornday"],
-                 ['text' => $crondaystatustext, 'callback_data' => "editstsuts-cronday-{$status_cron['day']}"],
+                 ['text' => $labels['crondaystatustext'], 'callback_data' => "editstsuts-cronday-{$status_cron['day']}"],
                  ['text' => "🕚 کرون زمان", 'callback_data' => "none"]],
                 [['text' => "⚙️ زمان اتصال", 'callback_data' => "setting_on_holdcron"],
-                 ['text' => $cronon_holdtext, 'callback_data' => "editstsuts-on_hold-{$status_cron['on_hold']}"],
+                 ['text' => $labels['cronon_holdtext'], 'callback_data' => "editstsuts-on_hold-{$status_cron['on_hold']}"],
                  ['text' => "🕚 کرون اتصال", 'callback_data' => "none"]],
                 [['text' => "⚙️ حجم هشدار", 'callback_data' => "settimecornvolume"],
-                 ['text' => $cronvolumestatustext, 'callback_data' => "editstsuts-cronvolume-{$status_cron['volume']}"],
+                 ['text' => $labels['cronvolumestatustext'], 'callback_data' => "editstsuts-cronvolume-{$status_cron['volume']}"],
                  ['text' => "🔋 کرون حجم", 'callback_data' => "none"]],
                 [['text' => "⚙️ زمان حذف", 'callback_data' => "settimecornremove"],
-                 ['text' => $cronremovestatustext, 'callback_data' => "editstsuts-notifremove-{$status_cron['remove']}"],
+                 ['text' => $labels['cronremovestatustext'], 'callback_data' => "editstsuts-notifremove-{$status_cron['remove']}"],
                  ['text' => "❌ کرون حذف", 'callback_data' => "none"]],
                 [['text' => "⚙️ زمان حذف", 'callback_data' => "settimecornremovevolume"],
-                 ['text' => $cronremovevolumestatustext, 'callback_data' => "editstsuts-notifremove_volume-{$status_cron['remove_volume']}"],
+                 ['text' => $labels['cronremovevolumestatustext'], 'callback_data' => "editstsuts-notifremove_volume-{$status_cron['remove_volume']}"],
                  ['text' => "❌ کرون حذف‌حجم", 'callback_data' => "none"]],
                 [['text' => "⚙️ تنظیم", 'callback_data' => "set_panel_timeout"],
                  ['text' => (function_exists('faoxima_panel_timeout') ? faoxima_panel_timeout() : (int)($setting['panel_curl_timeout'] ?? 20)) . " ثانیه", 'callback_data' => "none"],
@@ -1333,161 +1457,57 @@ $paycount
 } elseif ($datain == "yesterday_stat") {
     $start_time = date('Y/m/d', strtotime("-1 days")) . " 00:00:00";
     $end_time = date('Y/m/d', strtotime("-1 days")) . " 23:59:59";
-    $start_time_timestamp = strtotime($start_time);
-    $end_time_timestamp = strtotime($end_time);
-    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM " . rx_stats_sales_source($pdo) . " sales WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND " . rx_stats_historical_sale_predicate();
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $statorder = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_order = $statorder['count'];
-    $sum_order = number_format($statorder['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend)  AND name_product = 'سرویس تست'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $count_test = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extend_user' AND status = 'paid'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extend_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extend = $extend_stat['count'];
-    $sum_extend = number_format($extend_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extra_volume_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_volume = $extra_volume_stat['count'];
-    $sum_extra_volume = number_format($extra_volume_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_time_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extra_time_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_time = $extra_time_stat['count'];
-    $sum_extrat_time = number_format($extra_time_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'change_location'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $change_location_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_change_location = $change_location_stat['count'];
-    $sum_change_location = number_format($change_location_stat['sum'], 0);
-    $stmt = $pdo->prepare("SELECT * FROM user WHERE  (register BETWEEN :requestedDate AND :requestedDateend)  AND register != 'none'");
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $countuser_new = $stmt->rowCount();
+    $rxPeriodStats = rxAdminPeriodStatistics($pdo, $start_time, $end_time);
     $statisticsall = "
 🕐 <b>آمار روز گذشته</b>
 
 ⏳ بازه تایم  : $start_time تا$end_time
 
-🛍 تعداد سفارشات : $count_order عدد
-💸 جمع مبلغ سفارشات  : $sum_order تومان
+🛍 تعداد سفارشات : {$rxPeriodStats['count_order']} عدد
+💸 جمع مبلغ سفارشات  : {$rxPeriodStats['sum_order']} تومان
 
-🧲 تعداد تمدید  : $count_extend عدد
-💰 جمع مبلغ تمدید: $sum_extend تومان
+🧲 تعداد تمدید  : {$rxPeriodStats['count_extend']} عدد
+💰 جمع مبلغ تمدید: {$rxPeriodStats['sum_extend']} تومان
 
-📦 حجم‌های اضافه  :$count_extra_volume عدد
-💰 مبلغ حجم‌های اضافه : $sum_extra_volume تومان
+📦 حجم‌های اضافه  :{$rxPeriodStats['count_extra_volume']} عدد
+💰 مبلغ حجم‌های اضافه : {$rxPeriodStats['sum_extra_volume']} تومان
 
-⏱️ زمان‌های اضافه  : $count_extra_time عدد
-💰 مبلغ زمان‌های اضافه  : $sum_extrat_time تومان
+⏱️ زمان‌های اضافه  : {$rxPeriodStats['count_extra_time']} عدد
+💰 مبلغ زمان‌های اضافه  : {$rxPeriodStats['sum_extrat_time']} تومان
 
-📍 تغییر لوکیشن  : $count_change_location عدد
-💰 مبلغ تغییر لوکیشن : $sum_change_location تومان
+📍 تغییر لوکیشن  : {$rxPeriodStats['count_change_location']} عدد
+💰 مبلغ تغییر لوکیشن : {$rxPeriodStats['sum_change_location']} تومان
 
-🔑 اکانت‌های تست  : $count_test عدد
-👤 تعداد کاربران  : $countuser_new نفر
+🔑 اکانت‌های تست  : {$rxPeriodStats['count_test']} عدد
+👤 تعداد کاربران  : {$rxPeriodStats['countuser_new']} نفر
 ";
     Editmessagetext($from_id, $message_id, $statisticsall, $keyboard_stat, 'HTML');
 } elseif ($datain == "today_stat") {
     $start_time = date('Y/m/d') . " 00:00:00";
     $end_time = date('Y/m/d H:i:s');
-    $start_time_timestamp = strtotime($start_time);
-    $end_time_timestamp = strtotime($end_time);
-    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM " . rx_stats_sales_source($pdo) . " sales WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND " . rx_stats_historical_sale_predicate();
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $statorder = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_order = $statorder['count'];
-    $sum_order = number_format($statorder['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend)  AND name_product = 'سرویس تست'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $count_test = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extend_user' AND status = 'paid'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extend_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extend = $extend_stat['count'];
-    $sum_extend = number_format($extend_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extra_volume_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_volume = $extra_volume_stat['count'];
-    $sum_extra_volume = number_format($extra_volume_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_time_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extra_time_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_time = $extra_time_stat['count'];
-    $sum_extrat_time = number_format($extra_time_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'change_location'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $change_location_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_change_location = $change_location_stat['count'];
-    $sum_change_location = number_format($change_location_stat['sum'], 0);
-    $stmt = $pdo->prepare("SELECT * FROM user WHERE  (register BETWEEN :requestedDate AND :requestedDateend)  AND register != 'none'");
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $countuser_new = $stmt->rowCount();
+    $rxPeriodStats = rxAdminPeriodStatistics($pdo, $start_time, $end_time);
     $statisticsall = "
 🕐 <b>آمار روز فعلی</b>
 
 ⏳ بازه تایم  : $start_time تا$end_time
 
-🛍 تعداد سفارشات : $count_order عدد
-💸 جمع مبلغ سفارشات  : $sum_order تومان
+🛍 تعداد سفارشات : {$rxPeriodStats['count_order']} عدد
+💸 جمع مبلغ سفارشات  : {$rxPeriodStats['sum_order']} تومان
 
-🧲 تعداد تمدید  : $count_extend عدد
-💰 جمع مبلغ تمدید: $sum_extend تومان
+🧲 تعداد تمدید  : {$rxPeriodStats['count_extend']} عدد
+💰 جمع مبلغ تمدید: {$rxPeriodStats['sum_extend']} تومان
 
-📦 حجم‌های اضافه  :$count_extra_volume عدد
-💰 مبلغ حجم‌های اضافه : $sum_extra_volume تومان
+📦 حجم‌های اضافه  :{$rxPeriodStats['count_extra_volume']} عدد
+💰 مبلغ حجم‌های اضافه : {$rxPeriodStats['sum_extra_volume']} تومان
 
-⏱️ زمان‌های اضافه  : $count_extra_time عدد
-💰 مبلغ زمان‌های اضافه  : $sum_extrat_time تومان
+⏱️ زمان‌های اضافه  : {$rxPeriodStats['count_extra_time']} عدد
+💰 مبلغ زمان‌های اضافه  : {$rxPeriodStats['sum_extrat_time']} تومان
 
-📍 تغییر لوکیشن  : $count_change_location عدد
-💰 مبلغ تغییر لوکیشن : $sum_change_location تومان
+📍 تغییر لوکیشن  : {$rxPeriodStats['count_change_location']} عدد
+💰 مبلغ تغییر لوکیشن : {$rxPeriodStats['sum_change_location']} تومان
 
-🔑 اکانت‌های تست  : $count_test عدد
-👤 تعداد کاربران  : $countuser_new نفر
+🔑 اکانت‌های تست  : {$rxPeriodStats['count_test']} عدد
+👤 تعداد کاربران  : {$rxPeriodStats['countuser_new']} نفر
 ";
     Editmessagetext($from_id, $message_id, $statisticsall, $keyboard_stat, 'HTML');
 } elseif ($datain == "month_old_stat") {
@@ -1495,81 +1515,29 @@ $paycount
     $lastDayLastMonth = new DateTime('last day of last month');
     $start_time = $firstDayLastMonth->format('Y/m/d');
     $end_time = $lastDayLastMonth->format('Y/m/d');
-    $start_time_timestamp = strtotime($start_time);
-    $end_time_timestamp = strtotime($end_time);
-    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM " . rx_stats_sales_source($pdo) . " sales WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND " . rx_stats_historical_sale_predicate();
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $statorder = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_order = $statorder['count'];
-    $sum_order = number_format($statorder['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend)  AND name_product = 'سرویس تست'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $count_test = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extend_user' AND status = 'paid'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extend_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extend = $extend_stat['count'];
-    $sum_extend = number_format($extend_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extra_volume_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_volume = $extra_volume_stat['count'];
-    $sum_extra_volume = number_format($extra_volume_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_time_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extra_time_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_time = $extra_time_stat['count'];
-    $sum_extrat_time = number_format($extra_time_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'change_location'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $change_location_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_change_location = $change_location_stat['count'];
-    $sum_change_location = number_format($change_location_stat['sum'], 0);
-    $stmt = $pdo->prepare("SELECT * FROM user WHERE  (register BETWEEN :requestedDate AND :requestedDateend)  AND register != 'none'");
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $countuser_new = $stmt->rowCount();
+    $rxPeriodStats = rxAdminPeriodStatistics($pdo, $start_time, $end_time);
     $statisticsall = "
 🕐 <b>آمار ماه گذشته</b>
 
 ⏳ بازه تایم  : $start_time تا$end_time
 
-🛍 تعداد سفارشات : $count_order عدد
-💸 جمع مبلغ سفارشات  : $sum_order تومان
+🛍 تعداد سفارشات : {$rxPeriodStats['count_order']} عدد
+💸 جمع مبلغ سفارشات  : {$rxPeriodStats['sum_order']} تومان
 
-🧲 تعداد تمدید  : $count_extend عدد
-💰 جمع مبلغ تمدید: $sum_extend تومان
+🧲 تعداد تمدید  : {$rxPeriodStats['count_extend']} عدد
+💰 جمع مبلغ تمدید: {$rxPeriodStats['sum_extend']} تومان
 
-📦 حجم‌های اضافه  :$count_extra_volume عدد
-💰 مبلغ حجم‌های اضافه : $sum_extra_volume تومان
+📦 حجم‌های اضافه  :{$rxPeriodStats['count_extra_volume']} عدد
+💰 مبلغ حجم‌های اضافه : {$rxPeriodStats['sum_extra_volume']} تومان
 
-⏱️ زمان‌های اضافه  : $count_extra_time عدد
-💰 مبلغ زمان‌های اضافه  : $sum_extrat_time تومان
+⏱️ زمان‌های اضافه  : {$rxPeriodStats['count_extra_time']} عدد
+💰 مبلغ زمان‌های اضافه  : {$rxPeriodStats['sum_extrat_time']} تومان
 
-📍 تغییر لوکیشن  : $count_change_location عدد
-💰 مبلغ تغییر لوکیشن : $sum_change_location تومان
+📍 تغییر لوکیشن  : {$rxPeriodStats['count_change_location']} عدد
+💰 مبلغ تغییر لوکیشن : {$rxPeriodStats['sum_change_location']} تومان
 
-🔑 اکانت‌های تست  : $count_test عدد
-👤 تعداد کاربران  : $countuser_new نفر
+🔑 اکانت‌های تست  : {$rxPeriodStats['count_test']} عدد
+👤 تعداد کاربران  : {$rxPeriodStats['countuser_new']} نفر
 ";
     Editmessagetext($from_id, $message_id, $statisticsall, $keyboard_stat, 'HTML');
 } elseif ($datain == "month_current_stat") {
@@ -1577,81 +1545,29 @@ $paycount
     $lastDayLastMonth = new DateTime('last day of this month');
     $start_time = $firstDayLastMonth->format('Y/m/d');
     $end_time = $lastDayLastMonth->format('Y/m/d');
-    $start_time_timestamp = strtotime($start_time);
-    $end_time_timestamp = strtotime($end_time);
-    $sql = "SELECT COUNT(*) AS count,SUM(price_product) as sum FROM " . rx_stats_sales_source($pdo) . " sales WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend) AND " . rx_stats_historical_sale_predicate();
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $statorder = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_order = $statorder['count'];
-    $sum_order = number_format($statorder['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count FROM invoice WHERE (time_sell BETWEEN :requestedDate AND :requestedDateend)  AND name_product = 'سرویس تست'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $count_test = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extend_user' AND status = 'paid'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extend_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extend = $extend_stat['count'];
-    $sum_extend = number_format($extend_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extra_volume_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_volume = $extra_volume_stat['count'];
-    $sum_extra_volume = number_format($extra_volume_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE  (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'extra_time_user'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $extra_time_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_extra_time = $extra_time_stat['count'];
-    $sum_extrat_time = number_format($extra_time_stat['sum'], 0);
-    $sql = "SELECT COUNT(*) AS count,SUM(price) as sum FROM service_other WHERE (time BETWEEN :requestedDate AND :requestedDateend) AND type = 'change_location'";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(':requestedDate', $start_time);
-    $stmt->bindParam(':requestedDateend', $end_time);
-    $stmt->execute();
-    $change_location_stat = $stmt->fetch(PDO::FETCH_ASSOC);
-    $count_change_location = $change_location_stat['count'];
-    $sum_change_location = number_format($change_location_stat['sum'], 0);
-    $stmt = $pdo->prepare("SELECT * FROM user WHERE  (register BETWEEN :requestedDate AND :requestedDateend)  AND register != 'none'");
-    $stmt->bindParam(':requestedDate', $start_time_timestamp);
-    $stmt->bindParam(':requestedDateend', $end_time_timestamp);
-    $stmt->execute();
-    $countuser_new = $stmt->rowCount();
+    $rxPeriodStats = rxAdminPeriodStatistics($pdo, $start_time, $end_time);
     $statisticsall = "
 🕐 <b>آمار ماه فعلی</b>
 
 ⏳ بازه تایم  : $start_time تا$end_time
 
-🛍 تعداد سفارشات : $count_order عدد
-💸 جمع مبلغ سفارشات  : $sum_order تومان
+🛍 تعداد سفارشات : {$rxPeriodStats['count_order']} عدد
+💸 جمع مبلغ سفارشات  : {$rxPeriodStats['sum_order']} تومان
 
-🧲 تعداد تمدید  : $count_extend عدد
-💰 جمع مبلغ تمدید: $sum_extend تومان
+🧲 تعداد تمدید  : {$rxPeriodStats['count_extend']} عدد
+💰 جمع مبلغ تمدید: {$rxPeriodStats['sum_extend']} تومان
 
-📦 حجم‌های اضافه  :$count_extra_volume عدد
-💰 مبلغ حجم‌های اضافه : $sum_extra_volume تومان
+📦 حجم‌های اضافه  :{$rxPeriodStats['count_extra_volume']} عدد
+💰 مبلغ حجم‌های اضافه : {$rxPeriodStats['sum_extra_volume']} تومان
 
-⏱️ زمان‌های اضافه  : $count_extra_time عدد
-💰 مبلغ زمان‌های اضافه  : $sum_extrat_time تومان
+⏱️ زمان‌های اضافه  : {$rxPeriodStats['count_extra_time']} عدد
+💰 مبلغ زمان‌های اضافه  : {$rxPeriodStats['sum_extrat_time']} تومان
 
-📍 تغییر لوکیشن  : $count_change_location عدد
-💰 مبلغ تغییر لوکیشن : $sum_change_location تومان
+📍 تغییر لوکیشن  : {$rxPeriodStats['count_change_location']} عدد
+💰 مبلغ تغییر لوکیشن : {$rxPeriodStats['sum_change_location']} تومان
 
-🔑 اکانت‌های تست  : $count_test عدد
-👤 تعداد کاربران  : $countuser_new نفر
+🔑 اکانت‌های تست  : {$rxPeriodStats['count_test']} عدد
+👤 تعداد کاربران  : {$rxPeriodStats['countuser_new']} نفر
 ";
     Editmessagetext($from_id, $message_id, $statisticsall, $keyboard_stat, 'HTML');
 } elseif ($datain == "view_stat_time") {
@@ -1791,25 +1707,23 @@ $paycount
         nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
         step('getlimitedpanel', $from_id);
         savedata("save", "url_panel", "null");
-        savedata("save", "username", "null");
-        savedata("save", "password", "null");
+        rxAdminClearPanelCredentials();
         return;
     }
     nm_adminInstantReply($from_id, rxPanelUrlPrompt(is_array($userdata) ? ($userdata['type'] ?? '') : ''), $backadmin, 'HTML');
     step('add_link_panel', $from_id);
 } elseif ($user['step'] == "add_link_panel") {
     if (!isset($update['message']) && empty($text)) { return; }
-    if (!filter_var($text, FILTER_VALIDATE_URL)) {
+    $rxPanelUrlInput = rxAdminPanelUrlInput($text, $user, 'type');
+    if ($rxPanelUrlInput['status'] === 'invalid_url') {
         nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['Invalid-domain'], $backadmin, 'HTML');
         return;
     }
-    $userdata = json_decode($user['Processing_value'], true);
-    $rxPanelUrlWarning = rxPanelUrlPathWarning($text, is_array($userdata) ? ($userdata['type'] ?? '') : '');
-    if ($rxPanelUrlWarning !== '') {
-        nm_adminInstantReply($from_id, $rxPanelUrlWarning, $backadmin, 'HTML');
+    if ($rxPanelUrlInput['status'] === 'invalid_path') {
+        nm_adminInstantReply($from_id, $rxPanelUrlInput['warning'], $backadmin, 'HTML');
         return;
     }
-    $normalizedPanelUrl = rtrim($text, '/');
+    $normalizedPanelUrl = $rxPanelUrlInput['url'];
     savedata("save", "url_panel", $normalizedPanelUrl);
     $userdata = json_decode($user['Processing_value'], true);
     if (!is_array($userdata) || empty($userdata['type']) || empty($userdata['namepanel'])) {
@@ -1817,8 +1731,7 @@ $paycount
         return;
     }
     if ($userdata['type'] == "guard") {
-        savedata("save", "username", "null");
-        savedata("save", "password", "null");
+        rxAdminClearPanelCredentials();
         rxRenderWizardStep('add_guard_version', $from_id);
         step('add_guard_version', $from_id);
         return;
@@ -1831,21 +1744,18 @@ $paycount
         nm_adminInstantReply($from_id, "📌 توکن ثابت API رمن‌ویو را ارسال نمایید.
 (از مسیر API Tokens در داشبورد ادمین رمن‌ویو بسازید)", $backadmin, 'HTML');
         step('add_remna_token_setup', $from_id);
-        savedata("save", "username", "null");
-        savedata("save", "password", "null");
+        rxAdminClearPanelCredentials();
         return;
     } elseif ($userdata['type'] == "rebecca") {
         nm_adminInstantReply($from_id, "🔑 لطفاً API Key پنل Rebecca را ارسال کنید.", $backadmin, 'HTML');
         step('add_rebecca_api_key', $from_id);
-        savedata("save", "username", "null");
-        savedata("save", "password", "null");
+        rxAdminClearPanelCredentials();
         return;
     } elseif ($userdata['type'] == "jovadpanel") {
         nm_adminInstantReply($from_id, "🔑 لطفاً API Key فروشندگی پنل JovadPanel را ارسال کنید.
 (از بخش Developers در پنل فروشنده ساخته می‌شود و فقط یک بار نمایش داده می‌شود)", $backadmin, 'HTML');
         step('add_jovad_api_key', $from_id);
-        savedata("save", "username", "null");
-        savedata("save", "password", "null");
+        rxAdminClearPanelCredentials();
         return;
     } elseif ($userdata['type'] == "pasarguard") {
         rxRenderWizardStep('add_pasarguard_auth_method', $from_id);
@@ -1878,8 +1788,7 @@ $paycount
     $xuiMode = $dataget[1];
     savedata("save", "xui_api_mode", $xuiMode);
     if ($xuiMode === 'token') {
-        savedata("save", "username", "null");
-        savedata("save", "password", "null");
+        rxAdminClearPanelCredentials();
         nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getxuiapitoken'], $backadmin, 'HTML');
         step('add_xui_api_token', $from_id);
     } else {
@@ -2016,8 +1925,7 @@ $paycount
         nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['usernameset'], $backadmin, 'HTML');
         step('add_pasarguard_username', $from_id);
     } else {
-        savedata("save", "username", "null");
-        savedata("save", "password", "null");
+        rxAdminClearPanelCredentials();
         nm_adminInstantReply($from_id, "🔑 لطفاً API Key پنل PasarGuard را ارسال کنید.", $backadmin, 'HTML');
         step('add_pasarguard_api_key', $from_id);
     }
@@ -2414,8 +2322,7 @@ elseif ($user['step'] == "switchtype_pick" && preg_match('/^switchpanelcat#(root
     savedata("save", "new_type", $newType);
     if ($newType == "Manualsale") {
         savedata("save", "url_panel", "null");
-        savedata("save", "username", "null");
-        savedata("save", "password", "null");
+        rxAdminClearPanelCredentials();
         nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getlimitedpanel'], $backadmin, 'HTML');
         step('switchtype_confirm', $from_id);
     } else {
@@ -2424,22 +2331,20 @@ elseif ($user['step'] == "switchtype_pick" && preg_match('/^switchpanelcat#(root
     }
 } elseif ($user['step'] == "switchtype_link_panel") {
     if (!isset($update['message']) && empty($text)) { return; }
-    if (!filter_var($text, FILTER_VALIDATE_URL)) {
+    $rxPanelUrlInput = rxAdminPanelUrlInput($text, $user, 'new_type');
+    if ($rxPanelUrlInput['status'] === 'invalid_url') {
         nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['Invalid-domain'], $backadmin, 'HTML');
         return;
     }
-    $userdata = json_decode($user['Processing_value'], true);
-    $rxPanelUrlWarning = rxPanelUrlPathWarning($text, is_array($userdata) ? ($userdata['new_type'] ?? '') : '');
-    if ($rxPanelUrlWarning !== '') {
-        nm_adminInstantReply($from_id, $rxPanelUrlWarning, $backadmin, 'HTML');
+    if ($rxPanelUrlInput['status'] === 'invalid_path') {
+        nm_adminInstantReply($from_id, $rxPanelUrlInput['warning'], $backadmin, 'HTML');
         return;
     }
-    $normalizedPanelUrl = rtrim($text, '/');
+    $normalizedPanelUrl = $rxPanelUrlInput['url'];
     savedata("save", "url_panel", $normalizedPanelUrl);
     $userdata = json_decode($user['Processing_value'], true);
     if ($userdata['new_type'] == "guard") {
-        savedata("save", "username", "null");
-        savedata("save", "password", "null");
+        rxAdminClearPanelCredentials();
         $guardVersionKb = json_encode([
             'inline_keyboard' => [
                 [['text' => 'v1', 'callback_data' => 'switchguardversion#v1']],
@@ -2453,19 +2358,16 @@ elseif ($user['step'] == "switchtype_pick" && preg_match('/^switchpanelcat#(root
         nm_adminInstantReply($from_id, "📌 توکن را ارسال نمایید", $backadmin, 'HTML');
         step('switchtype_password_panel', $from_id);
     } elseif ($userdata['new_type'] == "remnawave") {
-        savedata("save", "username", "null");
-        savedata("save", "password", "null");
+        rxAdminClearPanelCredentials();
         nm_adminInstantReply($from_id, "📌 توکن ثابت API رمن‌ویو را ارسال نمایید.
 (از مسیر API Tokens در داشبورد ادمین رمن‌ویو بسازید)", $backadmin, 'HTML');
         step('switchtype_remna_token', $from_id);
     } elseif ($userdata['new_type'] == "rebecca") {
-        savedata("save", "username", "null");
-        savedata("save", "password", "null");
+        rxAdminClearPanelCredentials();
         nm_adminInstantReply($from_id, "🔑 لطفاً API Key پنل Rebecca را ارسال کنید.", $backadmin, 'HTML');
         step('switchtype_rebecca_api_key', $from_id);
     } elseif ($userdata['new_type'] == "jovadpanel") {
-        savedata("save", "username", "null");
-        savedata("save", "password", "null");
+        rxAdminClearPanelCredentials();
         nm_adminInstantReply($from_id, "🔑 لطفاً API Key فروشندگی پنل JovadPanel را ارسال کنید.", $backadmin, 'HTML');
         step('switchtype_jovad_api_key', $from_id);
     } elseif ($userdata['new_type'] == "pasarguard" || $userdata['new_type'] == "pasargard") {
@@ -2495,8 +2397,7 @@ elseif ($user['step'] == "switchtype_pick" && preg_match('/^switchpanelcat#(root
     $xuiMode = $dataget[1];
     savedata("save", "xui_api_mode", $xuiMode);
     if ($xuiMode === 'token') {
-        savedata("save", "username", "null");
-        savedata("save", "password", "null");
+        rxAdminClearPanelCredentials();
         nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['getxuiapitoken'], $backadmin, 'HTML');
         step('switchtype_xui_token', $from_id);
     } else {
@@ -2584,8 +2485,7 @@ elseif ($user['step'] == "switchtype_pick" && preg_match('/^switchpanelcat#(root
         nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['usernameset'], $backadmin, 'HTML');
         step('switchtype_pasarguard_username', $from_id);
     } else {
-        savedata("save", "username", "null");
-        savedata("save", "password", "null");
+        rxAdminClearPanelCredentials();
         nm_adminInstantReply($from_id, "🔑 لطفاً API Key پنل PasarGuard را ارسال کنید.", $backadmin, 'HTML');
         step('switchtype_pasarguard_api_key', $from_id);
     }
@@ -3945,7 +3845,7 @@ $caption";
         nm_adminInstantReply($from_id, "❌ پاسخ به تیکت‌ها فقط از طریق پنل وب مدیریت امکان‌پذیر است.", $backadmin, 'HTML');
         return;
     }
-    $ttk = select("support_message", "*", "Tracking", $dataget[1]);
+    $ttk = rxAdminTicketFind($dataget[1]);
     if (!is_array($ttk)) {
         nm_adminInstantReply($from_id, "❌ این تیکت یافت نشد.", $backadmin, 'HTML');
         return;
@@ -3960,18 +3860,14 @@ $caption";
         return;
     }
     $T = (string)$user['Processing_value'];
-    $ttk = select("support_message", "*", "Tracking", $T);
+    $ttk = rxAdminTicketFind($T);
     if (!is_array($ttk)) {
         nm_adminInstantReply($from_id, "❌ این تیکت یافت نشد.", null, 'HTML');
         step('home', $from_id);
         return;
     }
     $time = date('Y/m/d H:i:s');
-    $mediaToken = $photo ? "\n[[photo:$photoid]]" : ($video ? "\n[[video:$videoid]]" : "");
-    $bodytext = trim(((string)$text !== '' ? (string)$text : (string)$caption) . $mediaToken);
-    $userKb = json_encode(['inline_keyboard' => [[['text' => '💬 پاسخ', 'callback_data' => 'ticketreply_' . $T]]]], JSON_UNESCAPED_UNICODE);
-    $userMsgText = (string)$text !== '' ? (string)$text : (string)$caption;
-    $toUser = "📩 پاسخ پشتیبانی به تیکت <code>$T</code> :" . ($userMsgText !== '' ? "\n\n" . $userMsgText : ($photo ? "\n\n(تصویر پیوست ارسال شد)" : ($video ? "\n\n(ویدیو پیوست ارسال شد)" : "")));
+    [$bodytext, $userKb, $toUser] = rxAdminTelegramTicketReply($T, $text, $caption, $photo, $video, $photoid ?? null, $videoid ?? null);
     $sendRes = sendmessage($ttk['iduser'], $toUser, $userKb, 'HTML');
     if (empty($sendRes['ok'])) {
         nm_adminInstantReply($from_id, "❌ ارسال پاسخ به کاربر ناموفق بود (ممکن است کاربر ربات را بلاک کرده باشد یا خطای تلگرام رخ داده باشد).\nتیکت همچنان در صف پاسخگویی باقی ماند.", null, 'HTML');
@@ -3981,7 +3877,7 @@ $caption";
     if ($video) { sendvideo($ttk['iduser'], $videoid, null); }
     $stmt = $pdo->prepare("INSERT IGNORE INTO support_message (Tracking,idsupport,iduser,name_departman,text,result,time,status) VALUES (?,?,?,?,?,?,?,?)");
     $stmt->execute([$T, $ttk['idsupport'], $ttk['iduser'], $ttk['name_departman'], $bodytext, 'admin', $time, 'Answered']);
-    update("support_message", "status", "Answered", "Tracking", $T);
+    rxAdminTicketStatus($T, "Answered");
     nm_adminInstantReply($from_id, "✅ پاسخ شما ثبت و برای کاربر ارسال شد.", null, 'HTML');
     step('home', $from_id);
 } elseif ($user['step'] == "ticketadminreplyWait") {

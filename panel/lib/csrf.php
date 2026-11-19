@@ -55,6 +55,14 @@ if (!function_exists('fx_csrf_guard')) {
     }
 }
 
+if (!function_exists('fx_admin_decode_ip_entries')) {
+    function fx_admin_decode_ip_entries(string $raw): ?array
+    {
+        $decoded = json_decode($raw, true);
+        return is_array($decoded) ? $decoded : null;
+    }
+}
+
 if (!function_exists('fx_admin_ip_allowed')) {
 
     function fx_admin_ip_allowed($rawAdminIp): bool
@@ -67,8 +75,8 @@ if (!function_exists('fx_admin_ip_allowed')) {
             $entries = $rawAdminIp;
         } else {
             $raw = (string)$rawAdminIp;
-            $decoded = json_decode($raw, true);
-            if (is_array($decoded)) {
+            $decoded = fx_admin_decode_ip_entries($raw);
+            if ($decoded !== null) {
                 $entries = $decoded;
             } else {
                 $entries = [$raw];
@@ -90,6 +98,16 @@ if (!function_exists('fx_admin_ip_allowed')) {
     }
 }
 
+if (!function_exists('fx_admin_find_by_username')) {
+    function fx_admin_find_by_username(PDO $pdo, string $username)
+    {
+        $stmt = $pdo->prepare("SELECT * FROM admin WHERE username = :username LIMIT 1");
+        $stmt->bindValue(':username', $username, PDO::PARAM_STR);
+        $stmt->execute();
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+}
+
 if (!function_exists('fx_admin_require_access')) {
 
     function fx_admin_require_access(PDO $pdo, ?array $roles = null): array
@@ -101,10 +119,7 @@ if (!function_exists('fx_admin_require_access')) {
             header('Location: login.php', true, 302);
             exit;
         }
-        $stmt = $pdo->prepare("SELECT * FROM admin WHERE username = :username LIMIT 1");
-        $stmt->bindValue(':username', $_SESSION['user'], PDO::PARAM_STR);
-        $stmt->execute();
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $row = fx_admin_find_by_username($pdo, $_SESSION['user']);
         if (!is_array($row) || !$row) {
             session_unset();
             session_destroy();

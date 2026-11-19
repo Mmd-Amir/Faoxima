@@ -1,5 +1,36 @@
 <?php
 
+if (!function_exists('rxAdminAffiliateReportData')) {
+    function rxAdminAffiliateReportData(PDO $pdo): array
+    {
+        $rxTotalCommissionStmt = $pdo->query("SELECT COALESCE(SUM(amount),0) FROM wallet_ledger WHERE category = 'affiliate_commission' AND direction = 'credit'");
+        $rxTotalCommission = number_format((float) $rxTotalCommissionStmt->fetchColumn());
+        $rxTotalStartGiftStmt = $pdo->query("SELECT COUNT(*) FROM reagent_report WHERE get_gift = 1");
+        $rxTotalStartGiftClaims = (int) $rxTotalStartGiftStmt->fetchColumn();
+        $rxTotalReferredStmt = $pdo->query("SELECT COUNT(*) FROM user WHERE affiliates IS NOT NULL AND affiliates != '' AND affiliates != '0'");
+        $rxTotalReferredUsers = (int) $rxTotalReferredStmt->fetchColumn();
+        $rxTopReferrersStmt = $pdo->query("SELECT wl.id_user, COALESCE(NULLIF(MAX(u.username),''), wl.id_user) AS uname, COALESCE(SUM(wl.amount),0) AS total_commission, COUNT(*) AS payouts FROM wallet_ledger wl LEFT JOIN user u ON u.id = wl.id_user WHERE wl.category = 'affiliate_commission' AND wl.direction = 'credit' GROUP BY wl.id_user ORDER BY total_commission DESC LIMIT 10");
+        $rxTopReferrers = $rxTopReferrersStmt->fetchAll(PDO::FETCH_ASSOC);
+        return [$rxTotalCommission, $rxTotalStartGiftClaims, $rxTotalReferredUsers, $rxTopReferrers];
+    }
+
+    function rxAdminWalletLimitValue($raw, string $default, string $group, $value)
+    {
+        $limits = json_decode($raw, true);
+        if (!is_array($limits)) {
+            $limits = ['n' => $default, 'n2' => $default, 'f' => $default];
+        }
+        if ($group === 'allusers') {
+            foreach (['n', 'n2', 'f'] as $agent) {
+                $limits[$agent] = $value;
+            }
+        } else {
+            $limits[$group] = $value;
+        }
+        return json_encode($limits);
+    }
+}
+
 if (function_exists('nmResolvePanelNameForUser')) {
     // Some legacy handlers in this file (panel-name edit, URL edit, etc.)
     // expect $user['Processing_value'] to be a SCALAR panel name. This shim
@@ -2478,14 +2509,7 @@ $iduser  در ربات  رفع مسدود گردید
     nm_adminInstantReply($from_id, $datatextbot['dyn_affiliates_extra_monthly_cap_saved'] ?? "✅ سقف ماهانه ذخیره شد.", $affiliatesAntiFraud, 'HTML');
     step('affiliates_antifraud_menu', $from_id);
 } elseif (($text == "📊 گزارشات زیرمجموعه" || $datain == "affiliates_reports") && $adminrulecheck['rule'] == "administrator") {
-    $rxTotalCommissionStmt = $pdo->query("SELECT COALESCE(SUM(amount),0) FROM wallet_ledger WHERE category = 'affiliate_commission' AND direction = 'credit'");
-    $rxTotalCommission = number_format((float) $rxTotalCommissionStmt->fetchColumn());
-    $rxTotalStartGiftStmt = $pdo->query("SELECT COUNT(*) FROM reagent_report WHERE get_gift = 1");
-    $rxTotalStartGiftClaims = (int) $rxTotalStartGiftStmt->fetchColumn();
-    $rxTotalReferredStmt = $pdo->query("SELECT COUNT(*) FROM user WHERE affiliates IS NOT NULL AND affiliates != '' AND affiliates != '0'");
-    $rxTotalReferredUsers = (int) $rxTotalReferredStmt->fetchColumn();
-    $rxTopReferrersStmt = $pdo->query("SELECT wl.id_user, COALESCE(NULLIF(MAX(u.username),''), wl.id_user) AS uname, COALESCE(SUM(wl.amount),0) AS total_commission, COUNT(*) AS payouts FROM wallet_ledger wl LEFT JOIN user u ON u.id = wl.id_user WHERE wl.category = 'affiliate_commission' AND wl.direction = 'credit' GROUP BY wl.id_user ORDER BY total_commission DESC LIMIT 10");
-    $rxTopReferrers = $rxTopReferrersStmt->fetchAll(PDO::FETCH_ASSOC);
+    [$rxTotalCommission, $rxTotalStartGiftClaims, $rxTotalReferredUsers, $rxTopReferrers] = rxAdminAffiliateReportData($pdo);
     $rxTopReferrersText = "";
     $rxRank = 1;
     foreach ($rxTopReferrers as $rxRow) {
@@ -2530,16 +2554,10 @@ $iduser  در ربات  رفع مسدود گردید
     }
     $text = $grp;
     step('home', $from_id);
-    $balancemaax = json_decode(select("PaySetting", "ValuePay", "NamePay", "minbalance", "select")['ValuePay'] ?? '{}', true);
-    if (!is_array($balancemaax)) {
-        $balancemaax = ["n" => "20000", "n2" => "20000", "f" => "20000"];
-    }
-    if ($text === 'allusers') {
-        foreach (["n", "n2", "f"] as $_ag) { $balancemaax[$_ag] = $user['Processing_value']; }
-    } else {
-        $balancemaax[$text] = $user['Processing_value'];
-    }
-    $balancemaax = json_encode($balancemaax);
+    $balancemaax = rxAdminWalletLimitValue(
+        select("PaySetting", "ValuePay", "NamePay", "minbalance", "select")['ValuePay'] ?? '{}',
+        "20000", $text, $user['Processing_value']
+    );
     nm_adminInstantReply($from_id, $textbotlang['Admin']['SettingnowPayment']['Savaapi'], $keyboardadmin, 'HTML');
     update("PaySetting", "ValuePay", $balancemaax, "NamePay", "minbalance");
 } elseif ($datain == "maxbalanceaccount" && $adminrulecheck['rule'] == "administrator") {
@@ -2568,16 +2586,10 @@ $iduser  در ربات  رفع مسدود گردید
     }
     $text = $grp;
     step('home', $from_id);
-    $balancemaax = json_decode(select("PaySetting", "ValuePay", "NamePay", "maxbalance", "select")['ValuePay'] ?? '{}', true);
-    if (!is_array($balancemaax)) {
-        $balancemaax = ["n" => "1000000", "n2" => "1000000", "f" => "1000000"];
-    }
-    if ($text === 'allusers') {
-        foreach (["n", "n2", "f"] as $_ag) { $balancemaax[$_ag] = $user['Processing_value']; }
-    } else {
-        $balancemaax[$text] = $user['Processing_value'];
-    }
-    $balancemaax = json_encode($balancemaax);
+    $balancemaax = rxAdminWalletLimitValue(
+        select("PaySetting", "ValuePay", "NamePay", "maxbalance", "select")['ValuePay'] ?? '{}',
+        "1000000", $text, $user['Processing_value']
+    );
     nm_adminInstantReply($from_id, $textbotlang['Admin']['SettingnowPayment']['Savaapi'], $keyboardadmin, 'HTML');
     update("PaySetting", "ValuePay", $balancemaax, "NamePay", "maxbalance");
 } elseif (preg_match('/removeagent_(\w+)/', $datain, $dataget)) {

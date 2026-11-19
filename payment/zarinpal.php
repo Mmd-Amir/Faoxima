@@ -120,28 +120,20 @@ $response = json_decode($response,true);
     $dec_payment_status = "از انجام تراکنش متشکریم!";
 
 
-    $atomic = $pdo->prepare(
-        "UPDATE Payment_report SET payment_Status = 'paid' "
-        . "WHERE id_order = :id AND payment_Status NOT IN ('paid', 'cancelled')"
-    );
-    $atomic->bindValue(':id', $invoice_id, PDO::PARAM_STR);
-    $atomic->execute();
-    $alreadyPaid = $atomic->rowCount() < 1;
+    $alreadyPaid = RxLegacyPaymentConfirmation::claimZarinpal($pdo, $invoice_id) < 1;
     $Payment_report = select("Payment_report", "*", "id_order", $invoice_id,"select");
     if(!$alreadyPaid && is_array($Payment_report)){
     $textbotlang = languagechange('../text.json');
     DirectPayment($invoice_id,"../images.jpg");
     $pricecashback = select("PaySetting", "ValuePay", "NamePay", "chashbackzarinpal","select")['ValuePay'];
     $Balance_id = select("user","*","id",$Payment_report['id_user'],"select");
-    $cashbackEligible = !function_exists('rx_cashbackEligibleForKey')
-        || rx_cashbackEligibleForKey("chashbackzarinpal", $Balance_id['register'] ?? null, $Payment_report['id_invoice'] ?? null, $Balance_id['id'] ?? null, $Payment_report['id_order'] ?? null);
-    if($cashbackEligible && $pricecashback != "0"){
-        $result = (int) floor(($Payment_report['price'] * $pricecashback) / 100);
-        if (rx_cashback_credit_once($Payment_report['id_order'], $Balance_id['id'], $result, 'chashbackzarinpal', 'هدیه بازگشت وجه زرین‌پال') === 'credited') {
-            $pricecashback =  number_format($pricecashback);
-            $text_report = "🎁 کاربر عزیز مبلغ " . rxFormatToman($result) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
-            sendmessage($Balance_id['id'], $text_report, null, 'HTML');
-        }
+    $result = RxLegacyPaymentConfirmation::creditCashback(
+        $Payment_report, $Balance_id, 'chashbackzarinpal', $pricecashback, 'هدیه بازگشت وجه زرین‌پال'
+    );
+    if ($result !== null) {
+        $pricecashback =  number_format($pricecashback);
+        $text_report = "🎁 کاربر عزیز مبلغ " . rxFormatToman($result) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
+        sendmessage($Balance_id['id'], $text_report, null, 'HTML');
     }
     $paymentreports = select("topicid","idreport","report","paymentreport","select")['idreport'];
     $refcode = $response['data']['ref_id'];

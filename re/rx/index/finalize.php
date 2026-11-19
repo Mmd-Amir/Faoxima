@@ -1,8 +1,21 @@
 <?php
 
-if (isset($update['pre_checkout_query']) && function_exists('rxStarsPreCheckoutV2') && rxStarsPreCheckoutV2($update['pre_checkout_query'])) {
-    return;
-} elseif (isset($update['pre_checkout_query'])) {
+function rxBotRouteFinalization($update, $datain, &$dataget): ?string
+{
+    return match (true) {
+        isset($update['pre_checkout_query']) => 'stars_pre_checkout',
+        (bool) preg_match('/extends_(\w+)_(.*)/', $datain, $dataget) => 'renewal_start',
+        (bool) preg_match('/^serviceextendselects-(.*)-(.*)/', $datain, $dataget) => 'renewal_product',
+        (bool) preg_match('/^confirmserivces-(.*)-(.*)/', $datain, $dataget) => 'renewal_confirm',
+        default => null,
+    };
+}
+
+switch (rxBotRouteFinalization($update, $datain, $dataget)) {
+case 'stars_pre_checkout':
+    if (function_exists('rxStarsPreCheckoutV2') && rxStarsPreCheckoutV2($update['pre_checkout_query'])) {
+        return;
+    }
     $userid = $update['pre_checkout_query']['from']['id'];
     $id_order = $update['pre_checkout_query']['invoice_payload'];
     $Payment_report = select("Payment_report", "*", "id_order", $id_order, "select");
@@ -43,7 +56,8 @@ if (isset($update['pre_checkout_query']) && function_exists('rxStarsPreCheckoutV
             'parse_mode' => "HTML"
         ]);
     }
-} elseif (preg_match('/extends_(\w+)_(.*)/', $datain, $dataget)) {
+    break;
+case 'renewal_start':
     $username = $dataget[1];
     $invoiceIdForExtend = $dataget[2] ?? '';
     $nameloc = false;
@@ -114,7 +128,8 @@ if (isset($update['pre_checkout_query']) && function_exists('rxStarsPreCheckoutV
         'panel' => $marzban_list_get['name_panel'],
     ]);
     Editmessagetext($from_id, $message_id, $textextend, KeyboardProduct($marzban_list_get['name_panel'], $query, $user['pricediscount'], "serviceextendselects-", false, "backuser", $username, "customsellvolume", $user['agent'], $queryParams));
-} elseif (preg_match('/^serviceextendselects-(.*)-(.*)/', $datain, $dataget)) {
+    break;
+case 'renewal_product':
     deletemessage($from_id, $message_id);
     $codeproduct = $dataget[1];
     $username = $dataget[2];
@@ -157,7 +172,8 @@ if (isset($update['pre_checkout_query']) && function_exists('rxStarsPreCheckoutV
         $rxRenewInvoiceText .= "\n\n" . $rxRenewPreview['text'];
     }
     sendmessage($from_id, $rxRenewInvoiceText, $keyboardextend, 'html');
-} elseif (preg_match('/^confirmserivces-(.*)-(.*)/', $datain, $dataget)) {
+    break;
+case 'renewal_confirm':
     $codeproduct = $dataget[1];
     $usernamePanelExtends = $dataget[2];
     deletemessage($from_id, $message_id);
@@ -413,6 +429,7 @@ if (isset($update['pre_checkout_query']) && function_exists('rxStarsPreCheckoutV
             'parse_mode' => "HTML"
         ]);
     }
+    break;
 }
 if (in_array($from_id, $admin_ids)) {
     $GLOBALS['rx_admin_scope'] = true;

@@ -28,20 +28,8 @@ if (!function_exists('rxReceiptJdate')) {
     }
 }
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindParam("username", $_SESSION["user"], PDO::PARAM_STR);
-$query->execute();
-$adminRow = $query->fetch(PDO::FETCH_ASSOC);
-
-if (!isset($_SESSION["user"]) || !$adminRow) {
-    header('Location: login.php');
-    exit;
-}
-
-fx_csrf_guard();
-
-if (isset($_GET['media']) && $_GET['media'] !== '') {
-    $mediaOrder = (string) $_GET['media'];
+function fx_receipts_send_media(string $mediaOrder, $APIKEY): void
+{
     if (function_exists('rx_sbv_is_verify_order') && rx_sbv_is_verify_order($mediaOrder)) {
         http_response_code(404);
         exit;
@@ -84,45 +72,43 @@ if (isset($_GET['media']) && $_GET['media'] !== '') {
     exit;
 }
 
-$rxFlash = null;
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_rx_action'])) {
-    $rxAction = (string) $_POST['_rx_action'];
-    $rxOrderId = (string) ($_POST['id_order'] ?? '');
-    $rxActorLabel = (string) ($_SESSION['user'] ?? '');
-    $rxKeepQs = (string) ($_POST['_keep_qs'] ?? '');
-
-    if ($rxAction === 'bulk_delete') {
-        $rxRequestedIds = $_POST['ids'] ?? [];
-        $rxRequestedIds = is_array($rxRequestedIds) ? array_values(array_unique(array_filter(array_map('strval', $rxRequestedIds), function ($v) { return $v !== ''; }))) : [];
-        $rxDeletedCount = 0;
-        foreach ($rxRequestedIds as $rxBulkOrderId) {
-            if (rxReceiptHardDelete($rxBulkOrderId)) {
-                $rxDeletedCount++;
-            }
+function fx_receipts_delete_orders(array $orderIds): int
+{
+    $deletedCount = 0;
+    foreach ($orderIds as $orderId) {
+        if (rxReceiptHardDelete($orderId)) {
+            $deletedCount++;
         }
-        $rxRequestedCount = count($rxRequestedIds);
-        if ($rxRequestedCount === 0) {
-            $rxFlash = ['type' => 'err', 'text' => 'هیچ رسیدی انتخاب نشده بود.'];
-        } elseif ($rxDeletedCount === 0) {
-            $rxFlash = ['type' => 'err', 'text' => 'هیچ‌کدام از رسیدهای انتخاب‌شده قابل حذف نبودند.'];
-        } elseif ($rxDeletedCount === $rxRequestedCount) {
-            $rxFlash = ['type' => 'ok', 'text' => 'تعداد ' . number_format($rxDeletedCount) . ' رسید با موفقیت حذف شد.'];
-        } else {
-            $rxFlash = ['type' => 'ok', 'text' => 'از ' . number_format($rxRequestedCount) . ' رسید انتخاب‌شده، ' . number_format($rxDeletedCount) . ' مورد حذف شد و ' . number_format($rxRequestedCount - $rxDeletedCount) . ' مورد به‌دلیل تغییر وضعیت یا نامعتبر بودن حذف نشد.'];
-        }
-        $_SESSION['_rx_flash'] = $rxFlash;
-        $rxBulkFlag = 'bulk=' . ($rxDeletedCount > 0 ? 'ok' : 'err');
-        $rxRedirectQs = '?' . ($rxKeepQs !== '' ? ($rxKeepQs . '&' . $rxBulkFlag) : $rxBulkFlag);
-        header('Location: receipts.php' . $rxRedirectQs);
-        exit;
     }
+    return $deletedCount;
+}
 
+function fx_receipts_bulk_result(array $post): array
+{
+    $rxRequestedIds = fx_bulk_string_ids($post['ids'] ?? []);
+    $rxDeletedCount = fx_receipts_delete_orders($rxRequestedIds);
+    $rxRequestedCount = count($rxRequestedIds);
+    if ($rxRequestedCount === 0) {
+        $rxFlash = ['type' => 'err', 'text' => 'هیچ رسیدی انتخاب نشده بود.'];
+    } elseif ($rxDeletedCount === 0) {
+        $rxFlash = ['type' => 'err', 'text' => 'هیچ‌کدام از رسیدهای انتخاب‌شده قابل حذف نبودند.'];
+    } elseif ($rxDeletedCount === $rxRequestedCount) {
+        $rxFlash = ['type' => 'ok', 'text' => 'تعداد ' . number_format($rxDeletedCount) . ' رسید با موفقیت حذف شد.'];
+    } else {
+        $rxFlash = ['type' => 'ok', 'text' => 'از ' . number_format($rxRequestedCount) . ' رسید انتخاب‌شده، ' . number_format($rxDeletedCount) . ' مورد حذف شد و ' . number_format($rxRequestedCount - $rxDeletedCount) . ' مورد به‌دلیل تغییر وضعیت یا نامعتبر بودن حذف نشد.'];
+    }
+    return [$rxFlash, $rxDeletedCount];
+}
+
+function fx_receipts_action(string $rxAction, string $rxOrderId, string $rxActorLabel, array $post): ?array
+{
+    $rxFlash = null;
     if ($rxOrderId === '') {
         $rxFlash = ['type' => 'err', 'text' => 'درخواست نامعتبر است.'];
     } elseif (function_exists('rx_sbv_is_verify_order') && rx_sbv_is_verify_order($rxOrderId)) {
         $rxFlash = ['type' => 'err', 'text' => 'این پرداخت از نوع فوراپ است و باید از بخش فوراپ مدیریت شود.'];
     } elseif ($rxAction === 'confirm') {
-        $res = rxReceiptConfirm($rxOrderId, ['actor_label' => $rxActorLabel, 'override_reason' => trim((string) ($_POST['reason'] ?? ''))]);
+        $res = rxReceiptConfirm($rxOrderId, ['actor_label' => $rxActorLabel, 'override_reason' => trim((string) ($post['reason'] ?? ''))]);
         if ($res['ok']) {
             $rxFlash = ['type' => 'ok', 'text' => 'رسید با موفقیت تایید شد.'];
         } elseif (($res['reason'] ?? '') === 'verify_reason_required') {
@@ -137,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_rx_action'])) {
             $rxFlash = ['type' => 'err', 'text' => 'تکمیل عملیات با خطا مواجه شد، دوباره تلاش کنید.'];
         }
     } elseif ($rxAction === 'reject') {
-        $rxReason = trim((string) ($_POST['reason'] ?? ''));
+        $rxReason = trim((string) ($post['reason'] ?? ''));
         if ($rxReason === '') {
             $rxFlash = ['type' => 'err', 'text' => 'برای رد کردن رسید باید دلیل را وارد کنید.'];
         } else {
@@ -157,6 +143,92 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_rx_action'])) {
             ? ['type' => 'ok', 'text' => 'رسید با موفقیت حذف شد.']
             : ['type' => 'err', 'text' => 'حذف رسید ممکن نشد.'];
     }
+    return $rxFlash;
+}
+
+function fx_receipts_filter(string $rxQ, array $rxDf, $rxStatus, array $rxStatusOptions, array $rxAf, string $rxType): array
+{
+    $rxWhereSql = rxReceiptListScopeSql();
+    $rxWhereParams = [];
+    if ($rxQ !== '') {
+        $rxLike = '%' . $rxQ . '%';
+        $rxWhereSql .= ' AND (id_order LIKE :l1 OR id_user LIKE :l2 OR card_last4 LIKE :l3)';
+        $rxWhereParams[':l1'] = $rxLike;
+        $rxWhereParams[':l2'] = $rxLike;
+        $rxWhereParams[':l3'] = $rxLike;
+    }
+    $rxWhereSql .= fx_date_filter_sql_mixed_named('time', $rxDf['from'], $rxDf['to'], $rxWhereParams, 'd');
+    $rxWhereSql .= fx_status_filter_sql('payment_Status', $rxStatus, $rxStatusOptions, $rxWhereParams, ':statusVal');
+    $rxWhereSql .= fx_amount_filter_sql('price', $rxAf, $rxWhereParams, 'am');
+    if ($rxType === 'wallet') {
+        $rxWhereSql .= " AND (id_invoice IS NULL OR CAST(SUBSTRING_INDEX(id_invoice, '|', 1) AS BINARY) NOT IN ('getconfigafterpay', 'getextenduser', 'getextravolumeuser', 'getextratimeuser'))";
+    } elseif ($rxType !== '') {
+        $rxWhereSql .= " AND CAST(SUBSTRING_INDEX(id_invoice, '|', 1) AS BINARY) = :otype";
+        $rxWhereParams[':otype'] = $rxType;
+    }
+    return [$rxWhereSql, $rxWhereParams];
+}
+
+function fx_receipts_page(PDO $pdo, string $rxWhereSql, array $rxWhereParams): array
+{
+    $rxPg = fx_paginate($pdo, "SELECT COUNT(*) FROM Payment_report WHERE $rxWhereSql", $rxWhereParams, 20);
+
+    $rxListStmt = $pdo->prepare("SELECT * FROM Payment_report WHERE $rxWhereSql ORDER BY id DESC LIMIT :perPage OFFSET :offset");
+    foreach ($rxWhereParams as $k => $v) $rxListStmt->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
+    $rxListStmt->bindValue(':perPage', $rxPg['perPage'], PDO::PARAM_INT);
+    $rxListStmt->bindValue(':offset', $rxPg['offset'], PDO::PARAM_INT);
+    $rxListStmt->execute();
+    $rxRows = $rxListStmt->fetchAll(PDO::FETCH_ASSOC);
+    return [$rxPg, $rxRows];
+}
+
+function fx_receipts_summary(PDO $pdo): array
+{
+    $rxPendingCount = (int) $pdo->query("SELECT COUNT(*) FROM Payment_report WHERE " . rxReceiptListScopeSql() . " AND payment_Status = 'waiting'")->fetchColumn();
+
+    $rxTodayStart = strtotime(date('Y-m-d 00:00:00'));
+    $rxConfirmedTodayStmt = $pdo->prepare(
+        "SELECT COUNT(*), COALESCE(SUM(price),0) FROM Payment_report WHERE " . rxReceiptListScopeSql() . " AND payment_Status = 'paid' "
+        . "AND ((`time` REGEXP '^[0-9]+$' AND CAST(`time` AS UNSIGNED) >= :t1) OR (`time` NOT REGEXP '^[0-9]+$' AND STR_TO_DATE(REPLACE(`time`, '/', '-'), '%Y-%m-%d %H:%i:%s') >= FROM_UNIXTIME(:t2)))"
+    );
+    $rxConfirmedTodayStmt->execute([':t1' => $rxTodayStart, ':t2' => $rxTodayStart]);
+    $rxConfirmedTodayRow = $rxConfirmedTodayStmt->fetch(PDO::FETCH_NUM);
+    $rxConfirmedTodayCount = (int) ($rxConfirmedTodayRow[0] ?? 0);
+    $rxConfirmedTodayAmount = (int) ($rxConfirmedTodayRow[1] ?? 0);
+
+    $rxRejectedTodayStmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM Payment_report WHERE " . rxReceiptListScopeSql() . " AND payment_Status = 'reject' "
+        . "AND ((`time` REGEXP '^[0-9]+$' AND CAST(`time` AS UNSIGNED) >= :t1) OR (`time` NOT REGEXP '^[0-9]+$' AND STR_TO_DATE(REPLACE(`time`, '/', '-'), '%Y-%m-%d %H:%i:%s') >= FROM_UNIXTIME(:t2)))"
+    );
+    $rxRejectedTodayStmt->execute([':t1' => $rxTodayStart, ':t2' => $rxTodayStart]);
+    $rxRejectedTodayCount = (int) $rxRejectedTodayStmt->fetchColumn();
+    return [$rxPendingCount, $rxConfirmedTodayCount, $rxConfirmedTodayAmount, $rxRejectedTodayCount];
+}
+
+fx_admin_require_access($pdo);
+fx_csrf_guard();
+
+if (isset($_GET['media']) && $_GET['media'] !== '') {
+    fx_receipts_send_media((string) $_GET['media'], $APIKEY);
+}
+
+$rxFlash = null;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_rx_action'])) {
+    $rxAction = (string) $_POST['_rx_action'];
+    $rxOrderId = (string) ($_POST['id_order'] ?? '');
+    $rxActorLabel = (string) ($_SESSION['user'] ?? '');
+    $rxKeepQs = (string) ($_POST['_keep_qs'] ?? '');
+
+    if ($rxAction === 'bulk_delete') {
+        [$rxFlash, $rxDeletedCount] = fx_receipts_bulk_result($_POST);
+        $_SESSION['_rx_flash'] = $rxFlash;
+        $rxBulkFlag = 'bulk=' . ($rxDeletedCount > 0 ? 'ok' : 'err');
+        $rxRedirectQs = '?' . ($rxKeepQs !== '' ? ($rxKeepQs . '&' . $rxBulkFlag) : $rxBulkFlag);
+        header('Location: receipts.php' . $rxRedirectQs);
+        exit;
+    }
+
+    $rxFlash = fx_receipts_action($rxAction, $rxOrderId, $rxActorLabel, $_POST);
 
     $_SESSION['_rx_flash'] = $rxFlash;
     $redirectQs = $rxKeepQs !== '' ? ('?' . $rxKeepQs) : '';
@@ -192,24 +264,7 @@ $rxType = fx_extra_text_param('otype', 40);
 if (!isset($rxTypeOptions[$rxType])) $rxType = '';
 $rxExtraKeep = array_merge(fx_amount_filter_keep($rxAf), ['otype' => $rxType !== '' ? $rxType : null]);
 
-$rxWhereSql = rxReceiptListScopeSql();
-$rxWhereParams = [];
-if ($rxQ !== '') {
-    $rxLike = '%' . $rxQ . '%';
-    $rxWhereSql .= ' AND (id_order LIKE :l1 OR id_user LIKE :l2 OR card_last4 LIKE :l3)';
-    $rxWhereParams[':l1'] = $rxLike;
-    $rxWhereParams[':l2'] = $rxLike;
-    $rxWhereParams[':l3'] = $rxLike;
-}
-$rxWhereSql .= fx_date_filter_sql_mixed_named('time', $rxDf['from'], $rxDf['to'], $rxWhereParams, 'd');
-$rxWhereSql .= fx_status_filter_sql('payment_Status', $rxStatus, $rxStatusOptions, $rxWhereParams, ':statusVal');
-$rxWhereSql .= fx_amount_filter_sql('price', $rxAf, $rxWhereParams, 'am');
-if ($rxType === 'wallet') {
-    $rxWhereSql .= " AND (id_invoice IS NULL OR CAST(SUBSTRING_INDEX(id_invoice, '|', 1) AS BINARY) NOT IN ('getconfigafterpay', 'getextenduser', 'getextravolumeuser', 'getextratimeuser'))";
-} elseif ($rxType !== '') {
-    $rxWhereSql .= " AND CAST(SUBSTRING_INDEX(id_invoice, '|', 1) AS BINARY) = :otype";
-    $rxWhereParams[':otype'] = $rxType;
-}
+[$rxWhereSql, $rxWhereParams] = fx_receipts_filter($rxQ, $rxDf, $rxStatus, $rxStatusOptions, $rxAf, $rxType);
 
 $rxStatusActive = $rxStatus !== '' && isset($rxStatusOptions[$rxStatus]);
 $rxFilterActive = $rxQ !== '' || $rxDf['active'] || $rxStatusActive || $rxAf['active'] || $rxType !== '';
@@ -226,42 +281,14 @@ if (fx_filter_delete_requested()) {
     if ($rxFilterActive) {
         $fdOrderIds = fx_filter_delete_collect($pdo, 'Payment_report', 'id_order', $rxWhereSql, $rxWhereParams);
         $fdMatched = count($fdOrderIds);
-        foreach ($fdOrderIds as $fdOrderId) {
-            if (rxReceiptHardDelete($fdOrderId)) {
-                $fdDeleted++;
-            }
-        }
+        $fdDeleted = fx_receipts_delete_orders($fdOrderIds);
     }
     fx_filter_delete_redirect('receipts.php', $rxFilterParams, $fdMatched, $fdDeleted);
 }
 
-$rxPg = fx_paginate($pdo, "SELECT COUNT(*) FROM Payment_report WHERE $rxWhereSql", $rxWhereParams, 20);
+[$rxPg, $rxRows] = fx_receipts_page($pdo, $rxWhereSql, $rxWhereParams);
 
-$rxListStmt = $pdo->prepare("SELECT * FROM Payment_report WHERE $rxWhereSql ORDER BY id DESC LIMIT :perPage OFFSET :offset");
-foreach ($rxWhereParams as $k => $v) $rxListStmt->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
-$rxListStmt->bindValue(':perPage', $rxPg['perPage'], PDO::PARAM_INT);
-$rxListStmt->bindValue(':offset', $rxPg['offset'], PDO::PARAM_INT);
-$rxListStmt->execute();
-$rxRows = $rxListStmt->fetchAll(PDO::FETCH_ASSOC);
-
-$rxPendingCount = (int) $pdo->query("SELECT COUNT(*) FROM Payment_report WHERE " . rxReceiptListScopeSql() . " AND payment_Status = 'waiting'")->fetchColumn();
-
-$rxTodayStart = strtotime(date('Y-m-d 00:00:00'));
-$rxConfirmedTodayStmt = $pdo->prepare(
-    "SELECT COUNT(*), COALESCE(SUM(price),0) FROM Payment_report WHERE " . rxReceiptListScopeSql() . " AND payment_Status = 'paid' "
-    . "AND ((`time` REGEXP '^[0-9]+$' AND CAST(`time` AS UNSIGNED) >= :t1) OR (`time` NOT REGEXP '^[0-9]+$' AND STR_TO_DATE(REPLACE(`time`, '/', '-'), '%Y-%m-%d %H:%i:%s') >= FROM_UNIXTIME(:t2)))"
-);
-$rxConfirmedTodayStmt->execute([':t1' => $rxTodayStart, ':t2' => $rxTodayStart]);
-$rxConfirmedTodayRow = $rxConfirmedTodayStmt->fetch(PDO::FETCH_NUM);
-$rxConfirmedTodayCount = (int) ($rxConfirmedTodayRow[0] ?? 0);
-$rxConfirmedTodayAmount = (int) ($rxConfirmedTodayRow[1] ?? 0);
-
-$rxRejectedTodayStmt = $pdo->prepare(
-    "SELECT COUNT(*) FROM Payment_report WHERE " . rxReceiptListScopeSql() . " AND payment_Status = 'reject' "
-    . "AND ((`time` REGEXP '^[0-9]+$' AND CAST(`time` AS UNSIGNED) >= :t1) OR (`time` NOT REGEXP '^[0-9]+$' AND STR_TO_DATE(REPLACE(`time`, '/', '-'), '%Y-%m-%d %H:%i:%s') >= FROM_UNIXTIME(:t2)))"
-);
-$rxRejectedTodayStmt->execute([':t1' => $rxTodayStart, ':t2' => $rxTodayStart]);
-$rxRejectedTodayCount = (int) $rxRejectedTodayStmt->fetchColumn();
+[$rxPendingCount, $rxConfirmedTodayCount, $rxConfirmedTodayAmount, $rxRejectedTodayCount] = fx_receipts_summary($pdo);
 
 $rxStatusMeta = [
     'waiting'    => ['label' => 'در انتظار بررسی', 'class' => 'badge-warning'],

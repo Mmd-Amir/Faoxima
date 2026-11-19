@@ -405,7 +405,7 @@ if (!function_exists('rxReceiptReject')) {
 
         $finalReport = rxReceiptGet($orderId, false);
         if (function_exists('rx_redis_del')) {
-            rx_redis_del('faoxima:paystatus:' . $orderId . ':' . (string) ($finalReport['id_user'] ?? ''));
+            rx_redis_del(rx_payment_status_cache_key($orderId, ($finalReport['id_user'] ?? '')));
         }
         $side = rxReceiptRejectSideEffects($finalReport, $orderId, $reason, $actorLabel, $skipTelegramSync, $notifyUser);
 
@@ -607,7 +607,7 @@ if (!function_exists('rxCancelAbandonedCardPayment')) {
             if ($invoiceInvalidated) clearSelectCache('invoice');
         }
         if (function_exists('rx_redis_del')) {
-            rx_redis_del('faoxima:paystatus:' . $orderId . ':' . $userId);
+            rx_redis_del(rx_payment_status_cache_key($orderId, $userId));
         }
 
         return ['ok' => true, 'status' => $targetStatus, 'invoice_invalidated' => $invoiceInvalidated, 'report' => $row];
@@ -705,7 +705,7 @@ if (!function_exists('rxRecoverStaleReceiptUploads')) {
                     if ($toUnpaid->rowCount() === 1) $out['unpaid']++;
                 }
                 if (function_exists('rx_redis_del')) {
-                    rx_redis_del('faoxima:paystatus:' . $orderId . ':' . (string) $row['id_user']);
+                    rx_redis_del(rx_payment_status_cache_key($orderId, $row['id_user']));
                 }
             } catch (Throwable $e) {
                 $out['failed']++;

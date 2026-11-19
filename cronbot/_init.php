@@ -467,18 +467,26 @@ if (!function_exists('rx_cron_bulk_cursor')) {
 }
 
 if (!function_exists('rx_cron_invoice_cursor')) {
-    function rx_cron_invoice_cursor(string $job, ?string $invoiceId = null): string
+    function rx_cron_write_invoice_cursor(string $job, string $invoiceId): bool
     {
         $file = rx_cron_runtime_dir() . DIRECTORY_SEPARATOR . 'invoice_cursor_' . hash('sha256', $job) . '.json';
+        $encoded = json_encode($invoiceId, JSON_UNESCAPED_UNICODE);
+        $tmp = $file . '.tmp';
+        if ($encoded === false || @file_put_contents($tmp, $encoded, LOCK_EX) === false || !@rename($tmp, $file)) {
+            @unlink($tmp);
+            error_log('[cron] invoice cursor persist failed: ' . $job);
+            return false;
+        }
+        return true;
+    }
+
+    function rx_cron_invoice_cursor(string $job, ?string $invoiceId = null): string
+    {
         if ($invoiceId !== null) {
-            $encoded = json_encode($invoiceId, JSON_UNESCAPED_UNICODE);
-            $tmp = $file . '.tmp';
-            if ($encoded === false || @file_put_contents($tmp, $encoded, LOCK_EX) === false || !@rename($tmp, $file)) {
-                @unlink($tmp);
-                error_log('[cron] invoice cursor persist failed: ' . $job);
-            }
+            rx_cron_write_invoice_cursor($job, $invoiceId);
             return $invoiceId;
         }
+        $file = rx_cron_runtime_dir() . DIRECTORY_SEPARATOR . 'invoice_cursor_' . hash('sha256', $job) . '.json';
         if (!is_file($file)) return '';
         $raw = @file_get_contents($file, false, null, 0, 4096);
         if ($raw === false) return '';
@@ -502,6 +510,47 @@ if (!function_exists('rx_cron_bulk_invoices')) {
     }
 }
 
+if (!function_exists('rx_cron_payment_cursor_page')) {
+    function rx_cron_payment_cursor_page(?PDO $pdo, string $job, callable $fetch): array
+    {
+        $after = rx_cron_invoice_cursor($job);
+        $ceilingKey = 'payment_poll_ceiling_' . $job;
+        $ceiling = null;
+        if ($pdo !== null) {
+            try {
+                $ceiling = rx_cron_bulk_cursor($pdo, $ceilingKey);
+                if ($ceiling === 0) {
+                    $ceiling = rx_cron_bulk_cursor($pdo, $ceilingKey, (int) $pdo->query('SELECT MAX(id) FROM Payment_report')->fetchColumn());
+                }
+            } catch (Throwable $e) {
+                error_log('[cron] payment cursor ceiling unavailable: ' . $job . ' ' . get_class($e));
+                $ceiling = null;
+            }
+        }
+
+        $rows = $fetch($after, $ceiling ?? '4294967295');
+        if ($rows) {
+            return $rows;
+        }
+
+        $previousCeiling = $ceiling;
+        if ($pdo !== null && $ceiling !== null && ($after === '' || rx_cron_write_invoice_cursor($job, ''))) {
+            try {
+                $ceiling = (int) $pdo->query('SELECT MAX(id) FROM Payment_report')->fetchColumn();
+                if ($ceiling !== $previousCeiling) {
+                    rx_cron_bulk_cursor($pdo, $ceilingKey, $ceiling);
+                }
+            } catch (Throwable $e) {
+                error_log('[cron] payment cursor ceiling refresh failed: ' . $job . ' ' . get_class($e));
+                $ceiling = null;
+            }
+        }
+        return $after !== '' || $ceiling !== $previousCeiling
+            ? $fetch('', $ceiling ?? '4294967295')
+            : [];
+    }
+}
+
 
 if (!function_exists('rx_cron_load_payment_context')) {
 
@@ -513,6 +562,14 @@ if (!function_exists('rx_cron_load_payment_context')) {
             return $cached;
         }
 
+        $unavailable = [
+            'setting'        => [],
+            'paymentreports' => null,
+            'datatextbot'    => [],
+            'managePanel'    => null,
+            'db_ready'       => false,
+        ];
+
         $root = dirname(__DIR__);
         $required = [
             $root . '/config.php',
@@ -523,14 +580,7 @@ if (!function_exists('rx_cron_load_payment_context')) {
             $root . '/jdf.php',
         ];
         if (!rx_cron_require_or_skip('payment_context', $required)) {
-            $cached = [
-                'setting'        => [],
-                'paymentreports' => null,
-                'datatextbot'    => [],
-                'managePanel'    => null,
-                'db_ready'       => false,
-            ];
-            return $cached;
+            return $cached = $unavailable;
         }
         if (is_file($root . '/vendor/autoload.php')) {
             require_once $root . '/vendor/autoload.php';
@@ -540,24 +590,10 @@ if (!function_exists('rx_cron_load_payment_context')) {
         $hasPdo = isset($GLOBALS['pdo']) && $GLOBALS['pdo'] instanceof PDO;
         $hasConn = isset($GLOBALS['connect']) && $GLOBALS['connect'] !== null;
         if (!$hasPdo && !$hasConn) {
-            $cached = [
-                'setting'        => [],
-                'paymentreports' => null,
-                'datatextbot'    => [],
-                'managePanel'    => null,
-                'db_ready'       => false,
-            ];
-            return $cached;
+            return $cached = $unavailable;
         }
         if (function_exists('rx_cron_tables_ready') && !rx_cron_tables_ready('payment_context')) {
-            $cached = [
-                'setting'        => [],
-                'paymentreports' => null,
-                'datatextbot'    => [],
-                'managePanel'    => null,
-                'db_ready'       => false,
-            ];
-            return $cached;
+            return $cached = $unavailable;
         }
 
         $setting = select('setting', '*');
@@ -590,6 +626,179 @@ if (!function_exists('rx_cron_load_payment_context')) {
             'db_ready'       => true,
         ];
         return $cached;
+    }
+}
+
+
+
+if (!function_exists('rx_cron_require_payment_context')) {
+    function rx_cron_require_payment_context(): ?array
+    {
+        $context = rx_cron_load_payment_context();
+        if (!empty($context['db_ready'])) {
+            return $context;
+        }
+        if (function_exists('rx_cron_task_defer')) {
+            rx_cron_task_defer('payment_context_unavailable', 180);
+        }
+        return null;
+    }
+}
+
+if (!function_exists('rx_cron_budget_exhausted')) {
+    function rx_cron_budget_exhausted(): bool
+    {
+        if (!rx_cron_time_up()) {
+            return false;
+        }
+        if (function_exists('rx_cron_task_defer')) {
+            rx_cron_task_defer('time_budget', 60);
+        }
+        return true;
+    }
+}
+
+if (!function_exists('rx_cron_drain_notifications')) {
+    function rx_cron_drain_notifications(array &$pending, int $limit, callable $deliver): void
+    {
+        $attempted = 0;
+        foreach (array_keys($pending) as $key) {
+            if (rx_cron_time_up() || $attempted >= $limit) {
+                break;
+            }
+            if (($pending[$key]['state'] ?? 'uncertain') === 'pending' && (int) ($pending[$key]['next_attempt_at'] ?? 0) <= time()) {
+                $attempted++;
+                $deliver($key);
+            }
+        }
+    }
+
+    function rx_cron_deliver_pending_notification(array &$pending, $key, callable $persist, callable $send, bool $checkBudget, bool $recordSentTime): bool
+    {
+        $entry = $pending[$key] ?? null;
+        if (is_array($entry) && ($entry['state'] ?? '') === 'sent') {
+            return true;
+        }
+        if (!is_array($entry) || ($entry['state'] ?? 'uncertain') !== 'pending' || (int) ($entry['next_attempt_at'] ?? 0) > time() || ($checkBudget && rx_cron_time_up())) {
+            return false;
+        }
+        $persistState = static function (string $state) use ($persist): void {
+            try {
+                $persist();
+            } catch (Throwable $e) {
+                error_log('[cron:notification] could not persist ' . $state . ': ' . get_class($e));
+                throw $e;
+            }
+        };
+        if (!rx_cron_catchup_allowed((int) ($entry['created_at'] ?? 0))) {
+            $pending[$key]['state'] = 'expired';
+            $pending[$key]['next_attempt_at'] = 0;
+            $pending[$key]['last_error'] = 'catchup_window_elapsed';
+            $persistState('expired');
+            return false;
+        }
+        $pending[$key]['state'] = 'sending';
+        $pending[$key]['attempts'] = (int) ($entry['attempts'] ?? 0) + 1;
+        $persistState('sending');
+        try {
+            $result = $send($entry);
+        } catch (Throwable $e) {
+            $result = ['ok' => false, 'description' => $e->getMessage()];
+        }
+        if (is_array($result) && ($result['ok'] ?? false) === true) {
+            $pending[$key]['state'] = 'sent';
+            if ($recordSentTime) {
+                $pending[$key]['sent_at'] = time();
+            }
+            $persistState('sent');
+            return true;
+        }
+        $code = (int) ($result['error_code'] ?? 0);
+        $pending[$key]['state'] = $code === 429 && $pending[$key]['attempts'] < 5 ? 'pending' : ($code >= 400 && $code < 500 && $code !== 408 ? 'failed' : 'uncertain');
+        $pending[$key]['next_attempt_at'] = time() + max(60, (int) ($result['parameters']['retry_after'] ?? 300));
+        $pending[$key]['last_error'] = substr((string) ($result['description'] ?? 'no_response'), 0, 200);
+        $persistState($pending[$key]['state']);
+        return false;
+    }
+}
+
+if (!function_exists('rx_cron_run_poll_batch')) {
+    function rx_cron_run_poll_batch(array $rows, callable $poll, callable $onError, callable $advance): void
+    {
+        foreach ($rows as $row) {
+            if (rx_cron_budget_exhausted()) {
+                break;
+            }
+            try {
+                $poll($row);
+            } catch (Throwable $e) {
+                $onError($row, $e);
+            } finally {
+                $advance($row);
+            }
+        }
+    }
+}
+
+if (!function_exists('rx_cron_bulk_service_status')) {
+    function rx_cron_bulk_service_status(PDO $pdo, ManagePanel $managePanel, string $job, string $eligible, string $request, string $providerBefore, string $providerAfter, string $invoiceAfter): bool
+    {
+        $limit = rx_cron_batch_size(30);
+        $finished = $pdo->prepare("SELECT id FROM user WHERE checkstatus = ? AND NOT EXISTS (SELECT 1 FROM invoice WHERE id_user = user.id AND ($eligible)) ORDER BY id LIMIT " . (int) $limit);
+        $finished->execute([$request]);
+        $finishedUsers = $finished->fetchAll(PDO::FETCH_COLUMN);
+        $clear = $pdo->prepare("UPDATE user SET checkstatus = '0' WHERE id = ? AND checkstatus = ? AND NOT EXISTS (SELECT 1 FROM invoice WHERE id_user = user.id AND ($eligible))");
+        foreach ($finishedUsers as $userId) {
+            if (rx_cron_time_up()) {
+                break;
+            }
+            $clear->execute([$userId, $request]);
+        }
+        if (rx_cron_budget_exhausted()) {
+            return false;
+        }
+
+        $invoices = rx_cron_bulk_invoices($pdo, $job, $eligible . ' AND id_user IN (SELECT id FROM user WHERE checkstatus = ?)', [$request], $limit);
+        rx_cron_run_poll_batch(
+            $invoices,
+            static function (array $invoice) use ($pdo, $managePanel, $request, $providerBefore, $providerAfter, $invoiceAfter): void {
+                $requested = $pdo->prepare('SELECT checkstatus FROM user WHERE id = ?');
+                $requested->execute([$invoice['id_user']]);
+                if ((string) $requested->fetchColumn() !== $request) {
+                    return;
+                }
+                if (rx_cron_service_target_reached($managePanel, $invoice, $providerBefore, $providerAfter)) {
+                    update('invoice', 'Status', $invoiceAfter, 'id_invoice', $invoice['id_invoice']);
+                }
+            },
+            static function (array $invoice, Throwable $e) use ($job): void {
+                error_log('[cron:' . $job . '] invoice ' . $invoice['id_invoice'] . ': ' . $e->getMessage());
+            },
+            static function (array $invoice) use ($job): void {
+                rx_cron_invoice_cursor($job, (string) $invoice['id_invoice']);
+            }
+        );
+        return true;
+    }
+}
+
+if (!function_exists('rx_cron_service_target_reached')) {
+    function rx_cron_service_target_reached(ManagePanel $managePanel, array $invoice, string $before, string $after): bool
+    {
+        $current = $managePanel->DataUser($invoice['Service_location'], $invoice['username']);
+        if (($current['paused_by'] ?? '') === 'credit') {
+            return false;
+        }
+        $status = is_array($current) ? (string) ($current['status'] ?? '') : '';
+        if ($status === $after) {
+            return true;
+        }
+        if ($status !== $before || rx_cron_time_up()) {
+            return false;
+        }
+        $managePanel->Change_status($invoice['username'], $invoice['Service_location']);
+        $verified = $managePanel->DataUser($invoice['Service_location'], $invoice['username']);
+        return is_array($verified) && ($verified['status'] ?? '') === $after;
     }
 }
 

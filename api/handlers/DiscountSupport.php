@@ -450,6 +450,12 @@ final class MiniDiscount
         }
     }
 
+    public static function chargeServiceWallet(string $code, array $user, $amount, $agent, string $operationId): array
+    {
+        $allowNegative = $agent === 'n2' ? (int)($user['maxbuyagent'] ?? 0) : 0;
+        return self::chargeWallet($code, $user, $amount, $allowNegative, $operationId);
+    }
+
     public static function chargeWallet(string $code, array $user, $amount, int $allowNegative, string $operationId): array
     {
         $pdo = FaoximaDb::pdo();

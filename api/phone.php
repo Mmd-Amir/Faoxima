@@ -20,15 +20,19 @@ $GLOBALS['__verify_response_sent'] = false;
 
 function __verify_emit(int $http, array $payload): void
 {
-    while (ob_get_level() > 0) {
-        @ob_end_clean();
+    if (class_exists('FaoximaResponse', false)) {
+        FaoximaResponse::emitJson($http, $payload);
+    } else {
+        while (ob_get_level() > 0) {
+            @ob_end_clean();
+        }
+        if (!headers_sent()) {
+            http_response_code($http);
+            header('Content-Type: application/json; charset=utf-8');
+            header('Cache-Control: no-store, max-age=0');
+        }
+        echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
-    if (!headers_sent()) {
-        http_response_code($http);
-        header('Content-Type: application/json; charset=utf-8');
-        header('Cache-Control: no-store, max-age=0');
-    }
-    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     $GLOBALS['__verify_response_sent'] = true;
 }
 

@@ -4,6 +4,33 @@ if (!defined('FAOXIMA_REMAINING_SCAN_CAP')) {
     define('FAOXIMA_REMAINING_SCAN_CAP', 1500);
 }
 
+if (!function_exists('faoxima_remaining_filter_page')) {
+    function faoxima_remaining_filter_page(array $rows, int $page, int $perPage, string $mode, int $days, callable $resolve): array
+    {
+        $truncated = count($rows) > FAOXIMA_REMAINING_SCAN_CAP;
+        if ($truncated) {
+            $rows = array_slice($rows, 0, FAOXIMA_REMAINING_SCAN_CAP);
+        }
+        $remaining = $resolve($rows);
+        $matched = [];
+        foreach ($rows as $row) {
+            $value = $remaining[(int)$row['id']] ?? null;
+            if (faoxima_remaining_matches($value, $mode, $days)) {
+                $matched[] = $row;
+            }
+        }
+        $total = count($matched);
+        $pages = max(1, (int)ceil($total / $perPage));
+        $page = min($page, $pages);
+        $matched = array_slice($matched, ($page - 1) * $perPage, $perPage);
+        $remainingOf = [];
+        foreach ($matched as $row) {
+            $remainingOf[(int)$row['id']] = $remaining[(int)$row['id']] ?? null;
+        }
+        return [$total, $pages, $page, $matched, $remainingOf, $truncated];
+    }
+}
+
 if (!function_exists('faoxima_parse_sell_time')) {
     function faoxima_parse_sell_time($raw): ?int
     {
