@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../src/bootstrap.php';
+
 if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
     define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
 }
@@ -8,19 +10,31 @@ ini_set('session.cookie_samesite', 'Lax');
 ini_set('session.cookie_httponly', '1');
 session_start();
 require_once __DIR__ . '/../config.php';
-if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
-require_once __DIR__ . '/lib/icons.php';
+if (!@include_once __DIR__ . '/lib/ad_boot.php') {
+    http_response_code(503);
+    header('Retry-After: 3600');
+    exit;
+}
 require_once __DIR__ . '/lib/csrf.php';
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username = :username");
-$query->execute([':username' => $_SESSION['user'] ?? '']);
-$adminRow = $query->fetch(PDO::FETCH_ASSOC);
-if (!isset($_SESSION['user']) || !$adminRow) {
+$sessionUser = $_SESSION['user'] ?? null;
+$lvCsrf = \Faoxima\Admin\Web\Support\Logviewer::pageCsrf(
+    $pdo,
+    is_scalar($sessionUser) ? (string) $sessionUser : null,
+    [\Faoxima\Admin\Web\Support\Csrf::class, 'fx_csrf_token'],
+    static function ($ip): bool {
+        if (\Faoxima\Admin\Web\Support\Csrf::fx_admin_ip_allowed($ip)) {
+            return true;
+        }
+        session_unset();
+        session_destroy();
+        return false;
+    },
+);
+if ($lvCsrf === null) {
     header('Location: login.php');
     exit;
 }
-
-$lvCsrf = fx_csrf_token();
 header('Cache-Control: no-store');
 ?>
 <!DOCTYPE html>
@@ -51,14 +65,14 @@ header('Cache-Control: no-store');
             <div class="page-head">
                 <div>
                     <div class="page-head__title">
-                        <?php echo icon('circle-exclamation', 'svg-icon svg-lg'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon svg-lg'); ?>
                         مشاهده ارور‌ها
                     </div>
                     <div class="page-head__sub">بررسی و مدیریت لاگ‌ها و خطاهای برنامه بدون نیاز به ورود به هاست</div>
                 </div>
                 <div class="lv-head-actions">
                     <a class="btn btn-outline btn-sm" href="miscsettings.php">
-                        <?php echo icon('chevron-right', 'svg-icon svg-sm'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('chevron-right', 'svg-icon svg-sm'); ?>
                         <span>بازگشت به تنظیمات</span>
                     </a>
                 </div>
@@ -70,24 +84,24 @@ header('Cache-Control: no-store');
                 <aside class="lv-files card" id="lvFilesCard" aria-label="فایل‌های لاگ">
                     <button type="button" class="lv-files-toggle" id="lvFilesToggle" aria-expanded="false" aria-controls="lvFilesBody">
                         <span class="lv-files-toggle__label">
-                            <?php echo icon('list', 'svg-icon svg-sm'); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('list', 'svg-icon svg-sm'); ?>
                             <span id="lvFilesCurrent">انتخاب فایل</span>
                         </span>
-                        <?php echo icon('chevron-down', 'svg-icon svg-sm lv-chev'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('chevron-down', 'svg-icon svg-sm lv-chev'); ?>
                     </button>
                     <div class="lv-files-body" id="lvFilesBody">
                         <div class="lv-files-head">
                             <div class="lv-search lv-search--files">
                                 <input type="search" id="lvFileFilter" class="lv-input" placeholder="جستجوی نام فایل…" aria-label="جستجوی نام فایل">
                                 <button type="button" class="lv-search__clear" id="lvFileFilterClear" aria-label="پاک‌کردن جستجوی فایل" hidden>
-                                    <?php echo icon('xmark', 'svg-icon svg-sm'); ?>
+                                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('xmark', 'svg-icon svg-sm'); ?>
                                 </button>
                             </div>
                         </div>
                         <div class="lv-files-list" id="lvFilesList" role="list"></div>
                         <div class="lv-files-foot">
                             <button type="button" class="btn btn-soft-danger btn-sm btn-block" id="lvBulkDelete">
-                                <?php echo icon('trash', 'svg-icon svg-sm'); ?>
+                                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon svg-sm'); ?>
                                 <span>حذف همه لاگ‌ها…</span>
                             </button>
                         </div>
@@ -106,17 +120,17 @@ header('Cache-Control: no-store');
                                     <span id="lvAutoLabel">به‌روزرسانی خودکار</span>
                                     <button type="button" class="lv-selbtn" id="lvAutoBtn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="lvAutoLabel lvAutoText">
                                         <span id="lvAutoText">۱۰ ثانیه</span>
-                                        <?php echo icon('chevron-down', 'svg-icon svg-sm lv-chev'); ?>
+                                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('chevron-down', 'svg-icon svg-sm lv-chev'); ?>
                                     </button>
                                 </div>
                                 <button type="button" class="btn btn-outline btn-sm" id="lvRefresh">
-                                    <?php echo icon('refresh', 'svg-icon svg-sm'); ?>
+                                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('refresh', 'svg-icon svg-sm'); ?>
                                     <span>بازخوانی</span>
                                 </button>
                                 <div class="lv-menu" id="lvExportMenu">
                                     <button type="button" class="btn btn-outline btn-sm" id="lvExportBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="lvExportPop">
                                         <span>خروجی</span>
-                                        <?php echo icon('chevron-down', 'svg-icon svg-sm'); ?>
+                                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('chevron-down', 'svg-icon svg-sm'); ?>
                                     </button>
                                     <div class="lv-pop lv-pop--menu" id="lvExportPop" role="menu" aria-label="خروجی" hidden>
                                         <button type="button" role="menuitem" data-export="raw">دانلود متن فایل (ماسک‌شده)</button>
@@ -127,7 +141,7 @@ header('Cache-Control: no-store');
                         </div>
                         <div class="lv-toolbar__row lv-filters">
                             <div class="lv-search" id="lvSearchBox">
-                                <?php echo icon('search', 'svg-icon svg-sm'); ?>
+                                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('search', 'svg-icon svg-sm'); ?>
                                 <input type="search" id="lvQ" class="lv-input" placeholder="جستجو در پیام، مسیر و جزئیات…" aria-label="جستجو در رویدادها" maxlength="200">
                             </div>
                             <button type="button" class="btn btn-outline btn-sm" id="lvClear" disabled>پاک‌کردن فیلترها</button>

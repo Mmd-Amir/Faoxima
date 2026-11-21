@@ -3,7 +3,6 @@ ini_set('error_log', 'error_log');
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../jdf.php';
 require_once __DIR__ . '/../botapi.php';
-require_once __DIR__ . '/../Marzban.php';
 require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/../keyboard.php';
 require_once __DIR__ . '/../panels.php';
@@ -35,12 +34,16 @@ if (!preg_match('/^[A-Za-z0-9_\-]{1,256}$/', $rawAuthority)) {
 }
 $Authority = htmlspecialchars($rawAuthority, ENT_QUOTES, 'UTF-8');
 $StatusPayment = htmlspecialchars($rawStatus, ENT_QUOTES, 'UTF-8');
-$setting = select("setting", "*");
-$PaySetting = select("PaySetting", "ValuePay", "NamePay", "merchant_zarinpal","select")['ValuePay'];
-$Payment_reports = select("Payment_report", "*", "dec_not_confirmed", $Authority,"select");
+$setting = \Faoxima\Core\Database\Db::select("setting", "*");
+$PaySetting = \Faoxima\Core\Database\Db::select("PaySetting", "ValuePay", "NamePay", "merchant_zarinpal","select")['ValuePay'];
+$Payment_reports = \Faoxima\Core\Database\Db::select("Payment_report", "*", "dec_not_confirmed", $Authority,"select");
+if (!is_array($Payment_reports) || ($Payment_reports['Payment_Method'] ?? '') !== 'zarinpal') {
+    http_response_code(404);
+    exit('Order not found');
+}
 $price = $Payment_reports['price'];
 $invoice_id = $Payment_reports['id_order'];
-    $datatextbotget = select("textbot", "*",null ,null ,"fetchAll");
+    $datatextbotget = \Faoxima\Core\Database\Db::select("textbot", "*",null ,null ,"fetchAll");
     $datatxtbot = array();
 foreach ($datatextbotget as $row) {
     $datatxtbot[] = array(
@@ -64,32 +67,7 @@ foreach ($datatxtbot as $item) {
 $dec_payment_status = "";
 $payment_status = "";
 if($StatusPayment == "OK"){
-        $curl = curl_init();
-
-curl_setopt_array($curl, array(
-  CURLOPT_URL => 'https://api.zarinpal.com/pg/v4/payment/verify.json',
-  CURLOPT_RETURNTRANSFER => true,
-  CURLOPT_ENCODING => '',
-  CURLOPT_MAXREDIRS => 10,
-  CURLOPT_CONNECTTIMEOUT => 5,
-  CURLOPT_TIMEOUT => 20,
-  CURLOPT_FOLLOWLOCATION => true,
-  CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-  CURLOPT_CUSTOMREQUEST => 'POST',
-  CURLOPT_HTTPHEADER => array(
-    'Content-Type: application/json',
-    'Accept: application/json'
-  ),
-));
-curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode([
-  "merchant_id" => $PaySetting,
-  "amount"=> $price,
-  "authority" => $Authority,
-  "description" => $Payment_reports['id_user']
-        ]));
-$response = curl_exec($curl);
-curl_close($curl);
-$response = json_decode($response,true);
+    $response = \Faoxima\Payments\Gateways\Zarinpal\Client::verify($PaySetting, $price, $Authority, $Payment_reports['id_user']);
        $payment_status = [
 			"-9" => "خطا در ارسال داده",
 			"-10" => "ای پی یا مرچنت كد پذیرنده صحیح نیست.",
@@ -114,28 +92,29 @@ $response = json_decode($response,true);
 			"-52" => "	خطای غیر منتظره‌ای رخ داده است. ",
 			"-53" => "پرداخت متعلق به این مرچنت کد نیست.",
 			"-54" => "اتوریتی نامعتبر است.",
-    ][$response['errors']['code']];
- if($response['data']['message'] == "Verified" || $response['data']['message'] == "Paid"){
+    ][$response['errors']['code'] ?? ''] ?? '';
+ if(in_array($response['data']['message'] ?? '', ['Verified', 'Paid'], true)){
     $payment_status = "پرداخت موفق";
     $dec_payment_status = "از انجام تراکنش متشکریم!";
 
 
-    $alreadyPaid = RxLegacyPaymentConfirmation::claimZarinpal($pdo, $invoice_id) < 1;
-    $Payment_report = select("Payment_report", "*", "id_order", $invoice_id,"select");
-    if(!$alreadyPaid && is_array($Payment_report)){
-    $textbotlang = languagechange('../text.json');
-    DirectPayment($invoice_id,"../images.jpg");
-    $pricecashback = select("PaySetting", "ValuePay", "NamePay", "chashbackzarinpal","select")['ValuePay'];
-    $Balance_id = select("user","*","id",$Payment_report['id_user'],"select");
-    $result = RxLegacyPaymentConfirmation::creditCashback(
-        $Payment_report, $Balance_id, 'chashbackzarinpal', $pricecashback, 'هدیه بازگشت وجه زرین‌پال'
+    $alreadyPaid = \Faoxima\Payments\Settlement\CallbackClaims::claimZarinpal($pdo, $invoice_id) < 1;
+    $Payment_report = \Faoxima\Core\Database\Db::select("Payment_report", "*", "id_order", $invoice_id,"select");
+    if(is_array($Payment_report)){
+    $textbotlang = \Faoxima\Telegram\Conversation\ConversationData::languagechange('../text.json');
+    $settled = \Faoxima\Payments\Settlement\CallbackClaims::settleDelivery(
+        $pdo, (string) $invoice_id, $Payment_report, [\Faoxima\Payments\Gateways\GatewayRuntime::class, 'DirectPayment'], '../images.jpg', 'chashbackzarinpal', 'هدیه بازگشت وجه زرین‌پال',
+        static fn ($key) => \Faoxima\Core\Database\Db::select('PaySetting', 'ValuePay', 'NamePay', $key, 'select')['ValuePay'] ?? null
     );
+    $Balance_id = $settled['customer'];
+    $Balance_id ??= ['id' => $Payment_report['id_user'] ?? '', 'username' => '—', 'Balance' => 0];
+    $result = $settled['cashback'];
     if ($result !== null) {
-        $pricecashback =  number_format($pricecashback);
-        $text_report = "🎁 کاربر عزیز مبلغ " . rxFormatToman($result) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
+        $text_report = "🎁 کاربر عزیز مبلغ " . \Faoxima\Core\Support\Formatting::rxFormatToman($result) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
         sendmessage($Balance_id['id'], $text_report, null, 'HTML');
     }
-    $paymentreports = select("topicid","idreport","report","paymentreport","select")['idreport'];
+    if (!$alreadyPaid) {
+    $paymentreports = \Faoxima\Core\Database\Db::select("topicid","idreport","report","paymentreport","select")['idreport'];
     $refcode = $response['data']['ref_id'];
     $cart_number = $response['data']['card_pan'];
     $price = number_format($price);
@@ -155,13 +134,14 @@ $text_report = "💵 پرداخت جدید
         'parse_mode' => "HTML"
         ]);
     }
+    }
 }
 }else {
         $payment_status = [
         '0' => "پرداخت انجام نشد",
         '2' => "تراکنش قبلا وریفای و پرداخت شده است",
 
-    ][$response['errors']['code']];
+    ][$response['errors']['code'] ?? ''] ?? ($payment_status !== '' ? $payment_status : 'پرداخت انجام نشد');
      $dec_payment_status = "";
 }
 }

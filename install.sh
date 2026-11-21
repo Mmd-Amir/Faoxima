@@ -1634,7 +1634,6 @@ verify_runtime_permissions() {
             fi
         }
         for d in cron cronbot cronbot/.runtime logs; do check "$d"; done
-        for m in re/rx/*/manifest.php; do [ -f "$m" ] && check "${m%/manifest.php}"; done
         [ -d storage/private ] && check storage/private
         check .
         for f in config.php function.php cron/cron.php; do
@@ -2174,7 +2173,6 @@ install_additional_bot() {
     fi
     normalize_source_permissions "$bot_dir" || { ui_err "Runtime permission normalization failed on ${bot_dir}."; return 1; }
 
-    find "${bot_dir}/re/rx" -mindepth 2 -maxdepth 2 \( -name '.compiled.php' -o -name '.compiled.map' \) -delete 2>/dev/null || true
     if [ -f "${bot_dir}/config.php" ]; then
         sed -i -E \
             -e 's/^(\$dbname[[:space:]]*=[[:space:]]*)['"'"'"][^'"'"'"]*['"'"'"](;.*)$/\1'"''"'\2/' \

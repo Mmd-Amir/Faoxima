@@ -1,6 +1,9 @@
 <?php
 
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'broadcast.php';
 
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
     define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
 }
@@ -16,137 +19,20 @@ session_start();
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
 require_once __DIR__ . '/../botapi.php';
-require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/lib/csrf.php';
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindValue(":username", $_SESSION["user"] ?? '', PDO::PARAM_STR);
-$query->execute();
-$adminRow = $query->fetch(PDO::FETCH_ASSOC);
-if (!isset($_SESSION["user"]) || !$adminRow) {
-    header('Location: login.php');
-    exit;
+if (\Faoxima\Admin\Web\Pages\BroadcastRequest::handle(
+        _csrf: $_csrf,
+        initialCount: $initialCount,
+        pdo: $pdo ?? null,
+        query: $query,
+        stmt: $stmt
+    ) !== true) {
+    unset($adminWebPage);
+    return;
 }
 
-fx_csrf_guard();
-$_csrf = fx_csrf_token();
-
-
-function faoxima_target_sql(string $target): array {
-    switch ($target) {
-        case 'active':
-            return [" WHERE (User_Status IS NULL OR User_Status != 'block')", []];
-        case 'agents':
-            return [" WHERE agentstatus = 'agent' OR agentstatus = 'agent2'", []];
-        case 'all_users':
-        default:
-
-            return [" WHERE (User_Status IS NULL OR User_Status != 'block')", []];
-    }
-}
-
-
-function fx_broadcast_count(PDO $pdo, array $query): array
-{
-    $target = (string)($query['target'] ?? 'all_users');
-    [$whereSql, $params] = faoxima_target_sql($target);
-    try {
-        $sql = "SELECT COUNT(*) FROM user" . $whereSql;
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        return ['ok' => true, 'count' => (int)$stmt->fetchColumn()];
-    } catch (\Throwable $e) {
-        return ['ok' => false, 'error' => $e->getMessage()];
-    }
-}
-
-function fx_broadcast_send_batch(PDO $pdo, array $query, array $post): array
-{
-    $target  = (string)($query['target'] ?? 'all_users');
-    $offset  = max(0, (int)($query['offset'] ?? 0));
-    $batch   = max(1, min(30, (int)($query['batch'] ?? 15)));
-    $message = (string)($post['message'] ?? '');
-    $parse   = (string)($post['parse'] ?? 'HTML');
-    if ($parse !== 'HTML' && $parse !== 'Markdown' && $parse !== 'plain') $parse = 'HTML';
-    $parseMode = $parse === 'plain' ? '' : $parse;
-
-
-    if (!in_array($target, ['all_users', 'active', 'agents'], true)) {
-        return ['ok' => false, 'error' => 'target_invalid'];
-    }
-
-    $trim = trim($message);
-    if ($trim === '') {
-        return ['ok' => false, 'error' => 'message_empty'];
-    }
-
-    if (mb_strlen($message, 'UTF-8') > 4000) {
-        return ['ok' => false, 'error' => 'message_too_long'];
-    }
-
-    [$whereSql, $params] = faoxima_target_sql($target);
-    $sql = "SELECT id FROM user" . $whereSql . " ORDER BY id ASC LIMIT :lim OFFSET :off";
-    try {
-        $stmt = $pdo->prepare($sql);
-        foreach ($params as $k => $v) $stmt->bindValue($k, $v);
-        $stmt->bindValue(':lim', $batch, PDO::PARAM_INT);
-        $stmt->bindValue(':off', $offset, PDO::PARAM_INT);
-        $stmt->execute();
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (\Throwable $e) {
-        return ['ok' => false, 'error' => 'query: ' . $e->getMessage()];
-    }
-
-    $sent = 0; $failed = 0;
-    foreach ($rows as $r) {
-        $uid = (int)$r['id'];
-        if ($uid <= 0) continue;
-        try {
-            $res = sendmessage($uid, $message, null, $parseMode);
-            if (is_array($res) && !empty($res['ok'])) $sent++;
-            else $failed++;
-        } catch (\Throwable $e) {
-            $failed++;
-        }
-    }
-
-    return [
-        'ok'       => true,
-        'sent'     => $sent,
-        'failed'   => $failed,
-        'next_off' => $offset + count($rows),
-        'done'     => count($rows) < $batch,
-    ];
-}
-
-if (isset($_GET['ajax'])) {
-    header('Content-Type: application/json; charset=utf-8');
-    header('Cache-Control: no-store');
-    $ajax = (string)$_GET['ajax'];
-
-    if ($ajax === 'count') {
-        echo json_encode(fx_broadcast_count($pdo, $_GET));
-        exit;
-    }
-
-    if ($ajax === 'send_batch') {
-        @set_time_limit(20);
-        echo json_encode(fx_broadcast_send_batch($pdo, $_GET, $_POST));
-        exit;
-    }
-
-    echo json_encode(['ok' => false, 'error' => 'unknown_ajax']);
-    exit;
-}
-
-
-$initialCount = 0;
-try {
-    $stmt = $pdo->query("SELECT COUNT(*) FROM user WHERE (User_Status IS NULL OR User_Status != 'block')");
-    $initialCount = (int)$stmt->fetchColumn();
-} catch (\Throwable $e) {
-
-}
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -227,7 +113,7 @@ try {
             <div class="page-head">
                 <div>
                     <div class="page-head__title">
-                        <?php echo icon('megaphone', 'svg-icon svg-lg'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('megaphone', 'svg-icon svg-lg'); ?>
                         پیام همگانی
                     </div>
                     <div class="page-head__sub">ارسال پیام به یک گروه از کاربران ربات</div>
@@ -238,7 +124,7 @@ try {
                 <div class="card">
                     <div class="card__head">
                         <div class="card__title">
-                            <?php echo icon('text', 'svg-icon svg-md'); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('text', 'svg-icon svg-md'); ?>
                             <span>متن پیام</span>
                         </div>
                     </div>
@@ -258,7 +144,7 @@ try {
                     </div>
 
                     <div class="alert alert-info">
-                        <?php echo icon('circle-info', 'svg-icon svg-sm'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-info', 'svg-icon svg-sm'); ?>
                         ارسال در دسته‌های ۱۵تایی انجام می‌شود تا با محدودیت تلگرام برخورد نکنیم. کاربرانی که ربات را بلاک کرده‌اند خودکار رد می‌شوند.
                     </div>
                 </div>
@@ -267,7 +153,7 @@ try {
                     <div class="card">
                         <div class="card__head">
                             <div class="card__title">
-                                <?php echo icon('users', 'svg-icon svg-md'); ?>
+                                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('users', 'svg-icon svg-md'); ?>
                                 <span>مخاطبان</span>
                             </div>
                         </div>
@@ -284,7 +170,7 @@ try {
                             <div class="bc-stat__value" id="bc-count"><?php echo number_format($initialCount); ?></div>
                         </div>
                         <button type="button" class="btn btn-primary btn-block" id="bc-send">
-                            <?php echo icon('paper-plane', 'svg-icon svg-sm'); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('paper-plane', 'svg-icon svg-sm'); ?>
                             <span>شروع ارسال</span>
                         </button>
                     </div>
@@ -293,7 +179,7 @@ try {
                         <div class="card">
                             <div class="card__head">
                                 <div class="card__title">
-                                    <?php echo icon('chart-line', 'svg-icon svg-md'); ?>
+                                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('chart-line', 'svg-icon svg-md'); ?>
                                     <span>پیشرفت</span>
                                 </div>
                             </div>

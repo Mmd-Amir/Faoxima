@@ -1,6 +1,9 @@
 <?php
 
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'keyboard.php';
 
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
     define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
 }
@@ -20,102 +23,26 @@ require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
 require_once __DIR__ . '/../jdf.php';
 require_once __DIR__ . '/../function.php';
-require_once __DIR__ . '/lib/icons.php';
 
-
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindValue(":username", $_SESSION["user"] ?? '', PDO::PARAM_STR);
-$query->execute();
-$adminRow = $query->fetch(PDO::FETCH_ASSOC);
-if (!isset($_SESSION["user"]) || !$adminRow) {
-    header('Location: login.php');
-    exit;
+if (\Faoxima\Admin\Web\Pages\KeyboardRequest::handle(
+        action: $action,
+        btn: $btn,
+        currentJson: $currentJson,
+        keyboard: $keyboard,
+        method: $method,
+        payload: $payload,
+        pdo: $pdo ?? null,
+        primaryKeys: $primaryKeys,
+        query: $query,
+        row: $row,
+        settingRow: $settingRow,
+        textbotMap: $textbotMap
+    ) !== true) {
+    unset($adminWebPage);
+    return;
 }
 
-
-$DEFAULT_KEYBOARD_JSON = '{"keyboard":[[{"text":"text_sell"},{"text":"text_extend"}],[{"text":"text_usertest"},{"text":"text_wheel_luck"}],[{"text":"text_Purchased_services"},{"text":"accountwallet"}],[{"text":"text_affiliates"},{"text":"text_Tariff_list"}],[{"text":"text_support"},{"text":"text_help"}]]}';
-
-
-$action = filter_input(INPUT_GET, 'action');
-if ($action === 'reaset' || $action === 'reset') {
-    update("setting", "keyboardmain", $DEFAULT_KEYBOARD_JSON, null, null);
-    header('Location: keyboard.php');
-    exit;
-}
-
-
-$method = $_SERVER['REQUEST_METHOD'];
-if ($method === 'POST') {
-    $raw = file_get_contents('php://input');
-    $keyboard = json_decode($raw, true);
-    if (is_array($keyboard)) {
-
-        $clean = [];
-        $allowedStyles = ['none', 'primary', 'success', 'danger'];
-        foreach ($keyboard as $row) {
-            if (!is_array($row)) continue;
-            $cleanRow = [];
-            foreach ($row as $btn) {
-                if (is_string($btn)) {
-                    $cleanRow[] = ['text' => $btn];
-                } elseif (is_array($btn) && isset($btn['text'])) {
-                    $b = ['text' => (string)$btn['text']];
-                    if (isset($btn['style']) && in_array($btn['style'], $allowedStyles, true)) {
-                        $b['style'] = $btn['style'];
-                    }
-                    $cleanRow[] = $b;
-                }
-            }
-            $clean[] = $cleanRow;
-        }
-        $payload = ['keyboard' => $clean];
-        update("setting", "keyboardmain", json_encode($payload, JSON_UNESCAPED_UNICODE), null, null);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['ok' => true]);
-        exit;
-    }
-    header('Content-Type: application/json; charset=utf-8', true, 400);
-    echo json_encode(['ok' => false, 'error' => 'invalid_payload']);
-    exit;
-}
-
-
-$settingRow = select("setting", "keyboardmain", null, null, "select");
-$currentJson = $DEFAULT_KEYBOARD_JSON;
-if (is_array($settingRow) && !empty($settingRow['keyboardmain'])) {
-    $decoded = json_decode($settingRow['keyboardmain'], true);
-    if (is_array($decoded) && isset($decoded['keyboard'])) {
-        $currentJson = $settingRow['keyboardmain'];
-    }
-}
-
-
-$textbotMap = [];
-try {
-    $textbotRows = select("textbot", "*", null, null, "fetchAll");
-    if (is_array($textbotRows)) {
-        foreach ($textbotRows as $row) {
-            if (isset($row['id_text']) && isset($row['text']) && $row['text'] !== '') {
-                $textbotMap[(string)$row['id_text']] = (string)$row['text'];
-            }
-        }
-    }
-} catch (\Throwable $e) {
-
-    error_log('[panel/keyboard] textbot load failed: ' . $e->getMessage());
-}
-
-
-$primaryKeys = [
-    'text_sell', 'text_extend', 'text_usertest', 'text_wheel_luck',
-    'text_Purchased_services', 'accountwallet',
-    'text_affiliates', 'text_Tariff_list',
-    'text_support', 'text_help',
-    'text_miniapp_button',
-];
-if (!isset($textbotMap['text_miniapp_button'])) {
-    $textbotMap['text_miniapp_button'] = '🚀 Open Mini App';
-}
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark" data-color="blue">
@@ -215,12 +142,12 @@ if (!isset($textbotMap['text_miniapp_button'])) {
     </div>
     <div class="kb-actions">
     <a class="btn btn-outline btn-sm" href="index.php">
-        <?php echo icon('arrow-right', 'svg-icon svg-sm'); ?>
+        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('arrow-right', 'svg-icon svg-sm'); ?>
         <span>بازگشت</span>
     </a>
     <a class="btn btn-soft-warning btn-sm" href="keyboard.php?action=reset"
        onclick="return confirm('چیدمان فعلی به حالت پیش‌فرض بازمی‌گردد. ادامه می‌دهید؟');">
-        <?php echo icon('rotate-left', 'svg-icon svg-sm'); ?>
+        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('rotate-left', 'svg-icon svg-sm'); ?>
         <span>بازگرداندن پیش‌فرض</span>
     </a>
     </div>
@@ -231,7 +158,7 @@ if (!isset($textbotMap['text_miniapp_button'])) {
     <div class="kb-hero">
         <div class="kb-hero__text">
             <h1>
-                <?php echo icon('keyboard', 'svg-icon svg-lg'); ?>
+                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('keyboard', 'svg-icon svg-lg'); ?>
                 چیدمان کیبورد ربات
             </h1>
             <p>
@@ -251,7 +178,7 @@ if (!isset($textbotMap['text_miniapp_button'])) {
         </div>
 
         <button id="kb-add-row" class="kb-add-row" type="button">
-            <?php echo icon('plus', 'svg-icon'); ?>
+            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon'); ?>
             <span>افزودن ردیف جدید</span>
         </button>
     </div>
@@ -259,7 +186,7 @@ if (!isset($textbotMap['text_miniapp_button'])) {
     <div class="card">
         <div class="card__head">
             <div class="card__title">
-                <?php echo icon('circle-info', 'svg-icon svg-md'); ?>
+                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-info', 'svg-icon svg-md'); ?>
                 <span>راهنمای رنگ‌بندی دکمه‌ها</span>
             </div>
         </div>
@@ -286,7 +213,7 @@ if (!isset($textbotMap['text_miniapp_button'])) {
     <div class="kb-modal__box">
         <form id="kb-edit-form">
             <div class="kb-modal__head" id="kb-modal-title">
-                <?php echo icon('pen-to-square'); ?>
+                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('pen-to-square'); ?>
                 <span id="kb-modal-title-text">ویرایش دکمه</span>
             </div>
             <div class="kb-modal__body">
@@ -343,11 +270,11 @@ if (!isset($textbotMap['text_miniapp_button'])) {
             </div>
             <div class="kb-modal__foot">
                 <button type="button" id="kb-cancel" class="btn btn-outline btn-sm">
-                    <?php echo icon('xmark', 'svg-icon svg-sm'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('xmark', 'svg-icon svg-sm'); ?>
                     <span>انصراف</span>
                 </button>
                 <button type="submit" id="kb-save" class="btn btn-primary btn-sm">
-                    <?php echo icon('check', 'svg-icon svg-sm'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('check', 'svg-icon svg-sm'); ?>
                     <span>ذخیره دکمه</span>
                 </button>
             </div>

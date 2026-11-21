@@ -1,5 +1,9 @@
 <?php
 
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'filenaming.php';
+
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
     define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
 }
@@ -9,22 +13,19 @@ ini_set('session.cookie_httponly', '1');
 session_start();
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
-require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/lib/csrf.php';
-require_once __DIR__ . '/../re/rx/function/database_helpers_1.php';
-require_once __DIR__ . '/../re/rx/function/file_naming.php';
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username = :username");
-$query->execute([':username' => $_SESSION['user'] ?? '']);
-$adminRow = $query->fetch(PDO::FETCH_ASSOC);
-if (!isset($_SESSION['user']) || !$adminRow) {
-    header('Location: login.php');
-    exit;
+if (\Faoxima\Admin\Web\Pages\FilenamingRequest::handle(
+        fnCsrf: $fnCsrf,
+        fnMaster: $fnMaster,
+        pdo: $pdo ?? null,
+        query: $query
+    ) !== true) {
+    unset($adminWebPage);
+    return;
 }
 
-$fnCsrf = fx_csrf_token();
-$fnMaster = rxFileNamingEnabled(true);
-header('Cache-Control: no-store');
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -55,14 +56,14 @@ header('Cache-Control: no-store');
             <div class="page-head">
                 <div>
                     <div class="page-head__title">
-                        <?php echo icon('package', 'svg-icon svg-lg'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('package', 'svg-icon svg-lg'); ?>
                         تنظیمات ارسال فایل توسط ربات
                     </div>
                     <div class="page-head__sub">نام فایل و کپشن سفارشی برای کانفیگ‌هایی که ربات برای کاربران ارسال می‌کند</div>
                 </div>
                 <div class="fn-head-actions">
                     <a class="btn btn-outline btn-sm" href="miscsettings.php">
-                        <?php echo icon('chevron-right', 'svg-icon svg-sm'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('chevron-right', 'svg-icon svg-sm'); ?>
                         <span>بازگشت به تنظیمات</span>
                     </a>
                 </div>
@@ -72,7 +73,7 @@ header('Cache-Control: no-store');
                 <div class="fn-master">
                     <div class="fn-master__text">
                         <div class="fn-master__title">
-                            <?php echo icon('sparkles', 'svg-icon svg-md'); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('sparkles', 'svg-icon svg-md'); ?>
                             <span>فعال‌سازی نام و کپشن سفارشی</span>
                         </div>
                         <div class="fn-master__hint">وقتی این کلید خاموش است، فایل‌ها دقیقاً با همان نام و کپشن قبلی ارسال می‌شوند.</div>
@@ -87,11 +88,11 @@ header('Cache-Control: no-store');
             <div class="card fn-rules-card">
                 <div class="card__head">
                     <div class="card__title">
-                        <?php echo icon('list', 'svg-icon svg-md'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('list', 'svg-icon svg-md'); ?>
                         <span>قوانین نام و کپشن</span>
                     </div>
                     <button type="button" class="btn btn-primary btn-sm" id="fnAdd">
-                        <?php echo icon('plus', 'svg-icon svg-sm'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon svg-sm'); ?>
                         <span>افزودن تنظیم</span>
                     </button>
                 </div>
@@ -109,7 +110,7 @@ header('Cache-Control: no-store');
                     <div class="fn-modal__head">
                         <div class="fn-modal__title" id="fnModalTitle">افزودن تنظیم</div>
                         <button type="button" class="btn-icon fn-modal__close" data-fn-close="1" aria-label="بستن">
-                            <?php echo icon('xmark', 'svg-icon svg-md'); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('xmark', 'svg-icon svg-md'); ?>
                         </button>
                     </div>
                     <form class="fn-form" id="fnForm" autocomplete="off">
@@ -148,7 +149,7 @@ header('Cache-Control: no-store');
                                         <option value="">ابتدا یک سرویس انتخاب کنید…</option>
                                     </select>
                                     <button type="button" class="btn btn-outline btn-sm" id="fnLoadTargets">
-                                        <?php echo icon('refresh', 'svg-icon svg-sm'); ?>
+                                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('refresh', 'svg-icon svg-sm'); ?>
                                         <span>بارگذاری کانفیگ‌ها</span>
                                     </button>
                                 </div>
@@ -209,7 +210,7 @@ header('Cache-Control: no-store');
                         <div class="fn-form__actions">
                             <button type="button" class="btn btn-outline" data-fn-close="1">انصراف</button>
                             <button type="submit" class="btn btn-primary" id="fnSave">
-                                <?php echo icon('check', 'svg-icon svg-sm'); ?>
+                                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('check', 'svg-icon svg-sm'); ?>
                                 <span>ذخیره تنظیم</span>
                             </button>
                         </div>

@@ -1,6 +1,9 @@
 <?php
 
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'reports.php';
 
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
     define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
 }
@@ -45,211 +48,36 @@ if (empty($_SESSION['_session_regenerated'])) {
 
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
-require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/lib/csrf.php';
 require_once __DIR__ . '/../jdf.php';
-require_once __DIR__ . '/../re/rx/function/statistics_helpers.php';
 
-
-$sessionUser = isset($_SESSION["user"]) && is_string($_SESSION["user"]) && $_SESSION["user"] !== ''
-    ? $_SESSION["user"]
-    : null;
-
-if ($sessionUser === null) {
-    header('Location: login.php');
-    exit;
+if (\Faoxima\Admin\Web\Pages\ReportsRequest::handle(
+        avgOrder: $avgOrder,
+        discountCount: $discountCount,
+        discountTopCodes: $discountTopCodes,
+        discountTotal: $discountTotal,
+        groupRows: $groupRows,
+        incomeToday: $incomeToday,
+        json_group_labels: $json_group_labels,
+        json_group_users: $json_group_users,
+        json_prod_data: $json_prod_data,
+        json_prod_labels: $json_prod_labels,
+        pdo: $pdo ?? null,
+        prodData: $prodData,
+        prodLabels: $prodLabels,
+        result: $result,
+        topActive: $topActive,
+        topBalance: $topBalance,
+        topBuyers: $topBuyers,
+        topDeposit: $topDeposit,
+        totalOrders: $totalOrders,
+        totalUsers: $totalUsers
+    ) !== true) {
+    unset($adminWebPage);
+    return;
 }
 
-$result = fx_admin_find_by_username($pdo, $sessionUser);
-
-if (!$result) {
-    $_SESSION = [];
-    header('Location: login.php');
-    exit;
-}
-
-
-function fx_admin_report_data(PDO $pdo): array
-{
-    $nowTs    = time();
-    $dayAgoTs = $nowTs - 86400;
-
-    $incomeToday  = 0.0;
-    $totalIncome  = 0.0;
-    $totalOrders  = 0;
-    $totalUsers   = 0;
-    $avgOrder     = 0.0;
-    $prodLabels   = [];
-    $prodData     = [];
-    $groupRows    = [];
-    $topBuyers    = [];
-    $topActive    = [];
-    $topDeposit   = [];
-    $topBalance   = [];
-    $discountTotal   = 0.0;
-    $discountCount   = 0;
-    $discountTopCodes = [];
-
-    try {
-        $jToday = explode('-', jdate('Y-n-j', $nowTs, '', 'Asia/Tehran', 'en'));
-        $todayStart = (int)jmktime(0, 0, 0, (int)($jToday[1] ?? 1), (int)($jToday[2] ?? 1), (int)($jToday[0] ?? 1400));
-        $st = $pdo->prepare("SELECT COALESCE(SUM(price_product),0) FROM " . rx_stats_sales_source($pdo) . " sales WHERE time_sell >= :a AND " . rx_stats_historical_sale_predicate());
-        $st->bindValue(':a', (int)$todayStart, PDO::PARAM_INT); $st->execute();
-        $incomeToday = (float)$st->fetchColumn();
-
-        $totalIncome = rx_stats_total_sales_amount($pdo);
-        $totalOrders = rx_stats_total_sales_count($pdo);
-        $totalUsers  = rx_stats_total_users($pdo);
-        $avg30Start = $nowTs - 30 * 86400;
-        $st30 = $pdo->prepare("SELECT COALESCE(SUM(price_product),0), COUNT(*) FROM " . rx_stats_sales_source($pdo) . " sales WHERE time_sell >= :a AND " . rx_stats_historical_sale_predicate());
-        $st30->bindValue(':a', (int)$avg30Start, PDO::PARAM_INT); $st30->execute();
-        $row30 = $st30->fetch(PDO::FETCH_NUM);
-        $ord30 = (int)($row30[1] ?? 0);
-        $avgOrder = $ord30 > 0 ? ((float)($row30[0] ?? 0) / $ord30) : 0.0;
-    } catch (\Throwable $e) { error_log('[reports] cards: ' . $e->getMessage()); }
-
-    try {
-        $prod30Start = $nowTs - 30 * 86400;
-        $prodTopN = 8;
-        $st = $pdo->prepare("SELECT name_product, COUNT(*) AS total FROM " . rx_stats_sales_source($pdo) . " sales WHERE time_sell >= :a AND " . rx_stats_historical_sale_predicate() . " GROUP BY name_product ORDER BY total DESC");
-        $st->bindValue(':a', (int)$prod30Start, PDO::PARAM_INT); $st->execute();
-        $prodRows = [];
-        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            if ((int)$r['total'] <= 0) continue;
-            $prodRows[] = ['name' => (string)$r['name_product'], 'total' => (int)$r['total']];
-        }
-        $prodOtherCount = 0;
-        $prodOtherSales = 0;
-        if (count($prodRows) > $prodTopN) {
-            $tail = array_slice($prodRows, $prodTopN - 1);
-            $prodRows = array_slice($prodRows, 0, $prodTopN - 1);
-            $prodOtherCount = count($tail);
-            foreach ($tail as $t) { $prodOtherSales += $t['total']; }
-        }
-        foreach ($prodRows as $r) {
-            $prodLabels[] = $r['name'];
-            $prodData[]   = $r['total'];
-        }
-        if ($prodOtherCount > 0) {
-            $prodLabels[] = 'سایر محصولات (' . $prodOtherCount . ')';
-            $prodData[]   = $prodOtherSales;
-        }
-    } catch (\Throwable $e) { error_log('[reports] products: ' . $e->getMessage()); }
-
-    $validSale = rx_stats_historical_sale_predicate();
-
-    $validSaleI = rx_stats_historical_sale_predicate('i');
-
-    $purchaseMarkers = "(id_invoice IS NULL OR id_invoice = '' OR id_invoice = 'none' OR (id_invoice NOT LIKE 'getconfigafterpay%' AND id_invoice NOT LIKE 'getextenduser%' AND id_invoice NOT LIKE 'getextravolumeuser%' AND id_invoice NOT LIKE 'getextratimeuser%'))";
-
-    $realPaymentPredicate = rx_stats_real_payment_predicate('p');
-
-    try {
-        $st = $pdo->query("SELECT CASE WHEN a.id_admin IS NOT NULL THEN 'admin' WHEN u.agent = 'n2' THEN 'n2' WHEN u.agent = 'n' THEN 'n' ELSE 'f' END AS grp, COUNT(*) AS users FROM user u LEFT JOIN admin a ON a.id_admin = u.id GROUP BY grp");
-        $groupUsers = [];
-        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) { $groupUsers[(string)$r['grp']] = (int)$r['users']; }
-
-        $st = $pdo->query("SELECT CASE WHEN a.id_admin IS NOT NULL THEN 'admin' WHEN u.agent = 'n2' THEN 'n2' WHEN u.agent = 'n' THEN 'n' ELSE 'f' END AS grp, COALESCE(SUM(i.price_product),0) AS revenue, COUNT(i.id_invoice) AS orders FROM user u LEFT JOIN admin a ON a.id_admin = u.id LEFT JOIN " . rx_stats_sales_source($pdo) . " i ON i.id_user = u.id AND {$validSaleI} GROUP BY grp");
-        $groupSales = [];
-        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) { $groupSales[(string)$r['grp']] = ['revenue' => (float)$r['revenue'], 'orders' => (int)$r['orders']]; }
-
-        $groupNames = ['f' => 'کاربران عادی', 'n' => 'نمایندگان', 'n2' => 'نمایندگان ویژه', 'admin' => 'مدیران'];
-        foreach ($groupNames as $key => $label) {
-            $groupRows[] = [
-                'label'   => $label,
-                'users'   => (int)($groupUsers[$key] ?? 0),
-                'orders'  => (int)($groupSales[$key]['orders'] ?? 0),
-                'revenue' => (float)($groupSales[$key]['revenue'] ?? 0),
-            ];
-        }
-    } catch (\Throwable $e) { error_log('[reports] groups: ' . $e->getMessage()); }
-
-    try {
-        $st = $pdo->query("SELECT i.id_user, COALESCE(NULLIF(MAX(u.username),''), i.id_user) AS uname, COALESCE(SUM(i.price_product),0) AS revenue, COUNT(*) AS orders FROM " . rx_stats_sales_source($pdo) . " i LEFT JOIN user u ON u.id = i.id_user WHERE {$validSaleI} GROUP BY i.id_user ORDER BY revenue DESC LIMIT 10");
-        $topBuyers = $st->fetchAll(PDO::FETCH_ASSOC);
-    } catch (\Throwable $e) { error_log('[reports] topbuyers: ' . $e->getMessage()); }
-
-    try {
-        $st = $pdo->query("SELECT i.id_user, COALESCE(NULLIF(MAX(u.username),''), i.id_user) AS uname, COUNT(*) AS actives, COALESCE(SUM(i.price_product),0) AS revenue FROM invoice i LEFT JOIN user u ON u.id = i.id_user WHERE i.Status = 'active' AND i.name_product != 'سرویس تست' GROUP BY i.id_user ORDER BY actives DESC LIMIT 10");
-        $topActive = $st->fetchAll(PDO::FETCH_ASSOC);
-    } catch (\Throwable $e) { error_log('[reports] topactive: ' . $e->getMessage()); }
-
-    try {
-        $st = $pdo->query("SELECT p.id_user, COALESCE(NULLIF(MAX(u.username),''), p.id_user) AS uname, COALESCE(SUM(p.price),0) AS deposit, COUNT(*) AS cnt FROM Payment_report p LEFT JOIN user u ON u.id = p.id_user WHERE {$realPaymentPredicate} AND {$purchaseMarkers} GROUP BY p.id_user ORDER BY deposit DESC LIMIT 10");
-        $topDeposit = $st->fetchAll(PDO::FETCH_ASSOC);
-    } catch (\Throwable $e) { error_log('[reports] topdeposit: ' . $e->getMessage()); }
-
-    try {
-        $st = $pdo->query("SELECT id, COALESCE(NULLIF(username,''), id) AS uname, Balance FROM user WHERE Balance > 0 ORDER BY Balance DESC LIMIT 10");
-        $topBalance = $st->fetchAll(PDO::FETCH_ASSOC);
-    } catch (\Throwable $e) { error_log('[reports] topbalance: ' . $e->getMessage()); }
-
-    try {
-        $row = $pdo->query("SELECT COALESCE(SUM(discount_amount),0) AS total, COUNT(*) AS cnt FROM " . rx_stats_sales_source($pdo) . " sales WHERE {$validSale} AND discount_amount + 0 > 0")->fetch(PDO::FETCH_ASSOC);
-        $discountTotal = (float)($row['total'] ?? 0);
-        $discountCount = (int)($row['cnt'] ?? 0);
-
-        $logRow = $pdo->query("SELECT COALESCE(SUM(discount_amount),0) AS total, COUNT(*) AS cnt FROM order_discount_log")->fetch(PDO::FETCH_ASSOC);
-        if ((int)($logRow['cnt'] ?? 0) > $discountCount) {
-            $discountTotal = (float)($logRow['total'] ?? 0);
-            $discountCount = (int)($logRow['cnt'] ?? 0);
-        }
-
-        $st = $pdo->query("SELECT code, COALESCE(SUM(discount_amount),0) AS total, COUNT(*) AS uses FROM order_discount_log GROUP BY code ORDER BY total DESC LIMIT 5");
-        $discountTopCodes = $st->fetchAll(PDO::FETCH_ASSOC);
-        if (empty($discountTopCodes)) {
-            $st = $pdo->query("SELECT discount_code AS code, COALESCE(SUM(discount_amount),0) AS total, COUNT(*) AS uses FROM invoice WHERE discount_code IS NOT NULL AND discount_code != '' GROUP BY discount_code ORDER BY total DESC LIMIT 5");
-            $discountTopCodes = $st->fetchAll(PDO::FETCH_ASSOC);
-        }
-
-        if ($discountCount === 0) {
-            $legacy = $pdo->query("SELECT COALESCE(SUM(CAST(limitused AS UNSIGNED)),0) FROM Discount")->fetchColumn();
-            $legacySell = $pdo->query("SELECT COALESCE(SUM(CAST(usedDiscount AS UNSIGNED)),0) FROM DiscountSell")->fetchColumn();
-            $discountCount = (int)$legacy + (int)$legacySell;
-        }
-    } catch (\Throwable $e) { error_log('[reports] discounts: ' . $e->getMessage()); }
-    return [
-        'incomeToday' => $incomeToday,
-        'totalIncome' => $totalIncome,
-        'totalOrders' => $totalOrders,
-        'totalUsers' => $totalUsers,
-        'avgOrder' => $avgOrder,
-        'prodLabels' => $prodLabels,
-        'prodData' => $prodData,
-        'groupRows' => $groupRows,
-        'topBuyers' => $topBuyers,
-        'topActive' => $topActive,
-        'topDeposit' => $topDeposit,
-        'topBalance' => $topBalance,
-        'discountTotal' => $discountTotal,
-        'discountCount' => $discountCount,
-        'discountTopCodes' => $discountTopCodes,
-    ];
-}
-
-$reportData = fx_admin_report_data($pdo);
-[
-    'incomeToday' => $incomeToday,
-    'totalIncome' => $totalIncome,
-    'totalOrders' => $totalOrders,
-    'totalUsers' => $totalUsers,
-    'avgOrder' => $avgOrder,
-    'prodLabels' => $prodLabels,
-    'prodData' => $prodData,
-    'groupRows' => $groupRows,
-    'topBuyers' => $topBuyers,
-    'topActive' => $topActive,
-    'topDeposit' => $topDeposit,
-    'topBalance' => $topBalance,
-    'discountTotal' => $discountTotal,
-    'discountCount' => $discountCount,
-    'discountTopCodes' => $discountTopCodes,
-] = $reportData;
-
-$json_prod_labels  = json_encode($prodLabels, JSON_UNESCAPED_UNICODE);
-$json_prod_data    = json_encode($prodData);
-$json_group_labels = json_encode(array_column($groupRows, 'label'), JSON_UNESCAPED_UNICODE);
-$json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'users')));
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -271,7 +99,7 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
             <div class="page-head">
                 <div>
                     <div class="page-head__title">
-                        <?php echo icon('chart-bar', 'svg-icon svg-lg'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('chart-bar', 'svg-icon svg-lg'); ?>
                         گزارش‌ها و تحلیل
                     </div>
                     <div class="page-head__sub"><?php echo function_exists('jdate') ? jdate('F Y') : date('Y/m'); ?></div>
@@ -297,7 +125,7 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
                             <span class="stat-card__label">میانگین ارزش سفارش</span>
 
                         </div>
-                        <span class="stat-card__icon icon-cyan"><?php echo icon('receipt', 'svg-icon'); ?></span>
+                        <span class="stat-card__icon icon-cyan"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('receipt', 'svg-icon'); ?></span>
                     </div>
                     <div class="report-stat-metric"><span class="stat-card__value"><span data-count="<?php echo (int)$avgOrder; ?>"><?php echo number_format($avgOrder); ?></span> <small class="currency-unit">تومان</small></span></div>
                 </div>
@@ -308,7 +136,7 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
                             <span class="stat-card__label">کل سفارشات</span>
 
                         </div>
-                        <span class="stat-card__icon icon-rose"><?php echo icon('cart-check-round', 'svg-icon'); ?></span>
+                        <span class="stat-card__icon icon-rose"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('cart-check-round', 'svg-icon'); ?></span>
                     </div>
                     <div class="report-stat-metric"><span class="stat-card__value" data-count="<?php echo (int)$totalOrders; ?>"><?php echo number_format($totalOrders); ?></span></div>
                 </div>
@@ -319,7 +147,7 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
                             <span class="stat-card__label">کل کاربران</span>
 
                         </div>
-                        <span class="stat-card__icon icon-blue"><?php echo icon('users', 'svg-icon'); ?></span>
+                        <span class="stat-card__icon icon-blue"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('users', 'svg-icon'); ?></span>
                     </div>
                     <div class="report-stat-metric"><span class="stat-card__value" data-count="<?php echo (int)$totalUsers; ?>"><?php echo number_format($totalUsers); ?></span></div>
                 </div>
@@ -330,7 +158,7 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
                             <span class="stat-card__label">مجموع مبلغ تخفیف</span>
 
                         </div>
-                        <span class="stat-card__icon icon-amber"><?php echo icon('percent-discount', 'svg-icon'); ?></span>
+                        <span class="stat-card__icon icon-amber"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('percent-discount', 'svg-icon'); ?></span>
                     </div>
                     <div class="report-stat-metric"><span class="stat-card__value"><span data-count="<?php echo (int)$discountTotal; ?>"><?php echo number_format($discountTotal); ?></span> <small class="currency-unit">تومان</small></span></div>
                 </div>
@@ -341,7 +169,7 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
                             <span class="stat-card__label">تعداد استفاده از تخفیف</span>
 
                         </div>
-                        <span class="stat-card__icon icon-purple"><?php echo icon('coupon', 'svg-icon'); ?></span>
+                        <span class="stat-card__icon icon-purple"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('coupon', 'svg-icon'); ?></span>
                     </div>
                     <div class="report-stat-metric"><span class="stat-card__value" data-count="<?php echo (int)$discountCount; ?>"><?php echo number_format($discountCount); ?></span></div>
                 </div>
@@ -398,7 +226,7 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
                                 <tbody>
                                 <?php foreach ($groupRows as $g): ?>
                                     <tr>
-                                        <td data-label="گروه"><span class="group-report-name"><span aria-hidden="true"><?php echo icon('users', 'svg-icon svg-sm'); ?></span><?php echo htmlspecialchars($g['label'], ENT_QUOTES, 'UTF-8'); ?></span></td>
+                                        <td data-label="گروه"><span class="group-report-name"><span aria-hidden="true"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('users', 'svg-icon svg-sm'); ?></span><?php echo htmlspecialchars($g['label'], ENT_QUOTES, 'UTF-8'); ?></span></td>
                                         <td data-label="تعداد کاربران"><?php echo number_format($g['users']); ?></td>
                                         <td data-label="تعداد سفارش"><?php echo number_format($g['orders']); ?></td>
                                         <td data-label="مجموع خرید"><?php echo number_format($g['revenue']); ?> <small class="currency-unit">تومان</small></td>
@@ -525,13 +353,13 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
                 <div class="lb-grid">
                     <?php foreach ($leaderboards as $lb): ?>
                         <button type="button" class="lb-btn" data-lb-open="lbmodal-<?php echo $lb['id']; ?>"<?php echo empty($lb['rows']) ? ' disabled' : ''; ?>>
-                            <span class="lb-btn__icon <?php echo $lb['tone']; ?>"><?php echo icon($lb['icon'], 'svg-icon'); ?></span>
+                            <span class="lb-btn__icon <?php echo $lb['tone']; ?>"><?php echo \Faoxima\Admin\Web\Support\Icons::icon($lb['icon'], 'svg-icon'); ?></span>
                             <span class="lb-btn__text">
                                 <span class="lb-btn__title"><?php echo $lb['title']; ?></span>
                                 <span class="lb-btn__sub"><?php echo empty($lb['rows']) ? 'داده‌ای برای نمایش نیست' : $lb['btn']; ?></span>
                             </span>
                             <span class="lb-btn__count"><strong><?php echo number_format($lb['count']); ?></strong><small>کاربر</small></span>
-                            <span class="lb-btn__arrow" aria-hidden="true"><?php echo icon('arrow-left', 'svg-icon'); ?></span>
+                            <span class="lb-btn__arrow" aria-hidden="true"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('arrow-left', 'svg-icon'); ?></span>
                         </button>
                     <?php endforeach; ?>
                 </div>
@@ -546,7 +374,7 @@ $json_group_users  = json_encode(array_map('intval', array_column($groupRows, 'u
         <div class="modal-box lb-modal__box">
             <div class="modal-head">
                 <div class="lb-modal__head">
-                    <span class="lb-btn__icon <?php echo $lb['tone']; ?>"><?php echo icon($lb['icon'], 'svg-icon'); ?></span>
+                    <span class="lb-btn__icon <?php echo $lb['tone']; ?>"><?php echo \Faoxima\Admin\Web\Support\Icons::icon($lb['icon'], 'svg-icon'); ?></span>
                     <div>
                         <div class="modal-head__title" id="lbtitle-<?php echo $lb['id']; ?>"><?php echo $lb['title']; ?></div>
                         <div class="panel__sub"><?php echo $lb['sub']; ?></div>

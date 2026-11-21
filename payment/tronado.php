@@ -3,11 +3,10 @@ ini_set('error_log', 'error_log');
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../jdf.php';
 require_once __DIR__ . '/../botapi.php';
-require_once __DIR__ . '/../Marzban.php';
 require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/../panels.php';
 require_once __DIR__ . '/../keyboard.php';
-require_once __DIR__ . '/../lib/PaymentConfirm.php';
+require_once __DIR__ . '/../src/bootstrap.php';
 require __DIR__ . '/../vendor/autoload.php';
 use Endroid\QrCode\Builder\Builder;
 use Endroid\QrCode\Encoding\Encoding;
@@ -18,26 +17,15 @@ use Endroid\QrCode\RoundBlockSizeMode;
 use Endroid\QrCode\Writer\PngWriter;
 
 
-function tronado_log_event($type, $message, array $context = [])
-{
-    if (function_exists('rx_log_event')) {
-        rx_log_event($type, $message, $context);
-        return;
-    }
-    $line = $type . ': ' . $message;
-    if (!empty($context)) {
-        $line .= ' | ' . json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    }
-    error_log('[tronado] ' . $line);
-}
+
 
 $ManagePanel = new ManagePanel();
 $rawBody = file_get_contents("php://input");
 
-$ipnSigningKey = trim((string) select("PaySetting", "*", "NamePay", "ipnsigningkeytronado", "select")['ValuePay']);
+$ipnSigningKey = trim((string) \Faoxima\Core\Database\Db::select("PaySetting", "*", "NamePay", "ipnsigningkeytronado", "select")['ValuePay']);
 $signatureHeader = $_SERVER['HTTP_X_TRONADO_SIG'] ?? '';
 if ($ipnSigningKey === '') {
-    tronado_log_event('TRONADO_SIGNING_KEY_MISSING', 'IpnSigningKey is not configured', [
+    \Faoxima\Payments\Gateways\Tronado\Callbacks::tronado_log_event('TRONADO_SIGNING_KEY_MISSING', 'IpnSigningKey is not configured', [
         'remote_ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
     ]);
     http_response_code(500);
@@ -46,7 +34,7 @@ if ($ipnSigningKey === '') {
 $expectedSignature = hash_hmac('sha512', (string) $rawBody, $ipnSigningKey);
 $signatureValid = is_string($signatureHeader) && $signatureHeader !== '' && hash_equals($expectedSignature, strtolower($signatureHeader));
 if (!$signatureValid) {
-    tronado_log_event('TRONADO_BAD_SIGNATURE', 'X-Tronado-Sig verification failed', [
+    \Faoxima\Payments\Gateways\Tronado\Callbacks::tronado_log_event('TRONADO_BAD_SIGNATURE', 'X-Tronado-Sig verification failed', [
         'remote_ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
     ]);
     http_response_code(401);
@@ -55,7 +43,7 @@ if (!$signatureValid) {
 
 $data = json_decode($rawBody, true);
 if (!is_array($data)) {
-    tronado_log_event('TRONADO_BAD_BODY', 'Callback body was not valid JSON', [
+    \Faoxima\Payments\Gateways\Tronado\Callbacks::tronado_log_event('TRONADO_BAD_BODY', 'Callback body was not valid JSON', [
         'remote_ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
         'body_excerpt' => substr((string) $rawBody, 0, 200),
     ]);
@@ -65,7 +53,7 @@ if (!is_array($data)) {
 
 $paymentId = $data['PaymentId'] ?? ($data['PaymentID'] ?? null);
 if ($paymentId === null) {
-    tronado_log_event('TRONADO_NO_ID', 'Callback missing payment identifier', [
+    \Faoxima\Payments\Gateways\Tronado\Callbacks::tronado_log_event('TRONADO_NO_ID', 'Callback missing payment identifier', [
         'remote_ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
         'keys' => array_keys($data),
     ]);
@@ -75,7 +63,7 @@ if ($paymentId === null) {
 
 
 if (!is_string($paymentId) && !is_numeric($paymentId)) {
-    tronado_log_event('TRONADO_BAD_ID_TYPE', 'PaymentID had unexpected type', [
+    \Faoxima\Payments\Gateways\Tronado\Callbacks::tronado_log_event('TRONADO_BAD_ID_TYPE', 'PaymentID had unexpected type', [
         'type' => gettype($paymentId),
     ]);
     http_response_code(400);
@@ -83,27 +71,27 @@ if (!is_string($paymentId) && !is_numeric($paymentId)) {
 }
 $paymentId = (string) $paymentId;
 if (!preg_match('/^[A-Za-z0-9_\-]{1,128}$/', $paymentId)) {
-    tronado_log_event('TRONADO_BAD_ID_FORMAT', 'PaymentID failed format check', [
+    \Faoxima\Payments\Gateways\Tronado\Callbacks::tronado_log_event('TRONADO_BAD_ID_FORMAT', 'PaymentID failed format check', [
         'payment_id_excerpt' => substr($paymentId, 0, 40),
     ]);
     http_response_code(400);
     exit('Invalid payment identifier');
 }
 
-$lookupStmt = $connect->prepare("SELECT * FROM Payment_report WHERE id_order = ? LIMIT 1");
+$lookupStmt = $connect->prepare("SELECT * FROM Payment_report WHERE id_order = ? AND Payment_Method = 'iranpay2' LIMIT 1");
 $lookupStmt->bind_param('s', $paymentId);
 $lookupStmt->execute();
 $Payment_report = $lookupStmt->get_result()->fetch_assoc();
 $lookupStmt->close();
 if (!is_array($Payment_report)) {
-    tronado_log_event('TRONADO_UNKNOWN_ORDER', 'Payment_report row not found', [
+    \Faoxima\Payments\Gateways\Tronado\Callbacks::tronado_log_event('TRONADO_UNKNOWN_ORDER', 'Payment_report row not found', [
         'payment_id' => $paymentId,
         'remote_ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
     ]);
     http_response_code(404);
     exit('Order not found');
 }
-$rxTronadoV2 = function_exists('rxPaymentV2Is') && rxPaymentV2Is($Payment_report);
+$rxTronadoV2 = is_callable([\Faoxima\Payments\Settlement\GatewayFlows::class, 'paymentV2Is']) && \Faoxima\Payments\Settlement\GatewayFlows::paymentV2Is($Payment_report);
 if ($Payment_report['payment_Status'] == "expire" && !$rxTronadoV2) {
     // The order expired on this side, but Tronado only sends a paid callback once the buyer
     // actually paid - so the money exists and this bot is about to credit nothing. A bare
@@ -111,7 +99,7 @@ if ($Payment_report['payment_Status'] == "expire" && !$rxTronadoV2) {
     // and never reports, so the payment is lost silently. 409 is a permanent client error on
     // their side, so they stop retrying at once AND raise the failure to the shop, which can
     // then settle the order by hand.
-    tronado_log_event('TRONADO_PAID_AFTER_EXPIRE', 'Paid callback arrived for an expired order', [
+    \Faoxima\Payments\Gateways\Tronado\Callbacks::tronado_log_event('TRONADO_PAID_AFTER_EXPIRE', 'Paid callback arrived for an expired order', [
         'payment_id' => $paymentId,
     ]);
     http_response_code(409);
@@ -119,7 +107,7 @@ if ($Payment_report['payment_Status'] == "expire" && !$rxTronadoV2) {
 }
 $setting = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM setting"));
 $price = $Payment_report['price'];
-    $datatextbotget = select("textbot", "*",null ,null ,"fetchAll");
+    $datatextbotget = \Faoxima\Core\Database\Db::select("textbot", "*",null ,null ,"fetchAll");
     $datatxtbot = array();
 foreach ($datatextbotget as $row) {
     $datatxtbot[] = array(
@@ -139,9 +127,9 @@ foreach ($datatxtbot as $item) {
         $datatextbot[$item['id_text']] = $item['text'];
     }
 }
-    if ($rxTronadoV2 && function_exists('tronadoV2HandleCallback')) {
-        $textbotlang = languagechange('../text.json');
-        [$rxTronadoV2Code, $rxTronadoV2Body] = tronadoV2HandleCallback($data, $Payment_report);
+    if ($rxTronadoV2 && is_callable([\Faoxima\Payments\Gateways\Tronado\Settlement::class, 'handleCallback'])) {
+        $textbotlang = \Faoxima\Telegram\Conversation\ConversationData::languagechange('../text.json');
+        [$rxTronadoV2Code, $rxTronadoV2Body] = \Faoxima\Payments\Gateways\Tronado\Settlement::handleCallback($pdo, $setting, $data, $Payment_report);
         http_response_code($rxTronadoV2Code);
         exit($rxTronadoV2Body);
     }
@@ -149,13 +137,8 @@ foreach ($datatxtbot as $item) {
     $isPaid = ($orderStatusId === 30) || ($data['IsPaid'] ?? false);
 
     $dedupeKey = $paymentId . '|' . ($orderStatusId ?? 'null');
-    $dedupeLookup = $connect->prepare("SELECT dec_not_confirmed, direct_payment_done FROM Payment_report WHERE id_order = ? LIMIT 1");
-    $dedupeLookup->bind_param('s', $paymentId);
-    $dedupeLookup->execute();
-    $dedupeRow = $dedupeLookup->get_result()->fetch_assoc();
-    $dedupeLookup->close();
-    if (is_array($dedupeRow) && ($dedupeRow['dec_not_confirmed'] ?? null) === $dedupeKey && (int)($dedupeRow['direct_payment_done'] ?? 0) === 1) {
-        tronado_log_event('TRONADO_DUPLICATE', 'Duplicate (PaymentId, OrderStatusID) callback ignored', [
+    if (\Faoxima\Payments\Gateways\Tronado\Settlement::isCompletedLegacyEvent($connect, (string) $paymentId, $dedupeKey)) {
+        \Faoxima\Payments\Gateways\Tronado\Callbacks::tronado_log_event('TRONADO_DUPLICATE', 'Duplicate (PaymentId, OrderStatusID) callback ignored', [
             'payment_id' => $paymentId,
             'order_status_id' => $orderStatusId,
         ]);
@@ -168,14 +151,14 @@ foreach ($datatxtbot as $item) {
             $userPaidTomanAmount = isset($data['UserPaidTomanAmount']) ? (float) $data['UserPaidTomanAmount'] : null;
             $tomanAmountWithoutWage = isset($data['TomanAmountWithoutWage']) ? (float) $data['TomanAmountWithoutWage'] : null;
             if ($userPaidTomanAmount === null || $tomanAmountWithoutWage === null) {
-                tronado_log_event('TRONADO_AMOUNT_MISSING', 'Callback lacks v5 Toman amount fields', [
+                \Faoxima\Payments\Gateways\Tronado\Callbacks::tronado_log_event('TRONADO_AMOUNT_MISSING', 'Callback lacks v5 Toman amount fields', [
                     'payment_id' => $paymentId,
                 ]);
                 http_response_code(400);
                 exit('Amount missing');
             }
 
-            $wageFromBusinessPercentage = (int) select("PaySetting", "*", "NamePay", "wageFromBusinessPercentageTronado", "select")['ValuePay'];
+            $wageFromBusinessPercentage = (int) \Faoxima\Core\Database\Db::select("PaySetting", "*", "NamePay", "wageFromBusinessPercentageTronado", "select")['ValuePay'];
             $tronAmountDelivered = isset($data['TronAmount']) ? (float) $data['TronAmount'] : null;
             $actualTronAmount = isset($data['ActualTronAmount']) ? (float) $data['ActualTronAmount'] : null;
 
@@ -190,52 +173,40 @@ foreach ($datatxtbot as $item) {
                 $creditAmount = $tomanAmountWithoutWage;
             }
 
-            $affected = RxLegacyPaymentConfirmation::claimTronado($connect, $paymentId, $dedupeKey);
-            if ($affected < 1) {
-                $doneLookup = $connect->prepare("SELECT direct_payment_done FROM Payment_report WHERE id_order = ? LIMIT 1");
-                $doneLookup->bind_param('s', $paymentId);
-                $doneLookup->execute();
-                $doneRow = $doneLookup->get_result()->fetch_assoc();
-                $doneLookup->close();
-                if (!is_array($doneRow) || (int)($doneRow['direct_payment_done'] ?? 0) === 1) {
-                    tronado_log_event('TRONADO_DUPLICATE', 'Duplicate or already-paid callback ignored', [
-                        'payment_id' => $paymentId,
-                    ]);
-                    exit('Already processed');
-                }
+            if (!\Faoxima\Payments\Gateways\Tronado\Settlement::claimLegacyPaid($connect, (string) $paymentId, $dedupeKey)) {
+                \Faoxima\Payments\Gateways\Tronado\Callbacks::tronado_log_event('TRONADO_DUPLICATE', 'Duplicate or already-paid callback ignored', [
+                    'payment_id' => $paymentId,
+                ]);
+                exit('Already processed');
             }
 
             echo "پرداخت با موفقیت انجام  شد";
-    $textbotlang = languagechange('../text.json');
-    DirectPayment($paymentId,"../images.jpg");
-    $pricecashback = select("PaySetting", "ValuePay", "NamePay", "chashbackiranpay2","select")['ValuePay'];
-    $balanceLookup = $connect->prepare("SELECT * FROM user WHERE id = ? LIMIT 1");
-    $balanceLookup->bind_param('s', $Payment_report['id_user']);
-    $balanceLookup->execute();
-    $Balance_id = $balanceLookup->get_result()->fetch_assoc();
-    $balanceLookup->close();
+    $textbotlang = \Faoxima\Telegram\Conversation\ConversationData::languagechange('../text.json');
+    $settled = \Faoxima\Payments\Settlement\CallbackClaims::settleDelivery(
+        $pdo, (string) $paymentId, $Payment_report, [\Faoxima\Payments\Gateways\GatewayRuntime::class, 'DirectPayment'], '../images.jpg', 'chashbackiranpay2', 'هدیه بازگشت وجه ترنادو',
+        static fn ($key) => \Faoxima\Core\Database\Db::select('PaySetting', 'ValuePay', 'NamePay', $key, 'select')['ValuePay'] ?? null
+    );
+    $Balance_id = $settled['customer'];
     if (!is_array($Balance_id)) {
-        tronado_log_event('TRONADO_USER_MISSING', 'Linked user row not found after paid update', [
+        \Faoxima\Payments\Gateways\Tronado\Callbacks::tronado_log_event('TRONADO_USER_MISSING', 'Linked user row not found after paid update', [
             'payment_id' => $paymentId,
             'id_user' => $Payment_report['id_user'] ?? null,
         ]);
         $Balance_id = ['id' => $Payment_report['id_user'] ?? '', 'username' => '—', 'Balance' => 0];
     }
-    $result = RxLegacyPaymentConfirmation::creditCashback(
-        $Payment_report, $Balance_id, 'chashbackiranpay2', $pricecashback, 'هدیه بازگشت وجه ترنادو'
-    );
+    $Balance_id ??= ['id' => $Payment_report['id_user'] ?? '', 'username' => '—', 'Balance' => 0];
+    $result = $settled['cashback'];
     if ($result !== null) {
-        $pricecashback =  number_format($pricecashback);
-        $text_report = "🎁 کاربر عزیز مبلغ " . rxFormatToman($result) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
+        $text_report = "🎁 کاربر عزیز مبلغ " . \Faoxima\Core\Support\Formatting::rxFormatToman($result) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
         sendmessage($Balance_id['id'], $text_report, null, 'HTML');
     }
-    $paymentreports = select("topicid","idreport","report","paymentreport","select")['idreport'];
+    $paymentreports = \Faoxima\Core\Database\Db::select("topicid","idreport","report","paymentreport","select")['idreport'];
     $balancelow = '';
     if(isset($data['TronAmount'], $data['ActualTronAmount']) && (float) $data['TronAmount'] < (float) $data['ActualTronAmount']){
         $balancelow = "❌ کاربر کمتر از مبلغ تعیین شده واریز کرده است.";
     }
-$rxFmtPrice = rxFormatToman($price);
-$rxFmtCreditAmount = rxFormatToman($creditAmount);
+$rxFmtPrice = \Faoxima\Core\Support\Formatting::rxFormatToman($price);
+$rxFmtCreditAmount = \Faoxima\Core\Support\Formatting::rxFormatToman($creditAmount);
 $text_reportpayment = "💵 پرداخت جدید
 $balancelow
 <blockquote>- 👤 نام کاربری کاربر : @{$Balance_id['username']}</blockquote>
@@ -252,16 +223,10 @@ $balancelow
         ]);
     }
         } elseif ($orderStatusId === 40) {
-            $dedupeUpd = $connect->prepare("UPDATE Payment_report SET dec_not_confirmed = ? WHERE id_order = ?");
-            $dedupeUpd->bind_param('ss', $dedupeKey, $paymentId);
-            $dedupeUpd->execute();
-            $dedupeUpd->close();
-            payment_notify_user_failed($paymentId, 'رسید پرداخت شما توسط ترونادو رد شد');
+            \Faoxima\Payments\Gateways\Tronado\Settlement::recordLegacyEvent($connect, (string) $paymentId, $dedupeKey);
+            \Faoxima\Payments\Settlement\ConfirmationFunctions::payment_notify_user_failed($paymentId, 'رسید پرداخت شما توسط ترونادو رد شد');
         } elseif ($orderStatusId === 200) {
-            $dedupeUpd = $connect->prepare("UPDATE Payment_report SET dec_not_confirmed = ? WHERE id_order = ?");
-            $dedupeUpd->bind_param('ss', $dedupeKey, $paymentId);
-            $dedupeUpd->execute();
-            $dedupeUpd->close();
-            payment_mark_expired($paymentId);
+            \Faoxima\Payments\Gateways\Tronado\Settlement::recordLegacyEvent($connect, (string) $paymentId, $dedupeKey);
+            \Faoxima\Payments\Settlement\Confirmation::markExpired($pdo, $paymentId);
         }
     }

@@ -1,6 +1,9 @@
 <?php
 
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'textbot.php';
 
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
     define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
 }
@@ -17,366 +20,41 @@ header('Pragma: no-cache');
 header('Expires: 0');
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
-require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/lib/csrf.php';
-require_once __DIR__ . '/lib/textbot_edge.php';
-require_once __DIR__ . '/../re/rx/function/tonpay_templates.php';
-require_once __DIR__ . '/../re/rx/function/custom_duration_pricing.php';
-require_once __DIR__ . '/../re/rx/function/database_helpers_1.php';
-$textDefaults = ['text_custom_price_summary' => fx_custom_price_text_default()];
-$textDefaults += array_intersect_key(tonpayTemplateDefaults(), array_flip(['dyn_atlaspay_bot_receipt_button', 'dyn_atlaspay_bot_receipt_instructions']));
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindValue(":username", $_SESSION["user"] ?? '', PDO::PARAM_STR);
-$query->execute();
-$adminRow = $query->fetch(PDO::FETCH_ASSOC);
-if (!isset($_SESSION["user"]) || !$adminRow) {
-    header('Location: login.php');
-    exit;
+if (\Faoxima\Admin\Web\Pages\TextbotRequest::handle(
+        action: $action,
+        addedKey: $addedKey,
+        categories: $categories,
+        cur: $cur,
+        d: $d,
+        delKey: $delKey,
+        edgeRejectedKeys: $edgeRejectedKeys,
+        flash: $flash,
+        g: $g,
+        items: $items,
+        key: $key,
+        orderedGrouped: $orderedGrouped,
+        payload: $payload,
+        pdo: $pdo ?? null,
+        query: $query,
+        r: $r,
+        richRejectedKeys: $richRejectedKeys,
+        richStates: $richStates,
+        richTemplateErrors: $richTemplateErrors,
+        row: $row,
+        rows: $rows,
+        savedNum: $savedNum,
+        tonpayTemplateFlash: $tonpayTemplateFlash,
+        value: $value,
+        values: $values,
+        visibleRows: $visibleRows
+    ) !== true) {
+    unset($adminWebPage);
+    return;
 }
 
-fx_csrf_guard();
-
-
-function faoxima_text_categories(): array {
-    return [
-        'custom_pricing' => ['title' => 'متن قیمت‌گذاری هر گیگ', 'icon' => 'coins', 'keys' => ['text_custom_price_summary']],
-        'sys'  => ['title' => 'سیستم و شروع',        'icon' => 'gear', 'keys' => ['text_start', 'text_roll', 'miniapp_suggest_1', 'text_miniapp_button', 'text_account_info']],
-        'srv'  => ['title' => 'سرویس‌ها',              'icon' => 'server', 'keys' => ['text_Purchased_services', 'text_usertest', 'crontest', 'textafterpay', 'dyn_purchase_subscription_link_line', 'textaftertext', 'textmanual', 'textselectlocation', 'text_extend', 'text_wgdashboard', 'text_service_detail', 'dyn_renewconfirm_queued_success', 'dyn_renewal_success_same_link']],
-        'help' => ['title' => 'راهنما و پشتیبانی',     'icon' => 'message', 'keys' => ['text_fq', 'text_dec_fq', 'text_help', 'text_support', 'text_channel']],
-        'fin'  => ['title' => 'مالی و خرید',           'icon' => 'coins', 'keys' => ['text_Add_Balance', 'text_sell', 'text_Tariff_list', 'text_dec_Tariff_list', 'accountwallet', 'text_pishinvoice', 'text_cart', 'text_cart_auto', 'text_Discount', 'text_wheel_luck', 'carttocart', 'textnowpayment', 'textsnowpayment', 'textnowpaymenttron', 'text_star_telegram', 'iranpay3', 'iranpay2', 'iranpay1', 'tonpay', 'rialit', 'cubepay', 'blupal', 'variza', 'abangateway', 'atlaspay', 'zarinpal', 'textpaymentnotverify', 'dyn_public_log_btn_label', 'dyn_public_broadcast_new_sub_tpl', 'dyn_public_broadcast_renewal_tpl', 'dyn_public_broadcast_volume_topup_tpl', 'dyn_public_broadcast_time_extra_tpl', 'dyn_public_broadcast_wallet_deposit_tpl']],
-        'ref'  => ['title' => 'زیرمجموعه و نمایندگی', 'icon' => 'users', 'keys' => ['text_affiliates', 'textrequestagent', 'textpanelagent', 'text_request_agent_dec']],
-        'err_general' => ['title' => 'پیام‌های عمومی خطا', 'icon' => 'circle-exclamation', 'keys' => ['dyn_errors_verification_failed', 'dyn_errors_restart_process', 'dyn_errors_concurrency_insufficient_stock', 'dyn_errors_panel_connection_error', 'dyn_errors_button_disabled', 'dyn_errors_feature_unavailable', 'dyn_errors_feature_unavailable_short', 'dyn_errors_feature_currently_unavailable_nodot', 'dyn_errors_service_found_count', 'dyn_errors_service_not_found', 'dyn_errors_view_account_unavailable', 'dyn_errors_qr_unavailable', 'dyn_errors_service_deleted', 'dyn_errors_config_read_error', 'dyn_errors_panel_unavailable_dot', 'dyn_errors_config_read_from_panel_error', 'dyn_errors_usage_stats_failed', 'dyn_errors_server_list_failed', 'dyn_errors_not_connected_change_status']],
-        'err_purchase' => ['title' => 'خطاهای خرید و تمدید', 'icon' => 'cart-shopping', 'keys' => ['dyn_errors_renewal_failed_restart', 'dyn_errors_renewal_support_error', 'dyn_errors_purchase_info_incomplete', 'dyn_errors_panel_not_found', 'dyn_errors_panel_unavailable_choose_other', 'dyn_errors_extra_volume_purchase_error', 'dyn_errors_location_change_limit_reached', 'dyn_errors_min_max_deposit_amount', 'dyn_errors_stock_depleted_no_charge', 'dyn_errors_stock_extend_success', 'dyn_errors_invalid_subscription_link', 'dyn_errors_extend_unavailable_panel', 'dyn_errors_not_connected_extend', 'dyn_errors_extend_current_plan_unavailable', 'dyn_errors_extend_restart_process', 'dyn_errors_exclusive_discount_conflict', 'dyn_errors_discount_expired', 'dyn_errors_discount_applied', 'dyn_errors_link_change_service_disabled', 'dyn_errors_extra_volume_unavailable_panel', 'dyn_errors_extra_volume_restart_process', 'dyn_errors_purchase_failed_restart', 'dyn_errors_location_change_unavailable', 'dyn_errors_generic_restart_process', 'dyn_errors_restart_buy_process_short', 'dyn_errors_transfer_panel_unavailable', 'dyn_errors_transfer_unused_config_only', 'dyn_errors_removal_request_thanks', 'dyn_errors_extra_time_unavailable_panel', 'dyn_errors_extra_time_restart_process', 'dyn_errors_service_removed', 'dyn_errors_service_removal_unavailable', 'dyn_errors_removal_reason_prompt', 'dyn_errors_test_service_unavailable', 'dyn_errors_min_bulk_purchase_balance', 'dyn_errors_section_disabled', 'dyn_errors_discount_code_not_applicable', 'dyn_errors_stock_low_purchase_blocked', 'dyn_errors_queued_renewal_exists']],
-        'tickets' => ['title' => 'تیکت پشتیبانی', 'icon' => 'ticket', 'keys' => ['dyn_tickets_select_category', 'dyn_tickets_select_department', 'dyn_tickets_ask_subject', 'dyn_tickets_operation_canceled', 'dyn_tickets_invalid_subject_text', 'dyn_tickets_ask_media_new', 'dyn_tickets_ask_media_reply', 'dyn_tickets_media_yes', 'dyn_tickets_media_no', 'dyn_tickets_cancel', 'dyn_tickets_ask_media_count', 'dyn_tickets_ask_media_upload', 'dyn_tickets_invalid_media_choice', 'dyn_tickets_invalid_media_type', 'dyn_tickets_media_received', 'dyn_tickets_ask_body_text', 'dyn_tickets_ask_body_text_short', 'dyn_tickets_not_available', 'dyn_tickets_reply_recorded', 'dyn_tickets_invalid_body_text', 'dyn_tickets_created', 'dyn_tickets_closed_locked', 'dyn_tickets_no_media', 'dyn_tickets_closed_confirm']],
-        'wallet_ext' => ['title' => 'کیف پول و پرداخت', 'icon' => 'wallet', 'keys' => ['dyn_wallet_select_amount', 'dyn_wallet_recheck_canceled', 'dyn_wallet_amount_not_numeric', 'dyn_wallet_rate_unavailable', 'dyn_wallet_calculated_amount_invalid', 'dyn_wallet_hash_not_found', 'dyn_wallet_ask_receipt_photo', 'dyn_wallet_incomplete_info', 'dyn_wallet_hash_already_used', 'dyn_wallet_internal_error_retry', 'dyn_wallet_invalid_charge_amount', 'dyn_wallet_discount_not_applicable_zero', 'dyn_wallet_no_active_card', 'dyn_wallet_select_verified_card', 'dyn_wallet_card_auth_active_notice', 'dyn_wallet_queue_too_busy', 'dyn_wallet_hashchecker_not_loaded', 'dyn_wallet_no_wallet_address_configured', 'dyn_wallet_charge_amount_undetectable', 'dyn_wallet_invoice_not_found', 'dyn_wallet_invoice_not_pending', 'dyn_wallet_prompt_amount_prompt', 'dyn_wallet_prompt_amount_out_of_range', 'dyn_wallet_prompt_debt_must_pay_first', 'dyn_wallet_prompt_has_discount_yes', 'dyn_wallet_prompt_has_discount_no', 'dyn_wallet_prompt_ask_has_discount', 'dyn_wallet_prompt_auth_success']],
-        'atlaspay_bot' => ['title' => 'ارسال رسید اطلس‌پی در ربات', 'icon' => 'wallet', 'keys' => ['dyn_atlaspay_bot_receipt_button', 'dyn_atlaspay_bot_receipt_instructions']],
-        'tonpay' => ['title' => 'قالب پیام‌های پرداخت تون‌پی (TonPay Payment Message Templates)', 'icon' => 'wallet', 'keys' => array_values(array_filter(tonpayTemplateKeys(), static function ($key) { return strpos($key, 'dyn_tonpay_') === 0; }))],
-        'ref_ext' => ['title' => 'رفرال، پاداش و گردونه', 'icon' => 'gift', 'keys' => ['dyn_referral_welcome_alert', 'dyn_referral_inviter_reward_alert', 'dyn_referral_commission_credited', 'dyn_rewards_points_earned', 'dyn_rewards_cashback_gift', 'dyn_affiliates_extra_section_disabled', 'dyn_affiliates_extra_not_affiliate_of_anyone', 'dyn_affiliates_extra_gift_already_received', 'dyn_affiliates_extra_gift_credited_inviter', 'dyn_affiliates_extra_gift_activated', 'dyn_wheel_button_disabled_you', 'dyn_wheel_no_purchase_users_only', 'dyn_wheel_price_unavailable']],
-        'misc' => ['title' => 'سایر (گروه/ادمین)', 'icon' => 'user-tag', 'keys' => ['dyn_group_setup_topic_not_active', 'dyn_group_setup_insufficient_access', 'dyn_group_setup_chat_id_received']],
-        'cron' => ['title' => 'اعلانات کرون', 'icon' => 'hourglass', 'keys' => ['dyn_cron_volume_warning_tpl', 'dyn_cron_volume_warning_report_tpl', 'dyn_cron_time_warning_tpl', 'dyn_cron_time_warning_report_tpl', 'dyn_cron_removal_notice_tpl', 'dyn_cron_removal_report_tpl', 'dyn_cron_removal_volume_notice_tpl', 'dyn_cron_removal_volume_report_tpl', 'dyn_cron_extend_service_btn', 'dyn_gift_all_done', 'dyn_gift_error_report_tpl', 'dyn_gift_failed_users_suffix_tpl', 'dyn_uptime_api_access_error_tpl', 'dyn_uptime_api_access_restored_tpl', 'dyn_uptime_xray_stopped_tpl', 'dyn_uptime_xray_restored_tpl', 'dyn_uptime_panel_not_connected_tpl', 'dyn_queued_renewal_activated_tpl']],
-        'jsontext_users' => ['title' => 'متن‌های کاربر (text.json)', 'icon' => 'comment-dots', 'keys' => []],
-        'jsontext_admin' => ['title' => 'متن‌های ادمین (text.json)', 'icon' => 'user-shield', 'keys' => []],
-    ];
-}
-
-function faoxima_jsontext_prefix_map(): array {
-    return [
-        'users.balance.'          => 'fin',
-        'users.discount.'         => 'fin',
-        'users.sell.'             => 'fin',
-        'users.customsellvolume.' => 'fin',
-        'users.customvolume.'     => 'fin',
-        'users.pricearze.'        => 'fin',
-        'users.wheel_luck.'       => 'fin',
-        'users.stateus.'          => 'srv',
-        'users.extend.'           => 'srv',
-        'users.extra_volume.'     => 'srv',
-        'users.extra_time.'       => 'srv',
-        'users.usertest.'         => 'srv',
-        'users.help.'             => 'help',
-        'users.support.'          => 'help',
-        'users.affiliates.'       => 'ref',
-        'users.agenttext.'        => 'ref',
-        'admin.'                  => 'jsontext_admin',
-        'users.'                  => 'jsontext_users',
-    ];
-}
-
-function faoxima_jsontext_group(string $key): ?string {
-    if (strpos($key, 'jsontext.') !== 0) {
-        return null;
-    }
-    $path = strtolower(substr($key, strlen('jsontext.')));
-    foreach (faoxima_jsontext_prefix_map() as $prefix => $cat) {
-        if (strpos($path, $prefix) === 0) {
-            return $cat;
-        }
-    }
-    return 'jsontext_users';
-}
-
-function faoxima_text_has_placeholder(string $text): bool {
-    return (bool) preg_match('/%(\d+\$)?[sd]|\{[a-zA-Z_][a-zA-Z0-9_]*\}/', $text);
-}
-
-function faoxima_text_group(string $key): string {
-    if ($key === 'text_custom_price_summary') return 'custom_pricing';
-    $k = strtolower($key);
-    foreach (faoxima_text_categories() as $cat => $info) {
-        foreach ($info['keys'] as $known) {
-            if ($k === strtolower($known)) return $cat;
-        }
-    }
-    $jsontextCat = faoxima_jsontext_group($k);
-    if ($jsontextCat !== null) return $jsontextCat;
-    if (strpos($k, 'zarinp') !== false || strpos($k, 'pay') !== false || strpos($k, 'cart') !== false || strpos($k, 'star') !== false)
-        return 'fin';
-    if (strpos($k, 'agent') !== false)
-        return 'ref';
-    return 'other';
-}
-
-$flash = ['ok' => '', 'err' => ''];
-
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['_action'] ?? '';
-
-    if ($action === 'save') {
-        $rawPayload = $_POST['_text_payload'] ?? null;
-        $payload = is_string($rawPayload) ? json_decode($rawPayload, true) : null;
-        $validPayload = is_array($payload) && ($payload['version'] ?? null) === 1
-            && isset($payload['t'], $payload['rich']) && is_array($payload['t']) && is_array($payload['rich']);
-        if ($validPayload) {
-            $validPayload = count($payload['t']) === count($payload['rich']);
-            foreach ($payload['t'] as $key => $value) {
-                if (!array_key_exists($key, $payload['rich'])) {
-                    $validPayload = false;
-                    break;
-                }
-            }
-        }
-        if ($validPayload) {
-            foreach ([$payload['t'], $payload['rich']] as $values) {
-                foreach ($values as $value) {
-                    if (!is_string($value)) {
-                        $validPayload = false;
-                        break 2;
-                    }
-                }
-            }
-        }
-        if (!$validPayload) {
-            $_SESSION['textbot_save_error'] = 'داده‌های فرم کامل یا معتبر نیستند؛ تغییری ذخیره نشد. صفحه را تازه کنید و دوباره ذخیره کنید.';
-            header('Location: textbot.php');
-            exit;
-        }
-        $newValues = $payload['t'];
-
-
-        $cur = [];
-        $r = $pdo->query("SELECT id_text, text FROM textbot");
-        if ($r) {
-            foreach ($r->fetchAll(PDO::FETCH_ASSOC) as $row) {
-                $cur[(string)$row['id_text']] = (string)$row['text'];
-            }
-        }
-
-        $cur += $textDefaults;
-        $updated = 0;
-        $edgeRejected = [];
-        $tonpayTemplateErrors = [];
-        $richPrepared = [];
-        $richDropped = [];
-        $richRejected = [];
-        $richBlocked = [];
-        $richErrors = [];
-        $richPost = $payload['rich'];
-        foreach ($richPost as $rKey => $rRaw) {
-            $rKey = (string)$rKey;
-            if (!isset($cur[$rKey])) continue;
-            $rText = array_key_exists($rKey, $newValues) ? (string)$newValues[$rKey] : (string)$cur[$rKey];
-            $rCompanion = fx_textbot_rich_prefix() . $rKey;
-            $rIssue = null;
-            $rState = fx_textbot_rich_state_for_save($rRaw, $rText, $rIssue);
-            if ($rState === null) {
-                if ($rIssue !== null) {
-                    $richRejected[] = $rKey;
-                    $richBlocked[$rKey] = true;
-                    $richErrors[$rKey] = $rIssue;
-                    continue;
-                }
-                if (isset($cur[$rCompanion])) {
-                    $richDropped[$rCompanion] = true;
-                }
-                continue;
-            }
-            $newValues[$rKey] = (string)$rState['html'];
-            $richPrepared[$rKey] = $rState;
-        }
-        foreach ($newValues as $key => $val) {
-            $key = (string)$key;
-            $val = (string)$val;
-            if (isset($richBlocked[$key])) continue;
-            $rCompanion = fx_textbot_rich_prefix() . $key;
-            $hasRichChange = (isset($richPrepared[$key]) && ($cur[$rCompanion] ?? '') !== fx_textbot_rich_state_encode($richPrepared[$key])) || isset($richDropped[$rCompanion]);
-            if (isset($cur[$key]) && $cur[$key] === $val && !$hasRichChange) {
-                continue;
-            }
-            $tonpayTemplateIssue = tonpayTemplateValidate($key, $val);
-            if ($tonpayTemplateIssue !== '') {
-                $tonpayTemplateErrors[$key] = $tonpayTemplateIssue;
-                continue;
-            }
-            if (fx_textbot_edge_violation($key, $val) !== '') {
-                $edgeRejected[] = $key;
-                continue;
-            }
-            try {
-                if ($hasRichChange) {
-                    $pdo->beginTransaction();
-                }
-                $upd = $pdo->prepare("INSERT INTO textbot (id_text, text) VALUES (:k, :v) ON DUPLICATE KEY UPDATE text = :v2");
-                $upd->execute([':k' => $key, ':v' => $val, ':v2' => $val]);
-                if (isset($richPrepared[$key])) {
-                    $rJson = fx_textbot_rich_state_encode($richPrepared[$key]);
-                    $upd->execute([':k' => $rCompanion, ':v' => $rJson, ':v2' => $rJson]);
-                } elseif (isset($richDropped[$rCompanion])) {
-                    $pdo->prepare("DELETE FROM textbot WHERE id_text = :k")->execute([':k' => $rCompanion]);
-                }
-                if ($hasRichChange) {
-                    $pdo->commit();
-                }
-                $updated++;
-            } catch (\Throwable $e) {
-                if ($hasRichChange && $pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
-                $richErrors[$key] = 'ذخیرهٔ متن انجام نشد؛ نسخهٔ قبلی حفظ شد.';
-                $richRejected[] = $key;
-                $flash['err'] = $e->getMessage();
-                error_log('[panel/textbot] update failed for ' . $key . ': ' . $e->getMessage());
-            }
-        }
-        if ($updated > 0) {
-            faoxima_bust_bot_selectcache('textbot');
-            if (function_exists('clearSelectCache')) {
-                clearSelectCache('textbot');
-            }
-        }
-        $redirect = 'textbot.php?saved=' . $updated;
-        if (!empty($tonpayTemplateErrors)) {
-            $_SESSION['tonpay_template_errors'] = $tonpayTemplateErrors;
-        }
-        if (!empty($edgeRejected)) {
-            $redirect .= '&edge_rejected=' . urlencode(implode(',', $edgeRejected));
-        }
-        if (!empty($richRejected)) {
-            $_SESSION['rich_template_errors'] = $richErrors;
-            $redirect .= '&rich_rejected=' . urlencode(implode(',', $richRejected));
-        }
-        header('Location: ' . $redirect);
-        exit;
-    }
-    elseif ($action === 'add') {
-        $key = trim((string)($_POST['new_key'] ?? ''));
-        $val = (string)($_POST['new_val'] ?? '');
-
-
-        $errors = [];
-        if ($key === '') {
-            $errors[] = 'کلید نمی‌تواند خالی باشد.';
-        } elseif (!preg_match('/^[A-Za-z0-9_ـ]{2,100}$/u', $key)) {
-            $errors[] = 'کلید فقط می‌تواند شامل حروف، عدد و آندرلاین باشد (۲ تا ۱۰۰ کاراکتر).';
-        } elseif (mb_strlen($val) > 4000) {
-            $errors[] = 'متن بیش از حد طولانی است (حداکثر ۴۰۰۰ کاراکتر).';
-        } elseif (fx_textbot_edge_violation($key, $val) !== '') {
-            $errors[] = fx_textbot_edge_error_message();
-        } elseif (tonpayTemplateValidate($key, $val) !== '') {
-            $errors[] = tonpayTemplateValidate($key, $val);
-        }
-
-        if (!empty($errors)) {
-            $flash['err'] = '• ' . implode("<br>• ", array_map(fn($e) => htmlspecialchars($e, ENT_QUOTES, 'UTF-8'), $errors));
-        } else {
-            try {
-                $ins = $pdo->prepare("INSERT INTO textbot (id_text, text) VALUES (:k, :v)
-                                      ON DUPLICATE KEY UPDATE text = VALUES(text)");
-                $ins->execute([':k' => $key, ':v' => $val]);
-                faoxima_bust_bot_selectcache('textbot');
-                if (function_exists('clearSelectCache')) {
-                    clearSelectCache('textbot');
-                }
-                header('Location: textbot.php?added=' . urlencode($key));
-                exit;
-            } catch (\Throwable $e) {
-                $flash['err'] = 'افزودن ناموفق: ' . $e->getMessage();
-            }
-        }
-    }
-    elseif ($action === 'delete') {
-        $key = (string)($_POST['key'] ?? '');
-        if ($key !== '') {
-            try {
-                $d = $pdo->prepare("DELETE FROM textbot WHERE id_text = :k OR id_text = :rk");
-                $d->execute([':k' => $key, ':rk' => fx_textbot_rich_prefix() . $key]);
-                faoxima_bust_bot_selectcache('textbot');
-                if (function_exists('clearSelectCache')) {
-                    clearSelectCache('textbot');
-                }
-                header('Location: textbot.php?deleted=' . urlencode($key));
-                exit;
-            } catch (\Throwable $e) {
-                $flash['err'] = 'حذف ناموفق: ' . $e->getMessage();
-            }
-        }
-    }
-}
-
-
-$rows = [];
-try {
-    $r = $pdo->query("SELECT id_text, text FROM textbot ORDER BY id_text ASC");
-    if ($r) $rows = $r->fetchAll(PDO::FETCH_ASSOC);
-} catch (\Throwable $e) {
-    $flash['err'] = 'بارگذاری متن‌ها ناموفق: ' . $e->getMessage();
-}
-
-
-foreach ($textDefaults as $defaultKey => $defaultText) {
-    if (!in_array($defaultKey, array_column($rows, 'id_text'), true)) {
-        $rows[] = ['id_text' => $defaultKey, 'text' => $defaultText];
-    }
-}
-$richStates = [];
-$visibleRows = [];
-$richPrefix = fx_textbot_rich_prefix();
-foreach ($rows as $row) {
-    $rowId = (string)$row['id_text'];
-    if (strpos($rowId, $richPrefix) === 0) {
-        $richStates[substr($rowId, strlen($richPrefix))] = (string)$row['text'];
-        continue;
-    }
-    $visibleRows[] = $row;
-}
-
-$grouped = [];
-foreach ($visibleRows as $row) {
-    $g = faoxima_text_group((string)$row['id_text']);
-    if (!isset($grouped[$g])) $grouped[$g] = [];
-    $grouped[$g][] = $row;
-}
-
-$categories = faoxima_text_categories();
-$tabOrder = ['sys', 'srv', 'help', 'fin', 'custom_pricing', 'ref', 'err_general', 'err_purchase', 'tickets', 'wallet_ext', 'tonpay', 'ref_ext', 'misc', 'cron', 'jsontext_users', 'jsontext_admin', 'other'];
-$orderedGrouped = [];
-foreach ($tabOrder as $g) {
-    if (isset($grouped[$g])) { $orderedGrouped[$g] = $grouped[$g]; unset($grouped[$g]); }
-}
-foreach ($grouped as $g => $items) $orderedGrouped[$g] = $items;
-
-function faoxima_tab_title(string $tab, array $categories): string {
-    return $categories[$tab]['title'] ?? 'سایر';
-}
-
-function faoxima_tab_icon(string $tab, array $categories): string {
-    return $categories[$tab]['icon'] ?? 'more-horizontal';
-}
-
-$savedNum = isset($_GET['saved']) ? (int)$_GET['saved'] : -1;
-$addedKey = isset($_GET['added']) ? (string)$_GET['added'] : '';
-$delKey   = isset($_GET['deleted']) ? (string)$_GET['deleted'] : '';
-$tonpayTemplateFlash = isset($_SESSION['tonpay_template_errors']) && is_array($_SESSION['tonpay_template_errors']) ? $_SESSION['tonpay_template_errors'] : [];
-unset($_SESSION['tonpay_template_errors']);
-$edgeRejectedKeys = isset($_GET['edge_rejected']) ? array_values(array_filter(explode(',', (string)$_GET['edge_rejected']), 'strlen')) : [];
-$richRejectedKeys = isset($_GET['rich_rejected']) ? array_values(array_filter(explode(',', (string)$_GET['rich_rejected']), 'strlen')) : [];
-$richTemplateErrors = isset($_SESSION['rich_template_errors']) && is_array($_SESSION['rich_template_errors']) ? $_SESSION['rich_template_errors'] : [];
-unset($_SESSION['rich_template_errors']);
-if (isset($_SESSION['textbot_save_error'])) {
-    $flash['err'] = (string) $_SESSION['textbot_save_error'];
-    unset($_SESSION['textbot_save_error']);
-}
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -1207,7 +885,7 @@ if (isset($_SESSION['textbot_save_error'])) {
             <div class="page-head">
                 <div>
                     <div class="page-head__title">
-                        <?php echo icon('text', 'svg-icon svg-lg'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('text', 'svg-icon svg-lg'); ?>
                         ویرایش متن‌های ربات
                     </div>
                     <div class="page-head__sub">تمام برچسب‌های نمایشی و پیام‌های ربات در یک‌جا</div>
@@ -1216,7 +894,7 @@ if (isset($_SESSION['textbot_save_error'])) {
 
             <?php if ($savedNum > 0): ?>
                 <div class="alert alert-success">
-                    <?php echo icon('circle-check', 'svg-icon'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-check', 'svg-icon'); ?>
                     <span><?php echo $savedNum; ?> متن به‌روزرسانی شد.</span>
                 </div>
             <?php elseif ($savedNum === 0): ?>
@@ -1236,9 +914,9 @@ if (isset($_SESSION['textbot_save_error'])) {
             <?php endif; ?>
             <?php if (!empty($edgeRejectedKeys)): ?>
                 <div class="alert alert-danger">
-                    <?php echo icon('circle-exclamation', 'svg-icon'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon'); ?>
                     <span>
-                        <?php echo htmlspecialchars(fx_textbot_edge_error_message(), ENT_QUOTES, 'UTF-8'); ?>
+                        <?php echo htmlspecialchars(\Faoxima\Admin\Web\Support\TextbotEdge::fx_textbot_edge_error_message(), ENT_QUOTES, 'UTF-8'); ?>
                         ذخیره نشد:
                         <?php foreach ($edgeRejectedKeys as $rk): ?>
                             <code><?php echo htmlspecialchars($rk, ENT_QUOTES, 'UTF-8'); ?></code>
@@ -1248,7 +926,7 @@ if (isset($_SESSION['textbot_save_error'])) {
             <?php endif; ?>
             <?php if (!empty($richRejectedKeys)): ?>
                 <div class="alert alert-danger">
-                    <?php echo icon('circle-exclamation', 'svg-icon'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon'); ?>
                     <span>
                         متن‌های زیر ذخیره نشدند و نسخهٔ قبلی آن‌ها حفظ شد:
                         <?php foreach ($richRejectedKeys as $rk): ?>
@@ -1260,7 +938,7 @@ if (isset($_SESSION['textbot_save_error'])) {
             <?php endif; ?>
             <?php foreach ($tonpayTemplateFlash as $tplKey => $tplIssue): ?>
                 <div class="alert alert-danger">
-                    <?php echo icon('circle-exclamation', 'svg-icon'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon'); ?>
                     <span><code><?php echo htmlspecialchars((string)$tplKey, ENT_QUOTES, 'UTF-8'); ?></code> ذخیره نشد: <?php echo htmlspecialchars((string)$tplIssue, ENT_QUOTES, 'UTF-8'); ?></span>
                 </div>
             <?php endforeach; ?>
@@ -1282,21 +960,21 @@ if (isset($_SESSION['textbot_save_error'])) {
             </div>
 
             <form method="POST" action="textbot.php" id="textForm" autocomplete="off">
-                <?php echo fx_csrf_field(); ?>
+                <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                 <input type="hidden" name="_action" value="save">
                 <input type="hidden" name="_text_payload" id="textSavePayload" value="">
 
                 <div class="cat-select" id="catSelect">
                     <button type="button" class="cat-select__box" id="catSelectBox">
-                        <?php echo icon('list', 'svg-icon'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('list', 'svg-icon'); ?>
                         <span class="cat-select__label" id="catSelectLabel"></span>
-                        <?php echo icon('chevron-down', 'svg-icon cat-select__chevron'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('chevron-down', 'svg-icon cat-select__chevron'); ?>
                     </button>
                     <div class="cat-select__dd" id="catSelectDd" role="listbox">
                         <?php $rxFirstTab = true; foreach ($orderedGrouped as $tabKey => $items): ?>
                             <button type="button" class="cat-select__item<?php echo $rxFirstTab ? ' active' : ''; ?>" data-tab="tab-<?php echo htmlspecialchars($tabKey, ENT_QUOTES); ?>" role="option">
-                                <?php echo icon(faoxima_tab_icon($tabKey, $categories), 'svg-icon'); ?>
-                                <span><?php echo htmlspecialchars(faoxima_tab_title($tabKey, $categories), ENT_QUOTES, 'UTF-8'); ?></span>
+                                <?php echo \Faoxima\Admin\Web\Support\Icons::icon(\Faoxima\Admin\Web\Pages\TextbotRequestHelpers::faoxima_tab_icon($tabKey, $categories), 'svg-icon'); ?>
+                                <span><?php echo htmlspecialchars(\Faoxima\Admin\Web\Pages\TextbotRequestHelpers::faoxima_tab_title($tabKey, $categories), ENT_QUOTES, 'UTF-8'); ?></span>
                                 <span class="chip"><?php echo count($items); ?></span>
                             </button>
                         <?php $rxFirstTab = false; endforeach; ?>
@@ -1306,24 +984,24 @@ if (isset($_SESSION['textbot_save_error'])) {
                 <?php $rxFirstPanel = true; foreach ($orderedGrouped as $tabKey => $items): ?>
                     <div class="text-tabpanel<?php echo $rxFirstPanel ? ' active' : ''; ?>" id="tab-<?php echo htmlspecialchars($tabKey, ENT_QUOTES); ?>">
                         <div class="text-tabpanel__searchhead">
-                            <?php echo icon(faoxima_tab_icon($tabKey, $categories), 'svg-icon'); ?>
-                            <?php echo htmlspecialchars(faoxima_tab_title($tabKey, $categories), ENT_QUOTES, 'UTF-8'); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon(\Faoxima\Admin\Web\Pages\TextbotRequestHelpers::faoxima_tab_icon($tabKey, $categories), 'svg-icon'); ?>
+                            <?php echo htmlspecialchars(\Faoxima\Admin\Web\Pages\TextbotRequestHelpers::faoxima_tab_title($tabKey, $categories), ENT_QUOTES, 'UTF-8'); ?>
                         </div>
                         <?php foreach ($items as $row):
                             $k = (string)$row['id_text'];
                             $v = (string)$row['text'];
-                            $richEligibility = fx_textbot_rich_eligibility($k);
-                            $richJson = isset($richStates[$k]) ? fx_textbot_rich_state_decode_storage((string)$richStates[$k]) : '';
+                            $richEligibility = \Faoxima\Admin\Web\Support\TextbotEdge::fx_textbot_rich_eligibility($k);
+                            $richJson = isset($richStates[$k]) ? \Faoxima\Admin\Web\Support\TextbotEdge::fx_textbot_rich_state_decode_storage((string)$richStates[$k]) : '';
                         ?>
                             <div class="text-row"
                                  data-search-key="<?php echo htmlspecialchars($k . ($k === 'text_custom_price_summary' ? ' خلاصه قیمت سرویس دلخواه مبلغ کل قیمت هر گیگ افزایش قیمت بر اساس مدت خرید تمدید تحویل' : ''), ENT_QUOTES, 'UTF-8'); ?>"
                                  data-search-text="<?php echo htmlspecialchars($v, ENT_QUOTES, 'UTF-8'); ?>"
-                                 data-search-category="<?php echo htmlspecialchars(faoxima_tab_title($tabKey, $categories), ENT_QUOTES, 'UTF-8'); ?>">
+                                 data-search-category="<?php echo htmlspecialchars(\Faoxima\Admin\Web\Pages\TextbotRequestHelpers::faoxima_tab_title($tabKey, $categories), ENT_QUOTES, 'UTF-8'); ?>">
                                 <code class="text-key">
                                     <span class="text-key__id"><?php echo htmlspecialchars($k, ENT_QUOTES); ?></span>
-                                    <?php if (faoxima_text_has_placeholder($v)): ?>
+                                    <?php if (\Faoxima\Admin\Web\Pages\TextbotRequestHelpers::faoxima_text_has_placeholder($v)): ?>
                                         <span class="text-key__badge" title="این متن دارای متغیر جایگزین‌شونده است؛ در ویرایش حذف نکنید">
-                                            <?php echo icon('circle-exclamation', 'svg-icon'); ?> متغیر
+                                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon'); ?> متغیر
                                         </span>
                                     <?php endif; ?>
                                     <?php if ($k === 'text_custom_price_summary'): ?>
@@ -1339,11 +1017,11 @@ if (isset($_SESSION['textbot_save_error'])) {
                                     <?php if ($k === 'text_start'): ?>
                                         <span class="text-key__hint" dir="ltr"><?php echo '{name}, {first_name}, {last_name}, {username}, {shanase}, {referral_code}, {phone}, {register_date}, {balance}, {order_count}, {payment_count}, {affiliate_count}, {group}, {date_now}, {time_now}, {time}, {version}'; ?></span>
                                     <?php endif; ?>
-                                    <?php if (tonpayTemplateIsKnown($k)): ?>
-                                        <span class="text-key__hint" dir="ltr"><?php echo htmlspecialchars(tonpayTemplatePlaceholderHint($k) !== '' ? tonpayTemplatePlaceholderHint($k) : 'بدون متغیر', ENT_QUOTES, 'UTF-8'); ?></span>
+                                    <?php if (\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayTemplateIsKnown($k)): ?>
+                                        <span class="text-key__hint" dir="ltr"><?php echo htmlspecialchars(\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayTemplatePlaceholderHint($k) !== '' ? \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayTemplatePlaceholderHint($k) : 'بدون متغیر', ENT_QUOTES, 'UTF-8'); ?></span>
                                     <?php endif; ?>
-                                    <?php if (fx_textbot_is_routing_key($k)): ?>
-                                        <span class="text-key__edge-error" id="edge-err-<?php echo htmlspecialchars($k, ENT_QUOTES); ?>" hidden><?php echo htmlspecialchars(fx_textbot_edge_error_message(), ENT_QUOTES, 'UTF-8'); ?></span>
+                                    <?php if (\Faoxima\Admin\Web\Support\TextbotEdge::fx_textbot_is_routing_key($k)): ?>
+                                        <span class="text-key__edge-error" id="edge-err-<?php echo htmlspecialchars($k, ENT_QUOTES); ?>" hidden><?php echo htmlspecialchars(\Faoxima\Admin\Web\Support\TextbotEdge::fx_textbot_edge_error_message(), ENT_QUOTES, 'UTF-8'); ?></span>
                                     <?php endif; ?>
                                 </code>
                                 <textarea id="ta-<?php echo htmlspecialchars($k, ENT_QUOTES); ?>"
@@ -1360,7 +1038,7 @@ if (isset($_SESSION['textbot_save_error'])) {
                                     <button type="button" class="btn btn-sm btn-soft-danger"
                                             onclick='deleteKey(<?php echo json_encode($k, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_QUOT); ?>)'
                                             title="حذف این کلید">
-                                        <?php echo icon('trash', 'svg-icon'); ?>
+                                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon'); ?>
                                     </button>
                                 </div>
                             </div>
@@ -1371,7 +1049,7 @@ if (isset($_SESSION['textbot_save_error'])) {
                 <div class="save-bar">
                     <span id="changeCount" style="align-self:center; color:var(--text-muted); font-size:13px; margin-inline-end:auto;">۰ تغییر در انتظار ذخیره</span>
                     <button type="submit" class="btn btn-primary" id="textSaveBtn">
-                        <?php echo icon('check', 'svg-icon svg-sm'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('check', 'svg-icon svg-sm'); ?>
                         <span>ذخیره تغییرات</span>
                     </button>
                 </div>
@@ -1389,7 +1067,7 @@ if (isset($_SESSION['textbot_save_error'])) {
             <button type="button" class="modal-close" onclick="closeModal('modal-add-text')">&times;</button>
         </div>
         <form method="POST" action="textbot.php">
-            <?php echo fx_csrf_field(); ?>
+            <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
             <input type="hidden" name="_action" value="add">
             <div class="form-group">
                 <label class="form-label">کلید (انگلیسی، بدون فاصله)</label>
@@ -1435,7 +1113,7 @@ if (isset($_SESSION['textbot_save_error'])) {
         </div>
         <div class="form-group">
             <textarea id="editTextArea" class="form-control" rows="10"></textarea>
-            <div class="edit-edge-error" id="editEdgeError" hidden><?php echo htmlspecialchars(fx_textbot_edge_error_message(), ENT_QUOTES, 'UTF-8'); ?></div>
+            <div class="edit-edge-error" id="editEdgeError" hidden><?php echo htmlspecialchars(\Faoxima\Admin\Web\Support\TextbotEdge::fx_textbot_edge_error_message(), ENT_QUOTES, 'UTF-8'); ?></div>
         </div>
         <div class="edit-rich-note" id="editRichNote" hidden></div>
         <div class="modal-foot">
@@ -1501,7 +1179,7 @@ if (isset($_SESSION['textbot_save_error'])) {
 
 
 <form method="POST" action="textbot.php" id="deleteForm" style="display:none;">
-    <?php echo fx_csrf_field(); ?>
+    <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
     <input type="hidden" name="_action" value="delete">
     <input type="hidden" name="key" id="deleteKey">
 </form>
@@ -1516,7 +1194,7 @@ function deleteKey(k) {
     document.getElementById('deleteForm').submit();
 }
 
-var TEXT_EDGE = <?php echo fx_textbot_edge_js_config(); ?>;
+var TEXT_EDGE = <?php echo \Faoxima\Admin\Web\Support\TextbotEdge::fx_textbot_edge_js_config(); ?>;
 var TEXT_EDGE_LEAD = null;
 var TEXT_EDGE_TRAIL = null;
 try {

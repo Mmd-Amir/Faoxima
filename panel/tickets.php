@@ -1,12 +1,15 @@
 <?php
+
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'tickets.php';
+
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 date_default_timezone_set('Asia/Tehran');
 ini_set('session.cookie_samesite', 'Lax');
 ini_set('session.cookie_httponly', '1');
 session_start();
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
-require_once __DIR__ . '/lib/icons.php';
-require_once __DIR__ . '/lib/pagination.php';
 require_once __DIR__ . '/lib/search_filter.php';
 require_once __DIR__ . '/lib/status_filter.php';
 require_once __DIR__ . '/lib/date_filter.php';
@@ -15,525 +18,84 @@ require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/../jdf.php';
 
-function tk_jdate($raw)
-{
-    $s = trim((string)$raw);
-    if ($s === '') return '';
-    $ts = strtotime($s);
-    if ($ts === false) return $s;
-    return jdate('Y/m/d H:i', $ts, '', 'Asia/Tehran', 'fa');
+if (\Faoxima\Admin\Web\Pages\TicketsRequest::handle(
+        _csrf: $_csrf,
+        pdo: $pdo ?? null,
+        setting: $setting
+    ) !== true) {
+    unset($adminWebPage);
+    return;
+}
+if (\Faoxima\Admin\Web\Pages\TicketActions::handle(
+        TK_REACTION_EMOJI: $TK_REACTION_EMOJI,
+        adminWebPage: $adminWebPage ?? null,
+        emoji: $emoji,
+        out: $out,
+        pdo: $pdo ?? null,
+        r: $r,
+        rows: $rows,
+        st: $st,
+        thread: $thread
+    ) !== true) {
+    unset($adminWebPage);
+    return;
+}
+if (\Faoxima\Admin\Web\Pages\TicketMediaAndReplies::handle(
+        APIKEY: $APIKEY ?? null,
+        act: $act,
+        adminWebPage: $adminWebPage ?? null,
+        domainhosts: $domainhosts ?? null,
+        f: $f,
+        host: $host,
+        path: $path,
+        pdo: $pdo ?? null,
+        replyKb: $replyKb ?? null,
+        row: $row,
+        rxMiniAppNote: $rxMiniAppNote ?? null,
+        setting: $setting ?? null,
+        st: $st,
+        text: $text
+    ) !== true) {
+    unset($adminWebPage);
+    return;
+}
+if (\Faoxima\Admin\Web\Pages\TicketCreationAndListing::handle(
+        adminCreateError: $adminCreateError,
+        adminWebPage: $adminWebPage ?? null,
+        departments: $departments,
+        domainhosts: $domainhosts ?? null,
+        host: $host,
+        kb: $kb,
+        note: $note ?? null,
+        pdo: $pdo ?? null,
+        r: $r,
+        setting: $setting ?? null,
+        st: $st,
+        text: $text,
+        thread: $thread,
+        ticketRow: $ticketRow,
+        ticketSubject: $ticketSubject,
+        ticketSubjects: $ticketSubjects,
+        tickets: $tickets,
+        tkBodyById: $tkBodyById,
+        tkDateKeep: $tkDateKeep,
+        tkDf: $tkDf,
+        tkFilterActive: $tkFilterActive,
+        tkFilterCriteria: $tkFilterCriteria,
+        tkFilterParams: $tkFilterParams,
+        tkPg: $tkPg,
+        tkQ: $tkQ,
+        tkReactionsByMsg: $tkReactionsByMsg,
+        tkStatus: $tkStatus,
+        tkStatusActive: $tkStatusActive,
+        tkStatusOptions: $tkStatusOptions,
+        viewT: $viewT
+    ) !== true) {
+    unset($adminWebPage);
+    return;
 }
 
-$admin = fx_admin_require_access($pdo);
-$_csrf = fx_csrf_token();
-
-$setting = select("setting", "*", null, null);
-
-function tk_media($text)
-{
-    $t = (string)$text;
-    $media = [];
-    if (preg_match_all('/\[\[(photo|video):([^\]]+)\]\]/', $t, $mm, PREG_SET_ORDER)) {
-        foreach ($mm as $m) {
-            if (count($media) >= 5) break;
-            $media[] = ['type' => $m[1], 'file_id' => $m[2]];
-            $t = str_replace($m[0], '', $t);
-        }
-    }
-    $t = preg_replace('/\[\[subj:[^\]]*\]\]/u', '', $t);
-    return ['media' => $media, 'body' => trim((string)$t)];
-}
-function tk_subject($text)
-{
-    if (preg_match('/\[\[subj:([^\]]*)\]\]/u', (string)$text, $m)) {
-        return trim($m[1]);
-    }
-    return '';
-}
-
-function tk_status_badge($s)
-{
-    if ($s === 'close') return ['بسته', 'badge-block'];
-    if ($s === 'Unseen' || $s === 'Customerresponse') return ['پاسخ‌نداده', 'badge-warning'];
-    if ($s === 'Answered') return ['پاسخ‌داده', 'badge-active'];
-    return ['باز', 'badge-gray'];
-}
-
-function tk_delete_trackings(PDO $pdo, array $trackings): int
-{
-    $deleted = 0;
-    $trackings = array_values(array_unique(array_map('strval', $trackings)));
-    foreach (array_chunk($trackings, 500) as $chunk) {
-        $ph = implode(',', array_fill(0, count($chunk), '?'));
-        $idStmt = $pdo->prepare("SELECT id, Tracking FROM support_message WHERE Tracking IN ($ph)");
-        $idStmt->execute($chunk);
-        $rows = $idStmt->fetchAll(PDO::FETCH_ASSOC);
-        $ids = array_map(function ($r) { return (int)$r['id']; }, $rows);
-        if ($ids) {
-            $idPh = implode(',', array_fill(0, count($ids), '?'));
-            $pdo->prepare("DELETE FROM support_message_reaction WHERE message_id IN ($idPh)")->execute($ids);
-        }
-        $del = $pdo->prepare("DELETE FROM support_message WHERE Tracking IN ($ph)");
-        $del->execute($chunk);
-        $deleted += count(array_unique(array_column($rows, 'Tracking')));
-    }
-    return $deleted;
-}
-
-function tk_validate_reply_target(PDO $pdo, string $T, int $replyToId): ?int
-{
-    if ($replyToId > 0) {
-        $rtChk = $pdo->prepare("SELECT id FROM support_message WHERE id = ? AND Tracking = ?");
-        $rtChk->execute([$replyToId, $T]);
-        if (!$rtChk->fetchColumn()) $replyToId = 0;
-    }
-    return $replyToId > 0 ? $replyToId : null;
-}
-
-function tk_store_admin_message(PDO $pdo, $T, $departmentId, $recipient, $department, $body, string $time, ?int $replyToId): void
-{
-    $ins = $pdo->prepare("INSERT INTO support_message (Tracking,idsupport,iduser,name_departman,text,result,time,status,reply_to_id) VALUES (?,?,?,?,?,?,?,?,?)");
-    $ins->execute([$T, $departmentId, $recipient, $department, $body, 'admin', $time, 'Answered', $replyToId]);
-}
-
-function tk_uploads(array $files): array
-{
-    $uploads = [];
-    if (isset($files['media']) && is_array($files['media']['tmp_name'] ?? null)) {
-        $F = $files['media'];
-        $n = count($F['tmp_name']);
-        for ($i = 0; $i < $n && count($uploads) < 5; $i++) {
-            if ((int)($F['error'][$i] ?? 1) !== 0) continue;
-            $tmp = (string)($F['tmp_name'][$i] ?? '');
-            if ($tmp === '' || !is_uploaded_file($tmp)) continue;
-            $mime = function_exists('mime_content_type') ? (string)(mime_content_type($tmp) ?: '') : (string)($F['type'][$i] ?? '');
-            $uploads[] = ['tmp' => $tmp, 'mime' => $mime, 'name' => (string)($F['name'][$i] ?? 'file'), 'video' => stripos($mime, 'video') === 0];
-        }
-    }
-    return $uploads;
-}
-
-function tk_deliver_uploads(array $uploads, string $recipient, string $text): array
-{
-    $mediaTokens = [];
-    if (count($uploads) === 1) {
-        $u = $uploads[0];
-        $cf = new CURLFile($u['tmp'], $u['mime'] !== '' ? $u['mime'] : ($u['video'] ? 'video/mp4' : 'image/jpeg'), $u['name']);
-        if ($u['video']) {
-            $res = telegram('sendVideo', ['chat_id' => $recipient, 'video' => $cf, 'caption' => $text, 'parse_mode' => 'HTML']);
-            $fid = $res['result']['video']['file_id'] ?? '';
-            if ($fid !== '') $mediaTokens[] = "[[video:$fid]]";
-        } else {
-            $res = telegram('sendPhoto', ['chat_id' => $recipient, 'photo' => $cf, 'caption' => $text, 'parse_mode' => 'HTML']);
-            $ph = $res['result']['photo'] ?? [];
-            $fid = (is_array($ph) && $ph) ? (end($ph)['file_id'] ?? '') : '';
-            if ($fid !== '') $mediaTokens[] = "[[photo:$fid]]";
-        }
-    } elseif (count($uploads) >= 2) {
-        $mediaArr = [];
-        $filesPayload = [];
-        foreach ($uploads as $i => $u) {
-            $key = 'tkf' . $i;
-            $type = $u['video'] ? 'video' : 'photo';
-            $entry = ['type' => $type, 'media' => 'attach://' . $key];
-            if ($i === 0 && $text !== '') { $entry['caption'] = $text; $entry['parse_mode'] = 'HTML'; }
-            $mediaArr[] = $entry;
-            $filesPayload[$key] = new CURLFile($u['tmp'], $u['mime'] !== '' ? $u['mime'] : ($u['video'] ? 'video/mp4' : 'image/jpeg'), $u['name']);
-        }
-        $res = telegram('sendMediaGroup', array_merge(['chat_id' => $recipient, 'media' => $mediaArr], $filesPayload));
-        foreach (($res['result'] ?? []) as $r) {
-            if (isset($r['photo']) && is_array($r['photo'])) {
-                $fid = end($r['photo'])['file_id'] ?? '';
-                if ($fid !== '') $mediaTokens[] = "[[photo:$fid]]";
-            } elseif (isset($r['video']['file_id'])) {
-                $mediaTokens[] = "[[video:" . $r['video']['file_id'] . "]]";
-            }
-        }
-    }
-    return $mediaTokens;
-}
-
-function tk_thread_reactions(PDO $pdo, array $thread, string $adminActorId): array
-{
-    $ids = array_map(function ($r) { return (int)$r['id']; }, $thread);
-    $reactionsByMsg = [];
-    if ($ids) {
-        $ph = implode(',', array_fill(0, count($ids), '?'));
-        $rq = $pdo->prepare("SELECT message_id, actor, actor_id, emoji FROM support_message_reaction WHERE message_id IN ($ph)");
-        $rq->execute($ids);
-        foreach ($rq->fetchAll(PDO::FETCH_ASSOC) as $rr) {
-            $mid = (int)$rr['message_id'];
-            if (!isset($reactionsByMsg[$mid])) $reactionsByMsg[$mid] = [];
-            $reactionsByMsg[$mid][] = ['emoji' => $rr['emoji'], 'actor' => $rr['actor'], 'mine' => $rr['actor_id'] === $adminActorId];
-        }
-    }
-    return $reactionsByMsg;
-}
-
-function tk_admin_ticket_page(PDO $pdo, string $tkWhereSql, array $tkParams): array
-{
-    $ticketSubjects = [];
-    $tkPg = fx_paginate($pdo, "SELECT COUNT(*) FROM (SELECT 1 FROM support_message WHERE $tkWhereSql GROUP BY Tracking, iduser, name_departman) t", $tkParams, 5);
-    $tkStmt = $pdo->prepare("SELECT Tracking, iduser, name_departman, MAX(id) last_id, MAX(time) last_time, MAX(status) status, COUNT(*) cnt FROM support_message WHERE $tkWhereSql GROUP BY Tracking, iduser, name_departman ORDER BY last_id DESC LIMIT :perPage OFFSET :offset");
-    foreach ($tkParams as $k => $v) $tkStmt->bindValue($k, $v, PDO::PARAM_STR);
-    $tkStmt->bindValue(':perPage', $tkPg['perPage'], PDO::PARAM_INT);
-    $tkStmt->bindValue(':offset', $tkPg['offset'], PDO::PARAM_INT);
-    $tkStmt->execute();
-    $tickets = $tkStmt->fetchAll(PDO::FETCH_ASSOC);
-
-    $tkTrackings = array_column($tickets, 'Tracking');
-    if ($tkTrackings) {
-        $tkPh = implode(',', array_fill(0, count($tkTrackings), '?'));
-        $tkSubjStmt = $pdo->prepare("SELECT s.Tracking, s.text FROM support_message s INNER JOIN (SELECT Tracking, MIN(id) mid FROM support_message WHERE Tracking IN ($tkPh) GROUP BY Tracking) f ON s.id = f.mid");
-        $tkSubjStmt->execute($tkTrackings);
-        foreach ($tkSubjStmt->fetchAll(PDO::FETCH_ASSOC) as $fr) {
-            $ticketSubjects[$fr['Tracking']] = tk_subject((string)$fr['text']);
-        }
-    }
-    return [$tkPg, $tickets, $ticketSubjects];
-}
-
-if (isset($_GET['ajax']) && $_GET['ajax'] === 'mark_ticket_seen') {
-    header('Content-Type: application/json; charset=utf-8');
-    try {
-        $maxId = (int)$pdo->query("SELECT COALESCE(MAX(id),0) FROM support_message")->fetchColumn();
-        $st = $pdo->prepare("UPDATE admin SET last_ticket_seen = ? WHERE username = ?");
-        $st->execute([$maxId, $_SESSION['user'] ?? '']);
-        echo json_encode(['ok' => true]);
-    } catch (\Throwable $e) {
-        echo json_encode(['ok' => false]);
-    }
-    exit;
-}
-
-$TK_REACTION_EMOJI = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
-
-if (isset($_GET['ajax']) && $_GET['ajax'] === 'react') {
-    header('Content-Type: application/json; charset=utf-8');
-    try {
-        if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], (string)($_POST['_csrf'] ?? ''))) {
-            echo json_encode(['ok' => false, 'error' => 'csrf']); exit;
-        }
-        $mid = (int)($_POST['message_id'] ?? 0);
-        $emoji = trim((string)($_POST['emoji'] ?? ''));
-        if ($mid <= 0 || ($emoji !== '' && !in_array($emoji, $TK_REACTION_EMOJI, true))) {
-            echo json_encode(['ok' => false, 'error' => 'invalid']); exit;
-        }
-        $msgRow = $pdo->prepare("SELECT result FROM support_message WHERE id = ?");
-        $msgRow->execute([$mid]);
-        $msgResult = $msgRow->fetchColumn();
-        if ($msgResult === false || (string)$msgResult === 'admin') {
-            echo json_encode(['ok' => false, 'error' => 'invalid']); exit;
-        }
-        $actorId = 'admin:' . (string)($_SESSION['user'] ?? '');
-        if ($emoji === '') {
-            $pdo->prepare("DELETE FROM support_message_reaction WHERE message_id = ? AND actor_id = ?")->execute([$mid, $actorId]);
-        } else {
-            $pdo->prepare("INSERT INTO support_message_reaction (message_id, actor, actor_id, emoji, time)
-                            VALUES (?, 'admin', ?, ?, ?)
-                            ON DUPLICATE KEY UPDATE emoji = VALUES(emoji), time = VALUES(time)")
-                ->execute([$mid, $actorId, $emoji, date('Y/m/d H:i:s')]);
-        }
-        $rows = $pdo->prepare("SELECT actor, actor_id, emoji FROM support_message_reaction WHERE message_id = ?");
-        $rows->execute([$mid]);
-        $out = [];
-        foreach ($rows->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $out[] = ['emoji' => $r['emoji'], 'actor' => $r['actor'], 'mine' => $r['actor_id'] === $actorId];
-        }
-        echo json_encode(['ok' => true, 'reactions' => $out]);
-    } catch (\Throwable $e) {
-        echo json_encode(['ok' => false, 'error' => 'server']);
-    }
-    exit;
-}
-
-if (isset($_GET['ajax']) && $_GET['ajax'] === 'bulk_delete') {
-    header('Content-Type: application/json; charset=utf-8');
-    try {
-        if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], (string)($_POST['_csrf'] ?? ''))) {
-            echo json_encode(['ok' => false, 'error' => 'csrf']); exit;
-        }
-        $raw = json_decode((string)($_POST['trackings'] ?? '[]'), true);
-        if (!is_array($raw)) { echo json_encode(['ok' => false, 'error' => 'invalid']); exit; }
-        $trackings = [];
-        foreach ($raw as $t) {
-            $t = (string)$t;
-            if ($t !== '' && preg_match('/^[a-f0-9]+$/i', $t)) $trackings[] = $t;
-        }
-        $trackings = array_values(array_unique($trackings));
-        if (count($trackings) === 0) { echo json_encode(['ok' => false, 'error' => 'invalid']); exit; }
-        if (count($trackings) > 500) $trackings = array_slice($trackings, 0, 500);
-
-        tk_delete_trackings($pdo, $trackings);
-        echo json_encode(['ok' => true, 'deleted' => count($trackings)]);
-    } catch (\Throwable $e) {
-        echo json_encode(['ok' => false, 'error' => 'server']);
-    }
-    exit;
-}
-
-if (isset($_GET['ajax']) && $_GET['ajax'] === 'poll_state') {
-    header('Content-Type: application/json; charset=utf-8');
-    try {
-        $T = trim((string)($_GET['t'] ?? ''));
-        if ($T === '') { echo json_encode(['ok' => false]); exit; }
-        $rows = $pdo->prepare("SELECT id, result, seen_by_user FROM support_message WHERE Tracking = ?");
-        $rows->execute([$T]);
-        $thread = $rows->fetchAll(PDO::FETCH_ASSOC);
-        $reactionsByMsg = tk_thread_reactions($pdo, $thread, 'admin:' . (string)($_SESSION['user'] ?? ''));
-        $out = [];
-        foreach ($thread as $r) {
-            $mid = (int)$r['id'];
-            $side = ($r['result'] === 'admin') ? 'admin' : 'user';
-            $out[] = [
-                'id'        => $mid,
-                'seen'      => ($side === 'admin') ? ((int)($r['seen_by_user'] ?? 0) === 1) : true,
-                'reactions' => $reactionsByMsg[$mid] ?? [],
-            ];
-        }
-        echo json_encode(['ok' => true, 'messages' => $out]);
-    } catch (\Throwable $e) {
-        echo json_encode(['ok' => false]);
-    }
-    exit;
-}
-
-if (isset($_GET['media']) && $_GET['media'] !== '') {
-    $mid = (int)$_GET['media'];
-    $st = $pdo->prepare("SELECT text FROM support_message WHERE id = ? LIMIT 1");
-    $st->execute([$mid]);
-    $row = $st->fetch(PDO::FETCH_ASSOC);
-    $m = tk_media($row['text'] ?? '');
-    $idx = isset($_GET['i']) ? max(0, (int)$_GET['i']) : 0;
-    $item = $m['media'][$idx] ?? null;
-    if (!$item) { http_response_code(404); exit; }
-    $f = telegram('getFile', ['file_id' => $item['file_id']]);
-    $path = $f['result']['file_path'] ?? '';
-    if ($path === '') { http_response_code(404); exit; }
-    $bin = @file_get_contents("https://api.telegram.org/file/bot{$APIKEY}/{$path}");
-    if ($bin === false) { http_response_code(502); exit; }
-    $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-    $ct = $item['type'] === 'video' ? 'video/mp4' : ($ext === 'png' ? 'image/png' : ($ext === 'gif' ? 'image/gif' : 'image/jpeg'));
-    header('Content-Type: ' . $ct);
-    header('Cache-Control: private, max-age=3600');
-    echo $bin;
-    exit;
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['_action']) && $_POST['_action'] !== 'admin_create') {
-    if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], (string)($_POST['_csrf'] ?? ''))) {
-        header("Location: tickets.php");
-        exit;
-    }
-    $act = (string)$_POST['_action'];
-    $T = trim((string)($_POST['t'] ?? ''));
-    if ($T === '') { header("Location: tickets.php"); exit; }
-    $tk = rxAdminTicketFind($T);
-    if (!is_array($tk)) { header("Location: tickets.php"); exit; }
-    $iduser = (string)$tk['iduser'];
-    $reportTopic = select("topicid", "idreport", "report", "otherservice", "select")['idreport'] ?? null;
-
-    if ($act === 'reply') {
-        $text = trim((string)($_POST['text'] ?? ''));
-        $mediaTokens = tk_deliver_uploads(tk_uploads($_FILES), $iduser, $text);
-        $miniappOnly = (string)($setting['miniapp_ticket_mode'] ?? '0') === '1';
-        if ($miniappOnly) {
-            $host = isset($domainhosts) ? rtrim(preg_replace('#^https?://#', '', (string)$domainhosts), '/') : '';
-            $replyKb = ($host !== '') ? json_encode(['inline_keyboard' => [[['text' => faoxima_textbot_get('dyn_panel_tickets_continue_in_miniapp_btn', '🚀 ادامه گفتگو در مینی‌اپ'), 'web_app' => ['url' => 'https://' . $host . '/app/#/tickets/' . $T]]]]], JSON_UNESCAPED_UNICODE) : null;
-            $rxMiniAppNote = faoxima_textbot_get('dyn_panel_tickets_miniapp_only_note', "\n\n⚠️ ادامه گفتگو فقط از طریق مینی‌اپ امکان‌پذیر است.");
-        } else {
-            $replyKb = json_encode(['inline_keyboard' => [[['text' => faoxima_textbot_get('dyn_panel_tickets_reply_btn', '💬 پاسخ'), 'callback_data' => 'ticketreply_' . $T]]]], JSON_UNESCAPED_UNICODE);
-            $rxMiniAppNote = "";
-        }
-        if (count($mediaTokens) > 0) {
-            sendmessage($iduser, faoxima_render_text(faoxima_textbot_get('dyn_panel_tickets_support_replied_tpl', '📩 پشتیبانی به تیکت شما (کد <code>{tracking}</code>) پاسخ داد.{miniapp_note}'), ['tracking' => $T, 'miniapp_note' => $rxMiniAppNote]), $replyKb, 'HTML');
-        } else {
-            if ($text === '') { header("Location: tickets.php?t=" . urlencode($T)); exit; }
-            sendmessage($iduser, faoxima_textbot_get('dyn_panel_tickets_support_reply_prefix', '📩 پاسخ پشتیبانی:') . "\n" . $text . $rxMiniAppNote, $replyKb, 'HTML');
-        }
-        $body = trim($text . (count($mediaTokens) ? "\n" . implode(' ', $mediaTokens) : ''));
-        $time = date('Y/m/d H:i:s');
-        $replyToId = tk_validate_reply_target($pdo, $T, (int)($_POST['reply_to_id'] ?? 0));
-        tk_store_admin_message($pdo, $T, $tk['idsupport'], $iduser, $tk['name_departman'], $body, $time, $replyToId);
-        rxAdminTicketStatus($T, 'Answered');
-        header("Location: tickets.php?t=" . urlencode($T));
-        exit;
-    }
-    if ($act === 'close') {
-        rxAdminTicketStatus($T, 'close');
-        sendmessage($iduser, faoxima_render_text(faoxima_textbot_get('dyn_panel_tickets_closed_by_support_tpl', '🔒 تیکت شما (کد <code>{tracking}</code>) توسط پشتیبانی بسته شد.'), ['tracking' => $T]), null, 'HTML');
-        header("Location: tickets.php?t=" . urlencode($T));
-        exit;
-    }
-    if ($act === 'reopen') {
-        rxAdminTicketStatus($T, 'Answered');
-        if ((string)($setting['miniapp_ticket_mode'] ?? '0') === '1') {
-            $host = isset($domainhosts) ? rtrim(preg_replace('#^https?://#', '', (string)$domainhosts), '/') : '';
-            $reopenKb = ($host !== '') ? json_encode(['inline_keyboard' => [[['text' => faoxima_textbot_get('dyn_panel_tickets_continue_in_miniapp_btn', '🚀 ادامه گفتگو در مینی‌اپ'), 'web_app' => ['url' => 'https://' . $host . '/app/#/tickets/' . $T]]]]], JSON_UNESCAPED_UNICODE) : null;
-            sendmessage($iduser, faoxima_render_text(faoxima_textbot_get('dyn_panel_tickets_reopened_miniapp_tpl', "🔓 تیکت شما (کد <code>{tracking}</code>) دوباره باز شد.\n\n⚠️ ادامه گفتگو فقط از طریق مینی‌اپ امکان‌پذیر است."), ['tracking' => $T]), $reopenKb, 'HTML');
-        } else {
-            $reopenKb = json_encode(['inline_keyboard' => [[['text' => faoxima_textbot_get('dyn_panel_tickets_reply_btn', '💬 پاسخ'), 'callback_data' => 'ticketreply_' . $T]]]], JSON_UNESCAPED_UNICODE);
-            sendmessage($iduser, faoxima_render_text(faoxima_textbot_get('dyn_panel_tickets_reopened_tpl', '🔓 تیکت شما (کد <code>{tracking}</code>) دوباره باز شد. می‌توانید پیام ارسال کنید.'), ['tracking' => $T]), $reopenKb, 'HTML');
-        }
-        header("Location: tickets.php?t=" . urlencode($T));
-        exit;
-    }
-    if ($act === 'delete') {
-        $idStmt = $pdo->prepare("SELECT id FROM support_message WHERE Tracking = ?");
-        $idStmt->execute([$T]);
-        $ids = array_map(function ($r) { return (int)$r['id']; }, $idStmt->fetchAll(PDO::FETCH_ASSOC));
-        if ($ids) {
-            $idPh = implode(',', array_fill(0, count($ids), '?'));
-            $pdo->prepare("DELETE FROM support_message_reaction WHERE message_id IN ($idPh)")->execute($ids);
-        }
-        $pdo->prepare("DELETE FROM support_message WHERE Tracking = ?")->execute([$T]);
-        header("Location: tickets.php");
-        exit;
-    }
-    header("Location: tickets.php");
-    exit;
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['_action'] ?? '') === 'admin_create') {
-    if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], (string)($_POST['_csrf'] ?? ''))) {
-        header("Location: tickets.php");
-        exit;
-    }
-    $targetUserId = trim((string)($_POST['target_user_id'] ?? ''));
-    $department = trim((string)($_POST['department'] ?? ''));
-    $subject = trim((string)($_POST['subject'] ?? ''));
-    $text = trim((string)($_POST['text'] ?? ''));
-
-    if ($targetUserId === '' || !ctype_digit($targetUserId)) {
-        header("Location: tickets.php?admin_create_error=" . urlencode('شناسه کاربر نامعتبر است.'));
-        exit;
-    }
-    $targetUser = select("user", "*", "id", $targetUserId);
-    if (!is_array($targetUser)) {
-        header("Location: tickets.php?admin_create_error=" . urlencode('کاربری با این شناسه یافت نشد.'));
-        exit;
-    }
-    $deptRow = select("departman", "*", "name_departman", $department);
-    if (!is_array($deptRow)) {
-        header("Location: tickets.php?admin_create_error=" . urlencode('دپارتمان انتخاب‌شده نامعتبر است.'));
-        exit;
-    }
-    if ($subject === '') {
-        header("Location: tickets.php?admin_create_error=" . urlencode('موضوع تیکت را وارد کنید.'));
-        exit;
-    }
-
-    $mediaTokens = tk_deliver_uploads(tk_uploads($_FILES), $targetUserId, $text);
-
-    if ($text === '' && count($mediaTokens) === 0) {
-        header("Location: tickets.php?admin_create_error=" . urlencode('متن پیام یا تصویر را وارد کنید.'));
-        exit;
-    }
-
-    $T = bin2hex(random_bytes(4));
-    $mediaBlock = count($mediaTokens) ? "\n" . implode(' ', $mediaTokens) : '';
-    $body = trim("[[subj:$subject]]" . $mediaBlock . ($text !== '' ? "\n" . $text : ''));
-    $time = date('Y/m/d H:i:s');
-    tk_store_admin_message($pdo, $T, (string)$deptRow['idsupport'], $targetUserId, (string)$deptRow['name_departman'], $body, $time, null);
-
-    if ((string)($setting['miniapp_ticket_mode'] ?? '0') === '1') {
-        $host = isset($domainhosts) ? rtrim(preg_replace('#^https?://#', '', (string)$domainhosts), '/') : '';
-        $kb = ($host !== '') ? json_encode(['inline_keyboard' => [[['text' => faoxima_textbot_get('dyn_panel_tickets_continue_in_miniapp_btn', '🚀 ادامه گفتگو در مینی‌اپ'), 'web_app' => ['url' => 'https://' . $host . '/app/#/tickets/' . $T]]]]], JSON_UNESCAPED_UNICODE) : null;
-        $note = faoxima_textbot_get('dyn_panel_tickets_miniapp_only_note', "\n\n⚠️ ادامه گفتگو فقط از طریق مینی‌اپ امکان‌پذیر است.");
-    } else {
-        $kb = json_encode(['inline_keyboard' => [[['text' => faoxima_textbot_get('dyn_panel_tickets_my_tickets_btn', '🎫 تیکت‌های من'), 'callback_data' => 'supporttickets']]]], JSON_UNESCAPED_UNICODE);
-        $note = "";
-    }
-    $notifyBase = faoxima_render_text(faoxima_textbot_get('dyn_panel_tickets_new_ticket_created_tpl', '🎫 یک تیکت جدید توسط پشتیبانی برای شما ثبت شد (کد <code>{tracking}</code>).'), ['tracking' => $T]);
-    if ($text !== '' && count($mediaTokens) === 0) { $notifyBase .= "\n" . $text; }
-    sendmessage($targetUserId, $notifyBase . $note, $kb, 'HTML');
-
-    header("Location: tickets.php?t=" . urlencode($T));
-    exit;
-}
-
-$viewT = trim((string)($_GET['t'] ?? ''));
-$thread = [];
-$ticketRow = null;
-$tkReactionsByMsg = [];
-$tkBodyById = [];
-if ($viewT !== '') {
-    $st = $pdo->prepare("SELECT * FROM support_message WHERE Tracking = ? ORDER BY id ASC");
-    $st->execute([$viewT]);
-    $thread = $st->fetchAll(PDO::FETCH_ASSOC);
-    $ticketRow = $thread[0] ?? null;
-    if (!$ticketRow) { $viewT = ''; }
-}
-if ($viewT !== '' && $thread) {
-    $pdo->prepare("UPDATE support_message SET seen_by_admin = 1 WHERE Tracking = ? AND result = 'user' AND seen_by_admin = 0")->execute([$viewT]);
-    $ids = array_map(function ($r) { return (int)$r['id']; }, $thread);
-    foreach ($thread as $r) { $tkBodyById[(int)$r['id']] = tk_media((string)$r['text'])['body']; }
-    $tkReactionsByMsg = tk_thread_reactions($pdo, $thread, 'admin:' . (string)($_SESSION['user'] ?? ''));
-}
-$ticketSubject = $ticketRow ? tk_subject((string)$ticketRow['text']) : '';
-$ticketSubjects = [];
-$departments = [];
-$adminCreateError = trim((string)($_GET['admin_create_error'] ?? ''));
-if ($viewT === '') {
-    $departments = $pdo->query("SELECT id, name_departman FROM departman ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
-    try {
-        $__mark = $pdo->prepare("UPDATE admin SET last_ticket_seen = (SELECT COALESCE(MAX(id),0) FROM support_message) WHERE username = ?");
-        $__mark->execute([$_SESSION['user'] ?? '']);
-    } catch (\Throwable $e) {}
-    $tkQ = fx_search_current();
-    $tkWhereSql = '1=1';
-    $tkParams = [];
-    if ($tkQ !== '') {
-        $tkLike = '%' . $tkQ . '%';
-        $tkWhereSql .= ' AND Tracking IN (SELECT DISTINCT Tracking FROM support_message WHERE Tracking LIKE :tq1 OR iduser LIKE :tq2 OR text LIKE :tq3)';
-        $tkParams[':tq1'] = $tkLike;
-        $tkParams[':tq2'] = $tkLike;
-        $tkParams[':tq3'] = $tkLike;
-    }
-    $tkDf = fx_date_filter_resolve();
-    if ($tkDf['active']) {
-        $tkDateSql = fx_date_filter_sql_mixed_named('tk_last', $tkDf['from'], $tkDf['to'], $tkParams, 'tkd');
-        $tkWhereSql .= ' AND Tracking IN (SELECT Tracking FROM (SELECT Tracking, MAX(time) tk_last FROM support_message GROUP BY Tracking) tkl WHERE 1=1' . $tkDateSql . ')';
-    }
-    $tkStatusOptions = [
-        'unanswered' => 'پاسخ‌نداده',
-        'answered'   => 'پاسخ‌داده',
-        'open'       => 'باز',
-        'close'      => 'بسته',
-    ];
-    $tkStatusSql = [
-        'unanswered' => "IN ('Unseen','Customerresponse')",
-        'answered'   => "= 'Answered'",
-        'open'       => "NOT IN ('close','Unseen','Customerresponse','Answered')",
-        'close'      => "= 'close'",
-    ];
-    $tkStatus = fx_status_filter_current();
-    $tkStatusActive = $tkStatus !== '' && isset($tkStatusOptions[$tkStatus]);
-    if ($tkStatusActive) {
-        $tkWhereSql .= ' AND Tracking IN (SELECT Tracking FROM support_message GROUP BY Tracking HAVING MAX(status) ' . $tkStatusSql[$tkStatus] . ')';
-    }
-
-    $tkFilterActive = $tkQ !== '' || $tkDf['active'] || $tkStatusActive;
-    $tkDateKeep = fx_filter_delete_date_params('', $tkDf['active']);
-    $tkFilterParams = array_merge(['q' => $tkQ !== '' ? $tkQ : null, 'status' => $tkStatusActive ? $tkStatus : null], $tkDateKeep);
-    $tkFilterCriteria = fx_filter_delete_criteria($tkStatusActive ? $tkStatusOptions[$tkStatus] : '', $tkDf, $tkQ);
-    if (fx_filter_delete_requested()) {
-        $fdMatched = 0;
-        $fdDeleted = 0;
-        if ($tkFilterActive) {
-            $fdTrackings = fx_filter_delete_collect($pdo, 'support_message', 'Tracking', $tkWhereSql, $tkParams);
-            $fdMatched = count($fdTrackings);
-            try {
-                $fdDeleted = tk_delete_trackings($pdo, $fdTrackings);
-            } catch (\Throwable $e) {
-                $fdDeleted = 0;
-            }
-        }
-        fx_filter_delete_redirect('tickets.php', $tkFilterParams, $fdMatched, $fdDeleted);
-    }
-
-    [$tkPg, $tickets, $ticketSubjects] = tk_admin_ticket_page($pdo, $tkWhereSql, $tkParams);
-}
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -658,13 +220,13 @@ if ($viewT === '') {
             <div class="page-head">
                 <div>
                     <div class="page-head__title">
-                        <?php echo icon('message', 'svg-icon svg-lg'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('message', 'svg-icon svg-lg'); ?>
                         تیکت‌ها
                     </div>
                     <div class="page-head__sub">مدیریت تیکت‌های پشتیبانی کاربران از ربات و مینی‌اپ</div>
                 </div>
                 <div class="chip-row">
-                    <button type="button" class="btn btn-soft-success" onclick="openModal('modal-open-ticket')"><?php echo icon('plus', 'svg-icon'); ?> باز کردن تیکت</button>
+                    <button type="button" class="btn btn-soft-success" onclick="openModal('modal-open-ticket')"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon'); ?> باز کردن تیکت</button>
                 </div>
             </div>
 
@@ -672,10 +234,10 @@ if ($viewT === '') {
             <div class="alert alert-error"><?php echo htmlspecialchars($adminCreateError, ENT_QUOTES, 'UTF-8'); ?></div>
             <?php endif; ?>
 
-            <?php echo fx_filter_delete_flash_html(); ?>
+            <?php echo \Faoxima\Admin\Web\Support\BulkDelete::fx_filter_delete_flash_html(); ?>
 
             <div class="invoice-overview">
-                <div class="invoice-overview__main"><span class="invoice-overview__icon" aria-hidden="true"><?php echo icon('message', 'svg-icon'); ?></span><div><span><?php echo $tkFilterActive ? 'تیکت‌های مطابق فیلتر' : 'کل تیکت‌های ثبت‌شده'; ?></span><strong><?php echo strtr(number_format((int)$tkPg['total']), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?><small>تیکت</small></strong></div></div>
+                <div class="invoice-overview__main"><span class="invoice-overview__icon" aria-hidden="true"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('message', 'svg-icon'); ?></span><div><span><?php echo $tkFilterActive ? 'تیکت‌های مطابق فیلتر' : 'کل تیکت‌های ثبت‌شده'; ?></span><strong><?php echo strtr(number_format((int)$tkPg['total']), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?><small>تیکت</small></strong></div></div>
                 <div class="invoice-overview__detail"><span>وضعیت انتخاب‌شده</span><b><?php echo htmlspecialchars($tkStatusActive ? $tkStatusOptions[$tkStatus] : 'همهٔ وضعیت‌ها', ENT_QUOTES, 'UTF-8'); ?></b></div>
                 <div class="invoice-overview__detail"><span>بازهٔ نمایش</span><b><?php echo htmlspecialchars($tkDf['active'] ? $tkDf['label'] : 'تمام تاریخ‌ها', ENT_QUOTES, 'UTF-8'); ?></b></div>
                 <?php if ($tkFilterActive): ?><a href="tickets.php" class="btn btn-outline btn-sm invoice-reset">پاک‌کردن فیلترها</a><?php endif; ?>
@@ -683,23 +245,23 @@ if ($viewT === '') {
 
             <details class="wrapper fx-page-list fx-filter-drawer fx-page-tickets fx-ticket-inbox">
                 <summary class="fx-filter-drawer__summary">
-                    <span class="fx-filter-drawer__icon" aria-hidden="true"><?php echo icon('filter', 'svg-icon'); ?></span>
+                    <span class="fx-filter-drawer__icon" aria-hidden="true"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('filter', 'svg-icon'); ?></span>
                     <span class="fx-filter-drawer__text"><strong>جستجو و فیلترها</strong><small>جستجو، وضعیت و بازهٔ زمانی</small></span>
                     <span class="fx-filter-drawer__action"><span class="fx-filter-drawer__show">نمایش فیلترها</span><span class="fx-filter-drawer__hide">بستن فیلترها</span></span>
-                    <span class="fx-filter-drawer__chevron" aria-hidden="true"><?php echo icon('chevron-down', 'svg-icon'); ?></span>
+                    <span class="fx-filter-drawer__chevron" aria-hidden="true"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('chevron-down', 'svg-icon'); ?></span>
                 </summary>
-            <?php echo fx_search_ui('tickets.php', $tkQ, array_merge(['status' => $tkStatus !== '' ? $tkStatus : null], $tkDateKeep), 'جستجو در کد پیگیری، آیدی کاربر یا متن پیام…'); ?>
+            <?php echo \Faoxima\Admin\Web\Support\SearchFilter::fx_search_ui('tickets.php', $tkQ, array_merge(['status' => $tkStatus !== '' ? $tkStatus : null], $tkDateKeep), 'جستجو در کد پیگیری، آیدی کاربر یا متن پیام…'); ?>
 
-            <?php echo fx_status_filter_ui('tickets.php', $tkStatusOptions, $tkStatus, array_merge(['q' => $tkQ !== '' ? $tkQ : null], $tkDateKeep)); ?>
+            <?php echo \Faoxima\Admin\Web\Support\StatusFilter::fx_status_filter_ui('tickets.php', $tkStatusOptions, $tkStatus, array_merge(['q' => $tkQ !== '' ? $tkQ : null], $tkDateKeep)); ?>
 
-            <?php $fxFd = fx_filter_delete_parts('tickets.php', $tkFilterParams, $tkFilterActive ? (int)$tkPg['total'] : 0, $tkFilterCriteria); ?>
-            <?php echo fx_date_filter_ui('tickets.php', '', ['q' => $tkQ !== '' ? $tkQ : null, 'status' => $tkStatus !== '' ? $tkStatus : null], '', $fxFd['button'], $fxFd['form'], true); ?>
+            <?php $fxFd = \Faoxima\Admin\Web\Support\BulkDelete::fx_filter_delete_parts('tickets.php', $tkFilterParams, $tkFilterActive ? (int)$tkPg['total'] : 0, $tkFilterCriteria); ?>
+            <?php echo \Faoxima\Admin\Web\Support\DateFilter::fx_date_filter_ui('tickets.php', '', ['q' => $tkQ !== '' ? $tkQ : null, 'status' => $tkStatus !== '' ? $tkStatus : null], '', $fxFd['button'], $fxFd['form'], true); ?>
             </details>
 
             <div class="card invoice-results">
                 <div class="invoice-results__head"><div><h2>صندوق تیکت‌ها</h2><p>پیگیری پیام‌ها و درخواست‌های پشتیبانی کاربران</p></div><span class="invoice-page-count"><?php echo strtr(number_format(count($tickets)), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?> تیکت در این صفحه</span></div>
                 <div class="tk-bulk-bar" id="tk-bulk-bar">
-                    <button type="button" class="btn btn-sm btn-soft-danger js-bulk-delete-btn" style="display:none;" id="tk-bulk-delete-btn"><?php echo icon('trash', 'svg-icon'); ?> حذف انتخاب‌شده‌ها</button>
+                    <button type="button" class="btn btn-sm btn-soft-danger js-bulk-delete-btn" style="display:none;" id="tk-bulk-delete-btn"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon'); ?> حذف انتخاب‌شده‌ها</button>
                 </div>
                 <div class="table-wrap">
                     <table id="ticketsTable" class="display app-table app-table--summary" style="width:100%">
@@ -718,7 +280,7 @@ if ($viewT === '') {
                         </thead>
                         <tbody>
                         <?php foreach ($tickets as $tt):
-                            [$slabel, $sclass] = tk_status_badge((string)$tt['status']); ?>
+                            [$slabel, $sclass] = \Faoxima\Admin\Web\Pages\TicketsRequestHelpers::tk_status_badge((string)$tt['status']); ?>
                             <tr data-detail-row data-detail-title="تیکت <?php echo htmlspecialchars((string)$tt['Tracking'], ENT_QUOTES, 'UTF-8'); ?>">
                                 <td><input type="checkbox" class="tk-row-check" value="<?php echo htmlspecialchars((string)$tt['Tracking'], ENT_QUOTES, 'UTF-8'); ?>"></td>
                                 <td data-label="کد پیگیری" style="direction:ltr; text-align:right;" data-summary="1"><bdi class="invoice-reference"><?php echo htmlspecialchars((string)$tt['Tracking'], ENT_QUOTES, 'UTF-8'); ?></bdi></td>
@@ -729,22 +291,22 @@ if ($viewT === '') {
                                 <?php $tsubj = $ticketSubjects[$tt['Tracking']] ?? ''; ?>
                                 <td data-label="موضوع"><?php echo $tsubj !== '' ? htmlspecialchars($tsubj, ENT_QUOTES, 'UTF-8') : '—'; ?></td>
                                 <td data-label="وضعیت" data-filter-value="<?php echo htmlspecialchars($slabel, ENT_QUOTES, 'UTF-8'); ?>" data-summary="1"><span class="badge <?php echo $sclass; ?>"><?php echo $slabel; ?></span></td>
-                                <td data-label="آخرین به‌روزرسانی" style="direction:ltr; text-align:right; font-size:11.5px;"><?php echo htmlspecialchars(tk_jdate($tt['last_time']), ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td data-label="آخرین به‌روزرسانی" style="direction:ltr; text-align:right; font-size:11.5px;"><?php echo htmlspecialchars(\Faoxima\Admin\Web\Pages\TicketsRequestHelpers::tk_jdate($tt['last_time']), ENT_QUOTES, 'UTF-8'); ?></td>
                                 <td data-label="پیام‌ها"><?php echo (int)$tt['cnt']; ?></td>
                                 <td data-label="عملیات" class="cell-actions">
-                                    <a href="tickets.php?t=<?php echo urlencode((string)$tt['Tracking']); ?>" class="btn btn-sm btn-soft-purple"><?php echo icon('message', 'svg-icon'); ?> مشاهده</a>
+                                    <a href="tickets.php?t=<?php echo urlencode((string)$tt['Tracking']); ?>" class="btn btn-sm btn-soft-purple"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('message', 'svg-icon'); ?> مشاهده</a>
                                     <form method="POST" style="display:inline" onsubmit="return confirm('کل این تیکت حذف شود؟');">
                                         <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
                                         <input type="hidden" name="_action" value="delete">
                                         <input type="hidden" name="t" value="<?php echo htmlspecialchars((string)$tt['Tracking'], ENT_QUOTES, 'UTF-8'); ?>">
-                                        <button type="submit" class="btn btn-sm btn-soft-danger"><?php echo icon('trash', 'svg-icon'); ?></button>
+                                        <button type="submit" class="btn btn-sm btn-soft-danger"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon'); ?></button>
                                     </form>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
                         </tbody>
                     </table>
-                    <?php echo fx_pager_html($tkPg['page'], $tkPg['pages'], $tkPg['total'], count($tickets), 'tickets.php', array_merge(['q' => $tkQ !== '' ? $tkQ : null, 'status' => $tkStatus !== '' ? $tkStatus : null], $tkDateKeep)); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Pagination::fx_pager_html($tkPg['page'], $tkPg['pages'], $tkPg['total'], count($tickets), 'tickets.php', array_merge(['q' => $tkQ !== '' ? $tkQ : null, 'status' => $tkStatus !== '' ? $tkStatus : null], $tkDateKeep)); ?>
                 </div>
             </div>
 
@@ -795,32 +357,32 @@ if ($viewT === '') {
                                             <span class="tkup-name" dir="ltr"></span>
                                             <span class="tkup-size" dir="ltr"></span>
                                         </span>
-                                        <button type="button" class="tkup-rm" aria-label="حذف فایل"><?php echo icon('xmark', 'svg-icon'); ?></button>
+                                        <button type="button" class="tkup-rm" aria-label="حذف فایل"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('xmark', 'svg-icon'); ?></button>
                                     </div>
                                     <div class="tkup-error" role="alert" hidden></div>
                                 </div>
                             </div>
                             <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:6px;">
                                 <small style="opacity:.7; font-size:11.5px;">می‌توانید تا ۵ عکس/ویدیو اضافه کنید.</small>
-                                <button type="button" id="ac-add-media" class="btn btn-sm btn-soft-purple"><?php echo icon('plus', 'svg-icon'); ?> افزودن فایل</button>
+                                <button type="button" id="ac-add-media" class="btn btn-sm btn-soft-purple"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon'); ?> افزودن فایل</button>
                             </div>
                         </div>
                         <div class="modal-foot">
                             <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('modal-open-ticket')">انصراف</button>
-                            <button type="submit" class="btn btn-primary btn-sm"><?php echo icon('plus', 'svg-icon'); ?> ایجاد تیکت</button>
+                            <button type="submit" class="btn btn-primary btn-sm"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon'); ?> ایجاد تیکت</button>
                         </div>
                     </form>
                 </div>
             </div>
 
             <?php else:
-                [$slabel, $sclass] = tk_status_badge((string)$ticketRow['status']);
+                [$slabel, $sclass] = \Faoxima\Admin\Web\Pages\TicketsRequestHelpers::tk_status_badge((string)$ticketRow['status']);
                 $isClosed = $ticketRow['status'] === 'close'; ?>
 
             <div class="page-head">
                 <div>
                     <div class="page-head__title">
-                        <?php echo icon('message', 'svg-icon svg-lg'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('message', 'svg-icon svg-lg'); ?>
                         تیکت <span style="direction:ltr; font-family:monospace;"><?php echo htmlspecialchars($viewT, ENT_QUOTES, 'UTF-8'); ?></span>
                     </div>
                     <div class="page-head__sub">
@@ -831,15 +393,15 @@ if ($viewT === '') {
                     </div>
                 </div>
                 <div class="chip-row">
-                    <a href="tickets.php" class="btn btn-outline btn-sm"><?php echo icon('arrow-right', 'svg-icon'); ?> بازگشت به لیست</a>
+                    <a href="tickets.php" class="btn btn-outline btn-sm"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('arrow-right', 'svg-icon'); ?> بازگشت به لیست</a>
                 </div>
             </div>
 
             <div class="card ticket-conversation">
-                <div class="ticket-conversation__head"><div><span class="ticket-conversation__mark" aria-hidden="true"><?php echo icon('message', 'svg-icon svg-sm'); ?></span><strong>گفت‌وگوی تیکت</strong></div><span class="badge <?php echo $sclass; ?>"><?php echo $slabel; ?></span></div>
+                <div class="ticket-conversation__head"><div><span class="ticket-conversation__mark" aria-hidden="true"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('message', 'svg-icon svg-sm'); ?></span><strong>گفت‌وگوی تیکت</strong></div><span class="badge <?php echo $sclass; ?>"><?php echo $slabel; ?></span></div>
                 <div class="tk-chat">
                     <?php foreach ($thread as $mrow):
-                        $m = tk_media((string)$mrow['text']);
+                        $m = \Faoxima\Admin\Web\Pages\TicketsRequestHelpers::tk_media((string)$mrow['text']);
                         $mid = (int)$mrow['id'];
                         $side = ($mrow['result'] === 'admin') ? 'admin' : 'user';
                         $who = ($mrow['result'] === 'admin') ? '👨‍💻 پشتیبانی' : '👤 کاربر';
@@ -870,9 +432,9 @@ if ($viewT === '') {
                                 </div>
                                 <?php endif; ?>
                                 <div class="tk-time">
-                                    <?php echo htmlspecialchars(tk_jdate($mrow['time']), ENT_QUOTES, 'UTF-8'); ?>
+                                    <?php echo htmlspecialchars(\Faoxima\Admin\Web\Pages\TicketsRequestHelpers::tk_jdate($mrow['time']), ENT_QUOTES, 'UTF-8'); ?>
                                     <?php if ($side === 'admin'): ?>
-                                        <span class="tk-receipt <?php echo $seen ? 'is-seen' : ''; ?>"><?php echo icon('check', 'svg-icon'); ?><?php if ($seen) echo icon('check', 'svg-icon tk-receipt-2'); ?></span>
+                                        <span class="tk-receipt <?php echo $seen ? 'is-seen' : ''; ?>"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('check', 'svg-icon'); ?><?php if ($seen) echo \Faoxima\Admin\Web\Support\Icons::icon('check', 'svg-icon tk-receipt-2'); ?></span>
                                     <?php endif; ?>
                                 </div>
                             </div>
@@ -887,8 +449,8 @@ if ($viewT === '') {
                                 <?php if ($side === 'user'): ?>
                                 <button type="button" class="tk-msg-action-btn" data-act="react" title="واکنش">🙂</button>
                                 <?php endif; ?>
-                                <button type="button" class="tk-msg-action-btn" data-act="reply" title="پاسخ"><?php echo icon('arrow-right-arrow-left', 'svg-icon'); ?></button>
-                                <button type="button" class="tk-msg-action-btn" data-act="copy" title="کپی"><?php echo icon('copy', 'svg-icon'); ?></button>
+                                <button type="button" class="tk-msg-action-btn" data-act="reply" title="پاسخ"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('arrow-right-arrow-left', 'svg-icon'); ?></button>
+                                <button type="button" class="tk-msg-action-btn" data-act="copy" title="کپی"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('copy', 'svg-icon'); ?></button>
                             </div>
                             </div>
                         </div>
@@ -926,26 +488,26 @@ if ($viewT === '') {
                                     <span class="tkup-name" dir="ltr"></span>
                                     <span class="tkup-size" dir="ltr"></span>
                                 </span>
-                                <button type="button" class="tkup-rm" aria-label="حذف فایل"><?php echo icon('xmark', 'svg-icon'); ?></button>
+                                <button type="button" class="tkup-rm" aria-label="حذف فایل"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('xmark', 'svg-icon'); ?></button>
                             </div>
                             <div class="tkup-error" role="alert" hidden></div>
                         </div>
                     </div>
                     <div class="tk-compose-bar">
                         <div class="tk-compose-hint">
-                            <?php echo icon('circle-info', 'svg-icon'); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-info', 'svg-icon'); ?>
                             <span>می‌توانید تا ۵ عکس/ویدیو اضافه کنید.</span>
                         </div>
                         <div class="tk-compose-btns">
-                            <button type="button" id="tk-add-media" class="btn btn-sm btn-soft-purple"><?php echo icon('plus', 'svg-icon'); ?> افزودن فایل</button>
-                            <button type="submit" class="btn btn-primary btn-sm"><?php echo icon('paper-plane', 'svg-icon'); ?> ارسال پاسخ</button>
+                            <button type="button" id="tk-add-media" class="btn btn-sm btn-soft-purple"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon'); ?> افزودن فایل</button>
+                            <button type="submit" class="btn btn-primary btn-sm"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('paper-plane', 'svg-icon'); ?> ارسال پاسخ</button>
                         </div>
                     </div>
                 </form>
 
                 <div class="tk-danger-zone">
                     <div class="tk-danger-zone__label">
-                        <?php echo icon('sliders', 'svg-icon'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('sliders', 'svg-icon'); ?>
                         <span>مدیریت تیکت</span>
                     </div>
                     <div class="tk-danger-zone__btns">
@@ -954,21 +516,21 @@ if ($viewT === '') {
                                 <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
                                 <input type="hidden" name="_action" value="reopen">
                                 <input type="hidden" name="t" value="<?php echo htmlspecialchars($viewT, ENT_QUOTES, 'UTF-8'); ?>">
-                                <button type="submit" class="btn btn-soft-success btn-sm"><?php echo icon('check', 'svg-icon'); ?> باز کردن مجدد تیکت</button>
+                                <button type="submit" class="btn btn-soft-success btn-sm"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('check', 'svg-icon'); ?> باز کردن مجدد تیکت</button>
                             </form>
                         <?php else: ?>
                             <form method="POST" action="tickets.php" onsubmit="return confirm('این تیکت بسته شود؟');">
                                 <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
                                 <input type="hidden" name="_action" value="close">
                                 <input type="hidden" name="t" value="<?php echo htmlspecialchars($viewT, ENT_QUOTES, 'UTF-8'); ?>">
-                                <button type="submit" class="btn btn-soft-warning btn-sm"><?php echo icon('ban', 'svg-icon'); ?> بستن تیکت</button>
+                                <button type="submit" class="btn btn-soft-warning btn-sm"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('ban', 'svg-icon'); ?> بستن تیکت</button>
                             </form>
                         <?php endif; ?>
                         <form method="POST" action="tickets.php" onsubmit="return confirm('کل این تیکت حذف شود؟ این کار قابل بازگشت نیست.');">
                             <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
                             <input type="hidden" name="_action" value="delete">
                             <input type="hidden" name="t" value="<?php echo htmlspecialchars($viewT, ENT_QUOTES, 'UTF-8'); ?>">
-                            <button type="submit" class="btn btn-soft-danger btn-sm tk-btn-delete"><?php echo icon('trash', 'svg-icon'); ?> حذف کامل تیکت</button>
+                            <button type="submit" class="btn btn-soft-danger btn-sm tk-btn-delete"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon'); ?> حذف کامل تیکت</button>
                         </form>
                     </div>
                 </div>
@@ -1230,7 +792,7 @@ if ($viewT === '') {
                 }
 
                 var TRACKING = <?php echo json_encode($viewT); ?>;
-                var RECEIPT_CHECK_2_HTML = <?php echo json_encode(icon('check', 'svg-icon tk-receipt-2')); ?>;
+                var RECEIPT_CHECK_2_HTML = <?php echo json_encode(\Faoxima\Admin\Web\Support\Icons::icon('check', 'svg-icon tk-receipt-2')); ?>;
                 function pollTicketState() {
                     if (!TRACKING) return;
                     fetch('tickets.php?ajax=poll_state&t=' + encodeURIComponent(TRACKING))

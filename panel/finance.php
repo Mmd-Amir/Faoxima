@@ -1,14 +1,12 @@
 <?php
 
+require_once __DIR__ . '/../src/bootstrap.php';
 
 if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
     define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
 }
 
 
-if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
-    define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
-}
 ini_set('session.cookie_samesite', 'Lax');
 ini_set('session.cookie_httponly', '1');
 session_start();
@@ -17,236 +15,20 @@ header('Pragma: no-cache');
 header('Expires: 0');
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
-require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/lib/csrf.php';
-require_once __DIR__ . '/lib/textbot_edge.php';
-require_once __DIR__ . '/../re/rx/function/database_helpers_1.php';
 
-fx_admin_require_access($pdo);
-fx_csrf_guard();
+\Faoxima\Admin\Web\Support\Csrf::fx_admin_require_access($pdo);
+\Faoxima\Admin\Web\Support\Csrf::fx_csrf_guard();
 
-
-$FIN_GROUPS = [
-    'cart' => [
-        'title' => 'کارت به کارت',
-        'icon'  => 'wallet',
-        'fields' => [
-            ['type' => 'toggle', 'name' => 'Cartstatus',          'label' => 'فعال‌سازی کارت به کارت',     'on' => 'oncard',        'off' => 'offcard'],
-            ['type' => 'toggle', 'name' => 'Cartstatuspv',        'label' => 'دریافت رسید در پی‌وی',       'on' => 'oncardpv',      'off' => 'offcardpv'],
-            ['type' => 'text',   'name' => 'cardnumber',          'label' => 'شماره کارت',                  'placeholder' => '6037-XXXX-XXXX-XXXX'],
-            ['type' => 'text',   'name' => 'namecard',            'label' => 'نام صاحب کارت',               'placeholder' => 'علی محمدی'],
-            ['type' => 'text',   'name' => 'CartDirect',          'label' => 'پل ارتباطی کارت',             'placeholder' => '@username'],
-            ['type' => 'toggle', 'name' => 'statuscardautoconfirm','label' => 'تایید خودکار رسید کارت',     'on' => 'onautoconfirm', 'off' => 'offautoconfirm'],
-            ['type' => 'toggle', 'name' => 'autoconfirmcart',     'label' => 'تایید خودکار سفارش (بدون تایید رسید)', 'on' => 'onauto', 'off' => 'offauto'],
-            ['type' => 'toggle', 'name' => 'checkpaycartfirst',   'label' => 'بررسی پرداخت اولیه',          'on' => 'onpayverify',   'off' => 'offpayverify'],
-            ['type' => 'number', 'name' => 'minbalancecart',      'label' => 'حداقل مبلغ شارژ (تومان)',     'placeholder' => '20000', 'money' => true],
-            ['type' => 'number', 'name' => 'maxbalancecart',      'label' => 'حداکثر مبلغ شارژ (تومان)',    'placeholder' => '1000000', 'money' => true],
-            ['type' => 'number', 'name' => 'helpcart',            'label' => 'توضیحات راهنما (شناسه پیام)', 'placeholder' => '2'],
-            ['type' => 'number', 'name' => 'chashbackcart',       'label' => 'درصد کش‌بک (٪)',              'placeholder' => '0'],
-        ],
-    ],
-
-    'rial_gateways' => [
-        'title' => 'درگاه‌های ریالی',
-        'icon'  => 'dollar-sign',
-        'fields' => [
-
-            ['type' => 'toggle', 'name' => 'zarinpalstatus',      'label' => 'فعال‌سازی زرین‌پال',           'on' => 'onzarinpal',    'off' => 'offzarinpal'],
-            ['type' => 'secret', 'name' => 'merchant_zarinpal',   'label' => 'مرچنت زرین‌پال',               'placeholder' => 'مرچنت زرین‌پال'],
-            ['type' => 'number', 'name' => 'helpzarinpal',        'label' => 'راهنما زرین‌پال (شناسه پیام)', 'placeholder' => '2'],
-            ['type' => 'number', 'name' => 'chashbackzarinpal',   'label' => 'کش‌بک زرین‌پال (٪)',           'placeholder' => '0'],
-
-
-            ['type' => 'secret', 'name' => 'apiiranpay',          'label' => 'API IRanpay',                  'placeholder' => 'API key'],
-            ['type' => 'number', 'name' => 'chashbackiranpay2',   'label' => 'کش‌بک IRanpay۲ (٪)',           'placeholder' => '0'],
-        ],
-    ],
-
-    'crypto_gateways' => [
-        'title' => 'درگاه‌های ارزی / کریپتو',
-        'icon'  => 'globe',
-        'fields' => [
-
-            ['type' => 'toggle', 'name' => 'nowpaymentstatus',    'label' => 'فعال‌سازی NowPayment',          'on' => 'onnowpayment',  'off' => 'offnowpayment'],
-            ['type' => 'secret', 'name' => 'api_nowpayment',      'label' => 'API NowPayment',                'placeholder' => 'API key'],
-            ['type' => 'secret', 'name' => 'nowpayment_ipn_secret','label' => 'IPN Secret NowPayment',        'placeholder' => 'IPN secret (اختیاری ولی توصیه‌شده)'],
-            ['type' => 'number', 'name' => 'helpnowpayment',      'label' => 'راهنما (شناسه پیام)',          'placeholder' => '2'],
-            ['type' => 'number', 'name' => 'cashbacknowpayment',  'label' => 'کش‌بک (٪)',                     'placeholder' => '0'],
-            ['type' => 'number', 'name' => 'minbalancenowpayment','label' => 'حداقل مبلغ (تومان)',           'placeholder' => '20000', 'money' => true],
-            ['type' => 'number', 'name' => 'maxbalancenowpayment','label' => 'حداکثر مبلغ (تومان)',          'placeholder' => '1000000', 'money' => true],
-
-
-            ['type' => 'secret', 'name' => 'api_plisio',          'label' => 'API Plisio',                    'placeholder' => 'Plisio secret key'],
-            ['type' => 'number', 'name' => 'helpplisio',          'label' => 'راهنما Plisio',                 'placeholder' => '2'],
-            ['type' => 'number', 'name' => 'chashbackplisio',     'label' => 'کش‌بک Plisio (٪)',              'placeholder' => '0'],
-            ['type' => 'number', 'name' => 'minbalanceplisio',    'label' => 'حداقل Plisio (تومان)',          'placeholder' => '20000', 'money' => true],
-            ['type' => 'number', 'name' => 'maxbalanceplisio',    'label' => 'حداکثر Plisio (تومان)',         'placeholder' => '1000000', 'money' => true],
-
-
-            ['type' => 'number', 'name' => 'helpperfectmony',     'label' => 'راهنما پرفکت مانی',            'placeholder' => '2'],
-            ['type' => 'number', 'name' => 'chashbackperfect',    'label' => 'کش‌بک پرفکت (٪)',               'placeholder' => '0'],
-            ['type' => 'number', 'name' => 'minbalanceperfect',   'label' => 'حداقل پرفکت (تومان)',          'placeholder' => '20000', 'money' => true],
-            ['type' => 'number', 'name' => 'maxbalanceperfect',   'label' => 'حداکثر پرفکت (تومان)',         'placeholder' => '1000000', 'money' => true],
-
-
-            ['type' => 'toggle', 'name' => 'statusstar',          'label' => 'فعال‌سازی Star Telegram',       'on' => '1',             'off' => '0'],
-            ['type' => 'number', 'name' => 'helpstar',            'label' => 'راهنما Star (شناسه پیام)',     'placeholder' => '2'],
-            ['type' => 'number', 'name' => 'chashbackstar',       'label' => 'کش‌بک Star (٪)',                'placeholder' => '0'],
-            ['type' => 'number', 'name' => 'minbalancestar',      'label' => 'حداقل Star (تومان)',           'placeholder' => '20000', 'money' => true],
-            ['type' => 'number', 'name' => 'maxbalancestar',      'label' => 'حداکثر Star (تومان)',          'placeholder' => '1000000', 'money' => true],
-        ],
-    ],
-
-    'limits' => [
-        'title' => 'حدود کلی شارژ',
-        'icon'  => 'sliders',
-        'fields' => [
-            ['type' => 'number', 'name' => 'minbalance',          'label' => 'حداقل کلی شارژ کیف پول (تومان)','placeholder' => '20000', 'money' => true],
-            ['type' => 'number', 'name' => 'maxbalance',          'label' => 'حداکثر کلی شارژ کیف پول (تومان)','placeholder' => '1000000', 'money' => true],
-        ],
-    ],
-];
-
-
-$paySettings = [];
-try {
-    $r = $pdo->query("SELECT NamePay, ValuePay FROM PaySetting");
-    if ($r) {
-        foreach ($r->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $paySettings[(string)$row['NamePay']] = (string)$row['ValuePay'];
-        }
-    }
-} catch (\Throwable $e) {
-    error_log('[panel/finance] load failed: ' . $e->getMessage());
-}
-
-
-$textbotRows = [];
-try {
-    $textbotKeys = [];
-    foreach ($FIN_GROUPS as $g) {
-        foreach ($g['fields'] as $f) {
-            if (($f['type'] ?? '') === 'textbot') $textbotKeys[] = $f['name'];
-        }
-    }
-    if (!empty($textbotKeys)) {
-        $placeholders = implode(',', array_fill(0, count($textbotKeys), '?'));
-        $stmt = $pdo->prepare("SELECT id_text, text FROM textbot WHERE id_text IN ($placeholders)");
-        $stmt->execute($textbotKeys);
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $textbotRows[(string)$row['id_text']] = (string)$row['text'];
-        }
-    }
-} catch (\Throwable $e) {
-    error_log('[panel/finance] textbot load failed: ' . $e->getMessage());
-}
-
-
-function fx_finance_posted_setting(array $post, array $field, string $key, string $fieldType): ?string
-{
-    $name = 'f_' . $key;
-    if ($fieldType === 'toggle') {
-        return isset($post[$name]) ? $field['on'] : $field['off'];
-    }
-    if (!array_key_exists($name, $post)) {
-        return null;
-    }
-    $value = (string)$post[$name];
-    return $fieldType === 'secret' && $value === '' ? null : $value;
-}
-
-function fx_finance_save_settings(PDO $pdo, array $groups, array $post, array $paySettings, array $textbotRows): array
-{
-    $savedCount = 0;
-    $edgeRejectedCount = 0;
-    foreach ($groups as $group) {
-        foreach ($group['fields'] as $f) {
-            $key = $f['name'];
-            $fieldType = $f['type'] ?? 'text';
-
-
-            if ($fieldType === 'textbot') {
-                if (!array_key_exists('f_' . $key, $post)) continue;
-                $new = (string)$post['f_' . $key];
-                $cur = $textbotRows[$key] ?? '';
-                if ((string)$cur === $new) continue;
-                if (fx_textbot_edge_violation($key, $new) !== '') {
-                    $edgeRejectedCount++;
-                    continue;
-                }
-                try {
-                    $stmt = $pdo->prepare(
-                        "INSERT INTO textbot (id_text, text) VALUES (:k, :v)
-                         ON DUPLICATE KEY UPDATE text = VALUES(text)"
-                    );
-                    $stmt->execute([':k' => $key, ':v' => $new]);
-                    $savedCount++;
-                    if (function_exists('faoxima_bust_bot_selectcache')) {
-                        faoxima_bust_bot_selectcache('textbot');
-                    }
-                    if (function_exists('clearSelectCache')) {
-                        clearSelectCache('textbot');
-                    }
-                } catch (\Throwable $e) {
-                    error_log('[panel/finance] save textbot ' . $key . ' failed: ' . $e->getMessage());
-                }
-                continue;
-            }
-
-
-            $cur = $paySettings[$key] ?? '';
-            $new = fx_finance_posted_setting($post, $f, $key, $fieldType);
-            if ($new === null) continue;
-
-            if ((string)$cur === (string)$new) continue;
-
-            try {
-                $stmt = $pdo->prepare(
-                    "INSERT INTO PaySetting (NamePay, ValuePay) VALUES (:k, :v)
-                     ON DUPLICATE KEY UPDATE ValuePay = VALUES(ValuePay)"
-                );
-                $stmt->execute([':k' => $key, ':v' => $new]);
-                $savedCount++;
-                if (function_exists('faoxima_bust_bot_selectcache')) {
-                    faoxima_bust_bot_selectcache('PaySetting');
-                }
-                if (function_exists('clearSelectCache')) {
-                    clearSelectCache('PaySetting');
-                }
-            } catch (\Throwable $e) {
-                error_log('[panel/finance] save ' . $key . ' failed: ' . $e->getMessage());
-            }
-        }
-    }
-    return [$savedCount, $edgeRejectedCount];
-}
-
-$savedCount = 0;
-$edgeRejectedCount = 0;
+[$FIN_GROUPS, $paySettings, $textbotRows] = \Faoxima\Admin\Web\Pages\FinancePage::load($pdo);
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_save'])) {
-    fx_admin_require_access($pdo, ['administrator']);
-    [$savedCount, $edgeRejectedCount] = fx_finance_save_settings($pdo, $FIN_GROUPS, $_POST, $paySettings, $textbotRows);
-    header('Location: finance.php?saved=' . $savedCount . ($edgeRejectedCount > 0 ? '&edge_rejected=' . $edgeRejectedCount : ''));
+    \Faoxima\Admin\Web\Support\Csrf::fx_admin_require_access($pdo, ['administrator'], $adminnumber ?? null);
+    header('Location: ' . \Faoxima\Admin\Web\Pages\FinancePage::save($pdo, $_POST, $paySettings, $textbotRows));
     exit;
 }
-
-$showEdgeRejected = isset($_GET['edge_rejected']) && (int)$_GET['edge_rejected'] > 0;
+$showEdgeRejected = isset($_GET['edge_rejected']) && (int) $_GET['edge_rejected'] > 0;
 $showSaved = isset($_GET['saved']);
-$savedNum  = isset($_GET['saved']) ? (int)$_GET['saved'] : 0;
-
-
-function faoxima_fin_is_on($cur, $on, $off) {
-    if ((string)$cur === (string)$on)  return true;
-    if ((string)$cur === (string)$off) return false;
-    return in_array(strtolower(trim((string)$cur)), ['1','on','true','yes'], true);
-}
-function faoxima_fin_mask_secret($v) {
-    $v = (string)$v;
-    $n = strlen($v);
-    if ($n === 0) return '';
-    if ($n <= 4) return str_repeat('•', $n);
-    return '••••' . substr($v, -4);
-}
+$savedNum = (int) ($_GET['saved'] ?? 0);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -272,7 +54,7 @@ function faoxima_fin_mask_secret($v) {
             <div class="page-head">
                 <div>
                     <div class="page-head__title">
-                        <?php echo icon('money-bill', 'svg-icon svg-lg'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('money-bill', 'svg-icon svg-lg'); ?>
                         تنظیمات مالی
                     </div>
                     <div class="page-head__sub">شماره کارت، والت ترون، درگاه‌های پرداخت، کش‌بک و حدود مبلغ</div>
@@ -281,7 +63,7 @@ function faoxima_fin_mask_secret($v) {
 
             <?php if ($showSaved): ?>
                 <div class="alert <?php echo $savedNum > 0 ? 'alert-success' : 'alert-warning'; ?>">
-                    <?php echo icon($savedNum > 0 ? 'circle-check' : 'circle-exclamation', 'svg-icon'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon($savedNum > 0 ? 'circle-check' : 'circle-exclamation', 'svg-icon'); ?>
                     <span>
                         <?php echo $savedNum > 0 ? ($savedNum . ' فیلد ذخیره شد.') : 'هیچ تغییری انجام نشد.'; ?>
                     </span>
@@ -290,13 +72,13 @@ function faoxima_fin_mask_secret($v) {
 
             <?php if ($showEdgeRejected): ?>
                 <div class="alert alert-danger">
-                    <?php echo icon('circle-exclamation', 'svg-icon'); ?>
-                    <span><?php echo htmlspecialchars(fx_textbot_edge_error_message(), ENT_QUOTES, 'UTF-8'); ?></span>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon'); ?>
+                    <span><?php echo htmlspecialchars(\Faoxima\Admin\Web\Support\TextbotEdge::fx_textbot_edge_error_message(), ENT_QUOTES, 'UTF-8'); ?></span>
                 </div>
             <?php endif; ?>
 
             <form method="POST" action="finance.php" autocomplete="off">
-                <?php echo fx_csrf_field(); ?>
+                <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                 <input type="hidden" name="_save" value="1">
 
                 <div class="setting-grid">
@@ -304,7 +86,7 @@ function faoxima_fin_mask_secret($v) {
                         <div class="card">
                             <div class="card__head">
                                 <div class="card__title">
-                                    <?php echo icon($group['icon'], 'svg-icon svg-md'); ?>
+                                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon($group['icon'], 'svg-icon svg-md'); ?>
                                     <span><?php echo htmlspecialchars($group['title'], ENT_QUOTES, 'UTF-8'); ?></span>
                                 </div>
                             </div>
@@ -326,7 +108,7 @@ function faoxima_fin_mask_secret($v) {
                                         <?php if ($f['type'] === 'toggle'): ?>
                                             <label class="switch" title="<?php echo htmlspecialchars($key); ?>">
                                                 <input type="checkbox" id="<?php echo $idAttr; ?>" name="<?php echo $idAttr; ?>"
-                                                    <?php echo faoxima_fin_is_on($cur, $f['on'], $f['off']) ? 'checked' : ''; ?>>
+                                                    <?php echo \Faoxima\Admin\Web\Pages\FinanceRequestHelpers::faoxima_fin_is_on($cur, $f['on'], $f['off']) ? 'checked' : ''; ?>>
                                                 <span class="switch__slot"></span>
                                             </label>
                                         <?php elseif ($f['type'] === 'number' && !empty($f['money'])): ?>
@@ -343,7 +125,7 @@ function faoxima_fin_mask_secret($v) {
                                         <?php elseif ($f['type'] === 'secret'): ?>
                                             <input type="text" id="<?php echo $idAttr; ?>" name="<?php echo $idAttr; ?>"
                                                 value=""
-                                                placeholder="<?php echo htmlspecialchars(faoxima_fin_mask_secret($cur) ?: ($f['placeholder'] ?? ''), ENT_QUOTES); ?>"
+                                                placeholder="<?php echo htmlspecialchars(\Faoxima\Admin\Web\Pages\FinanceRequestHelpers::faoxima_fin_mask_secret($cur) ?: ($f['placeholder'] ?? ''), ENT_QUOTES); ?>"
                                                 style="direction:ltr; text-align:left; min-width: 180px;"
                                                 autocomplete="off">
                                         <?php elseif ($f['type'] === 'textbot'): ?>
@@ -366,17 +148,17 @@ function faoxima_fin_mask_secret($v) {
                 </div>
 
                 <div class="alert alert-info">
-                    <?php echo icon('circle-info', 'svg-icon'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-info', 'svg-icon'); ?>
                     <span>فیلدهای مرچنت/کلید API به‌صورت <code>••••XXXX</code> نمایش داده می‌شوند. برای تغییر، مقدار جدید را تایپ کنید — اگر خالی بماند، تغییری اعمال نمی‌شود.</span>
                 </div>
 
                 <div class="save-bar">
                     <button type="reset" class="btn btn-outline">
-                        <?php echo icon('rotate-left', 'svg-icon svg-sm'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('rotate-left', 'svg-icon svg-sm'); ?>
                         <span>بازنشانی</span>
                     </button>
                     <button type="submit" class="btn btn-primary">
-                        <?php echo icon('check', 'svg-icon svg-sm'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('check', 'svg-icon svg-sm'); ?>
                         <span>ذخیره تغییرات</span>
                     </button>
                 </div>

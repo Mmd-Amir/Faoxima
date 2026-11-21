@@ -1,104 +1,35 @@
 <?php
+
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'category.php';
+
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 ini_set('session.cookie_samesite', 'Lax');
 ini_set('session.cookie_httponly', '1');
 session_start();
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
-require_once __DIR__ . '/lib/icons.php';
-require_once __DIR__ . '/lib/pagination.php';
 require_once __DIR__ . '/lib/bulk_delete.php';
 require_once __DIR__ . '/lib/search_filter.php';
 require_once __DIR__ . '/lib/csrf.php';
 require_once __DIR__ . '/lib/ordering.php';
 require_once __DIR__ . '/../function.php';
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindParam("username", $_SESSION["user"], PDO::PARAM_STR);
-$query->execute();
-$result = $query->fetch(PDO::FETCH_ASSOC);
-
-if (!isset($_SESSION["user"]) || !$result) {
-    header('Location: login.php');
+if (\Faoxima\Admin\Web\Pages\CategoryRequest::handle(
+        catQ: $catQ,
+        categories: $categories,
+        pdo: $pdo ?? null,
+        pg: $pg,
+        query: $query,
+        result: $result,
+        stmt: $stmt,
+        v: $v ?? null
+    ) !== true) {
+    unset($adminWebPage);
     return;
 }
 
-fx_csrf_guard();
-
-if (!empty($_POST['action']) && $_POST['action'] === 'add') {
-    $remark = trim((string)($_POST['remark'] ?? ''));
-    if ($remark !== '') {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM category WHERE remark = :remark");
-        $stmt->execute([':remark' => $remark]);
-        if ((int)$stmt->fetchColumn() === 0) {
-            $stmt = $pdo->prepare("INSERT IGNORE INTO category (remark) VALUES (:remark)");
-            $stmt->execute([':remark' => $remark]);
-        }
-    }
-    header('Location: category.php');
-    exit;
-}
-
-if (!empty($_POST['action']) && $_POST['action'] === 'edit') {
-    $id     = (int)($_POST['id'] ?? 0);
-    $remark = trim((string)($_POST['remark'] ?? ''));
-    if ($id > 0 && $remark !== '') {
-        $old = $pdo->prepare("SELECT remark FROM category WHERE id = :id");
-        $old->execute([':id' => $id]);
-        $oldRemark = (string)($old->fetchColumn() ?: '');
-        if ($oldRemark !== '' && $oldRemark !== $remark) {
-            rxCategoryRenameCascade($pdo, $oldRemark, $remark);
-        }
-    }
-    header('Location: category.php');
-    exit;
-}
-
-if (!empty($_POST['action']) && $_POST['action'] === 'delete') {
-    $id = (int)($_POST['id'] ?? 0);
-    if ($id > 0) {
-        $old = $pdo->prepare("SELECT remark FROM category WHERE id = :id");
-        $old->execute([':id' => $id]);
-        $oldRemark = (string)($old->fetchColumn() ?: '');
-        if ($oldRemark !== '') {
-            rxCategoryDeleteGuarded($pdo, $oldRemark, $id);
-        }
-    }
-    header('Location: category.php');
-    exit;
-}
-
-if (!empty($_POST['action']) && $_POST['action'] === 'bulk_delete') {
-    $requestedIds = $_POST['ids'] ?? [];
-    $deletedCount = 0;
-    $remarkStmt = $pdo->prepare("SELECT remark FROM category WHERE id = :id");
-    foreach (array_values(array_unique(array_filter(array_map('intval', (array) $requestedIds), function ($v) { return $v > 0; }))) as $bulkId) {
-        $remarkStmt->execute([':id' => $bulkId]);
-        $bulkRemark = (string)($remarkStmt->fetchColumn() ?: '');
-        if ($bulkRemark !== '' && rxCategoryDeleteGuarded($pdo, $bulkRemark, $bulkId)) {
-            $deletedCount++;
-        }
-    }
-    fx_bulk_delete_redirect('category.php', count($requestedIds), $deletedCount);
-}
-
-fx_order_ensure_schema($pdo, 'category');
-$catQ = fx_search_current();
-$catWhereSql = '1=1';
-$catParams = [];
-if ($catQ !== '') {
-    $catLike = '%' . $catQ . '%';
-    $catWhereSql .= ' AND (id LIKE :cq1 OR remark LIKE :cq2)';
-    $catParams[':cq1'] = $catLike;
-    $catParams[':cq2'] = $catLike;
-}
-
-$pg = fx_paginate($pdo, "SELECT COUNT(*) FROM category WHERE $catWhereSql", $catParams, 5);
-$query = $pdo->prepare("SELECT * FROM category WHERE $catWhereSql ORDER BY (position = 0) ASC, position ASC, id ASC LIMIT :perPage OFFSET :offset");
-foreach ($catParams as $k => $v) $query->bindValue($k, $v, PDO::PARAM_STR);
-$query->bindValue(':perPage', $pg['perPage'], PDO::PARAM_INT);
-$query->bindValue(':offset', $pg['offset'], PDO::PARAM_INT);
-$query->execute();
-$categories = $query->fetchAll();
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -125,25 +56,25 @@ $categories = $query->fetchAll();
                 </div>
                 <div class="chip-row">
                     <button onclick="openModal('modal-add-category')" class="btn btn-primary btn-sm">
-                        <?php echo icon('plus', 'svg-icon'); ?> افزودن دسته‌بندی
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon'); ?> افزودن دسته‌بندی
                     </button>
                     <button onclick="openModal('modal-move-category')" class="btn btn-soft-purple btn-sm">
-                        <?php echo icon('arrow-right-arrow-left', 'svg-icon'); ?> جابجایی دسته‌بندی‌ها
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('arrow-right-arrow-left', 'svg-icon'); ?> جابجایی دسته‌بندی‌ها
                     </button>
                 </div>
             </div>
 
-            <?php echo fx_bulk_delete_flash_html(); ?>
+            <?php echo \Faoxima\Admin\Web\Support\BulkDelete::fx_bulk_delete_flash_html(); ?>
 
-            <?php echo fx_search_ui('category.php', $catQ, [], 'جستجو در شناسه یا نام دسته‌بندی…'); ?>
+            <?php echo \Faoxima\Admin\Web\Support\SearchFilter::fx_search_ui('category.php', $catQ, [], 'جستجو در شناسه یا نام دسته‌بندی…'); ?>
 
             <div class="card category-catalog<?php echo empty($categories) ? ' category-catalog--empty' : ''; ?>">
                 <div class="category-catalog__head"><div><h2>دسته‌بندی محصولات</h2><p>گروه‌بندی محصولات برای دسترسی سریع‌تر کاربران</p></div><span class="category-count"><?php echo strtr(number_format((int)$pg['total']), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?> دسته‌بندی<?php echo $catQ !== '' ? ' مطابق جستجو' : ''; ?></span></div>
                 <?php if (empty($categories)): ?>
-                <div class="category-empty"><span class="category-empty__icon" aria-hidden="true"><?php echo icon('folder', 'svg-icon'); ?></span><h3><?php echo $catQ !== '' ? 'دسته‌بندی موردنظر پیدا نشد' : 'اولین دسته‌بندی را بسازید'; ?></h3><p><?php echo $catQ !== '' ? 'عبارت دیگری را جستجو کنید یا به فهرست کامل برگردید.' : 'محصولات خود را در گروه‌های مشخص قرار دهید تا انتخاب برای کاربران ساده‌تر شود.'; ?></p><?php if ($catQ !== ''): ?><a href="category.php" class="btn btn-outline btn-sm">نمایش همهٔ دسته‌بندی‌ها</a><?php else: ?><button type="button" class="btn btn-primary btn-sm" onclick="openModal('modal-add-category')"><?php echo icon('plus', 'svg-icon svg-sm'); ?> افزودن دسته‌بندی</button><?php endif; ?></div>
+                <div class="category-empty"><span class="category-empty__icon" aria-hidden="true"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('folder', 'svg-icon'); ?></span><h3><?php echo $catQ !== '' ? 'دسته‌بندی موردنظر پیدا نشد' : 'اولین دسته‌بندی را بسازید'; ?></h3><p><?php echo $catQ !== '' ? 'عبارت دیگری را جستجو کنید یا به فهرست کامل برگردید.' : 'محصولات خود را در گروه‌های مشخص قرار دهید تا انتخاب برای کاربران ساده‌تر شود.'; ?></p><?php if ($catQ !== ''): ?><a href="category.php" class="btn btn-outline btn-sm">نمایش همهٔ دسته‌بندی‌ها</a><?php else: ?><button type="button" class="btn btn-primary btn-sm" onclick="openModal('modal-add-category')"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon svg-sm'); ?> افزودن دسته‌بندی</button><?php endif; ?></div>
                 <?php endif; ?>
                 <form method="POST" action="category.php" id="bulk-form">
-                    <?php echo fx_csrf_field(); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                     <input type="hidden" name="action" value="bulk_delete">
                     <div class="table-wrap">
                         <table id="categoriesTable" class="display app-table app-table--summary" style="width:100%">
@@ -160,20 +91,20 @@ $categories = $query->fetchAll();
                                 <tr data-detail-row data-detail-title="<?php echo htmlspecialchars($cat['remark'], ENT_QUOTES, 'UTF-8'); ?>">
                                     <td><label class="fx-check-row"><input type="checkbox" name="ids[]" value="<?php echo $cat['id']; ?>"></label></td>
                                     <td data-label="شناسه" data-summary="1"><bdi class="category-id">#<?php echo (int)$cat['id']; ?></bdi></td>
-                                    <td data-label="نام دسته‌بندی" data-summary="1"><span class="category-name"><span class="category-name__icon" aria-hidden="true"><?php echo icon('folder', 'svg-icon svg-sm'); ?></span><b><?php echo htmlspecialchars($cat['remark'], ENT_QUOTES, 'UTF-8'); ?></b></span></td>
+                                    <td data-label="نام دسته‌بندی" data-summary="1"><span class="category-name"><span class="category-name__icon" aria-hidden="true"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('folder', 'svg-icon svg-sm'); ?></span><b><?php echo htmlspecialchars($cat['remark'], ENT_QUOTES, 'UTF-8'); ?></b></span></td>
                                     <td data-label="عملیات" class="cell-actions">
                                         <div class="cell-actions__group">
                                             <button type="button"
                                                 class="btn btn-sm btn-soft-info"
                                                 title="ویرایش"
                                                 onclick="faoximaOpenEdit(<?php echo $cat['id']; ?>, <?php echo htmlspecialchars(json_encode($cat['remark'], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP), ENT_QUOTES, 'UTF-8'); ?>)">
-                                                <?php echo icon('pen', 'svg-icon'); ?>
+                                                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('pen', 'svg-icon'); ?>
                                             </button>
                                             <button type="button"
                                                 class="btn btn-sm btn-soft-danger"
                                                 title="حذف"
                                                 onclick="if(confirm('آیا از حذف این دسته‌بندی مطمئن هستید؟')) { document.getElementById('del-id').value=<?php echo $cat['id']; ?>; document.getElementById('delete-form').submit(); }">
-                                                <?php echo icon('trash', 'svg-icon'); ?>
+                                                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon'); ?>
                                             </button>
                                         </div>
                                     </td>
@@ -181,11 +112,11 @@ $categories = $query->fetchAll();
                             <?php endforeach; ?>
                             </tbody>
                         </table>
-                        <?php echo fx_pager_html($pg['page'], $pg['pages'], $pg['total'], count($categories), 'category.php', ['q' => $catQ !== '' ? $catQ : null]); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Pagination::fx_pager_html($pg['page'], $pg['pages'], $pg['total'], count($categories), 'category.php', ['q' => $catQ !== '' ? $catQ : null]); ?>
                     </div>
                     <div style="padding:12px 0;">
                         <button type="submit" class="btn btn-soft-danger btn-sm js-bulk-delete-btn" style="display:none;" onclick="return confirm('آیا از حذف دسته‌بندی‌های انتخاب‌شده مطمئن هستید؟')">
-                            <?php echo icon('trash', 'svg-icon'); ?> حذف انتخاب‌شده‌ها
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon'); ?> حذف انتخاب‌شده‌ها
                         </button>
                     </div>
                 </form>
@@ -195,12 +126,12 @@ $categories = $query->fetchAll();
 </section>
 
 <form method="POST" action="category.php" id="delete-form">
-    <?php echo fx_csrf_field(); ?>
+    <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
     <input type="hidden" name="action" value="delete">
     <input type="hidden" name="id" id="del-id" value="">
 </form>
 
-<?php echo fx_order_modal_html('category', 'modal-move-category'); ?>
+<?php echo \Faoxima\Admin\Web\Support\Ordering::fx_order_modal_html('category', 'modal-move-category'); ?>
 
 <div id="modal-add-category" class="modal-overlay">
     <div class="modal-box" style="max-width:420px;">
@@ -209,7 +140,7 @@ $categories = $query->fetchAll();
             <button class="modal-close" onclick="closeModal('modal-add-category')">&times;</button>
         </div>
         <form action="category.php" method="POST">
-            <?php echo fx_csrf_field(); ?>
+            <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
             <input type="hidden" name="action" value="add">
             <p class="category-form-lead">یک نام کوتاه و مشخص برای گروه محصولات انتخاب کنید.</p>
             <div class="form-group">
@@ -228,7 +159,7 @@ $categories = $query->fetchAll();
             <button class="modal-close" onclick="closeModal('modal-edit-category')">&times;</button>
         </div>
         <form action="category.php" method="POST">
-            <?php echo fx_csrf_field(); ?>
+            <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
             <input type="hidden" name="action" value="edit">
             <input type="hidden" name="id" id="edit-cat-id" value="">
             <p class="category-form-lead">نام دسته‌بندی را تغییر دهید و سپس ذخیره کنید.</p>

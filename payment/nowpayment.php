@@ -74,7 +74,7 @@ try {
     if (is_file(__DIR__ . '/../vendor/autoload.php')) {
         require_once __DIR__ . '/../vendor/autoload.php';
     }
-    require_once __DIR__ . '/../lib/PaymentConfirm.php';
+    require_once __DIR__ . '/../src/bootstrap.php';
     $__rxRawLog('all deps loaded');
 } catch (Throwable $e) {
     $__rxRawLog('FAILED loading dependencies', ['error' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()], true);
@@ -91,9 +91,9 @@ if (!isset($pdo) || !($pdo instanceof PDO)) {
 
 
 $ManagePanel    = class_exists('ManagePanel') ? new ManagePanel() : null;
-$setting        = function_exists('select') ? select('setting', '*') : [];
-$paymentreports = function_exists('select')
-    ? (select('topicid', 'idreport', 'report', 'paymentreport', 'select')['idreport'] ?? null)
+$setting        = \Faoxima\Core\Database\Db::runtimeReady() ? \Faoxima\Core\Database\Db::select('setting', '*') : [];
+$paymentreports = \Faoxima\Core\Database\Db::runtimeReady()
+    ? (\Faoxima\Core\Database\Db::select('topicid', 'idreport', 'report', 'paymentreport', 'select')['idreport'] ?? null)
     : null;
 
 
@@ -105,7 +105,7 @@ if (!is_array($data)) {
 }
 
 
-$ipnSecretRow = select('PaySetting', 'ValuePay', 'NamePay', 'nowpayment_ipn_secret', 'select');
+$ipnSecretRow = \Faoxima\Core\Database\Db::select('PaySetting', 'ValuePay', 'NamePay', 'nowpayment_ipn_secret', 'select');
 $ipnSecret    = is_array($ipnSecretRow) ? trim((string)($ipnSecretRow['ValuePay'] ?? '')) : '';
 if ($ipnSecret !== '') {
     $sig = (string)($_SERVER['HTTP_X_NOWPAYMENTS_SIG'] ?? '');
@@ -129,8 +129,8 @@ if ($ipnSecret !== '') {
 } else {
     $verifyPaymentId = isset($data['payment_id']) ? (string)$data['payment_id'] : '';
     $apiPayment = null;
-    if ($verifyPaymentId !== '' && preg_match('/^[A-Za-z0-9_\-]{1,128}$/', $verifyPaymentId) && function_exists('StatusPayment')) {
-        $apiPayment = StatusPayment($verifyPaymentId);
+    if ($verifyPaymentId !== '' && preg_match('/^[A-Za-z0-9_\-]{1,128}$/', $verifyPaymentId) && is_callable([\Faoxima\Payments\Gateways\Nowpayments\Client::class, 'status'])) {
+        $apiPayment = \Faoxima\Payments\Gateways\Nowpayments\Client::status($verifyPaymentId);
     }
     if (!is_array($apiPayment) || (string)($apiPayment['payment_id'] ?? '') !== $verifyPaymentId) {
         $__rxRawLog('REJECT: no IPN secret and payment could not be verified via API', ['payment_id' => $verifyPaymentId], true);
@@ -164,13 +164,7 @@ $__rxRawLog('parsed callback', [
     'paid'      => $actuallyPaid,
 ]);
 
-$terminalStatuses = ['finished', 'confirmed', 'sending'];
-$paidStatuses     = $terminalStatuses;
-if ($paymentStatus === 'partially_paid' && $payAmount > 0 && $actuallyPaid >= ($payAmount - 0.000001)) {
-    $paidStatuses[] = 'partially_paid';
-}
-
-if (!in_array($paymentStatus, $paidStatuses, true)) {
+if (!\Faoxima\Payments\Gateways\Nowpayments\Client::countsAsPaid($paymentStatus, $payAmount, $actuallyPaid)) {
     $__rxRawLog('IGNORED: status not in paid list', ['status' => $paymentStatus]);
     http_response_code(200);
     echo 'ignored';
@@ -187,34 +181,34 @@ $Payment_report = null;
 $matchedBy = '';
 
 if ($orderIdRaw !== '' && preg_match('/^[A-Za-z0-9_\-]{1,128}$/', $orderIdRaw)) {
-    $Payment_report = select("Payment_report", "*", "id_order", $orderIdRaw, "select");
+    $Payment_report = \Faoxima\Core\Database\Db::select("Payment_report", "*", "id_order", $orderIdRaw, "select");
     if ($Payment_report) {
         $matchedBy = 'order_id(IPN)';
     }
 }
 
 if (!$Payment_report && $invoiceIdRaw !== '') {
-    $Payment_report = select("Payment_report", "*", "dec_not_confirmed", $invoiceIdRaw, "select");
+    $Payment_report = \Faoxima\Core\Database\Db::select("Payment_report", "*", "dec_not_confirmed", $invoiceIdRaw, "select");
     if ($Payment_report) {
         $matchedBy = 'invoice_id(IPN)';
     }
 }
 
 $pay = null;
-if (!$Payment_report && $paymentIdRaw !== '' && function_exists('StatusPayment')) {
+if (!$Payment_report && $paymentIdRaw !== '' && is_callable([\Faoxima\Payments\Gateways\Nowpayments\Client::class, 'status'])) {
     $__rxRawLog('falling back to StatusPayment lookup', ['payment_id' => $paymentIdRaw]);
-    $pay = StatusPayment($paymentIdRaw);
+    $pay = \Faoxima\Payments\Gateways\Nowpayments\Client::status($paymentIdRaw);
     if (is_array($pay)) {
         $__rxRawLog('StatusPayment response', $pay);
         $invFromApi = isset($pay['invoice_id']) ? (string)$pay['invoice_id'] : '';
         $ordFromApi = isset($pay['order_id'])   ? (string)$pay['order_id']   : '';
 
         if ($ordFromApi !== '' && preg_match('/^[A-Za-z0-9_\-]{1,128}$/', $ordFromApi)) {
-            $Payment_report = select("Payment_report", "*", "id_order", $ordFromApi, "select");
+            $Payment_report = \Faoxima\Core\Database\Db::select("Payment_report", "*", "id_order", $ordFromApi, "select");
             if ($Payment_report) { $matchedBy = 'order_id(API)'; }
         }
         if (!$Payment_report && $invFromApi !== '') {
-            $Payment_report = select("Payment_report", "*", "dec_not_confirmed", $invFromApi, "select");
+            $Payment_report = \Faoxima\Core\Database\Db::select("Payment_report", "*", "dec_not_confirmed", $invFromApi, "select");
             if ($Payment_report) { $matchedBy = 'invoice_id(API)'; }
         }
     } else {
@@ -275,7 +269,7 @@ $reportExtra = [
 ];
 
 try {
-    $result = payment_confirm_paid($orderId, 'cashbacknowpayment', $reportExtra);
+    $result = \Faoxima\Payments\Settlement\Confirmation::confirmPaid($pdo, $setting, $orderId, 'cashbacknowpayment', $reportExtra);
 
     $__rxRawLog($result['ok'] ? 'OK confirmed' : 'WARN confirm noop', $result, true);
 } catch (Throwable $e) {

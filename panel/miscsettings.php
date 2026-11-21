@@ -1,5 +1,9 @@
 <?php
 
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'miscsettings.php';
+
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
     define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
 }
@@ -9,71 +13,23 @@ ini_set('session.cookie_httponly', '1');
 session_start();
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
-require_once __DIR__ . '/lib/icons.php';
-require_once __DIR__ . '/../re/rx/function/database_helpers_1.php';
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username = :username");
-$query->execute([':username' => $_SESSION['user'] ?? '']);
-$adminRow = $query->fetch(PDO::FETCH_ASSOC);
-if (!isset($_SESSION['user']) || !$adminRow) {
-    header('Location: login.php');
-    exit;
+if (\Faoxima\Admin\Web\Pages\MiscsettingsRequest::handle(
+        fieldHints: $fieldHints,
+        fields: $fields,
+        key: $key,
+        label: $label,
+        pdo: $pdo ?? null,
+        query: $query,
+        row: $row,
+        stmt: $stmt,
+        values: $values
+    ) !== true) {
+    unset($adminWebPage);
+    return;
 }
 
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-
-$fields = [
-    'receipt_topic_reporting' => 'ارسال رسید کارت‌به‌کارت به تاپیک گزارش',
-    'subscription_link_button' => 'دکمه دریافت لینک',
-];
-
-$fieldHints = [
-    'receipt_topic_reporting' => 'ارسال رسیدهای کارت‌به‌کارت به تاپیک گزارش را فعال می‌کند.',
-    'subscription_link_button' => 'نمایش دکمه دریافت لینک سرویس در ربات را فعال می‌کند.',
-];
-
-$values = array_fill_keys(array_keys($fields), '1');
-$row = $pdo->query('SELECT receipt_topic_reporting, subscription_link_button FROM setting LIMIT 1')->fetch(PDO::FETCH_ASSOC);
-if (is_array($row)) {
-    foreach ($values as $key => $default) {
-        if (array_key_exists($key, $row) && $row[$key] !== null && $row[$key] !== '') {
-            $values[$key] = (string)$row[$key];
-        }
-    }
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $incoming = (string)($_POST['_csrf'] ?? '');
-    if (!hash_equals($_SESSION['csrf_token'], $incoming)) {
-        http_response_code(403);
-        exit('درخواست نامعتبر — توکن CSRF اشتباه است');
-    }
-    $newValues = [];
-    foreach ($fields as $key => $label) {
-        $newValues[$key] = isset($_POST['f_' . $key]) ? '1' : '0';
-    }
-    $stmt = $pdo->prepare('UPDATE setting SET receipt_topic_reporting = :receipt, subscription_link_button = :subscription');
-    $stmt->execute([
-        ':receipt' => $newValues['receipt_topic_reporting'],
-        ':subscription' => $newValues['subscription_link_button'],
-    ]);
-    if (function_exists('faoxima_bust_bot_selectcache')) {
-        faoxima_bust_bot_selectcache('setting');
-    }
-    if (function_exists('clearSelectCache')) {
-        clearSelectCache('setting');
-    }
-    header('Location: miscsettings.php?saved=1');
-    exit;
-}
-
-function faoxima_misc_enabled($value): bool
-{
-    return !in_array(strtolower(trim((string)$value)), ['0', 'off', 'false', 'no'], true);
-}
-
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -100,7 +56,7 @@ function faoxima_misc_enabled($value): bool
             <div class="page-head">
                 <div>
                     <div class="page-head__title">
-                        <?php echo icon('sliders', 'svg-icon svg-lg'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('sliders', 'svg-icon svg-lg'); ?>
                         تنظیمات متفرقه
                     </div>
                     <div class="page-head__sub">تنظیم رفتار گزارش رسید و تحویل لینک سرویس</div>
@@ -108,7 +64,7 @@ function faoxima_misc_enabled($value): bool
             </div>
             <?php if (isset($_GET['saved'])): ?>
                 <div class="alert alert-success">
-                    <?php echo icon('circle-check', 'svg-icon'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-check', 'svg-icon'); ?>
                     <span>تنظیمات با موفقیت ذخیره شد.</span>
                 </div>
             <?php endif; ?>
@@ -118,7 +74,7 @@ function faoxima_misc_enabled($value): bool
                     <div class="card misc-settings-card">
                         <div class="card__head">
                             <div class="card__title">
-                                <?php echo icon('sliders', 'svg-icon svg-md'); ?>
+                                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('sliders', 'svg-icon svg-md'); ?>
                                 <span>رفتارهای اختیاری</span>
                             </div>
                         </div>
@@ -130,7 +86,7 @@ function faoxima_misc_enabled($value): bool
                                 </label>
                                 <div class="setting-row__control">
                                     <label class="switch">
-                                        <input type="checkbox" role="switch" aria-describedby="hint_<?php echo htmlspecialchars($key, ENT_QUOTES, 'UTF-8'); ?>" id="f_<?php echo htmlspecialchars($key, ENT_QUOTES, 'UTF-8'); ?>" name="f_<?php echo htmlspecialchars($key, ENT_QUOTES, 'UTF-8'); ?>" <?php echo faoxima_misc_enabled($values[$key]) ? 'checked' : ''; ?>>
+                                        <input type="checkbox" role="switch" aria-describedby="hint_<?php echo htmlspecialchars($key, ENT_QUOTES, 'UTF-8'); ?>" id="f_<?php echo htmlspecialchars($key, ENT_QUOTES, 'UTF-8'); ?>" name="f_<?php echo htmlspecialchars($key, ENT_QUOTES, 'UTF-8'); ?>" <?php echo \Faoxima\Admin\Web\Pages\MiscsettingsRequestHelpers::faoxima_misc_enabled($values[$key]) ? 'checked' : ''; ?>>
                                         <span class="switch__slot"></span>
                                     </label>
                                 </div>
@@ -140,30 +96,30 @@ function faoxima_misc_enabled($value): bool
                 </div>
                 <div class="save-bar">
                     <button type="reset" class="btn btn-outline">
-                        <?php echo icon('rotate-left', 'svg-icon svg-sm'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('rotate-left', 'svg-icon svg-sm'); ?>
                         <span>بازنشانی</span>
                     </button>
                     <button type="submit" class="btn btn-primary">
-                        <?php echo icon('check', 'svg-icon svg-sm'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('check', 'svg-icon svg-sm'); ?>
                         <span>ذخیره تغییرات</span>
                     </button>
                 </div>
             </form>
             <a class="lv-entry" href="logviewer.php">
-                <span class="lv-entry__icon"><?php echo icon('circle-exclamation', 'svg-icon svg-lg'); ?></span>
+                <span class="lv-entry__icon"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon svg-lg'); ?></span>
                 <span class="lv-entry__text">
                     <strong>مشاهده ارور‌ها</strong>
                     <small>بررسی خطاها و لاگ‌های برنامه، جستجو، دانلود و حذف فایل‌های لاگ بدون ورود به هاست</small>
                 </span>
-                <span class="lv-entry__go"><?php echo icon('chevron-left', 'svg-icon svg-md'); ?></span>
+                <span class="lv-entry__go"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('chevron-left', 'svg-icon svg-md'); ?></span>
             </a>
             <a class="lv-entry" href="filenaming.php">
-                <span class="lv-entry__icon"><?php echo icon('package', 'svg-icon svg-lg'); ?></span>
+                <span class="lv-entry__icon"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('package', 'svg-icon svg-lg'); ?></span>
                 <span class="lv-entry__text">
                     <strong>تنظیمات ارسال فایل توسط ربات</strong>
                     <small>نام فایل و کپشن سفارشی برای کانفیگ‌های ارسالی ربات، به‌تفکیک پنل و کانفیگ</small>
                 </span>
-                <span class="lv-entry__go"><?php echo icon('chevron-left', 'svg-icon svg-md'); ?></span>
+                <span class="lv-entry__go"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('chevron-left', 'svg-icon svg-md'); ?></span>
             </a>
         </div>
     </section>

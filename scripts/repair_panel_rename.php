@@ -6,8 +6,7 @@ if (php_sapi_name() !== 'cli') {
 }
 
 require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../re/rx/function/database_helpers_1.php';
-require_once __DIR__ . '/../re/rx/function/csv_matching_helpers.php';
+require_once __DIR__ . '/../src/bootstrap.php';
 
 $opts = getopt('', ['old:', 'new:', 'apply', 'delete-phantoms']);
 $oldName = trim((string) ($opts['old'] ?? ''));
@@ -56,7 +55,7 @@ $before = $snapshot();
 $invoiceBefore = $countWhere("SELECT COUNT(*) FROM invoice WHERE Service_location = ?", [$oldName]);
 
 $pdo->beginTransaction();
-$ok = rxPanelNameCascade($pdo, $oldName, $newName);
+$ok = \Faoxima\Orders\Catalog\NameCascades::rxPanelNameCascade($pdo, $oldName, $newName);
 if (!$ok) {
     $pdo->rollBack();
     fwrite(STDERR, "Repair failed, nothing changed (see error_log)\n");
@@ -100,8 +99,8 @@ if ($deletePhantoms && count($phantoms)) {
     echo "  deleted empty product rows: " . implode(', ', $phantoms) . "\n";
 }
 $pdo->commit();
-clearSelectCache('product');
-clearSelectCache('invoice');
-faoxima_bust_bot_selectcache('product');
-faoxima_bust_bot_selectcache('invoice');
+\Faoxima\Core\Database\SelectCache::clearSelectCache('product');
+\Faoxima\Core\Database\SelectCache::clearSelectCache('invoice');
+\Faoxima\Core\Database\SelectCache::faoxima_bust_bot_selectcache('product');
+\Faoxima\Core\Database\SelectCache::faoxima_bust_bot_selectcache('invoice');
 echo "Committed.\n";

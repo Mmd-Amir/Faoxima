@@ -1,4 +1,9 @@
 <?php
+
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'service_keyboard.php';
+
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
     define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
 }
@@ -13,1124 +18,140 @@ if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); head
 require_once __DIR__ . '/../jdf.php';
 require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/../botapi.php';
-require_once __DIR__ . '/lib/icons.php';
-require_once __DIR__ . '/../re/rx/function/tonpay_templates.php';
-require_once __DIR__ . '/../re/rx/function/account_layout.php';
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindValue(":username", $_SESSION["user"] ?? '', PDO::PARAM_STR);
-$query->execute();
-$adminRow = $query->fetch(PDO::FETCH_ASSOC);
-if (!isset($_SESSION["user"]) || !$adminRow) {
-    header('Location: login.php');
-    exit;
+if (\Faoxima\Admin\Web\Pages\ServiceKeyboardRequest::handle(
+        ALLOWED_STYLES: $ALLOWED_STYLES,
+        ALL_DB_KEYS: $ALL_DB_KEYS,
+        CONFIG_COLUMNS: $CONFIG_COLUMNS,
+        CONFIG_ITEM_KEY_RE: $CONFIG_ITEM_KEY_RE,
+        CONFIG_ITEM_SECTION: $CONFIG_ITEM_SECTION,
+        EXPLICIT_STYLES: $EXPLICIT_STYLES,
+        MAIN_TOKEN_MAP: $MAIN_TOKEN_MAP,
+        MENUS: $MENUS,
+        STYLE_META: $STYLE_META,
+        pdo: $pdo ?? null,
+        query: $query,
+        tonpayFactoryStyles: $tonpayFactoryStyles,
+        userStylesRaw: $userStylesRaw
+    ) !== true) {
+    unset($adminWebPage);
+    return;
+}
+if (\Faoxima\Admin\Web\Pages\ServiceKeyboardTextAndStyles::handle(
+        ALLOWED_STYLES: $ALLOWED_STYLES ?? null,
+        ALL_DB_KEYS: $ALL_DB_KEYS ?? null,
+        CONFIG_ITEM_KEY_RE: $CONFIG_ITEM_KEY_RE ?? null,
+        CONFIG_ITEM_SECTION: $CONFIG_ITEM_SECTION ?? null,
+        EXPLICIT_STYLES: $EXPLICIT_STYLES ?? null,
+        MAIN_TOKEN_MAP: $MAIN_TOKEN_MAP ?? null,
+        MENUS: $MENUS ?? null,
+        adminWebPage: $adminWebPage ?? null,
+        button: $button,
+        factoryDefaultsMap: $factoryDefaultsMap,
+        key: $key,
+        keyboardMain: $keyboardMain,
+        kmRaw: $kmRaw,
+        kmRows: $kmRows,
+        payload: $payload,
+        pdo: $pdo ?? null,
+        row: $row,
+        rxAutoStyleFor: $rxAutoStyleFor,
+        rxFamilyStyle: $rxFamilyStyle,
+        rxPanelKey: $rxPanelKey ?? null,
+        rxPanelPairs: $rxPanelPairs ?? null,
+        rxPanelSec: $rxPanelSec ?? null,
+        rxPanelVal: $rxPanelVal ?? null,
+        settingRow: $settingRow,
+        token: $token,
+        tonpayFactoryStyles: $tonpayFactoryStyles ?? null,
+        tonpayStyleKey: $tonpayStyleKey ?? null,
+        tonpayStyleValue: $tonpayStyleValue ?? null,
+        useBuiltinDefaults: $useBuiltinDefaults,
+        userStylesRaw: $userStylesRaw,
+        value: $value
+    ) !== true) {
+    unset($adminWebPage);
+    return;
+}
+if (\Faoxima\Admin\Web\Pages\ServiceKeyboardLayout::handle(
+        EXPLICIT_STYLES: $EXPLICIT_STYLES ?? null,
+        MENUS: $MENUS ?? null,
+        SCREENS: $SCREENS,
+        adminWebPage: $adminWebPage ?? null,
+        buttons: $buttons,
+        catalogSamples: $catalogSamples,
+        colorCatalogGroups: $colorCatalogGroups,
+        keyboardMain: $keyboardMain,
+        kmRaw: $kmRaw ?? null,
+        kmRows: $kmRows ?? null,
+        label: $label,
+        mkBtn: $mkBtn,
+        mkCfgHead: $mkCfgHead,
+        mkIndividual: $mkIndividual,
+        name: $name,
+        page: $page,
+        payValue: $payValue,
+        pdo: $pdo ?? null,
+        role: $role,
+        row: $row,
+        rxAutoStyleFor: $rxAutoStyleFor ?? null,
+        rxFamilyStyle: $rxFamilyStyle ?? null,
+        serviceSampleActions: $serviceSampleActions,
+        textbotMap: $textbotMap,
+        token: $token,
+        useBuiltinDefaults: $useBuiltinDefaults ?? null,
+        userStylesRaw: $userStylesRaw ?? null
+    ) !== true) {
+    unset($adminWebPage);
+    return;
+}
+if (\Faoxima\Admin\Web\Pages\ServiceKeyboardScreenRegistry::handle(
+        MENUS: $MENUS ?? null,
+        SCREENS: $SCREENS,
+        addScreen: $addScreen,
+        adminWebPage: $adminWebPage ?? null,
+        catalogSamples: $catalogSamples ?? null,
+        label: $label,
+        mkBtn: $mkBtn ?? null,
+        mkCfgHead: $mkCfgHead ?? null,
+        mkIndividual: $mkIndividual ?? null,
+        note: $note,
+        payValue: $payValue ?? null,
+        role: $role,
+        serviceSampleActions: $serviceSampleActions ?? null,
+        subRows: $subRows,
+        textbotMap: $textbotMap ?? null
+    ) !== true) {
+    unset($adminWebPage);
+    return;
+}
+if (\Faoxima\Admin\Web\Pages\ServiceKeyboardServiceScreens::handle(
+        ALL_DB_KEYS: $ALL_DB_KEYS ?? null,
+        CONFIG_ITEM_SECTION: $CONFIG_ITEM_SECTION ?? null,
+        MENUS: $MENUS ?? null,
+        SCREENS: $SCREENS ?? null,
+        addScreen: $addScreen ?? null,
+        adminWebPage: $adminWebPage ?? null,
+        factoryDefaultsMap: $factoryDefaultsMap ?? null,
+        firstScreenId: $firstScreenId,
+        gateway: $gateway,
+        gatewayInternalLabels: $gatewayInternalLabels,
+        gatewayInternalSamples: $gatewayInternalSamples,
+        key: $key,
+        label: $label,
+        mkBtn: $mkBtn ?? null,
+        mkIndividual: $mkIndividual ?? null,
+        role: $role,
+        rxFactoryForJs: $rxFactoryForJs,
+        rxStylesForJs: $rxStylesForJs,
+        subRows: $subRows ?? null,
+        userStylesRaw: $userStylesRaw ?? null
+    ) !== true) {
+    unset($adminWebPage);
+    return;
 }
 
-$ALLOWED_STYLES = ['default', 'none', 'primary', 'success', 'danger'];
-$EXPLICIT_STYLES = ['none', 'primary', 'success', 'danger'];
-
-$STYLE_META = [
-    'none' => ['label' => 'بدون رنگ', 'hint' => 'رنگ پیش‌فرض تلگرام؛ بدون رنگ خودکار'],
-    'primary' => ['label' => 'اصلی', 'hint' => 'آبی'],
-    'success' => ['label' => 'موفقیت', 'hint' => 'سبز'],
-    'danger'  => ['label' => 'خطر', 'hint' => 'قرمز'],
-];
-
-$MENUS = [
-    'service' => [
-        'title' => 'منوی سرویس', 'icon' => 'gear', 'type' => 'inline',
-        'desc'  => 'دکمه‌های مدیریت سرویس کاربر.',
-        'buttons' => [
-            'updateinfo'       => '♻️ بروزرسانی اطلاعات',
-            'config'           => '📥 دریافت کانفیگ',
-            'linksub'          => '🔗 لینک اشتراک',
-            'extend'           => '🔄 تمدید سرویس',
-            'Extra_volume'     => '➕ خرید حجم اضافه',
-            'Extra_time'       => '⏳ خرید زمان اضافه',
-            'changestatus'     => '❌ روشن / خاموش اکانت',
-            'change-location'  => '🌍 تغییر لوکیشن',
-            'transfor'         => '🚚 انتقال سرویس',
-            'ekhtelal'         => '⚠️ ارسال گزارش اختلال',
-            'removeservice'    => '🗑 حذف سرویس',
-            'changelink'       => '🔄 تغییر لینک',
-            'changenameconfig' => '📝 تغییر یادداشت',
-            'backorder'        => '🏠 بازگشت به لیست سرویس‌ها',
-            'discountextend'   => '🎁 تمدید با کد تخفیف',
-            'productcheckdata' => '↩️ بازگشت به اطلاعات سرویس',
-            'remna_usage'      => '📊 مصرف به‌تفکیک سرور',
-            'remna_picker'     => '🌍 انتخاب سرور',
-            'config_header'    => '🔐 سرتیتر کانفیگ اشتراک',
-        ],
-    ],
-    'account' => [
-        'title' => 'پنل اکانت', 'icon' => 'user', 'type' => 'inline',
-        'desc'  => 'دکمه‌های منوی کیف‌پول / اکانت کاربر.',
-        'buttons' => [
-            'Discount'    => '🎁 کد هدیه',
-            'Add_Balance' => '💰 افزایش موجودی',
-            'TransferBalance' => '🔄 انتقال موجودی',
-            'MyTransactions'  => '📑 تراکنش‌های من',
-            'transferbal_confirm' => '✅ تایید و انتقال',
-            'transferbal_cancel'  => '❌ انصراف',
-            'backuser'    => '◀️ بازگشت',
-            'backinfo'    => '↩️ بازگشت به اطلاعات',
-            'rw_pick'     => '💵 دکمه‌های مبلغ شارژ کیف پول',
-            'rw_pick_50000' => '💵 مبلغ شارژ کیف پول ۵۰,۰۰۰ تومان',
-            'rw_pick_100000' => '💵 مبلغ شارژ کیف پول ۱۰۰,۰۰۰ تومان',
-            'rw_pick_200000' => '💵 مبلغ شارژ کیف پول ۲۰۰,۰۰۰ تومان',
-            'rw_custom'   => '✍️ رقم دلخواه شارژ کیف پول',
-            'my_miniapp_pending' => '⏳ رسید تایید نشده از مینی‌اپ',
-            'tpc_list'        => '⏳ تراکنش‌های در انتظار',
-            'supporttickets'  => '🎫 تیکت‌های پشتیبانی',
-            'recheckcrypto'   => '🔁 بررسی مجدد هش کریپتو',
-        ],
-    ],
-    'tx_stats' => [
-        'title' => 'فیلتر زمانی تراکنش‌ها', 'icon' => 'clock', 'type' => 'inline',
-        'desc'  => 'دکمه‌های بازه‌ی زمانی در صفحه‌ی تراکنش‌های من.',
-        'buttons' => [
-            'tx_24h'  => '🕐 ۲۴ ساعت گذشته',
-            'tx_3d'   => '📅 ۳ روز گذشته',
-            'tx_7d'   => '🗓 ۷ روز گذشته',
-            'tx_30d'  => '📆 ۳۰ روز گذشته',
-            'tx_prev' => '◀️ قبلی',
-            'tx_next' => '▶️ بعدی',
-            'tx_back' => '◀️ بازگشت',
-        ],
-    ],
-    'payment' => [
-        'title' => 'درگاه‌های پرداخت', 'icon' => 'dollar-sign', 'type' => 'inline',
-        'desc'  => 'دکمه‌های انتخاب روش پرداخت هنگام خرید.',
-        'buttons' => [
-            'cart_to_offline'  => '💳 کارت به کارت',
-            'plisio'           => '🔵 Plisio',
-            'nowpayment'       => '🟣 NowPayment',
-            'digitaltron'      => '🟡 رمزارز Tron',
-            'iranpay2'         => '🟠 ترونادو',
-            'tonpay'           => '💠 تون‌پی',
-            'rialit'           => '💚 ریالیت',
-            'cubepay'          => '🟦 کیوب‌پی',
-            'blupal'           => '💙 بلوپال',
-            'variza'           => '💳 واریزا',
-            'abangateway'      => '💳 آبان گیت‌وی',
-            'atlaspay'         => '🌐 اطلس‌پی',
-            'iranpay3'         => '🟢 ارزی ریالی ۳',
-            'aqayepardakht'    => '💜 آقای پرداخت',
-            'zarinpal'         => '🔷 زرین پال',
-            'zarinpey'         => '🔶 زرین پی',
-            'paymentnotverify' => '📋 پرداخت بدون تایید',
-            'startelegrams'    => '⭐ ستاره تلگرام',
-            'piroozpay'        => '💳 پیروزپی',
-            'aptdc'            => '🎁 ثبت کد تخفیف (پرداخت)',
-            'chargenodiscount' => '➡️ ادامه بدون تخفیف',
-            'chargehasdiscount'=> '🎁 ادامه با تخفیف',
-            'colselist'        => '❌ بستن لیست',
-        ],
-    ],
-    'user_nav' => [
-        'title' => 'تایید / ناوبری', 'icon' => 'circle-check', 'type' => 'inline',
-        'desc'  => 'دکمه‌های تایید پرداخت، قوانین، بازگشت و درخواست شماره تلفن.',
-        'buttons' => [
-            'confirm_pay'      => '💰 پرداخت و دریافت سرویس',
-            'confirm_discount' => '🎁 ثبت کد تخفیف',
-            'confirm_back'     => '◀️ بازگشت (تایید پرداخت)',
-            'rules_accept'     => '✅ قوانین را می‌پذیرم',
-            'nav_back'         => '◀️ دکمه بازگشت عمومی',
-            'contact_phone'    => '☎️ ارسال شماره تلفن',
-            'contact_back'     => '◀️ بازگشت (فرم شماره)',
-            'confirmandgetserviceDiscount' => '💰 پرداخت و دریافت (با تخفیف)',
-            'tk_cancel'        => '🔙 انصراف (تیکت)',
-            'tk_media_yes'     => '🖼 بله (رسانه تیکت)',
-            'tk_media_no'      => '✏️ فقط متن (تیکت)',
-            'confirmchannel'   => '📑 تایید عضویت کانال',
-            'gen_random_uname' => '🎲 ساخت نام کاربری رندوم',
-        ],
-    ],
-    'pay_receipt' => [
-        'title' => 'رسید / ارسال پرداخت', 'icon' => 'receipt', 'type' => 'inline',
-        'desc'  => 'دکمه‌های ارسال رسید و مرحله پرداخت کارت‌به‌کارت.',
-        'buttons' => [
-            'pay_sendreceipt'  => '📤 ارسال رسید پرداخت',
-            'pay_done'         => '✅ پرداخت را انجام دادم',
-            'pay_cancel'       => '❌ انصراف از پرداخت',
-            'pay_back'         => '◀️ بازگشت (پرداخت)',
-            'pay_wallet_copy'  => '📋 کپی آدرس ولت',
-            'pay_card_copy'    => '💳 کپی شماره کارت',
-            'pay_check'        => '🔍 بررسی وضعیت پرداخت',
-            'cv_use'           => '💳 استفاده از کارت تاییدشده',
-            'cv_new'           => '📷 پرداخت با کارت جدید',
-            'pay_resume'       => '▶️ ادامه پرداخت قبلی',
-        ],
-    ],
-    'user_subscription' => [
-        'title' => 'منوی کاربر — اشتراک', 'icon' => 'cart-check', 'type' => 'inline',
-        'desc'  => 'دکمه‌های نمایش جزئیات اشتراک کاربر.',
-        'buttons' => [
-            'ticketnew'       => '➕ تیکت جدید',
-            'buy_service'      => '🛒 خرید سرویس',
-            'helpbtn'          => '📚 آموزش',
-            'support'          => '📞 پشتیبانی',
-            'Status'           => '📊 وضعیت سرویس',
-            'LastTraffic'      => '📊 آخرین ترافیک',
-            'usedtraffic'      => '📥 حجم مصرف‌شده',
-            'RemainingVolume'  => '🔋 حجم باقیمانده',
-            'expirationDate'   => '⏳ تاریخ انقضا',
-            'daysleft'         => '📆 روز باقی‌مانده',
-            'extravolunme'     => '➕ حجم اضافه',
-            'exntedagei'       => '⏳ تمدید زمان',
-            'iduser'           => '🆔 آیدی کاربر',
-            'username'         => '👤 یوزرنیم',
-            'notusernameme'    => '🚫 بدون یوزرنیم',
-            'ticketnew'        => '➕ تیکت جدید',
-            'supporttickets'   => '🎫 تیکت‌های پشتیبانی',
-        ],
-    ],
-    'user_dynamic_lists' => [
-        'title' => 'کاربر — لیست‌های داینامیک', 'icon' => 'server-stack', 'type' => 'inline',
-        'desc'  => 'رنگ خانواده دکمه‌های لیست‌های داینامیک سمت کاربر.',
-        'buttons' => [
-            'product_buy'    => '🛒 لیست محصولات',
-            'category_buy'   => '🗂 لیست دسته‌بندی‌ها',
-            'time_buy'       => '⏳ لیست زمان',
-            'volume_buy'     => '🔋 لیست حجم',
-            'panel_buy'      => '🖥 لیست پنل/لوکیشن خرید',
-            'helpsection'    => '📚 لیست آیتم‌های آموزش',
-            'channel_join'   => '📯 لیست کانال‌های الزامی',
-            'custom_volume'  => '✏️ دکمه حجم/زمان دلخواه',
-            'product_back'   => '◀️ بازگشت از لیست محصولات',
-            'category_back'  => '◀️ بازگشت از لیست دسته‌بندی‌ها',
-            'panel_back'     => '◀️ بازگشت از لیست پنل‌ها',
-            'service_actions'      => '🛠 اقدامات مدیریت سرویس',
-            'user_services_list'   => '📋 لیست سرویس‌های من',
-            'paneluser_list'       => '🖥 انتخاب لوکیشن/پنل کاربر',
-            'crypto_actions'       => '🪙 اقدامات پرداخت کریپتو',
-            'crypto_manual_actions'=> '🔁 اقدامات بررسی دستی هش',
-            'rcc_resubmit'         => '📨 ارسال مجدد به ادمین',
-            'rcc_view'             => '👁 مشاهده وضعیت',
-            'user_confirms'        => '✅ تاییدهای کاربر',
-            'extra_purchase'       => '➕ خرید حجم/زمان اضافه',
-            'ticket_list'          => '🎫 لیست تیکت‌ها',
-            'copy_card_num'        => '💳 کپی شماره کارت',
-            'copy_card_amount'     => '🪙 کپی مبلغ کارت',
-            'copy_text_btn'        => '📋 سایر دکمه‌های کپی',
-            'auto_inline_btn'=> '🎨 دکمه‌های تبدیل‌شده از reply',
-            'nmstock_actions'      => '📦 اقدامات تحویل کالای دستی',
-        ],
-    ],
-    'recheckcrypto_buttons' => [
-        'title' => 'بررسی مجدد هش کریپتو', 'icon' => 'rotate-cw', 'type' => 'inline',
-        'desc'  => 'دکمه‌های فلوی بررسی دستی هش کریپتو.',
-        'buttons' => [
-            'recheckcrypto'                 => '🔁 بررسی مجدد هش کریپتو',
-            'rcc_pick_TRX'                  => '🟥 انتخاب ترون',
-            'rcc_pick_TON'                  => '🟦 انتخاب تون',
-            'rcc_pick_USDT_TRC20'           => '🟢 تتر روی ترون',
-            'rcc_pick_USDT_TON'             => '🟢 تتر روی تون',
-            'rcc_skip_photo'                => '⏭ ارسال بدون عکس',
-            'rcc_cancel'                    => '❌ انصراف',
-        ],
-    ],
-    'invoice_copy_buttons' => [
-        'title' => 'کاربر — دکمه‌های پرداخت کریپتو', 'icon' => 'coins', 'type' => 'inline',
-        'desc'  => 'رنگ دکمه‌های مسیر پرداخت ارز دیجیتال.',
-        'buttons' => [
-            'currency_pick' => '💎 انتخاب ارز',
-            'currency_pick_TRX' => '🟥 ترون (TRX)',
-            'currency_pick_TON' => '🟦 تون (TON)',
-            'currency_pick_USDT_TRC20' => '🟢 تتر روی ترون',
-            'currency_pick_USDT_TON' => '🟢 تتر روی تون',
-            'mode_external' => '🌍 کیف پول خارجی',
-            'copy_wallet'   => '🔗 کپی آدرس کیف پول',
-            'copy_amount'   => '🪙 کپی مبلغ',
-            'copy_memo'     => '🏷 کپی ممو',
-            'paid_submit'   => '✅ پرداخت کردم | ارسال هش',
-            'invoice_back'  => '🔙 بازگشت',
-            'cancel_hash_input' => '❌ انصراف از ورود هش',
-        ],
-    ],
-    'wallet_checkout' => [
-        'title' => 'پرداخت با کیف پول (چک‌اوت)', 'icon' => 'wallet', 'type' => 'inline',
-        'desc'  => 'دکمه‌های مرحله چک‌اوت خرید.',
-        'buttons' => [
-            'ck_use_wallet'   => '💼 استفاده از کیف پول',
-            'ck_pay_external' => '💳 پرداخت بدون کیف پول',
-            'ck_confirm'      => '✅ تایید و ادامه',
-            'ck_cancel'       => '❌ لغو خرید',
-            'ck_change'       => '↩️ تغییر انتخاب',
-        ],
-    ],
-    'home_menu' => [
-        'title' => 'کاربر — منوی اصلی', 'icon' => 'house', 'type' => 'reply',
-        'desc'  => 'دکمه‌های منوی اصلی کاربر.',
-        'buttons' => [
-            'home_buy'         => '🛒 خرید سرویس',
-            'home_myservices'  => '📦 سرویس‌های من',
-            'home_account'     => '💳 کیف پول',
-            'home_tariff'      => '💰 لیست تعرفه',
-            'wheel_luck'    => '🎡 گردونه شانس',
-            'affiliatesbtn' => '🤝 زیرمجموعه‌گیری',
-            'extendbtn'     => '🔄 تمدید سرویس',
-            'supportbtns'   => '📞 پشتیبانی',
-            'helpbtns'      => '📚 آموزش',
-            'usertestbtn'   => '🧪 اکانت تست',
-            'agentpanel'    => '🧑‍💼 پنل نمایندگی',
-            'requestagent'  => '📝 درخواست نمایندگی',
-        ],
-    ],
-    'misc_buttons' => [
-        'title' => 'کاربر — سایر دکمه‌ها', 'icon' => 'more-horizontal', 'type' => 'inline',
-        'desc'  => 'دکمه‌های پراکنده سمت کاربر.',
-        'buttons' => [
-            'acceptrule'            => '✅ قوانین را می‌پذیرم',
-            'confirmpaid'           => '✅ پرداخت را تایید کردم',
-            'confirmandgetservice'  => '💰 پرداخت و دریافت سرویس',
-            'confirmserivce'        => '✅ تایید سرویس',
-            'confirmserdiscount'    => '🎁 تایید با کد تخفیف',
-            'buyback'               => '◀️ بازگشت به خرید',
-        ],
-    ],
-    'cron_notifications' => [
-        'title' => 'کاربر — دکمه‌های کرون‌جاب', 'icon' => 'clock', 'type' => 'inline',
-        'desc'  => 'دکمه‌های پیام‌های خودکار کرون‌جاب.',
-        'buttons' => [
-            'cron_extend'       => '💊 تمدید سرویس (اعلان کرون)',
-            'cron_buy_service'  => '🛒 خرید سرویس (پیام همگانی)',
-            'cron_start_bot'    => '🚀 شروع ربات (پیام همگانی)',
-            'cron_usertest'     => '🧪 اکانت تست (پیام همگانی)',
-            'cron_help'         => '📚 آموزش (پیام همگانی)',
-            'cron_affiliates'   => '🤝 زیرمجموعه‌گیری (پیام همگانی)',
-            'cron_addbalance'   => '💰 افزایش موجودی (پیام همگانی)',
-        ],
-    ],
-    'tonpay_payment' => [
-        'title' => 'دکمه‌های پرداخت کارت‌به‌کارت', 'icon' => 'receipt', 'type' => 'inline',
-        'desc'  => 'رنگ دکمه‌های صفحه پرداخت کارت‌به‌کارت تون‌پی و اطلس‌پی.',
-        'buttons' => tonpayButtonStyleLabels(),
-    ],
-    'config_list' => [
-        'title' => 'لیست کانفیگ (اطلاعات سرویس)', 'icon' => 'key-round', 'type' => 'inline',
-        'desc'  => 'کنترل رنگ جدول انتخاب کانفیگ در صفحه اطلاعات سرویس.',
-        'buttons' => [
-            'cfg_download_one'      => '📥 دانلود یک کانفیگ',
-            'cfg_download_all'      => '⚙️ دانلود همه کانفیگ‌ها',
-            'cfg_name_cell'         => '✏️ خانه نام کانفیگ',
-            'cfg_protocol_cell'     => '🔌 خانه پروتکل',
-            'cfg_header_action'     => '⚙️ سرستون کانفیگ',
-            'cfg_header_protocol'   => '🔌 سرستون پروتکل',
-            'cfg_header_name'       => '✏️ سرستون نام کانفیگ',
-            'cfg_page_prev'         => '◀️ صفحه قبلی',
-            'cfg_page_next'         => 'بعدی ▶️',
-            'cfg_page_indicator'    => '🔢 شماره صفحه',
-            'cfg_back_service'      => '↩️ بازگشت به اطلاعات سرویس',
-        ],
-    ],
-];
-
-$ALL_DB_KEYS = array_keys($MENUS);
-$ALL_DB_KEYS[] = 'button_items';
-$CONFIG_ITEM_SECTION = 'config_items';
-$CONFIG_ITEM_KEY_RE = '/^[a-f0-9]{16}:(download|name|protocol)$/';
-$CONFIG_COLUMNS = [
-    'cfg_header_action' => ['key' => 'cfg_download_one', 'role' => 'download'],
-    'cfg_header_protocol' => ['key' => 'cfg_protocol_cell', 'role' => 'protocol'],
-    'cfg_header_name' => ['key' => 'cfg_name_cell', 'role' => 'name'],
-];
-
-$MAIN_TOKEN_MAP = [
-    'text_sell'               => ['home_buy', 'خرید سرویس'],
-    'text_extend'             => ['extendbtn', 'تمدید سرویس'],
-    'text_usertest'           => ['usertestbtn', 'اکانت تست'],
-    'text_wheel_luck'         => ['wheel_luck', 'گردونه شانس'],
-    'text_Purchased_services' => ['home_myservices', 'سرویس‌های من'],
-    'accountwallet'           => ['home_account', 'کیف پول'],
-    'text_affiliates'         => ['affiliatesbtn', 'زیرمجموعه‌گیری'],
-    'text_Tariff_list'        => ['home_tariff', 'لیست تعرفه'],
-    'text_support'            => ['supportbtns', 'پشتیبانی'],
-    'text_help'               => ['helpbtns', 'آموزش'],
-];
-
-$tonpayFactoryStyles = tonpayButtonStyleDefaults();
-
-$userStylesRaw = [];
-foreach ($ALL_DB_KEYS as $_k) {
-    $userStylesRaw[$_k] = [];
-}
-$userStylesRaw[$CONFIG_ITEM_SECTION] = [];
-
-$useBuiltinDefaults = true;
-$settingRow = select("setting", "keyboard_styles_all", null, null, "select");
-if (is_array($settingRow) && !empty($settingRow['keyboard_styles_all'])) {
-    $decoded = json_decode($settingRow['keyboard_styles_all'], true);
-    if (is_array($decoded)) {
-        if (array_key_exists('_use_defaults', $decoded)) {
-            $useBuiltinDefaults = (bool) $decoded['_use_defaults'];
-        }
-        foreach ($ALL_DB_KEYS as $m) {
-            if (!empty($decoded[$m]) && is_array($decoded[$m])) {
-                $userStylesRaw[$m] = $decoded[$m];
-            }
-        }
-        if (!empty($decoded[$CONFIG_ITEM_SECTION]) && is_array($decoded[$CONFIG_ITEM_SECTION])) {
-            $userStylesRaw[$CONFIG_ITEM_SECTION] = $decoded[$CONFIG_ITEM_SECTION];
-        }
-    }
-}
-
-$factoryDefaultsMap = [];
-foreach ($ALL_DB_KEYS as $_k) {
-    $factoryDefaultsMap[$_k] = [];
-}
-if (function_exists('rx_getKeyboardDefaultStyles')) {
-    $rxPanelDefaults = rx_getKeyboardDefaultStyles();
-    if (is_array($rxPanelDefaults)) {
-        foreach ($rxPanelDefaults as $rxPanelSec => $rxPanelPairs) {
-            if (!is_array($rxPanelPairs) || empty($rxPanelPairs)) { continue; }
-            if (!isset($factoryDefaultsMap[$rxPanelSec])) { $factoryDefaultsMap[$rxPanelSec] = []; }
-            foreach ($rxPanelPairs as $rxPanelKey => $rxPanelVal) {
-                if (in_array($rxPanelVal, $ALLOWED_STYLES, true)) {
-                    $factoryDefaultsMap[$rxPanelSec][$rxPanelKey] = $rxPanelVal;
-                }
-            }
-        }
-    }
-    unset($rxPanelDefaults, $rxPanelSec, $rxPanelPairs, $rxPanelKey, $rxPanelVal);
-}
-foreach ($tonpayFactoryStyles as $tonpayStyleKey => $tonpayStyleValue) {
-    $factoryDefaultsMap['tonpay_payment'][$tonpayStyleKey] = $tonpayStyleValue;
-}
-unset($tonpayStyleKey, $tonpayStyleValue);
-
-$rxAutoStyleFor = function (string $btnLabel) use ($ALLOWED_STYLES): string {
-    $guessed = function_exists('rx_kb_guess_style_from_text') ? rx_kb_guess_style_from_text($btnLabel) : null;
-    return is_string($guessed) && in_array($guessed, $ALLOWED_STYLES, true) ? $guessed : 'primary';
-};
-
-$rxFamilyStyle = function (string $menuKey, string $btnKey, string $btnLabel, ?string $fallbackKey = null) use ($userStylesRaw, $factoryDefaultsMap, $useBuiltinDefaults, $EXPLICIT_STYLES, $rxAutoStyleFor): string {
-    $candidates = [$btnKey];
-    if ($useBuiltinDefaults && is_string($fallbackKey) && $fallbackKey !== '' && $fallbackKey !== $btnKey) {
-        $candidates[] = $fallbackKey;
-    }
-    foreach ($candidates as $candidate) {
-        $saved = $userStylesRaw[$menuKey][$candidate] ?? null;
-        if (is_string($saved) && in_array($saved, $EXPLICIT_STYLES, true)) {
-            return $saved;
-        }
-    }
-    if (!$useBuiltinDefaults) { return 'default'; }
-    foreach ($candidates as $candidate) {
-        $factory = $factoryDefaultsMap[$menuKey][$candidate] ?? null;
-        if (is_string($factory) && in_array($factory, $EXPLICIT_STYLES, true)) { return $factory; }
-    }
-    return $rxAutoStyleFor($btnLabel);
-};
-
-if ($_SERVER['REQUEST_METHOD'] === 'GET' && (filter_input(INPUT_GET, 'action') === 'check_log')) {
-    header('Content-Type: application/json; charset=utf-8');
-    $parsed = json_decode((string) ($settingRow['keyboard_styles_all'] ?? ''), true);
-    echo json_encode([
-        'db_has_data' => !empty($settingRow['keyboard_styles_all']),
-        'sections'    => is_array($parsed) ? array_keys($parsed) : [],
-    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-    exit;
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $raw = file_get_contents('php://input');
-    $payload = json_decode($raw, true);
-    header('Content-Type: application/json; charset=utf-8');
-    if (!is_array($payload)) {
-        error_log('[SKB_SAVE] invalid payload. raw_len=' . strlen($raw));
-        http_response_code(400);
-        echo json_encode(['ok' => false, 'error' => 'invalid_payload']);
-        exit;
-    }
-
-    $changes = $payload['changes'] ?? null;
-    $mainChanges = $payload['main_changes'] ?? null;
-    $client = $payload['client'] ?? null;
-    $revision = $payload['revision'] ?? null;
-    $valid = ($payload['patch_version'] ?? null) === 1 && is_array($changes) && is_array($mainChanges)
-        && is_string($client) && preg_match('/^[a-z0-9-]{16,80}$/', $client) === 1
-        && is_int($revision) && $revision > 0;
-    if ($valid) {
-        foreach ($changes as $menu => $pairs) {
-            if (!is_array($pairs) || (!isset($MENUS[$menu]) && !in_array($menu, [$CONFIG_ITEM_SECTION, 'button_items'], true))) { $valid = false; break; }
-            foreach ($pairs as $key => $style) {
-                $keyAllowed = $menu === $CONFIG_ITEM_SECTION
-                    ? preg_match($CONFIG_ITEM_KEY_RE, (string) $key) === 1
-                    : ($menu === 'button_items' ? preg_match('/^[a-f0-9]{64}$/', (string) $key) === 1 : (isset($MENUS[$menu]['buttons'][$key]) || ($menu === 'account' && preg_match('/^rw_pick_[0-9]+$/', (string) $key) === 1)))
-                        && !($menu === 'misc_buttons' && $key === 'confirmpaid');
-                if (!$keyAllowed || ($style !== null && (!is_string($style) || !in_array($style, $EXPLICIT_STYLES, true)))) { $valid = false; break 2; }
-            }
-        }
-        foreach ($mainChanges as $token => $style) {
-            if (!isset($MAIN_TOKEN_MAP[$token]) || ($style !== null && (!is_string($style) || !in_array($style, $EXPLICIT_STYLES, true)))) { $valid = false; break; }
-        }
-        if (array_key_exists('_use_defaults', $payload) && !is_bool($payload['_use_defaults'])) { $valid = false; }
-    }
-    if (!$valid) {
-        http_response_code(400);
-        echo json_encode(['ok' => false, 'error' => 'invalid_patch']);
-        exit;
-    }
-
-    $revisions = isset($_SESSION['skb_patch_revisions']) && is_array($_SESSION['skb_patch_revisions']) ? $_SESSION['skb_patch_revisions'] : [];
-    if (($revisions[$client] ?? 0) >= $revision) {
-        echo json_encode(['ok' => true]);
-        exit;
-    }
-
-    try {
-        if (!$pdo->beginTransaction()) { throw new RuntimeException('transaction_failed'); }
-        $locked = $pdo->query('SELECT keyboard_styles_all, keyboardmain FROM setting LIMIT 1 FOR UPDATE');
-        $latest = $locked ? $locked->fetch(PDO::FETCH_ASSOC) : false;
-        if (!is_array($latest)) { throw new RuntimeException('settings_missing'); }
-        $rawStyles = (string) ($latest['keyboard_styles_all'] ?? '');
-        $clean = $rawStyles !== '' ? json_decode($rawStyles, true) : [];
-        if (!is_array($clean)) { throw new RuntimeException('invalid_saved_styles'); }
-        $expected = [];
-        foreach ($changes as $menu => $pairs) {
-            if (!$pairs) { continue; }
-            if (isset($clean[$menu]) && !is_array($clean[$menu])) { throw new RuntimeException('invalid_saved_section'); }
-            if (!isset($clean[$menu])) { $clean[$menu] = []; }
-            foreach ($pairs as $key => $style) {
-                if ($style === null) { unset($clean[$menu][$key]); }
-                else { $clean[$menu][$key] = $style; }
-            }
-        }
-        if (array_key_exists('_use_defaults', $payload)) { $clean['_use_defaults'] = $payload['_use_defaults']; }
-        if ($changes || array_key_exists('_use_defaults', $payload)) {
-            $jsonToSave = json_encode($clean, JSON_UNESCAPED_UNICODE);
-            if ($jsonToSave === false) { throw new RuntimeException('styles_encoding_failed'); }
-            $saveStyles = $pdo->prepare('UPDATE setting SET keyboard_styles_all = ?');
-            if (!$saveStyles->execute([$jsonToSave])) { throw new RuntimeException('styles_save_failed'); }
-            $expected['keyboard_styles_all'] = $jsonToSave;
-        }
-        if ($mainChanges) {
-            $km = json_decode((string) ($latest['keyboardmain'] ?? ''), true);
-            if (!is_array($km) || !isset($km['keyboard']) || !is_array($km['keyboard'])) { throw new RuntimeException('invalid_main_layout'); }
-            $applied = [];
-            foreach ($km['keyboard'] as &$row) {
-                if (!is_array($row)) { continue; }
-                foreach ($row as &$button) {
-                    $token = is_array($button) ? ($button['text'] ?? '') : (is_string($button) ? $button : '');
-                    if (!is_string($token) || !array_key_exists($token, $mainChanges)) { continue; }
-                    if (!is_array($button)) { $button = ['text' => $token]; }
-                    if ($mainChanges[$token] === null) { unset($button['style']); }
-                    else { $button['style'] = $mainChanges[$token]; }
-                    $applied[$token] = true;
-                }
-                unset($button);
-            }
-            unset($row);
-            if (count($applied) !== count($mainChanges)) { throw new RuntimeException('main_layout_changed'); }
-            $mainJson = json_encode($km, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            if ($mainJson === false) { throw new RuntimeException('main_encoding_failed'); }
-            $saveMain = $pdo->prepare('UPDATE setting SET keyboardmain = ?');
-            if (!$saveMain->execute([$mainJson])) { throw new RuntimeException('main_save_failed'); }
-            $expected['keyboardmain'] = $mainJson;
-        }
-        $verify = $pdo->query('SELECT keyboard_styles_all, keyboardmain FROM setting LIMIT 1');
-        $saved = $verify ? $verify->fetch(PDO::FETCH_ASSOC) : false;
-        foreach ($expected as $field => $value) {
-            if (!is_array($saved) || ($saved[$field] ?? null) !== $value) { throw new RuntimeException('save_verification_failed'); }
-        }
-        if (!$pdo->commit()) { throw new RuntimeException('commit_failed'); }
-        unset($revisions[$client]);
-        $revisions[$client] = $revision;
-        $_SESSION['skb_patch_revisions'] = array_slice($revisions, -64, null, true);
-        if (function_exists('clearSelectCache')) { clearSelectCache('setting'); }
-    } catch (Throwable $e) {
-        if ($pdo->inTransaction()) { $pdo->rollBack(); }
-        error_log('[SKB_SAVE] ' . $e->getMessage());
-        http_response_code(500);
-        echo json_encode(['ok' => false, 'error' => 'save_failed']);
-        exit;
-    }
-
-    echo json_encode(['ok' => true]);
-    exit;
-}
-
-$keyboardMain = [];
-$kmRows = [];
-$kmRow = select("setting", "keyboardmain", null, null, "select", ['cache' => false]);
-$kmRaw = is_array($kmRow) ? (string) ($kmRow['keyboardmain'] ?? '') : '';
-if ($kmRaw !== '') {
-    $kmDecoded = json_decode($kmRaw, true);
-    if (is_array($kmDecoded) && isset($kmDecoded['keyboard']) && is_array($kmDecoded['keyboard'])) {
-        $kmRows = $kmDecoded['keyboard'];
-    }
-}
-foreach ($kmRows as $kmRowEach) {
-    if (!is_array($kmRowEach)) { continue; }
-    foreach ($kmRowEach as $kmBtnEach) {
-        if (!is_array($kmBtnEach)) { continue; }
-        $token = (string) ($kmBtnEach['text'] ?? '');
-        $style = (string) ($kmBtnEach['style'] ?? '');
-        if ($token !== '' && in_array($style, $EXPLICIT_STYLES, true)) {
-            $keyboardMain[$token] = $style;
-        }
-    }
-}
-
-$rxMainExact = function (string $token) use ($keyboardMain, $EXPLICIT_STYLES): ?string {
-    $style = $keyboardMain[$token] ?? null;
-    return (is_string($style) && in_array($style, $EXPLICIT_STYLES, true)) ? $style : null;
-};
-
-$textbotMap = [];
-try {
-    $textbotRows = select("textbot", "*", null, null, "fetchAll");
-    if (is_array($textbotRows)) {
-        foreach ($textbotRows as $row) {
-            if (isset($row['id_text']) && isset($row['text']) && $row['text'] !== '') {
-                $textbotMap[(string) $row['id_text']] = (string) $row['text'];
-            }
-        }
-    }
-} catch (Throwable $e) {
-    error_log('[panel/service_keyboard] textbot load failed: ' . $e->getMessage());
-}
-
-$paySettings = [];
-try {
-    $paySettingRows = select("PaySetting", "*", null, null, "fetchAll");
-    if (is_array($paySettingRows)) {
-        foreach ($paySettingRows as $paySettingRow) {
-            if (isset($paySettingRow['NamePay'])) {
-                $paySettings[(string) $paySettingRow['NamePay']] = (string) ($paySettingRow['ValuePay'] ?? '');
-            }
-        }
-    }
-} catch (Throwable $e) {
-    error_log('[panel/service_keyboard] PaySetting load failed: ' . $e->getMessage());
-}
-$payValue = function (string $name) use ($paySettings): string {
-    return $paySettings[$name] ?? '';
-};
-
-$accountRegistry = function_exists('rx_account_button_registry') ? rx_account_button_registry() : [];
-$accountLayoutRaw = '';
-try {
-    $accountLayoutRow = select("setting", "account_keyboard_layout", null, null, "select", ['cache' => false]);
-    $accountLayoutRaw = is_array($accountLayoutRow) ? trim((string) ($accountLayoutRow['account_keyboard_layout'] ?? '')) : '';
-} catch (Throwable $e) {
-    $accountLayoutRaw = '';
-}
-if ($accountLayoutRaw === '') {
-    $accountLayout = function_exists('rx_account_default_layout') ? rx_account_default_layout() : [];
-} else {
-    $accountLayout = function_exists('rx_account_layout_normalize') ? rx_account_layout_normalize($accountLayoutRaw) : [];
-}
-$accountLabelFor = function (string $id) use ($accountRegistry, $textbotMap): string {
-    $def = $accountRegistry[$id] ?? null;
-    if (!is_array($def)) { return $id; }
-    $textbotKey = $def['textbot'] ?? null;
-    if (is_string($textbotKey) && isset($textbotMap[$textbotKey]) && trim($textbotMap[$textbotKey]) !== '') {
-        return $textbotMap[$textbotKey];
-    }
-    return (string) ($def['label'] ?? $id);
-};
-
-$mkBtn = function (string $menu, string $key, array $opt = []) use ($MENUS, $rxAutoStyleFor, $rxFamilyStyle): array {
-    $label = $opt['label'] ?? (string) ($MENUS[$menu]['buttons'][$key] ?? $key);
-    $auto = $rxAutoStyleFor($label);
-    $fallbackKey = isset($opt['fallback_key']) && is_string($opt['fallback_key']) ? $opt['fallback_key'] : null;
-    $style = $rxFamilyStyle($menu, $key, $label, $fallbackKey);
-    return array_merge([
-        'kind' => 'family',
-        'menu' => $menu,
-        'key' => $key,
-        'label' => $label,
-        'auto' => $auto,
-        'style' => $style,
-        'fallback_key' => $fallbackKey,
-        'scopes' => ['button'],
-    ], $opt);
-};
-
-$mkMain = function (string $token, string $familyKey, string $label) use ($rxAutoStyleFor, $rxFamilyStyle, $rxMainExact): array {
-    $auto = $rxAutoStyleFor($label);
-    $exact = $rxMainExact($token);
-    return [
-        'kind' => 'main',
-        'menu' => 'home_menu',
-        'key' => $familyKey,
-        'token' => $token,
-        'label' => $label,
-        'auto' => $auto,
-        'style' => $exact !== null ? $exact : $rxFamilyStyle('home_menu', $familyKey, $label),
-        'scopes' => ['exact'],
-        'family_label' => 'رنگ پیش‌فرض نقش این دکمه',
-    ];
-};
-
-$mkIndividual = function (array $button, string $label, string $fallbackMenu, string $fallbackKey) use ($userStylesRaw, $EXPLICIT_STYLES, $rxAutoStyleFor, $rxFamilyStyle, $useBuiltinDefaults): array {
-    $key = rx_button_color_key($button);
-    $saved = $userStylesRaw['button_items'][$key] ?? null;
-    $fallbackSecondary = $fallbackMenu === 'user_dynamic_lists' && in_array($fallbackKey, ['rcc_view', 'rcc_resubmit'], true) ? 'crypto_manual_actions' : null;
-    return [
-        'kind' => 'individual',
-        'menu' => 'button_items',
-        'key' => $key,
-        'label' => $label,
-        'auto' => $rxAutoStyleFor($label),
-        'style' => in_array($saved, $EXPLICIT_STYLES, true) ? $saved : ($useBuiltinDefaults ? $rxFamilyStyle($fallbackMenu, $fallbackKey, $label, $fallbackSecondary) : 'none'),
-        'fallback_menu' => $fallbackMenu,
-        'fallback_key' => $fallbackKey,
-        'fallback_secondary' => $fallbackSecondary,
-        'scopes' => ['button'],
-    ];
-};
-$mkCfgHead = function (string $key, string $label) use ($mkIndividual): array {
-    return $mkIndividual(['_rxcolor' => 'config_header:' . $key], $label, 'config_list', $key) + ['header' => true];
-};
-
-$colorCatalogGroups = [
-    'products' => 'محصولات', 'categories' => 'دسته‌بندی‌ها', 'durations' => 'مدت سرویس',
-    'volumes' => 'حجم سرویس', 'panels' => 'پنل و لوکیشن', 'channels' => 'کانال‌های الزامی',
-    'help' => 'آموزش‌ها', 'help_categories' => 'دسته‌بندی آموزش',
-    'departments' => 'دپارتمان پشتیبانی', 'tickets' => 'تیکت‌ها', 'crypto' => 'تراکنش‌های کریپتو',
-    'affiliate' => 'دعوت دوستان و هدیه',
-];
-$mkCatalogSample = function (string $group, string $role, string $label, string $fallbackKey, string $fallbackMenu = 'user_dynamic_lists') use ($mkIndividual): array {
-    return $mkIndividual(['_rxcolor' => 'catalog_template:' . $group . ':' . $role], $label, $fallbackMenu, $fallbackKey) + ['sample' => true];
-};
-$catalogSamples = [
-    'affiliate' => [
-        $mkIndividual(['_rxcolor' => 'affiliate:gift'], '🎁 هدیه عضویت', 'home_menu', 'affiliatesbtn') + ['sample' => true],
-        $mkIndividual(['_rxcolor' => 'affiliate:share'], '🔗 اشتراک لینک دعوت', 'home_menu', 'affiliatesbtn') + ['sample' => true],
-    ],
-    'categories' => [$mkCatalogSample('categories', 'category', '📁 نمونه دسته‌بندی — پیش‌فرض دسته‌بندی‌های جدید', 'category_buy')],
-    'durations' => [
-        $mkCatalogSample('durations', 'time', '⏳ نمونه مدت سرویس', 'time_buy'),
-        $mkCatalogSample('durations', 'category_time', '⏳ نمونه مدت در دسته‌بندی', 'time_buy'),
-        $mkCatalogSample('durations', 'custom_time', '✍️ نمونه مدت دلخواه', 'time_buy'),
-    ],
-    'volumes' => [$mkCatalogSample('volumes', 'volume', '📦 نمونه حجم سرویس', 'volume_buy')],
-    'panels' => [$mkCatalogSample('panels', 'panel', '🌍 نمونه پنل و لوکیشن', 'paneluser_list')],
-    'channels' => [$mkCatalogSample('channels', 'channel', '📢 نمونه کانال الزامی', 'channel_join')],
-    'help' => [$mkCatalogSample('help', 'guide', '📚 نمونه آموزش', 'helpsection')],
-    'help_categories' => [$mkCatalogSample('help_categories', 'category', '📂 نمونه دسته‌بندی آموزش', 'helpsection')],
-    'departments' => [$mkCatalogSample('departments', 'department', '💬 نمونه دپارتمان پشتیبانی', 'ticket_list')],
-    'tickets' => [
-        $mkCatalogSample('tickets', 'open', '🎫 باز کردن تیکت', 'ticket_list'),
-        $mkCatalogSample('tickets', 'message', '✍️ ارسال پیام تیکت', 'ticket_list'),
-        $mkCatalogSample('tickets', 'close', '🔒 بستن تیکت', 'ticket_list'),
-        $mkCatalogSample('tickets', 'media', '📎 مشاهده رسانه‌های تیکت', 'ticket_list'),
-    ],
-    'crypto' => [
-        $mkCatalogSample('crypto', 'copy_wallet', '🔗 کپی آدرس کیف پول', 'copy_wallet', 'invoice_copy_buttons'),
-        $mkCatalogSample('crypto', 'copy_amount', '🪙 کپی مبلغ', 'copy_amount', 'invoice_copy_buttons'),
-        $mkCatalogSample('crypto', 'copy_memo', '🏷 کپی ممو', 'copy_memo', 'invoice_copy_buttons'),
-        $mkCatalogSample('crypto', 'paid_submit', '✅ ارسال هش پرداخت', 'paid_submit', 'invoice_copy_buttons'),
-        $mkCatalogSample('crypto', 'invoice_back', '🔙 لغو فاکتور', 'invoice_back', 'invoice_copy_buttons'),
-        $mkCatalogSample('crypto', 'rcc_view', '👁 مشاهده وضعیت', 'rcc_view'),
-        $mkCatalogSample('crypto', 'rcc_resubmit', '📨 ارسال مجدد به ادمین', 'rcc_resubmit'),
-    ],
-];
-$serviceSampleActions = [
-    'service_manage' => ['🔧 مدیریت سرویس / بازگشت به اطلاعات', 'user_dynamic_lists', 'service_actions'],
-    'copy_subscription' => ['📋 کپی لینک اشتراک', 'user_dynamic_lists', 'copy_text_btn'],
-    'service_open' => ['📂 مشاهده سرویس', 'user_dynamic_lists', 'user_services_list'],
-    'infocard_qr' => ['📷 دریافت QR Code', 'user_dynamic_lists', 'service_actions'],
-    'confirm_status' => ['✅ تایید تغییر وضعیت', 'user_dynamic_lists', 'user_confirms'],
-    'confirm_link' => ['✅ تایید تغییر لینک', 'user_dynamic_lists', 'user_confirms'],
-    'stock_extend' => ['🔄 تمدید سرویس دستی', 'user_dynamic_lists', 'nmstock_actions'],
-    'stock_refund' => ['💎 بازگشت وجه سرویس دستی', 'user_dynamic_lists', 'nmstock_actions'],
-    'stock_config' => ['📥 دریافت کانفیگ دستی', 'user_dynamic_lists', 'nmstock_actions'],
-    'stock_subscription' => ['🔗 لینک اشتراک دستی', 'user_dynamic_lists', 'nmstock_actions'],
-];
-if (filter_input(INPUT_GET, 'action') === 'button_catalog' && $_SERVER['REQUEST_METHOD'] === 'GET') {
-    header('Content-Type: application/json; charset=utf-8');
-    if (($_GET['group'] ?? 'products') !== 'products') {
-        http_response_code(400);
-        echo json_encode(['ok' => false]);
-        exit;
-    }
-    $page = max(0, min(100000, (int) ($_GET['page'] ?? 0)));
-    $pageSize = 1;
-    $offset = $page * $pageSize;
-    try {
-        $statement = $pdo->query("SELECT id, name_product, Service_time, price_product FROM product ORDER BY (position = 0) ASC, position ASC, id ASC LIMIT 2 OFFSET $offset");
-        $records = $statement->fetchAll(PDO::FETCH_ASSOC);
-        $more = count($records) > $pageSize;
-        $buttons = [];
-        foreach (array_slice($records, 0, $pageSize) as $record) {
-            $id = (string) $record['id'];
-            $name = (string) $record['name_product'];
-            foreach (['name' => '📦 نام: ' . $name, 'duration' => '⏳ ' . $record['Service_time'] . ' روز · ' . $name, 'price' => '💵 ' . number_format((float) $record['price_product']) . ' تومان · ' . $name] as $role => $label) {
-                $buttons[] = $mkIndividual(['_rxcolor' => 'product:' . $id . ':' . $role], $label, 'user_dynamic_lists', 'product_buy');
-            }
-            $buttons[] = $mkIndividual(['_rxcolor' => 'stock_product:' . $id], '🔄 تمدید دستی · ' . $name, 'user_dynamic_lists', 'nmstock_actions');
-        }
-        echo json_encode(['ok' => true, 'buttons' => $buttons, 'more' => $more, 'page' => $page], JSON_UNESCAPED_UNICODE);
-    } catch (Throwable $e) {
-        http_response_code(500);
-        echo json_encode(['ok' => false, 'error' => 'catalog_unavailable']);
-    }
-    exit;
-}
-$SCREENS = [];
-$addScreen = function (string $id, string $title, string $icon, string $desc, array $rows, array $opt = []) use (&$SCREENS): void {
-    $SCREENS[$id] = array_merge([
-        'id' => $id,
-        'title' => $title,
-        'icon' => $icon,
-        'desc' => $desc,
-        'rows' => $rows,
-        'note' => '',
-        'link' => null,
-        'link_label' => '',
-        'table' => false,
-    ], $opt);
-};
-
-$svc = function (string $key, array $opt = []) use ($mkIndividual, $MENUS): array {
-    return array_merge($mkIndividual(['_rxcolor' => 'service_template:' . $key], $opt['label'] ?? $MENUS['service']['buttons'][$key], 'service', $key), $opt);
-};
-$serviceRows = [
-    [$svc('updateinfo', ['cond' => 'همیشه در ابتدای منوی سرویس نمایش داده می‌شود.'])],
-    [$svc('linksub', ['cond' => 'در پنل‌هایی که لینک اشتراک فعال دارند.']), $svc('config', ['cond' => 'بسته به نوع پنل و تنظیم نمایش دریافت کانفیگ.'])],
-    [$svc('extend'), $svc('changelink', ['cond' => 'در پنل‌هایی که تغییر لینک فعال است.'])],
-    [$svc('removeservice', ['cond' => 'اگر حذف سرویس توسط کاربر مجاز باشد.']), $svc('changenameconfig', ['cond' => 'اگر تغییر نام/یادداشت سرویس فعال باشد.'])],
-    [$svc('Extra_volume', ['cond' => 'اگر خرید حجم اضافه برای این پنل فعال باشد.']), $svc('Extra_time', ['cond' => 'اگر خرید زمان اضافه فعال باشد.'])],
-    [$svc('changestatus', ['cond' => 'اگر تغییر وضعیت سرویس مجاز باشد.']), $svc('transfor', ['cond' => 'برای سرویس تست و پنل رمنـاوِیو نمایش داده نمی‌شود.'])],
-    [$svc('change-location', ['cond' => 'اگر تغییر لوکیشن در پنل فعال باشد.']), $svc('ekhtelal', ['cond' => 'اگر ارسال گزارش اختلال فعال باشد.'])],
-    [$svc('backorder')],
-    [$svc('remna_usage', ['cond' => 'فقط برای پنل‌های رمنـاوِیو.']), $svc('remna_picker', ['cond' => 'فقط برای پنل‌های رمنـاوِیو با انتخاب سرور فعال.'])],
-    [$svc('discountextend', ['cond' => 'در صفحه تأیید تمدید با کد تخفیف.']), $svc('productcheckdata', ['cond' => 'در دکمه‌های بازگشت به اطلاعات سرویس.'])],
-];
-foreach ($serviceSampleActions as $serviceKey => [$serviceLabel, $fallbackMenu, $fallbackKey]) {
-    $serviceRows[] = [$mkIndividual(['_rxcolor' => 'service_template:' . $serviceKey], $serviceLabel, $fallbackMenu, $fallbackKey)];
-}
-$addScreen('service', 'مدیریت سرویس', 'gear', 'یک نمونه از دکمه‌های مدیریت سرویس برای همه کاربران.', $serviceRows, [
-    'note' => 'رنگ هر دکمه مستقل است و برای همان دکمه در سرویس‌های همه کاربران اعمال می‌شود. این نمونه به آیدی ادمین یا سرویس واقعی وابسته نیست.',
-]);
-$serviceOperationLabels = [
-    'confirm_transfer' => '✅ تایید انتقال سرویس', 'confirm_remove' => '✅ تایید حذف سرویس',
-    'confirm_report' => '✅ تایید ارسال گزارش اختلال', 'confirm_location' => '✅ تایید تغییر لوکیشن',
-    'confirm_volume' => '✅ تایید خرید حجم', 'confirm_volume_discount' => '✅ تایید حجم با تخفیف',
-    'confirm_external_volume' => '✅ تایید خرید حجم برای سرویس دیگران',
-    'confirm_time' => '✅ تایید خرید زمان', 'confirm_time_discount' => '✅ تایید زمان با تخفیف',
-    'discount_volume' => '🎁 تخفیف خرید حجم', 'discount_time' => '🎁 تخفیف خرید زمان',
-    'renewal_product' => '📦 نمونه محصول تمدید', 'extend_current' => '♻️ تمدید پلن فعلی',
-    'stock_confirm' => '✅ تایید تمدید کالای دستی', 'squad_select' => '🌍 نمونه سرور رمنـاوِیو',
-];
-$serviceOperationRows = [];
-foreach (array_chunk($serviceOperationLabels, 2, true) as $operationPair) {
-    $operationRow = [];
-    foreach ($operationPair as $role => $label) {
-        $fallback = in_array($role, ['discount_volume', 'discount_time'], true) ? 'extra_purchase' : 'user_confirms';
-        if ($role === 'renewal_product') $fallback = 'product_buy';
-        if ($role === 'squad_select') $fallback = 'service_actions';
-        if ($role === 'stock_confirm') $fallback = 'nmstock_actions';
-        $operationRow[] = $mkIndividual(['_rxcolor' => 'service_template:' . $role], $label, 'user_dynamic_lists', $fallback) + ['sample' => true];
-    }
-    $serviceOperationRows[] = $operationRow;
-}
-$addScreen('service_operations', 'تأیید عملیات سرویس', 'circle-check', 'نمونه دکمه‌های تایید، تمدید و انتخاب سرور؛ رنگ هر نمونه برای همان عملیات اعمال می‌شود.', $serviceOperationRows);
-
-$cfgRows = [];
-$cfgRows[] = [
-    $mkCfgHead('cfg_header_action', '⚙️ کانفیگ'),
-    $mkCfgHead('cfg_header_protocol', '🔌 پروتکل'),
-    $mkCfgHead('cfg_header_name', '✏️ نام کانفیگ'),
-];
-$cfgRows[] = [
-    $mkIndividual(['_rxcolor' => 'config_cell:download'], '📥 نمونه دکمه دریافت کانفیگ', 'config_list', 'cfg_download_one'),
-    $mkIndividual(['_rxcolor' => 'config_cell:protocol'], '🔌 نمونه خانه پروتکل', 'config_list', 'cfg_protocol_cell'),
-    $mkIndividual(['_rxcolor' => 'config_cell:name'], '✏️ نمونه خانه نام کانفیگ', 'config_list', 'cfg_name_cell'),
-];
-$cfgRows[] = [
-    $mkBtn('config_list', 'cfg_page_prev', ['label' => '◀️ قبلی']),
-    $mkBtn('config_list', 'cfg_page_indicator', ['label' => '۱ / ۲']),
-    $mkBtn('config_list', 'cfg_page_next', ['label' => 'بعدی ▶️']),
-];
-$cfgRows[] = [$mkBtn('config_list', 'cfg_download_all', ['label' => '⚙️ دریافت همه کانفیگ‌ها'])];
-$cfgRows[] = [$mkBtn('config_list', 'cfg_back_service', ['label' => '↩️ بازگشت'])];
-$addScreen('config', 'لیست کانفیگ', 'key-round', 'جدول انتخاب کانفیگ در صفحه اطلاعات سرویس.', $cfgRows, [
-    'note' => 'رنگ هر سرستون و هر دکمه مستقل است.',
-    'table' => true,
-]);
-
-$txRows = [
-    [$mkBtn('tx_stats', 'tx_24h'), $mkBtn('tx_stats', 'tx_3d')],
-    [$mkBtn('tx_stats', 'tx_7d'), $mkBtn('tx_stats', 'tx_30d')],
-    [$mkBtn('tx_stats', 'tx_prev'), $mkBtn('tx_stats', 'tx_next')],
-    [$mkBtn('tx_stats', 'tx_back')],
-];
-$addScreen('transactions', 'تراکنش‌های من', 'clock', 'فیلتر بازه زمانی و صفحه‌بندی تراکنش‌های کاربر.', $txRows, [
-    'note' => 'این ردیف‌ها فقط وقتی کاربر تراکنش ثبت‌شده دارد نمایش داده می‌شوند.',
-]);
-
-$rwAmounts = function_exists('rx_randomWalletAmounts') ? rx_randomWalletAmounts() : [];
-if (!is_array($rwAmounts) || empty($rwAmounts)) {
-    $rwAmounts = [50000, 100000, 200000];
-}
-$rwAmounts = array_values($rwAmounts);
-$walletRows = [];
-for ($rwI = 0; $rwI < count($rwAmounts); $rwI += 2) {
-    $rwRow = [
-        $mkBtn('account', 'rw_pick_' . (int) $rwAmounts[$rwI], [
-            'label' => number_format((int) $rwAmounts[$rwI]) . ' تومان',
-            'fallback_key' => 'rw_pick',
-            'scopes' => ['button'],
-        ]),
-    ];
-    if (isset($rwAmounts[$rwI + 1])) {
-        $rwRow[] = $mkBtn('account', 'rw_pick_' . (int) $rwAmounts[$rwI + 1], [
-            'label' => number_format((int) $rwAmounts[$rwI + 1]) . ' تومان',
-            'fallback_key' => 'rw_pick',
-            'scopes' => ['button'],
-        ]);
-    }
-    $walletRows[] = $rwRow;
-}
-$walletRows[] = [$mkBtn('account', 'rw_custom')];
-$walletRows[] = [$mkBtn('account', 'transferbal_confirm'), $mkBtn('account', 'transferbal_cancel')];
-$walletRows[] = [$mkBtn('account', 'backinfo', ['cond' => 'در دکمه‌های بازگشت به اطلاعات سرویس و بازگشت از شارژ کیف پول.'])];
-$addScreen('wallet', 'انتقال و شارژ کیف پول', 'wallet', 'مبالغ پیشنهادی شارژ، رقم دلخواه و تأیید انتقال موجودی.', $walletRows, [
-    'note' => 'هر دکمه مبلغ شارژ رنگ مستقل خود را دارد و تغییر رنگ هر کدام روی بقیه مبالغ اثری ندارد.',
-]);
-
-$checkoutRows = [
-    [$mkBtn('wallet_checkout', 'ck_use_wallet')],
-    [$mkBtn('wallet_checkout', 'ck_pay_external')],
-    [$mkBtn('wallet_checkout', 'ck_cancel')],
-    [$mkBtn('wallet_checkout', 'ck_confirm'), $mkBtn('wallet_checkout', 'ck_change')],
-];
-$addScreen('checkout', 'چک‌اوت خرید', 'cart', 'انتخاب روش پرداخت و تأیید چک‌اوت.', $checkoutRows, [
-    'note' => '«استفاده از کیف پول» فقط وقتی موجودی کافی باشد نمایش داده می‌شود. دکمه لغو در هر دو مرحله همین رنگ را دارد.',
-]);
-
-$confirmRows = [
-    [$mkIndividual(['_rxcolor' => 'navigation:confirm_back'], '↩️ بازگشت از تایید خرید', 'user_nav', 'confirm_back')],
-    [$mkIndividual(['_rxcolor' => 'navigation:back'], '◀️ بازگشت عمومی', 'user_nav', 'nav_back'), $mkIndividual(['_rxcolor' => 'navigation:help_back'], '📚 بازگشت به آموزش‌ها', 'user_nav', 'nav_back')],
-    [$mkIndividual(['_rxcolor' => 'navigation:account_back'], '↩️ بازگشت به حساب کاربری', 'account', 'backinfo')],
-    [$mkBtn('user_nav', 'gen_random_uname')],
-    [$mkBtn('user_nav', 'confirm_pay')],
-    [$mkBtn('user_nav', 'confirm_discount')],
-    [$mkBtn('payment', 'chargehasdiscount'), $mkBtn('payment', 'chargenodiscount')],
-    [$mkBtn('user_nav', 'confirmandgetserviceDiscount')],
-    [$mkBtn('user_nav', 'rules_accept')],
-    [$mkBtn('user_nav', 'contact_phone'), $mkBtn('user_nav', 'contact_back')],
-    [$mkBtn('user_nav', 'confirmchannel')],
-    [$mkBtn('misc_buttons', 'confirmserivce'), $mkBtn('misc_buttons', 'confirmserdiscount')],
-    [$mkBtn('misc_buttons', 'buyback')],
-];
-$addScreen('confirm', 'تأیید پرداخت', 'circle-check', 'دکمه‌های تأیید، تخفیف، قوانین و شماره تلفن.', $confirmRows, [
-    'note' => 'دکمه «پرداخت و دریافت سرویس» در این صفحه با دکمه هم‌نام منوی سرویس متفاوت است.',
-]);
-
-$gwRows = [];
-$gwDefs = [
-    ['cart_to_offline', '💳 کارت به کارت', 'Cartstatus', 'oncard', 'کارت‌به‌کارت', 'carttocart'],
-    ['plisio', '🔵 Plisio', 'nowpaymentstatus', 'onnowpayment', 'Plisio', 'textnowpayment'],
-    ['nowpayment', '🟣 NowPayment', 'statusnowpayment', '1', 'NowPayments', 'textsnowpayment'],
-    ['digitaltron', '🟡 رمزارز ترون', 'digistatus', 'ondigi', 'پرداخت رمزارز ترون', 'textnowpaymenttron'],
-    ['iranpay2', '🟠 ترونادو', 'statustarnado', 'onternado', 'ترونادو', 'iranpay3'],
-    ['tonpay', '💠 تون‌پی', 'statustonpay', 'ontonpay', 'تون‌پی', 'tonpay'],
-    ['rialit', '💚 ریالیت', 'statusrialit', 'onrialit', 'ریالیت', 'rialit'],
-    ['cubepay', '🟦 کیوب‌پی', 'statuscubepay', 'oncubepay', 'کیوب‌پی', 'cubepay'],
-    ['blupal', '💙 بلوپال', 'statusblupal', 'onblupal', 'بلوپال', 'blupal'],
-    ['variza', '💳 واریزا', 'statusvariza', 'onvariza', 'واریزا', 'variza'],
-    ['abangateway', '💳 آبان گیت‌وی', 'statusabangateway', 'onabangateway', 'آبان گیت‌وی', 'abangateway'],
-    ['atlaspay', '🌐 اطلس‌پی', 'statusatlaspay', 'onatlaspay', 'اطلس‌پی', 'atlaspay'],
-    ['zarinpal', '🔷 زرین پال', 'zarinpalstatus', 'onzarinpal', 'زرین‌پال', 'zarinpal'],
-    ['paymentnotverify', '📋 پرداخت بدون تایید', 'paymentstatussnotverify', 'onverifypay', 'درگاه ریالی بدون تأیید', 'textpaymentnotverify'],
-    ['startelegrams', '⭐ ستاره تلگرام', 'statusstar', '1', 'ستاره تلگرام', 'text_star_telegram'],
-];
-foreach ($gwDefs as $gwDef) {
-    $active = $payValue($gwDef[2]) === $gwDef[3];
-    if ($gwDef[0] === 'abangateway') {
-        $active = $active && stripos(trim($payValue('urlabangateway')), 'https://') === 0 && trim($payValue('apiabangateway')) !== '' && trim($payValue('apiabangateway')) !== '0';
-    }
-    $note = $active
-        ? 'این درگاه در تنظیمات پرداخت فعال است.'
-        : 'این درگاه اکنون غیرفعال است؛ رنگ آن پس از فعال‌سازی اعمال می‌شود.';
-    if ($gwDef[0] === 'cart_to_offline' && $payValue('Cartstatuspv') === 'oncardpv') {
-        $note .= ' در حالت آفلاین پیوی، دکمه به‌صورت لینک نمایش داده می‌شود.';
-    }
-    $gwLabel = trim((string) ($textbotMap[$gwDef[5]] ?? '')) !== '' ? (string) $textbotMap[$gwDef[5]] : $gwDef[1];
-    $gwRows[] = [
-        $mkBtn('payment', $gwDef[0], [
-            'label' => $gwLabel,
-            'cond' => $note,
-            'badge' => $active ? 'فعال' : 'غیرفعال',
-            'badge_class' => $active ? 'is-on' : 'is-off',
-        ]),
-    ];
-}
-$addScreen('gateways', 'درگاه‌های پرداخت', 'dollar-sign', 'انتخاب روش پرداخت هنگام خرید.', $gwRows, [
-    'note' => 'همه درگاه‌های پشتیبانی‌شده نمایش داده می‌شوند تا رنگ آن‌ها پیش از فعال‌سازی هم قابل تنظیم باشد. وضعیت فعال/غیرفعال از تنظیمات پرداخت خوانده می‌شود.',
-]);
-
-$receiptRows = [
-    [$mkBtn('pay_receipt', 'pay_sendreceipt')],
-    [$mkBtn('pay_receipt', 'cv_use'), $mkBtn('pay_receipt', 'cv_new')],
-    [$mkBtn('pay_receipt', 'pay_resume')],
-    [$mkBtn('pay_receipt', 'pay_cancel')],
-];
-$addScreen('receipt', 'رسید و پرداخت کارت', 'receipt', 'ارسال رسید، کارت تأییدشده و مدیریت پرداخت در انتظار.', $receiptRows, [
-    'note' => 'دکمه‌های «ادامه پرداخت قبلی» و «لغو پرداخت» فقط وقتی پرداخت در انتظار وجود داشته باشد نمایش داده می‌شوند.',
-]);
-
-$cryptoRows = [
-    [
-        $mkBtn('invoice_copy_buttons', 'currency_pick_TRX', ['label' => '🟥 ترون (TRX)', 'fallback_key' => 'currency_pick', 'scopes' => ['button']]),
-        $mkBtn('invoice_copy_buttons', 'currency_pick_TON', ['label' => '🟦 تون (TON)', 'fallback_key' => 'currency_pick', 'scopes' => ['button']]),
-    ],
-    [
-        $mkBtn('invoice_copy_buttons', 'currency_pick_USDT_TRC20', ['label' => '🟢 تتر روی ترون', 'fallback_key' => 'currency_pick', 'scopes' => ['button']]),
-        $mkBtn('invoice_copy_buttons', 'currency_pick_USDT_TON', ['label' => '🟢 تتر روی تون', 'fallback_key' => 'currency_pick', 'scopes' => ['button']]),
-    ],
-    [$catalogSamples['crypto'][0], $catalogSamples['crypto'][1]],
-    [$catalogSamples['crypto'][2]],
-    [$catalogSamples['crypto'][3]],
-    [$catalogSamples['crypto'][4]],
-    [$mkBtn('invoice_copy_buttons', 'cancel_hash_input')],
-    [$mkBtn('payment', 'colselist')],
-];
-$addScreen('crypto', 'پرداخت کریپتو', 'coins', 'انتخاب ارز، کپی آدرس/مبلغ/ممو و ارسال هش پرداخت.', $cryptoRows, [
-    'note' => 'هر دکمه انتخاب ارز رنگ مستقل خود را دارد و تغییر رنگ هر کدام روی بقیه ارزها اثری ندارد. دکمه «کپی ممو» فقط در شبکه تون نمایش داده می‌شود.',
-]);
-
-$manualRows = [
-    [$mkIndividual(['_rxcolor' => 'navigation:crypto_back'], '↩️ بازگشت به فهرست هش‌ها', 'recheckcrypto_buttons', 'recheckcrypto')],
-    [$catalogSamples['crypto'][5], $catalogSamples['crypto'][6]],
-    [$mkBtn('recheckcrypto_buttons', 'rcc_skip_photo'), $mkBtn('recheckcrypto_buttons', 'rcc_cancel')],
-];
-$addScreen('crypto_manual', 'بررسی دستی هش', 'rotate-cw', 'دکمه‌های بررسی مجدد هش و اقدامات دستی.', $manualRows, [
-    'note' => 'از هر اقدام یک نمونه نمایش داده شده است؛ رنگ همان اقدام برای همه تراکنش‌ها اعمال می‌شود.',
-]);
-
-$subRows = [];
-foreach (['username', 'Status', 'expirationDate', 'daysleft', 'LastTraffic', 'usedtraffic', 'RemainingVolume'] as $field) {
-    $fieldLabel = $MENUS['user_subscription']['buttons'][$field];
-    $subRows[] = [
-        $mkIndividual(['_rxcolor' => 'subscription_field:' . $field . ':label'], 'عنوان · ' . $fieldLabel, 'user_subscription', $field),
-        $mkIndividual(['_rxcolor' => 'subscription_field:' . $field . ':value'], 'مقدار · ' . $fieldLabel, 'user_subscription', $field),
-    ];
-}
-$subRows = array_merge($subRows, [
-    [$mkIndividual(['_rxcolor' => 'subscription_list:previous'], '◀️ صفحه قبلی سرویس‌ها', 'user_dynamic_lists', 'user_services_list'), $mkIndividual(['_rxcolor' => 'subscription_list:next'], '▶️ صفحه بعدی سرویس‌ها', 'user_dynamic_lists', 'user_services_list')],
-    [$mkIndividual(['_rxcolor' => 'subscription_list:search'], '🔎 جستجوی سرویس', 'user_dynamic_lists', 'user_services_list')],
-    [$mkIndividual(['_rxcolor' => 'subscription_list:renewal_previous'], '◀️ صفحه قبلی لیست تمدید', 'user_dynamic_lists', 'user_services_list'), $mkIndividual(['_rxcolor' => 'subscription_list:renewal_next'], '▶️ صفحه بعدی لیست تمدید', 'user_dynamic_lists', 'user_services_list')],
-    [$mkIndividual(['_rxcolor' => 'subscription_action:extend'], '🔄 تمدید اشتراک', 'user_subscription', 'exntedagei'), $mkIndividual(['_rxcolor' => 'subscription_action:volume'], '➕ خرید حجم اشتراک', 'user_subscription', 'extravolunme')],
-    [$mkBtn('user_subscription', 'buy_service')],
-    [$mkBtn('user_subscription', 'helpbtn'), $mkBtn('user_subscription', 'notusernameme')],
-]);
-$addScreen('subscription', 'اشتراک و سرویس‌های من', 'cart-check', 'جزئیات سرویس و دکمه‌های سرویس‌های من.', $subRows, [
-    'note' => 'عنوان و مقدار هر فیلد، تمدید و خرید حجم رنگ مستقل دارند. مقادیر برای هر کاربر متفاوت است؛ رنگ انتخابی برای همان خانه اعمال می‌شود.',
-]);
-
-$ticketRows = [
-    [$mkIndividual(['_rxcolor' => 'navigation:ticket_back'], '↩️ بازگشت به تیکت‌ها', 'account', 'supporttickets')],
-    [$mkBtn('user_subscription', 'ticketnew')],
-    [$mkBtn('account', 'supporttickets')],
-    [$mkBtn('user_nav', 'tk_media_yes'), $mkBtn('user_nav', 'tk_media_no')],
-    [$mkBtn('user_nav', 'tk_cancel')],
-];
-foreach (range(1, 5) as $mediaCount) {
-    $ticketRows[] = [$mkIndividual(['callback_data' => 'tk_cnt_' . $mediaCount], 'تعداد رسانه: ' . $mediaCount, 'user_dynamic_lists', 'ticket_list')];
-}
-$addScreen('tickets', 'تیکت و پشتیبانی', 'headset', 'دکمه‌های تیکت جدید، لیست تیکت‌ها و انتخاب رسانه.', $ticketRows, [
-    'note' => 'دکمه‌های بله/خیر رسانه فقط در مرحله ارسال تیکت نمایش داده می‌شوند.',
-]);
-
-$listRows = [
-    [$mkIndividual(['_rxcolor' => 'product_header:name'], 'سرتیتر نام محصول', 'user_dynamic_lists', 'product_buy'), $mkIndividual(['_rxcolor' => 'product_header:duration'], 'سرتیتر زمان محصول', 'user_dynamic_lists', 'product_buy'), $mkIndividual(['_rxcolor' => 'product_header:price'], 'سرتیتر قیمت محصول', 'user_dynamic_lists', 'product_buy')],
-    [$mkIndividual(['callback_data' => 'customsellvolume'], 'حجم دلخواه خرید', 'user_dynamic_lists', 'custom_volume'), $mkIndividual(['callback_data' => 'customsellvolumeom'], 'حجم دلخواه خرید دیگران', 'user_dynamic_lists', 'custom_volume')],
-    [$mkBtn('user_dynamic_lists', 'product_back'), $mkBtn('user_dynamic_lists', 'category_back')],
-    [$mkBtn('user_dynamic_lists', 'panel_back')],
-    [$mkIndividual(['_rxck' => 'card_num'], 'کپی کارت اول', 'user_dynamic_lists', 'copy_card_num'), $mkIndividual(['_rxck' => 'card_num_2'], 'کپی کارت دوم', 'user_dynamic_lists', 'copy_text_btn')],
-    [$mkIndividual(['_rxck' => 'card_amount'], 'کپی مبلغ کارت', 'user_dynamic_lists', 'copy_card_amount')],
-];
-$addScreen('lists', 'لیست‌های داینامیک', 'server-stack', 'رنگ دکمه‌های محصولات و نمونه‌های پیش‌فرض هر بخش.', $listRows, [
-    'note' => 'محصولات خودکار نمایش داده می‌شوند. نمونه‌های هر بخش، رنگ پیش‌فرض همان نوع دکمه را برای آیتم‌های فعلی و جدید تعیین می‌کنند.',
-]);
-
-$cronRows = [
-    [$mkBtn('cron_notifications', 'cron_extend')],
-    [$mkBtn('cron_notifications', 'cron_buy_service')],
-    [$mkBtn('cron_notifications', 'cron_start_bot')],
-    [$mkBtn('cron_notifications', 'cron_usertest'), $mkBtn('cron_notifications', 'cron_help')],
-    [$mkBtn('cron_notifications', 'cron_affiliates'), $mkBtn('cron_notifications', 'cron_addbalance')],
-];
-$addScreen('cron', 'اعلان‌های کرون', 'bell', 'دکمه‌های پیام‌های خودکار کرون‌جاب.', $cronRows, [
-    'note' => 'این رنگ‌ها در پیام‌های اعلان حجم/زمان، پیام‌های همگانی و یادآوری‌ها استفاده می‌شوند.',
-]);
-
-foreach (['tonpay' => 'تون‌پی', 'atlaspay' => 'اطلس‌پی'] as $gateway => $gatewayLabel) {
-    $gatewayRows = [];
-    foreach (tonpayButtonStyleLabels() as $key => $label) {
-        if ($gateway === 'atlaspay' && $key === 'change_card') { continue; }
-        $gatewayRows[] = [$mkIndividual(['_rxcolor' => 'payment:' . $gateway . ':' . $key], $label, 'tonpay_payment', $key)];
-    }
-    $addScreen($gateway, 'پرداخت ' . $gatewayLabel, 'credit-card', 'رنگ مستقل دکمه‌های پرداخت ' . $gatewayLabel, $gatewayRows);
-}
-
-$gatewayInternalLabels = [
-    'rialit' => 'ریالیت', 'zarinpal' => 'زرین‌پال', 'plisio' => 'Plisio', 'nowpayment' => 'NowPayments',
-    'iranpay2' => 'ترونادو', 'blupal' => 'بلوپال', 'cubepay' => 'کیوب‌پی',
-    'variza' => 'واریزا', 'abangateway' => 'آبان گیت‌وی',
-    'tonpay' => 'تون‌پی — لینک و پیگیری', 'atlaspay' => 'اطلس‌پی — لینک و پیگیری',
-    'startelegrams' => 'ستاره تلگرام', 'pending' => 'فهرست تراکنش‌های در انتظار',
-];
-$gatewayCommonRoles = [
-    'pay_link' => '💳 پرداخت', 'pending_cancel' => '♻️ لغو و دریافت فاکتور جدید',
-    'retry' => '🔄 ساخت پرداخت جدید', 'back_main' => '🔙 بازگشت به منوی اصلی',
-];
-$gatewayInternalSamples = [];
-foreach ($gatewayInternalLabels as $gateway => $gatewayLabel) {
-    $roles = $gatewayCommonRoles;
-    if ($gateway === 'rialit') {
-        $roles = [
-            'pay_link' => '💳 پرداخت', 'continue_link' => '▶️ ادامه پرداخت', 'check_status' => '🔄 بررسی وضعیت',
-            'cancel_transaction' => '🚫 انصراف و پرداخت جدید', 'cancel_confirm_approve' => '✅ تایید انصراف',
-            'cancel_confirm_back' => '🔙 بازگشت از تایید انصراف', 'retry' => '💳 انتخاب روش پرداخت جدید',
-            'pending_list' => '⏳ تراکنش‌های در انتظار', 'list_view' => '💚 پیگیری ریالیت در فهرست تراکنش‌ها',
-        ];
-    } elseif (in_array($gateway, ['tonpay', 'atlaspay'], true)) {
-        unset($roles['back_main']);
-        $roles += [
-            'view_details' => '🔍 مشاهده جزئیات اعلان پرداخت', 'support' => '📞 پشتیبانی پرداخت',
-            'pending_list' => '⏳ تراکنش‌های در انتظار', 'list_view' => '🔍 جزئیات تراکنش در فهرست',
-            'list_cancel' => '❌ لغو تراکنش در فهرست',
-        ];
-        if ($gateway === 'tonpay') $roles['receipt_back'] = '🔙 بازگشت از ارسال رسید';
-        else $roles['list_receipt'] = '📤 ارسال رسید از فهرست تراکنش‌ها';
-    } elseif ($gateway === 'startelegrams') {
-        $roles = ['pay_link' => '⭐ پرداخت با ستاره تلگرام'];
-    } elseif ($gateway === 'pending') {
-        $roles = ['back_account' => '🔙 بازگشت به حساب از فهرست تراکنش‌ها'];
-    }
-    $gatewayInternalSamples[$gateway] = [];
-    foreach ($roles as $role => $label) {
-        $gatewayInternalSamples[$gateway][] = $mkIndividual(
-            ['_rxcolor' => 'payment:' . $gateway . ':' . $role], $label,
-            'pay_receipt', rx_payment_color_fallback($role)
-        ) + ['sample' => true];
-    }
-}
-$addScreen('gateway_internals', 'دکمه‌های داخلی درگاه‌ها', 'credit-card', 'رنگ مستقل دکمه‌های پرداخت، پیگیری و لغو برای هر درگاه.', [], [
-    'note' => 'با قبلی و بعدی درگاه را انتخاب کنید. از هر دکمه یک نمونه نمایش داده می‌شود و رنگ آن برای همان دکمه در همه فاکتورها اعمال می‌شود.',
-]);
-
-$rxStylesForJs = [];
-foreach ($ALL_DB_KEYS as $_k) {
-    $rxStylesForJs[$_k] = empty($userStylesRaw[$_k]) ? new stdClass() : $userStylesRaw[$_k];
-}
-$rxStylesForJs[$CONFIG_ITEM_SECTION] = empty($userStylesRaw[$CONFIG_ITEM_SECTION]) ? new stdClass() : $userStylesRaw[$CONFIG_ITEM_SECTION];
-
-$rxFactoryForJs = [];
-foreach ($ALL_DB_KEYS as $_k) {
-    $rxFactoryForJs[$_k] = empty($factoryDefaultsMap[$_k]) ? new stdClass() : $factoryDefaultsMap[$_k];
-}
-
-$firstScreenId = array_key_first($SCREENS);
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark" data-color="blue">
@@ -1357,15 +378,15 @@ echo json_encode([
         </label>
         <div class="skb-badge" id="skb-badge"><span class="dot"></span><span id="skb-badge-text">ذخیره خودکار</span></div>
         <button type="button" class="btn btn-outline btn-sm" id="skb-reset-screen" title="حذف رنگ همه دکمه‌های بخش نمایش‌داده‌شده">
-            <?php echo icon('rotate-left', 'svg-icon svg-sm'); ?>
+            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('rotate-left', 'svg-icon svg-sm'); ?>
             <span>حذف رنگ این بخش</span>
         </button>
         <a class="btn btn-outline btn-sm" href="keyboard.php">
-            <?php echo icon('keyboard', 'svg-icon svg-sm'); ?>
+            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('keyboard', 'svg-icon svg-sm'); ?>
             <span>چیدمان کیبورد</span>
         </a>
         <a class="btn btn-outline btn-sm" href="index.php">
-            <?php echo icon('arrow-right', 'svg-icon svg-sm'); ?>
+            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('arrow-right', 'svg-icon svg-sm'); ?>
             <span>بازگشت</span>
         </a>
     </div>
@@ -1377,7 +398,7 @@ echo json_encode([
             <div class="skb-nav-title">صفحه‌های کیبورد کاربر</div>
             <?php foreach ($SCREENS as $sid => $screen): ?>
             <button type="button" class="skb-nav-item<?php echo $sid === $firstScreenId ? ' active' : ''; ?>" data-screen="<?php echo htmlspecialchars($sid); ?>" aria-current="<?php echo $sid === $firstScreenId ? 'page' : 'false'; ?>">
-                <?php echo icon($screen['icon'], 'svg-icon'); ?>
+                <?php echo \Faoxima\Admin\Web\Support\Icons::icon($screen['icon'], 'svg-icon'); ?>
                 <span><?php echo htmlspecialchars($screen['title']); ?></span>
             </button>
             <?php endforeach; ?>
@@ -1400,7 +421,7 @@ echo json_encode([
                     <div class="skb-section-list" id="skb-section-list" role="listbox" aria-label="بخش‌های کیبورد">
                         <?php foreach ($SCREENS as $sid => $screen): ?>
                         <button type="button" class="skb-section-option" role="option" data-screen-pick="<?php echo htmlspecialchars($sid); ?>" aria-selected="<?php echo $sid === $firstScreenId ? 'true' : 'false'; ?>">
-                            <?php echo icon($screen['icon'], 'svg-icon'); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon($screen['icon'], 'svg-icon'); ?>
                             <span><?php echo htmlspecialchars($screen['title']); ?></span>
                         </button>
                         <?php endforeach; ?>
@@ -1414,7 +435,7 @@ echo json_encode([
                 <div class="skb-screen-head">
                     <div>
                         <h1 class="skb-screen-title" id="skb-title-<?php echo htmlspecialchars($sid); ?>">
-                            <?php echo icon($screen['icon'], 'svg-icon'); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon($screen['icon'], 'svg-icon'); ?>
                             <?php echo htmlspecialchars($screen['title']); ?>
                         </h1>
                         <p class="skb-screen-desc"><?php echo htmlspecialchars($screen['desc']); ?></p>
@@ -1434,7 +455,7 @@ echo json_encode([
                         <?php endif; ?>
                         <?php if (!empty($screen['link'])): ?>
                         <a class="btn btn-outline btn-sm" href="<?php echo htmlspecialchars($screen['link']); ?>">
-                            <?php echo icon('pen-to-square', 'svg-icon svg-sm'); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('pen-to-square', 'svg-icon svg-sm'); ?>
                             <span><?php echo htmlspecialchars($screen['link_label']); ?></span>
                         </a>
                         <?php endif; ?>
@@ -1528,7 +549,7 @@ echo json_encode([
     <div class="kb-modal__box">
         <form id="skb-edit-form">
             <div class="kb-modal__head" id="skb-modal-title">
-                <?php echo icon('pen-to-square'); ?>
+                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('pen-to-square'); ?>
                 <span>ویرایش رنگ دکمه</span>
             </div>
             <div class="kb-modal__body">
@@ -1561,11 +582,11 @@ echo json_encode([
             <div class="kb-modal__foot">
                 <button type="button" class="btn btn-outline btn-sm" id="skb-reset-button">حذف رنگ همین دکمه</button>
                 <button type="button" class="btn btn-outline btn-sm" id="skb-cancel">
-                    <?php echo icon('xmark', 'svg-icon svg-sm'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('xmark', 'svg-icon svg-sm'); ?>
                     <span>انصراف</span>
                 </button>
                 <button type="submit" class="btn btn-primary btn-sm" id="skb-save">
-                    <?php echo icon('check', 'svg-icon svg-sm'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('check', 'svg-icon svg-sm'); ?>
                     <span>ذخیره رنگ</span>
                 </button>
             </div>

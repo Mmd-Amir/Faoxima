@@ -617,6 +617,16 @@ export async function buy(view) {
                 if (discountCode)   body.discount_code   = discountCode;
                 if (p.fx_quote)     body.fx_quote        = p.fx_quote;
 
+                const confirmationInputs = JSON.stringify([body.country_id, body.service_id, body.custom_service,
+                    body.custom_username, body.custom_note, body.discount_code]);
+                if (draft.walletConfirmation?.inputs !== confirmationInputs) {
+                    const bytes = crypto.getRandomValues(new Uint8Array(16));
+                    const id = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+                    draft.walletConfirmation = { inputs: confirmationInputs, id };
+                    setBuyDraft(draft);
+                }
+                body.operation_id = draft.walletConfirmation.id;
+
                 const res = await call('purchase', { method: 'POST', body });
 
 

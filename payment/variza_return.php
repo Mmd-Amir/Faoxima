@@ -17,8 +17,8 @@ $order = isset($_GET['order']) ? (string) $_GET['order'] : '';
 $order = preg_replace('/[^A-Za-z0-9_\-]/', '', $order);
 
 $state = 'missing';
-if ($order !== '' && function_exists('select')) {
-    $payment = select('Payment_report', '*', 'id_order', $order, 'select');
+if ($order !== '' && \Faoxima\Core\Database\Db::runtimeReady()) {
+    $payment = \Faoxima\Core\Database\Db::select('Payment_report', '*', 'id_order', $order, 'select');
     if (is_array($payment) && ($payment['Payment_Method'] ?? '') === 'variza') {
         $state = (($payment['payment_Status'] ?? '') === 'paid') ? 'paid' : 'waiting';
     }
@@ -28,16 +28,16 @@ $botUsername = '';
 if (isset($usernamebot) && is_string($usernamebot) && trim($usernamebot) !== '') {
     $botUsername = ltrim(trim((string) $usernamebot), '@');
 }
-if ($botUsername === '' && function_exists('select')) {
-    $row = select('setting', 'usernamebot', null, null, 'select');
+if ($botUsername === '' && \Faoxima\Core\Database\Db::runtimeReady()) {
+    $row = \Faoxima\Core\Database\Db::select('setting', 'usernamebot', null, null, 'select');
     if (is_array($row) && !empty($row['usernamebot'])) {
         $botUsername = ltrim(trim((string) $row['usernamebot']), '@');
     }
 }
 
 $miniappName = 'miniapp';
-if (function_exists('select')) {
-    $miniRow = select('shopSetting', '*', 'Namevalue', 'miniapp_short_name', 'select');
+if (\Faoxima\Core\Database\Db::runtimeReady()) {
+    $miniRow = \Faoxima\Core\Database\Db::select('shopSetting', '*', 'Namevalue', 'miniapp_short_name', 'select');
     if (is_array($miniRow) && !empty($miniRow['value'])) {
         $miniappName = preg_replace('/[^A-Za-z0-9_]/', '', (string) $miniRow['value']);
         if ($miniappName === '') $miniappName = 'miniapp';

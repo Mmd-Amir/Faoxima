@@ -1,7 +1,7 @@
 <?php
 
-$botinfo = select("botsaz", "*", "bot_token", $ApiToken, "select");
-$userbot = select("user", "*", "id", $botinfo['id_user'], "select");
+$botinfo = \Faoxima\Core\Database\Db::select("botsaz", "*", "bot_token", $ApiToken, "select");
+$userbot = \Faoxima\Core\Database\Db::select("user", "*", "id", $botinfo['id_user'], "select");
 $hide_panel = json_decode($botinfo['hide_panel'], true);
 $text_bot_var =  json_decode(file_get_contents('text.json'), true);
 
@@ -13,8 +13,8 @@ $keyboarddate = array(
     'text_support' => $text_bot_var['btn_keyboard']['support'],
     'text_Admin' => "👨‍💼 پنل مدیریت",
 );
-$list_admin = select("botsaz", "*", "bot_token", $ApiToken, "select");
-$admin_idsmain = select("admin", "id_admin", null, null, "FETCH_COLUMN");
+$list_admin = \Faoxima\Core\Database\Db::select("botsaz", "*", "bot_token", $ApiToken, "select");
+$admin_idsmain = \Faoxima\Core\Database\Db::select("admin", "id_admin", null, null, "FETCH_COLUMN");
 if (!in_array($from_id, json_decode($list_admin['admin_ids'], true)) && !in_array($from_id, $admin_idsmain)) unset($keyboarddate['text_Admin']);
 $keyboard = ['keyboard' => [], 'resize_keyboard' => true];
 $tempArray = [];
@@ -169,7 +169,7 @@ function KeyboardProduct($location, $query, $pricediscount, $datakeyboard, $stat
 {
     global $pdo, $textbotlang;
     $product = ['inline_keyboard' => []];
-    $statusshowprice = select("shopSetting", "*", "Namevalue", "statusshowprice", "select")['value'];
+    $statusshowprice = \Faoxima\Core\Database\Db::select("shopSetting", "*", "Namevalue", "statusshowprice", "select")['value'];
     $stmt = $pdo->prepare($query);
     $stmt->execute();
     $valuetow = $valuetow != null ? "-$valuetow" : "";

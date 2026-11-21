@@ -1,5 +1,9 @@
 <?php
 
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'trust_channel.php';
+
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 if (session_status() === PHP_SESSION_NONE) {
     ini_set('session.cookie_samesite', 'Lax');
     ini_set('session.cookie_httponly', '1');
@@ -8,83 +12,25 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
-require_once __DIR__ . '/lib/icons.php';
 
-if (empty($_SESSION['user']) || !is_string($_SESSION['user']) || $_SESSION['user'] === '') {
-    header('Location: login.php');
-    exit;
+if (\Faoxima\Admin\Web\Pages\TrustChannelRequest::handle(
+        FIELDS: $FIELDS,
+        _csrf: $_csrf,
+        cur: $cur,
+        f: $f,
+        new: $new ?? null,
+        pdo: $pdo ?? null,
+        row: $row,
+        savedNum: $savedNum,
+        settingRow: $settingRow,
+        showSaved: $showSaved,
+        stmt: $stmt
+    ) !== true) {
+    unset($adminWebPage);
+    return;
 }
 
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-$_csrf = $_SESSION['csrf_token'];
-
-$FIELDS = [
-    ['type' => 'toggle', 'col' => 'PublicLog_Status',        'label' => 'فعال‌سازی گزارش عمومی خرید', 'on' => '1', 'off' => '0'],
-    ['type' => 'toggle', 'col' => 'PublicLog_NewSub',        'label' => 'خرید اشتراک جدید',            'on' => '1', 'off' => '0'],
-    ['type' => 'toggle', 'col' => 'PublicLog_Renewal',       'label' => 'تمدید سرویس',                 'on' => '1', 'off' => '0'],
-    ['type' => 'toggle', 'col' => 'PublicLog_VolumeTopup',   'label' => 'افزایش حجم',                  'on' => '1', 'off' => '0'],
-    ['type' => 'toggle', 'col' => 'PublicLog_TimeExtra',     'label' => 'افزایش زمان',                 'on' => '1', 'off' => '0'],
-    ['type' => 'toggle', 'col' => 'PublicLog_WalletDeposit', 'label' => 'شارژ کیف پول',                'on' => '1', 'off' => '0'],
-    ['type' => 'text',   'col' => 'PublicLog_Channel',       'label' => 'آیدی کانال اعتماد',           'placeholder' => '@channel یا -100…'],
-];
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $incoming = $_POST['_csrf'] ?? '';
-    if (!hash_equals($_SESSION['csrf_token'], $incoming)) {
-        http_response_code(403);
-        exit('درخواست نامعتبر — توکن CSRF اشتباه است');
-    }
-}
-
-$settingRow = [];
-try {
-    $stmt = $pdo->query("SELECT * FROM setting LIMIT 1");
-    $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : null;
-    if (is_array($row)) $settingRow = $row;
-} catch (\Throwable $e) {
-    error_log('[panel/trust_channel] load failed: ' . $e->getMessage());
-}
-
-$savedCount = 0;
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_save'])) {
-    foreach ($FIELDS as $f) {
-        $col = $f['col'];
-        $cur = $settingRow[$col] ?? null;
-        if ($f['type'] === 'toggle') {
-            $new = isset($_POST['f_' . $col]) ? $f['on'] : $f['off'];
-        } else {
-            $new = (string)($_POST['f_' . $col] ?? '');
-            if (mb_strlen($new) > 500) {
-                $new = mb_substr($new, 0, 500);
-            }
-        }
-        if ((string)$cur !== (string)$new) {
-            try {
-                $sanCol = preg_replace('/[^A-Za-z0-9_]/', '', $col);
-                $upd = $pdo->prepare("UPDATE setting SET `{$sanCol}` = :v");
-                $upd->bindValue(':v', $new, PDO::PARAM_STR);
-                $upd->execute();
-                $savedCount++;
-            } catch (\Throwable $e) {
-                error_log('[panel/trust_channel] ' . $col . ' failed: ' . $e->getMessage());
-            }
-        }
-    }
-    header('Location: trust_channel.php?saved=' . $savedCount);
-    exit;
-}
-
-$showSaved = isset($_GET['saved']);
-$savedNum  = isset($_GET['saved']) ? (int)$_GET['saved'] : 0;
-
-function faoxima_trust_toggle_on($cur, $on, $off) {
-    if ($cur === null) return false;
-    if ((string)$cur === (string)$on)  return true;
-    if ((string)$cur === (string)$off) return false;
-    return in_array(strtolower(trim((string)$cur)), ['1','on','true','yes'], true);
-}
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -137,7 +83,7 @@ function faoxima_trust_toggle_on($cur, $on, $off) {
             <div class="page-head">
                 <div>
                     <div class="page-head__title">
-                        <?php echo icon('shield', 'svg-icon svg-lg'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('shield', 'svg-icon svg-lg'); ?>
                         تنظیم کانال اعتماد
                     </div>
                     <div class="page-head__sub">گزارش عمومی خریدهای موفق را به یک کانال تلگرامی ارسال کنید</div>
@@ -146,7 +92,7 @@ function faoxima_trust_toggle_on($cur, $on, $off) {
 
             <?php if ($showSaved): ?>
                 <div class="alert alert-success">
-                    <?php echo icon('circle-check', 'svg-icon'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-check', 'svg-icon'); ?>
                     <span>
                         <?php if ($savedNum > 0): ?>
                             تغییرات ذخیره شد. (<?php echo $savedNum; ?> فیلد به‌روزرسانی شد)
@@ -163,7 +109,7 @@ function faoxima_trust_toggle_on($cur, $on, $off) {
 
                 <div class="card tc-card">
                     <div class="tc-heading">
-                        <span class="tc-heading__icon" aria-hidden="true"><?php echo icon('shield', 'svg-icon'); ?></span>
+                        <span class="tc-heading__icon" aria-hidden="true"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('shield', 'svg-icon'); ?></span>
                         <div><strong>گزارش خرید در کانال اعتماد</strong><p>کانال مقصد و رویدادهایی را که می‌خواهید منتشر شوند انتخاب کنید.</p></div>
                     </div>
                     <?php foreach ($FIELDS as $f):
@@ -179,7 +125,7 @@ function faoxima_trust_toggle_on($cur, $on, $off) {
                                 <?php if ($f['type'] === 'toggle'): ?>
                                     <label class="switch" title="<?php echo htmlspecialchars($col); ?>">
                                         <input type="checkbox" id="<?php echo $idAttr; ?>" name="<?php echo $idAttr; ?>"
-                                            <?php echo faoxima_trust_toggle_on($val, $f['on'], $f['off']) ? 'checked' : ''; ?>>
+                                            <?php echo \Faoxima\Admin\Web\Pages\TrustChannelRequestHelpers::faoxima_trust_toggle_on($val, $f['on'], $f['off']) ? 'checked' : ''; ?>>
                                         <span class="switch__slot"></span>
                                     </label>
                                 <?php else: ?>
@@ -196,11 +142,11 @@ function faoxima_trust_toggle_on($cur, $on, $off) {
 
                 <div class="save-bar tc-savebar">
                     <button type="reset" class="btn btn-outline">
-                        <?php echo icon('rotate-left', 'svg-icon svg-sm'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('rotate-left', 'svg-icon svg-sm'); ?>
                         <span>بازنشانی</span>
                     </button>
                     <button type="submit" class="btn btn-primary">
-                        <?php echo icon('check', 'svg-icon svg-sm'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('check', 'svg-icon svg-sm'); ?>
                         <span>ذخیره تغییرات</span>
                     </button>
                 </div>

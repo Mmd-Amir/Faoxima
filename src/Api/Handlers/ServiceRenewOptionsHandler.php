@@ -1,0 +1,201 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Faoxima\Api\Handlers;
+
+final class ServiceRenewOptionsHandler extends \Faoxima\Api\Handlers\BaseHandler
+{
+    public function handle(): void
+    {
+        $this->requireMethod('GET');
+
+        $username = \Faoxima\Api\Runtime\Input::nullableString($this->data, 'username');
+        if ($username === null || $username === '') {
+            \Faoxima\Api\Runtime\Response::badRequest('username is required');
+        }
+
+        $invoice = \Faoxima\Api\Runtime\Db::fetchOne(
+            'SELECT * FROM invoice WHERE id_user = :u AND username = :n LIMIT 1',
+            [':u' => $this->user['id'], ':n' => $username]
+        );
+        if ($invoice === null) {
+            \Faoxima\Api\Runtime\Response::notFound('Service not found');
+        }
+
+        $panel = \Faoxima\Core\Database\Db::select('marzban_panel', '*', 'name_panel', $invoice['Service_location'], 'select');
+        if (empty($panel)) {
+            \Faoxima\Api\Runtime\Response::notFound('Panel not found');
+        }
+        if (($panel['status_extend'] ?? '') === 'off_extend') {
+            \Faoxima\Api\Runtime\Response::fail(409, '❌ امکان تمدید در این پنل وجود ندارد');
+        }
+
+        $panel['_custom_quote_user'] = [(string)$this->user['id'], (string)($this->user['agent'] ?? 'f'), (int)($this->user['pricediscount'] ?? 0)];
+        $agent = (string)($this->user['agent'] ?? 'f');
+        $statusShowPrice = \Faoxima\Services\Panels\PanelFeatures::panel_feature_enabled($panel, 'showprice') ? 'onshowprice' : 'offshowprice';
+        $userDiscount = (int)($this->user['pricediscount'] ?? 0);
+
+
+        $products = \Faoxima\Api\Runtime\Db::fetchAll(
+            "SELECT * FROM product WHERE (FIND_IN_SET(:loc, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers')) ORDER BY (position = 0) ASC, position ASC, id ASC",
+            [':loc' => $invoice['Service_location'], ':agent' => $agent]
+        );
+
+        $nationalPanel = method_exists(\Faoxima\Services\Fulfillment\StockPresentation::class, 'nmPanelNationalEnabled') && \Faoxima\Services\Fulfillment\Inventory::nmPanelNationalEnabled($panel);
+
+        $list = [];
+        foreach ($products as $product) {
+            if (!$this->productIsAllowedForAgent($product, $agent)) continue;
+            if ($nationalPanel && method_exists(\Faoxima\Services\Fulfillment\StockPresentation::class, 'nmStockHasAvailableForProduct')
+                && !\Faoxima\Services\Fulfillment\Inventory::nmStockHasAvailableForProduct(\Faoxima\Api\Runtime\Db::pdo(), $panel, $product)) {
+                continue;
+            }
+
+            $basePrice = $product['price_product'];
+            $product = \Faoxima\Orders\Pricing\ExchangePricing::fxApplyToProduct($product, $panel);
+            $price = (float)$product['price_product'];
+            if ($userDiscount !== 0) {
+                $price = $price - (($price * $userDiscount) / 100);
+            }
+            $price = (int) round($price);
+            $price = (int) \Faoxima\Orders\Pricing\ExchangePricing::fxFinalizeAmount($price, $panel, 'product');
+
+            $list[] = [
+                'code'         => (string)$product['code_product'],
+                'name'         => (string)$product['name_product'],
+                'volume_gb'    => (int)($product['Volume_constraint'] ?? 0),
+                'time_days'    => (int)($product['Service_time'] ?? 0),
+                'price'        => $price,
+                'base_price'   => (float) $basePrice,
+                'show_price'   => $statusShowPrice !== 'offshowprice',
+                'note'         => (string)($product['note'] ?? ''),
+                'ip_limit'     => (int)($product['ip_limit'] ?? 0),
+                'ip_limit_guard_active' => (($panel['ip_limit_guard'] ?? '') === 'onipguard'),
+                'symbolic_limit_enabled' => (\Faoxima\Telegram\Support\Texts::faoxima_symbolic_limit_label($product) !== null),
+                'symbolic_limit_users'   => (int)($product['symbolic_limit_users'] ?? 0),
+            ];
+        }
+
+
+        $currentPlan = null;
+        $serviceOther = \Faoxima\Api\Runtime\Db::fetchOne(
+            "SELECT value FROM service_other
+              WHERE username = :u AND type = 'extend_user' AND status = 'paid'
+              ORDER BY time DESC LIMIT 1",
+            [':u' => $invoice['username']]
+        );
+        $currentCode = null;
+        if (is_array($serviceOther) && !empty($serviceOther['value'])) {
+            $decoded = json_decode((string)$serviceOther['value'], true);
+            if (is_array($decoded) && !empty($decoded['code_product'])) {
+                $currentCode = (string)$decoded['code_product'];
+            }
+        }
+        if ($currentCode === null) {
+            $byName = \Faoxima\Core\Database\Db::select('product', '*', 'name_product', $invoice['name_product'], 'select');
+            if (is_array($byName) && !empty($byName['code_product'])) {
+                $currentCode = (string)$byName['code_product'];
+            }
+        }
+        if ($currentCode !== null) {
+            foreach ($list as $p) {
+                if ($p['code'] === $currentCode) {
+                    $currentPlan = $p;
+                    $currentPlan['name'] = '♻️ ' . $currentPlan['name'] . ' (پلن فعلی)';
+                    break;
+                }
+            }
+        }
+
+
+        $custom_only = (count($list) === 0)
+            || in_array($invoice['name_product'] ?? '', ['🛍 حجم دلخواه', '⚙️ سرویس دلخواه'], true);
+
+        $customPriceVol  = $this->jsonAgentValue($panel['pricecustomvolume'] ?? '', $agent);
+        $customPriceTime = $this->jsonAgentValue($panel['pricecustomtime']   ?? '', $agent);
+        if ($customPriceVol !== '' && $customPriceVol !== null) {
+            $customPriceVol = \Faoxima\Orders\Pricing\ExchangePricing::fxAdjustBaseToman($customPriceVol, $panel, 'custom_volume');
+        }
+        if ($customPriceTime !== '' && $customPriceTime !== null) {
+            $customPriceTime = \Faoxima\Orders\Pricing\ExchangePricing::fxAdjustBaseToman($customPriceTime, $panel, 'custom_time');
+        }
+        $customStatus    = (string) $this->jsonAgentValue($panel['customvolume'] ?? '', $agent);
+        $minVol  = (int) $this->jsonAgentValue($panel['mainvolume'] ?? '', $agent);
+        $maxVol  = (int) $this->jsonAgentValue($panel['maxvolume']  ?? '', $agent);
+        $minTime = (int) $this->jsonAgentValue($panel['maintime']   ?? '', $agent);
+        $maxTime = (int) $this->jsonAgentValue($panel['maxtime']    ?? '', $agent);
+
+        $hasVolPrice  = ($customPriceVol !== '' && $customPriceVol !== null);
+        $hasTimePrice = ($customPriceTime !== '' && $customPriceTime !== null);
+        $timeVariable = ($maxTime > $minTime);
+        $customConfigured = (($panel['type'] ?? '') !== 'Manualsale')
+            && (\Faoxima\Orders\Pricing\CustomDuration::fx_duration_config($panel, $agent)['enabled']
+                ? count(\Faoxima\Orders\Pricing\CustomDuration::fx_duration_tariffs($panel, $agent)) > 0
+                : ($hasVolPrice && (!$timeVariable || $hasTimePrice)));
+        $customEnabled   = $customConfigured
+            && ($customStatus === '1' || $custom_only)
+            && !$nationalPanel;
+
+
+        \Faoxima\Api\Runtime\Response::ok([
+            'username'        => (string)$invoice['username'],
+            'panel'           => [
+                'code'  => (string)($panel['code_panel'] ?? ''),
+                'name'  => (string)($panel['name_panel'] ?? ''),
+                'type'  => (string)($panel['type'] ?? ''),
+            ],
+            'current_plan'    => $currentPlan,
+            'products'        => $list,
+            'show_price'      => $statusShowPrice !== 'offshowprice',
+            'discount'        => $userDiscount,
+            'fx_enabled'      => \Faoxima\Orders\Pricing\ExchangePricing::fxContext($panel, ['product', 'custom_volume', 'custom_time']) !== null,
+            'fx_quote'        => [
+                'product' => \Faoxima\Orders\Pricing\ExchangePricing::fxQuoteToken($panel, 'product'),
+                'custom'  => \Faoxima\Orders\Pricing\ExchangePricing::fxQuoteToken($panel, ['custom_volume', 'custom_time']),
+            ],
+            'balance'         => (float)($this->user['Balance'] ?? 0),
+            'custom'          => [
+                'enabled'        => $customEnabled,
+                'duration_pricing' => \Faoxima\Orders\Pricing\CustomDuration::fx_duration_config($panel, $agent)['enabled'],
+                'duration_tariffs' => \Faoxima\Orders\Pricing\CustomDuration::fx_duration_public_tariffs($panel, $agent),
+                'price_per_gb'   => (int)$customPriceVol,
+                'price_per_day'  => (int)$customPriceTime,
+                'min_volume_gb'  => $minVol,
+                'max_volume_gb'  => $maxVol,
+                'min_time_days'  => $minTime,
+                'max_time_days'  => $maxTime,
+                'force'          => ($custom_only && !$nationalPanel),
+                'fx_round_step'  => \Faoxima\Orders\Pricing\ExchangePricing::fxContext($panel, ['custom_volume', 'custom_time'])['round_step'] ?? null,
+            ],
+        ]);
+    }
+
+    private function jsonAgentValue($raw, string $agent, $default = '')
+    {
+        if (is_array($raw)) {
+            return $this->pickAgent($raw, $agent, $default);
+        }
+        if (!is_string($raw)) return $default;
+        $raw = trim($raw);
+        if ($raw === '') return $default;
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            return is_numeric($raw) ? $raw : $default;
+        }
+        return $this->pickAgent($decoded, $agent, $default);
+    }
+
+    private function pickAgent(array $map, string $agent, $default)
+    {
+        foreach ([$agent, 'allusers', 'f'] as $key) {
+            if (array_key_exists($key, $map)) {
+                $val = $map[$key];
+                if ($val !== '' && $val !== null) {
+                    return $val;
+                }
+            }
+        }
+        return $default;
+    }
+}

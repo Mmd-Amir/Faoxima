@@ -1,16 +1,19 @@
 <?php
+
+require_once __DIR__ . '/../src/bootstrap.php';
+
 ini_set('session.cookie_samesite', 'Lax');
 ini_set('session.cookie_httponly', '1');
 session_start();
 require_once __DIR__ . '/../config.php';
-if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
+if (!@include_once __DIR__ . '/lib/ad_boot.php') {
+    http_response_code(503);
+    header('Retry-After: 3600');
+    exit;
+}
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindParam("username", $_SESSION["user"], PDO::PARAM_STR);
-$query->execute();
-$result = $query->fetch(PDO::FETCH_ASSOC);
-
-if(!isset($_SESSION["user"]) || !$result){
+$sessionUser = $_SESSION['user'] ?? null;
+if (!is_string($sessionUser) || !\Faoxima\Admin\Security\WebAccess::findByUsername($pdo, $sessionUser)) {
     header('Location: login.php');
     return;
 }
@@ -21,43 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     exit;
 }
 
-function faoxima_text_php_live_overlay(): array {
-    $jsonFile = __DIR__ . '/../text.json';
-    $decoded = is_file($jsonFile) ? json_decode(file_get_contents($jsonFile), true) : null;
-    $base = is_array($decoded['fa'] ?? null) ? $decoded['fa'] : [];
-
-    global $pdo;
-    if ($pdo instanceof PDO) {
-        try {
-            $stmt = $pdo->query('SELECT id_text, text FROM textbot');
-            $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
-            if (is_array($rows)) {
-                foreach ($rows as $row) {
-                    $id = (string) ($row['id_text'] ?? '');
-                    if (strpos($id, 'jsontext.') !== 0) continue;
-                    $path = substr($id, strlen('jsontext.'));
-                    if ($path === '') continue;
-                    $segments = explode('.', $path);
-                    $cursor = &$base;
-                    foreach ($segments as $i => $seg) {
-                        if ($seg === '') continue 2;
-                        if ($i === count($segments) - 1) {
-                            $cursor[$seg] = (string) ($row['text'] ?? '');
-                        } else {
-                            if (!isset($cursor[$seg]) || !is_array($cursor[$seg])) $cursor[$seg] = [];
-                            $cursor = &$cursor[$seg];
-                        }
-                    }
-                    unset($cursor);
-                }
-            }
-        } catch (\Throwable $e) {
-        }
-    }
-    return $base;
-}
-
-$faoximaLiveText = faoxima_text_php_live_overlay();
+$faoximaLiveText = \Faoxima\Admin\Web\Pages\TextRequestHelpers::liveOverlay($pdo, __DIR__ . '/../text.json');
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark" data-color="blue">

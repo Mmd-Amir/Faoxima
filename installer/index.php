@@ -26,6 +26,15 @@ require_once __DIR__ . '/includes/icons.php';
 
 $rootDirectory = dirname(__DIR__) . '/';
 $configDirectory = $rootDirectory . 'config.php';
+// An installation that is already configured is never reinstalled from this endpoint: only the session that just completed the
+// installation may see the success page and run the cleanup. Anyone else gets a plain 404 and the installer removes itself.
+if (rx_config_is_already_installed($configDirectory) && ($_SESSION['rx_step'] ?? '') !== 'success') {
+    @rx_cleanup_installer(__DIR__, 'config_bootstrap');
+    http_response_code(404);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo 'Not Found';
+    exit;
+}
 $unhandledSecrets = [$_POST['tg_bot_token'] ?? '', $_POST['database_password'] ?? ''];
 $installGuard = ['active' => false, 'stage' => '', 'configBackup' => null, 'configWritten' => false];
 $rxRollbackGuardedConfig = static function () use ($rootDirectory, $configDirectory, $unhandledSecrets, &$installGuard): void {

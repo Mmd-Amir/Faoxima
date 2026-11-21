@@ -1,5 +1,9 @@
 <?php
 
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'manual_service.php';
+
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
     define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
 }
@@ -11,624 +15,88 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
-require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/lib/remaining.php';
-require_once __DIR__ . '/lib/item_parser.php';
 require_once __DIR__ . '/lib/bulk_delete.php';
 
-fx_admin_require_access($pdo);
-
-$tableMissing = true;
-try {
-    $r = $pdo->prepare("SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'manualsell' LIMIT 1");
-    $r->execute();
-    $tableMissing = !(bool)$r->fetchColumn();
-} catch (\Throwable $e) {
+if (\Faoxima\Admin\Web\Pages\ManualServiceRequest::handle(
+        flash: $flash,
+        invoiceTableMissing: $invoiceTableMissing,
+        maxStorageBytes: $maxStorageBytes,
+        maxStorageGb: $maxStorageGb,
+        name: $name,
+        p: $p,
+        panelNameOf: $panelNameOf,
+        panels: $panels,
+        pdo: $pdo ?? null,
+        productByCode: $productByCode,
+        productNameOf: $productNameOf,
+        products: $products,
+        r: $r,
+        tableMissing: $tableMissing,
+        totalStorageUsedBytes: $totalStorageUsedBytes
+    ) !== true) {
+    unset($adminWebPage);
+    return;
+}
+if (\Faoxima\Admin\Web\Pages\ManualInventoryConfigurationStore::handle(
+        adminWebPage: $adminWebPage ?? null
+    ) !== true) {
+    unset($adminWebPage);
+    return;
+}
+if (\Faoxima\Admin\Web\Pages\ManualInventoryActions::handle(
+        action: $action,
+        adminWebPage: $adminWebPage ?? null,
+        allowedStatuses: $allowedStatuses,
+        bad: $bad,
+        flash: $flash,
+        items: $items,
+        maxStorageBytes: $maxStorageBytes,
+        maxStorageGb: $maxStorageGb,
+        msBulkClear: $msBulkClear,
+        ok: $ok,
+        panelNameOf: $panelNameOf ?? null,
+        payload: $payload,
+        pdo: $pdo ?? null,
+        productByCode: $productByCode ?? null,
+        statusFilter: $statusFilter,
+        tableMissing: $tableMissing ?? null,
+        totalStorageUsedBytes: $totalStorageUsedBytes ?? null
+    ) !== true) {
+    unset($adminWebPage);
+    return;
+}
+if (\Faoxima\Admin\Web\Pages\ManualInventoryResults::handle(
+        adminWebPage: $adminWebPage ?? null,
+        allowedStatuses: $allowedStatuses ?? null,
+        c: $c,
+        configs: $configs,
+        counts: $counts,
+        daysActive: $daysActive,
+        daysFilter: $daysFilter,
+        daysMode: $daysMode,
+        invoiceTableMissing: $invoiceTableMissing ?? null,
+        msQ: $msQ,
+        page: $page,
+        pages: $pages,
+        panelFilter: $panelFilter,
+        panelNameOf: $panelNameOf ?? null,
+        params: $params,
+        pdo: $pdo ?? null,
+        r: $r,
+        remainingOf: $remainingOf,
+        row: $row,
+        scanTruncated: $scanTruncated,
+        st: $st,
+        statusFilter: $statusFilter,
+        tableMissing: $tableMissing ?? null,
+        total: $total
+    ) !== true) {
+    unset($adminWebPage);
+    return;
 }
 
-$invoiceTableMissing = true;
-try {
-    $r = $pdo->prepare("SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'invoice' LIMIT 1");
-    $r->execute();
-    $invoiceTableMissing = !(bool)$r->fetchColumn();
-} catch (\Throwable $e) {
-}
-
-$flash = ['ok' => '', 'err' => ''];
-
-try {
-    $pdo->exec("CREATE TABLE IF NOT EXISTS manual_sales_settings (
-        setting_key VARCHAR(100) PRIMARY KEY,
-        setting_value TEXT NOT NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-    $pdo->exec("ALTER TABLE manualsell MODIFY contentrecord LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL");
-    try {
-        @$pdo->exec("ALTER TABLE manualsell ADD COLUMN sub_link MEDIUMTEXT NULL");
-    } catch (\Throwable $e) {
-    }
-} catch (\Throwable $e) {
-}
-
-if (!function_exists('faoxima_get_ms_setting')) {
-    function faoxima_get_ms_setting(\PDO $pdo, string $key, string $default = ''): string
-    {
-        try {
-            $stmt = $pdo->prepare("SELECT setting_value FROM manual_sales_settings WHERE setting_key = :k LIMIT 1");
-            $stmt->execute([':k' => $key]);
-            $val = $stmt->fetchColumn();
-            return ($val !== false && $val !== null) ? (string)$val : $default;
-        } catch (\Throwable $e) {
-            return $default;
-        }
-    }
-}
-
-if (!function_exists('faoxima_set_ms_setting')) {
-    function faoxima_set_ms_setting(\PDO $pdo, string $key, string $value): bool
-    {
-        try {
-            $stmt = $pdo->prepare("INSERT INTO manual_sales_settings (setting_key, setting_value) VALUES (:k, :v)
-                ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
-            return $stmt->execute([':k' => $key, ':v' => $value]);
-        } catch (\Throwable $e) {
-            return false;
-        }
-    }
-}
-
-if (!function_exists('faoxima_get_total_storage_used_bytes')) {
-    function faoxima_get_total_storage_used_bytes(\PDO $pdo): int
-    {
-        try {
-            $stmt = $pdo->query("SELECT COALESCE(SUM(OCTET_LENGTH(contentrecord)), 0) FROM manualsell");
-            return (int)$stmt->fetchColumn();
-        } catch (\Throwable $e) {
-            return 0;
-        }
-    }
-}
-
-$maxStorageGb = (float)faoxima_get_ms_setting($pdo, 'max_storage_gb', '5');
-if ($maxStorageGb <= 0) $maxStorageGb = 5.0;
-
-$totalStorageUsedBytes = faoxima_get_total_storage_used_bytes($pdo);
-$maxStorageBytes = (int)round($maxStorageGb * 1073741824);
-
-try {
-    $packetBytes = max(67108864, min(1073741824, $maxStorageBytes));
-    @$pdo->exec("SET SESSION max_allowed_packet = {$packetBytes}");
-    @$pdo->exec("SET GLOBAL max_allowed_packet = {$packetBytes}");
-} catch (\Throwable $e) {
-}
-
-$panels = [];
-try {
-    $r = $pdo->prepare("SELECT code_panel, name_panel, type FROM marzban_panel WHERE type = 'Manualsale' ORDER BY name_panel ASC");
-    $r->execute();
-    $panels = $r->fetchAll(PDO::FETCH_ASSOC);
-} catch (\Throwable $e) {
-}
-
-$products = [];
-try {
-    $r = $pdo->query("SELECT * FROM product ORDER BY id ASC");
-    if ($r) $products = $r->fetchAll(PDO::FETCH_ASSOC);
-} catch (\Throwable $e) {
-}
-
-$panelNameOf = [];
-foreach ($panels as $p) $panelNameOf[(string)$p['code_panel']] = (string)$p['name_panel'];
-
-$productByCode = [];
-$productNameOf = [];
-foreach ($products as $p) {
-    $code = (string)($p['code_product'] ?? '');
-    $name = (string)($p['name_product'] ?? $p['Name_product'] ?? '');
-    if ($code !== '') {
-        $productByCode[$code] = $p;
-        $productNameOf[$code] = $name;
-    }
-}
-
-$allowedExt = ['conf', 'ovpn', 'pcf', 'npv'];
-
-function faoxima_read_uploaded_file(string $tmpPath): string
-{
-    if ($tmpPath === '' || !is_uploaded_file($tmpPath)) {
-        return '';
-    }
-
-    // Method 1: direct file_get_contents
-    $data = @file_get_contents($tmpPath);
-    if ($data !== false && strlen($data) > 0) {
-        return $data;
-    }
-
-    // Method 2: fopen binary stream fread
-    $fp = @fopen($tmpPath, 'rb');
-    if ($fp !== false) {
-        $size = @filesize($tmpPath);
-        if ($size > 0) {
-            $data = @fread($fp, $size);
-        } else {
-            $data = @stream_get_contents($fp);
-        }
-        @fclose($fp);
-        if (is_string($data) && strlen($data) > 0) {
-            return $data;
-        }
-    }
-
-    // Method 3: local copy & read (bypasses open_basedir / temp dir stream restrictions)
-    $localTmp = __DIR__ . '/../logs/tmp_upload_' . md5($tmpPath . microtime(true)) . '.tmp';
-    $dir = dirname($localTmp);
-    if (!is_dir($dir)) {
-        @mkdir($dir, 0777, true);
-    }
-    if (@copy($tmpPath, $localTmp) || @move_uploaded_file($tmpPath, $localTmp)) {
-        $data = @file_get_contents($localTmp);
-        @unlink($localTmp);
-        if (is_string($data)) {
-            return $data;
-        }
-    }
-
-    return is_string($data) ? $data : '';
-}
-
-function faoxima_ms_normalize_ext(string $ext): string
-{
-    return strtolower(ltrim(trim($ext), '.'));
-}
-
-
-function fx_ms_prepare_items(array $post, array $files, string $configSource, string $entryMode, string $payload, string $customExt, bool $sendAsFile, array &$flash): array
-{
-    $items      = [];
-    $pasteExt   = ($customExt !== '' && preg_match('/^[a-z0-9]{1,10}$/i', $customExt)) ? $customExt : '';
-    $nonLinkExt = ($pasteExt !== '') ? $pasteExt : ($sendAsFile ? 'conf' : 'text');
-
-    if ($configSource === 'file') {
-        if ($entryMode === 'single') {
-            $singleFile = $files['single_file'] ?? $files['config_file'] ?? null;
-            if ($singleFile) {
-                $errCode = (int)($singleFile['error'] ?? UPLOAD_ERR_NO_FILE);
-                if ($errCode === UPLOAD_ERR_OK) {
-                    $tmp   = (string)($singleFile['tmp_name'] ?? '');
-                    $fname = (string)($singleFile['name'] ?? '');
-                    $isUploaded = ($tmp !== '' && is_uploaded_file($tmp));
-                    if ($isUploaded) {
-                        $ext = faoxima_ms_normalize_ext((string)pathinfo($fname, PATHINFO_EXTENSION));
-                        if ($ext === '') $ext = 'bin';
-                        $raw = faoxima_read_uploaded_file($tmp);
-                        $hasSub = (($post['file_has_sub_link'] ?? $post['has_sub_link'] ?? '') === '1');
-                        $sub    = trim((string)($post['file_single_sub_link'] ?? $post['single_sub_link'] ?? ''));
-                        $content = $raw;
-                        if ($content !== '') {
-                            $items[] = ['content' => $content, 'ext' => $ext, 'sub' => ($hasSub && $sub !== '') ? $sub : ''];
-                        }
-                    }
-                }
-            }
-            if (empty($items) && $flash['err'] === '') {
-                $flash['err'] = 'لطفاً یک فایل کانفیگ انتخاب و آپلود کنید.';
-            }
-        } else {
-            $bulkFiles = $files['bulk_files'] ?? null;
-            $bulkSubs  = $post['bulk_file_subs'] ?? [];
-            $bulkHasSubs = $post['bulk_file_has_subs'] ?? [];
-
-            if ($bulkFiles && isset($bulkFiles['name']) && is_array($bulkFiles['name'])) {
-                foreach ($bulkFiles['name'] as $i => $fname) {
-                    $errCode = (int)($bulkFiles['error'][$i] ?? UPLOAD_ERR_NO_FILE);
-                    if ($errCode !== UPLOAD_ERR_OK) {
-                        continue;
-                    }
-                    $tmp = (string)($bulkFiles['tmp_name'][$i] ?? '');
-                    if ($tmp === '' || !is_uploaded_file($tmp)) {
-                        continue;
-                    }
-
-                    $ext = faoxima_ms_normalize_ext((string)pathinfo((string)$fname, PATHINFO_EXTENSION));
-                    if ($ext === '') $ext = 'bin';
-                    $raw = faoxima_read_uploaded_file($tmp);
-                    $hasSub = (isset($bulkHasSubs[$i]) && (string)$bulkHasSubs[$i] === '1');
-                    $sub    = trim((string)($bulkSubs[$i] ?? ''));
-                    $content = $raw;
-                    if ($content === '') {
-                        continue;
-                    }
-                    $items[] = ['content' => $content, 'ext' => $ext, 'sub' => ($hasSub && $sub !== '') ? $sub : ''];
-                }
-            }
-            if (empty($items) && $flash['err'] === '') {
-                $flash['err'] = 'لطفاً حداقل یک فایل کانفیگ معتبر انتخاب و آپلود کنید.';
-            }
-        }
-    } elseif (trim($payload) !== '') {
-        $items = faoxima_pair_manual_service_items($payload, $nonLinkExt, $pasteExt);
-        if (empty($items)) {
-            $flash['err'] = 'هیچ کانفیگ معتبری یافت نشد.';
-        } elseif ($entryMode === 'single' && count($items) > 1) {
-            $flash['err'] = 'در حالت «تکی» فقط یک کانفیگ (یا یک کانفیگ همراه با لینکِ اشتراکش) مجاز است.';
-        }
-    } else {
-        $flash['err'] = 'فایل کانفیگ یا متن آن را وارد کنید.';
-    }
-    return $items;
-}
-
-function fx_ms_store_items(PDO $pdo, array $items, string $entryMode, string $codePanel, string $codeProduct, string $nameRecord): array
-{
-    try {
-        @$pdo->exec("ALTER TABLE manualsell MODIFY contentrecord LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL");
-    } catch (\Throwable $e) {
-    }
-    try {
-        @$pdo->exec("ALTER TABLE manualsell ADD COLUMN sub_link MEDIUMTEXT NULL");
-    } catch (\Throwable $e) {
-    }
-    try {
-        @$pdo->exec("ALTER TABLE manualsell ADD COLUMN group_id VARCHAR(40) NULL");
-    } catch (\Throwable $e) {
-    }
-    try {
-        @$pdo->exec("ALTER TABLE manualsell ADD COLUMN group_size INT NULL");
-    } catch (\Throwable $e) {
-    }
-
-    $isMultiItem = ($entryMode === 'multi');
-    $multi = count($items) > 1 || $entryMode === 'bulk' || $isMultiItem;
-    $groupId = null;
-    $groupSize = null;
-    if ($isMultiItem) {
-        $groupId = function_exists('faoxima_generate_group_id') ? faoxima_generate_group_id() : ('mg_' . bin2hex(random_bytes(8)));
-        $groupSize = count($items);
-    }
-    $ok = 0;
-    $bad = 0;
-    $insertStmt = $pdo->prepare("INSERT INTO manualsell (codepanel,codeproduct,namerecord,contentrecord,status,file_ext,sub_link,group_id,group_size) VALUES (:codepanel,:codeproduct,:namerecord,:contentrecord,'active',:file_ext,:sub_link,:group_id,:group_size)");
-    foreach ($items as $idx => $item) {
-        $content  = (string)($item['content'] ?? '');
-        $thisName = $multi ? ($nameRecord . '-' . ($idx + 1)) : $nameRecord;
-        $itemSub  = (string)($item['sub'] ?? '');
-
-        try {
-            $insertStmt->execute([
-                ':codepanel'     => $codePanel,
-                ':codeproduct'   => $codeProduct,
-                ':namerecord'    => $thisName,
-                ':contentrecord' => $content,
-                ':file_ext'      => ($item['ext'] !== '' ? $item['ext'] : null),
-                ':sub_link'      => ($itemSub !== '' ? $itemSub : null),
-                ':group_id'      => $groupId,
-                ':group_size'    => $groupSize,
-            ]);
-            if ($insertStmt->rowCount() > 0) {
-                $ok++;
-            } else {
-                $bad++;
-            }
-        } catch (\Throwable $e) {
-            $bad++;
-        }
-    }
-    return [$ok, $bad, $isMultiItem];
-}
-
-function fx_ms_delete_action(PDO $pdo, $action, array $post, array $flash): array
-{
-    $msBulkClear = null;
-    if ($action === 'ms_delete_config_hard') {
-        $id = (int)($post['config_id'] ?? 0);
-        if ($id > 0) {
-            try {
-                $configDeleted = fx_admin_delete_configs($pdo, 'manualsell', 'id = ?', [$id]) > 0;
-                $flash['ok'] = $configDeleted ? 'کانفیگ برای همیشه از دیتابیس حذف شد.' : 'کانفیگ پیدا نشد.';
-                $msBulkClear = $configDeleted;
-            } catch (\Throwable $e) {
-                $flash['err'] = 'حذف انجام نشد. جزئیات در لاگ سرور ثبت شد.';
-            }
-        }
-    } elseif ($action === 'ms_delete_group_hard') {
-        $groupId = trim((string)($post['group_id'] ?? ''));
-        if ($groupId !== '') {
-            try {
-                $n = fx_admin_delete_configs($pdo, 'manualsell', 'group_id = ?', [$groupId]);
-                $flash['ok'] = $n > 0 ? ($n . ' کانفیگ این بستهٔ چندموردی برای همیشه حذف شد.') : 'بستهٔ چندموردی پیدا نشد.';
-                $msBulkClear = $n > 0;
-            } catch (\Throwable $e) {
-                $flash['err'] = 'حذف انجام نشد. جزئیات در لاگ سرور ثبت شد.';
-            }
-        }
-    } elseif ($action === 'ms_purge_deleted') {
-        try {
-            $del = $pdo->prepare("DELETE FROM manualsell WHERE status = 'delete'");
-            $del->execute();
-            $n = $del->rowCount();
-            $flash['ok'] = $n > 0
-                ? $n . ' رکورد حذف‌شده برای همیشه از دیتابیس پاک شد.'
-                : 'رکورد حذف‌شده‌ای برای پاکسازی وجود نداشت.';
-            $msBulkClear = $n > 0;
-        } catch (\Throwable $e) {
-            $flash['err'] = 'پاکسازی ناموفق: ' . $e->getMessage();
-        }
-    } elseif ($action === 'ms_bulk_delete') {
-        $ids = $post['ids'] ?? [];
-        $deleted = 0;
-        if (is_array($ids) && count($ids) > 0) {
-            $ids = fx_bulk_positive_ids($ids);
-            if (count($ids) > 0) {
-                $ids = array_slice($ids, 0, 500);
-                $placeholders = implode(',', array_fill(0, count($ids), '?'));
-                try {
-                    $deleted = fx_admin_delete_configs($pdo, 'manualsell', "id IN ($placeholders)", $ids);
-                } catch (\Throwable $e) {
-                    $flash['err'] = 'حذف انجام نشد. جزئیات در لاگ سرور ثبت شد.';
-                }
-            }
-        }
-        if ($flash['err'] === '') {
-            $flash['ok'] = $deleted > 0
-                ? $deleted . ' کانفیگ برای همیشه حذف شد.'
-                : 'موردی برای حذف انتخاب نشده بود.';
-        }
-        $msBulkClear = $deleted > 0;
-    }
-    return [$flash, $msBulkClear];
-}
-
-if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (empty($_POST) && empty($_FILES) && isset($_SERVER['CONTENT_LENGTH']) && (int)$_SERVER['CONTENT_LENGTH'] > 0) {
-        $flash['err'] = 'حجم فایل آپلود شده بیشتر از حد مجاز سرور (post_max_size / upload_max_filesize) است.';
-    }
-
-    $action = $_POST['_action'] ?? '';
-    if ($action !== '') {
-        fx_csrf_guard();
-    }
-
-    if ($action === 'update_storage_limit') {
-        $newGb = (float)($_POST['max_storage_gb'] ?? 5);
-        if ($newGb <= 0) $newGb = 1.0;
-        if ($newGb > 1000) $newGb = 1000.0;
-
-        if (faoxima_set_ms_setting($pdo, 'max_storage_gb', (string)$newGb)) {
-            $flash['ok'] = "حداکثر حجم ذخیره‌سازی با موفقیت به {$newGb} گیگابایت تغییر یافت و پیکربندی دیتابیس بروزرسانی شد.";
-            $maxStorageGb = $newGb;
-            $maxStorageBytes = (int)round($maxStorageGb * 1073741824);
-            try {
-                $packetBytes = max(67108864, min(1073741824, $maxStorageBytes));
-                @$pdo->exec("SET SESSION max_allowed_packet = {$packetBytes}");
-                @$pdo->exec("SET GLOBAL max_allowed_packet = {$packetBytes}");
-            } catch (\Throwable $e) {
-            }
-        } else {
-            $flash['err'] = 'خطا در ذخیره‌سازی تنظیمات حداکثر حجم دیتابیس.';
-        }
-    }
-
-    if ($action === 'ms_add_config') {
-        $codePanel    = trim((string)($_POST['codepanel']   ?? ''));
-        $codeProduct  = trim((string)($_POST['codeproduct'] ?? ''));
-        $nameRecord   = trim((string)($_POST['namerecord']  ?? ''));
-        $configSource = (string)($_POST['config_source']   ?? 'text');
-        $pasteText    = (string)($_POST['contentrecord']    ?? '');
-        $itemsJson    = (string)($_POST['items_json']        ?? '');
-        $customExt    = faoxima_ms_normalize_ext((string)($_POST['custom_ext'] ?? ''));
-        $sendAsFile   = (($_POST['send_as_file'] ?? '') === '1');
-        $entryMode    = (string)($_POST['entry_mode'] ?? 'single');
-        $entryMode    = in_array($entryMode, ['bulk', 'multi'], true) ? $entryMode : 'single';
-        $payload      = ($itemsJson !== '') ? $itemsJson : $pasteText;
-
-        $items = fx_ms_prepare_items($_POST, $_FILES, $configSource, $entryMode, $payload, $customExt, $sendAsFile, $flash);
-
-        if ($flash['err'] === '' && $codePanel === '') {
-            $flash['err'] = 'پنل فروش دستی را انتخاب کنید.';
-        }
-        if ($flash['err'] === '' && !isset($panelNameOf[$codePanel])) {
-            $flash['err'] = 'پنل انتخابی معتبر نیست.';
-        }
-        if ($flash['err'] === '' && $codeProduct === '') {
-            $flash['err'] = 'محصول را انتخاب کنید.';
-        }
-        if ($flash['err'] === '' && $codeProduct !== 'usertest' && !isset($productByCode[$codeProduct])) {
-            $flash['err'] = 'محصول انتخابی معتبر نیست.';
-        }
-        if ($flash['err'] === '' && $nameRecord === '') {
-            $flash['err'] = 'یک نام برای کانفیگ وارد کنید.';
-        }
-        if ($flash['err'] === '') {
-            $items = array_values(array_filter($items, static function ($it) {
-                return (string)($it['content'] ?? '') !== '';
-            }));
-            if (empty($items)) {
-                $flash['err'] = 'محتوای فایل کانفیگ خالی است. لطفاً یک فایل معتبر (غیر خالی) آپلود کنید.';
-            }
-        }
-        if ($flash['err'] === '') {
-            $incomingBytes = 0;
-            foreach ($items as $itm) {
-                $incomingBytes += strlen((string)($itm['content'] ?? ''));
-            }
-            if (($totalStorageUsedBytes + $incomingBytes) > $maxStorageBytes) {
-                $usedGbStr = round($totalStorageUsedBytes / 1073741824, 2);
-                $flash['err'] = "حجم فایل‌های انتخابی از سقف مجاز کل ذخیره‌سازی دیتابیس ({$maxStorageGb} گیگابایت) فراتر می‌رود. (میزان استفاده فعلی: {$usedGbStr} GB)";
-            }
-        }
-        if ($flash['err'] === '') {
-            [$ok, $bad, $isMultiItem] = fx_ms_store_items($pdo, $items, $entryMode, $codePanel, $codeProduct, $nameRecord);
-
-            if ($ok > 0) {
-                $flash['ok'] = ($isMultiItem
-                    ? ($ok . ' مورد به‌صورت یک بستهٔ چندموردی ثبت شد.')
-                    : ($ok . ' کانفیگ با موفقیت ثبت شد.'))
-                    . ($bad > 0 ? ' (' . $bad . ' مورد نامعتبر)' : '');
-            } else {
-                $flash['err'] = 'هیچ کانفیگ معتبری برای ثبت یافت نشد.';
-            }
-        }
-    } elseif (in_array($action, ['ms_delete_config_hard', 'ms_delete_group_hard', 'ms_purge_deleted', 'ms_bulk_delete'], true)) {
-        [$flash, $clearSelection] = fx_ms_delete_action($pdo, $action, $_POST, $flash);
-        if ($clearSelection !== null) {
-            $msBulkClear = $clearSelection;
-        }
-    }
-}
-
-$statusFilter = isset($_GET['cstatus']) ? (string)$_GET['cstatus'] : 'all';
-$allowedStatuses = ['active', 'selled', 'disabled', 'delete'];
-if ($statusFilter !== 'all' && !in_array($statusFilter, $allowedStatuses, true)) $statusFilter = 'all';
-
-$panelFilter = isset($_GET['panel']) ? (string)$_GET['panel'] : '';
-if ($panelFilter !== '' && !isset($panelNameOf[$panelFilter])) $panelFilter = '';
-
-$daysRaw = isset($_GET['days']) ? trim((string)$_GET['days']) : '';
-$daysFilter = ($daysRaw !== '' && ctype_digit($daysRaw)) ? (int)$daysRaw : null;
-$daysMode = faoxima_remaining_dmode($_GET['dmode'] ?? '');
-$daysActive = ($daysFilter !== null && !$invoiceTableMissing);
-
-$msQ = trim((string)($_GET['q'] ?? ''));
-
-$perPage = 500;
-$page = isset($_GET['p']) ? max(1, (int)$_GET['p']) : 1;
-
-function faoxima_ms_qs(array $over = []): string
-{
-    global $statusFilter, $panelFilter, $daysFilter, $daysMode, $msQ;
-    $qp = ['cstatus' => $statusFilter];
-    if ($panelFilter !== '') $qp['panel'] = $panelFilter;
-    if ($msQ !== '') $qp['q'] = $msQ;
-    if ($daysFilter !== null) {
-        $qp['days'] = $daysFilter;
-        $qp['dmode'] = $daysMode;
-    }
-    foreach ($over as $k => $v) {
-        if ($v === null || $v === '') unset($qp[$k]);
-        else $qp[$k] = $v;
-    }
-    return http_build_query($qp);
-}
-
-$whereSql = '1=1';
-$params = [];
-if ($statusFilter !== 'all') {
-    $whereSql .= " AND status = :st";
-    $params[':st'] = $statusFilter;
-}
-if ($panelFilter !== '') {
-    $whereSql .= " AND codepanel = :cp";
-    $params[':cp'] = $panelFilter;
-}
-if ($msQ !== '') {
-    $whereSql .= " AND (namerecord LIKE :q1 OR username LIKE :q2 OR codeproduct LIKE :q3)";
-    $msLike = '%' . $msQ . '%';
-    $params[':q1'] = $msLike;
-    $params[':q2'] = $msLike;
-    $params[':q3'] = $msLike;
-}
-
-$total = 0;
-$configs = [];
-$remainingOf = [];
-$scanTruncated = false;
-$counts = ['total' => 0, 'active' => 0, 'selled' => 0, 'disabled' => 0, 'delete' => 0];
-
-function faoxima_ms_resolve_remaining(PDO $pdo, array $rows, bool $invoiceMissing): array
-{
-    $out = [];
-    if ($invoiceMissing) {
-        foreach ($rows as $r) $out[(int)$r['id']] = null;
-        return $out;
-    }
-    $names = [];
-    foreach ($rows as $r) {
-        $u = trim((string)($r['username'] ?? ''));
-        if ($u !== '' && (string)($r['status'] ?? '') === 'selled') $names[] = $u;
-    }
-    $inv = $names ? faoxima_remaining_fetch_by_username($pdo, $names) : [];
-    foreach ($rows as $r) {
-        $id = (int)$r['id'];
-        $u  = trim((string)($r['username'] ?? ''));
-        if ($u === '' || (string)($r['status'] ?? '') !== 'selled' || !isset($inv[$u])) {
-            $out[$id] = null;
-            continue;
-        }
-        $invRow = $inv[$u];
-        $prodName = $invRow['name_product'] ?? '';
-        $uname    = $invRow['username'] ?? $u;
-        $out[$id] = faoxima_remaining_days($invRow['time_sell'], $invRow['Service_time'], $uname, $prodName);
-    }
-    return $out;
-}
-
-if (!$tableMissing) {
-    try {
-        $c = $pdo->query("SELECT status, COUNT(*) AS cnt FROM manualsell GROUP BY status");
-        if ($c) {
-            foreach ($c->fetchAll(PDO::FETCH_ASSOC) as $row) {
-                $st = (string)$row['status'];
-                if (isset($counts[$st])) $counts[$st] = (int)$row['cnt'];
-                $counts['total'] += (int)$row['cnt'];
-            }
-        }
-    } catch (\Throwable $e) {
-    }
-
-    if (!$daysActive) {
-        try {
-            $cnt = $pdo->prepare("SELECT COUNT(*) FROM manualsell WHERE {$whereSql}");
-            $cnt->execute($params);
-            $total = (int)$cnt->fetchColumn();
-        } catch (\Throwable $e) {
-        }
-        $pages = max(1, (int)ceil($total / $perPage));
-        if ($page > $pages) $page = $pages;
-        $offset = ($page - 1) * $perPage;
-        try {
-            $r = $pdo->prepare("SELECT * FROM manualsell WHERE {$whereSql} ORDER BY id DESC LIMIT {$perPage} OFFSET {$offset}");
-            $r->execute($params);
-            $configs = $r->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\Throwable $e) {
-        }
-        $remainingOf = faoxima_ms_resolve_remaining($pdo, $configs, $invoiceTableMissing);
-    } else {
-        $scan = [];
-        $cap = FAOXIMA_REMAINING_SCAN_CAP;
-        try {
-            $r = $pdo->prepare("SELECT * FROM manualsell WHERE {$whereSql} ORDER BY id DESC LIMIT " . ($cap + 1));
-            $r->execute($params);
-            $scan = $r->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\Throwable $e) {
-        }
-        [$total, $pages, $page, $configs, $remainingOf, $scanTruncated] = faoxima_remaining_filter_page(
-            $scan, $page, $perPage, $daysMode, $daysFilter,
-            static fn (array $rows) => faoxima_ms_resolve_remaining($pdo, $rows, $invoiceTableMissing)
-        );
-    }
-} else {
-    $pages = 1;
-}
-
-function faoxima_ms_status_label(string $s): array
-{
-    switch ($s) {
-        case 'active':
-            return [icon('circle-check', 'svg-icon svg-sm') . ' موجود', 'badge-active'];
-        case 'selled':
-            return [icon('cart-check', 'svg-icon svg-sm') . ' فروخته شده', 'badge-info'];
-            // panels.php stamps status='delete' when a manual-sale service is removed or
-            // renewed onto another config. The row is a spent leftover, not a live item.
-        case 'delete':
-            return [icon('trash', 'svg-icon svg-sm') . ' حذف‌شده', 'badge-block'];
-        case 'disabled':
-            return [icon('xmark', 'svg-icon svg-sm') . ' غیرفعال', 'badge-block'];
-        default:
-            return [htmlspecialchars($s, ENT_QUOTES), 'badge-gray'];
-    }
-}
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -837,7 +305,7 @@ function faoxima_ms_status_label(string $s): array
                 <div class="page-head">
                     <div>
                         <div class="page-head__title">
-                            <?php echo icon('cart-check', 'svg-icon svg-lg'); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('cart-check', 'svg-icon svg-lg'); ?>
                             فروش دستی
                         </div>
                         <div class="page-head__sub">مدیریت کانفیگ‌های فروش دستی — هر رکورد یک پنل و محصول دارد</div>
@@ -845,12 +313,12 @@ function faoxima_ms_status_label(string $s): array
                     <?php if (!$tableMissing): ?>
                         <div class="ms-head-actions">
                             <button type="button" class="btn btn-outline" onclick="openModal('modal-ms-storage-settings')">
-                                <?php echo icon('gear', 'svg-icon svg-sm'); ?>
+                                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('gear', 'svg-icon svg-sm'); ?>
                                 <span>سقف ذخیره‌سازی: <?php echo $maxStorageGb; ?> GB</span>
                             </button>
                             <?php if (!empty($panels)): ?>
                                 <button type="button" class="btn btn-primary" onclick="openModal('modal-ms-add')">
-                                    <?php echo icon('plus', 'svg-icon svg-sm'); ?>
+                                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon svg-sm'); ?>
                                     <span>افزودن کانفیگ</span>
                                 </button>
                             <?php endif; ?>
@@ -860,18 +328,18 @@ function faoxima_ms_status_label(string $s): array
 
                 <?php if ($tableMissing): ?>
                     <div class="alert alert-warning">
-                        <?php echo icon('circle-exclamation', 'svg-icon'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon'); ?>
                         <span>جدول <code>manualsell</code> هنوز ساخته نشده است. یکبار <code>table.php</code> را در مرورگر باز کنید تا جدول‌ها ساخته شوند.</span>
                     </div>
                 <?php endif; ?>
 
-                <?php if ($flash['ok']): ?><div class="alert alert-success"><?php echo icon('circle-check', 'svg-icon'); ?><span><?php echo htmlspecialchars($flash['ok'], ENT_QUOTES); ?></span></div><?php endif; ?>
-                <?php if ($flash['err']): ?><div class="alert alert-danger"><?php echo icon('circle-exclamation', 'svg-icon'); ?><span><?php echo htmlspecialchars($flash['err'], ENT_QUOTES); ?></span></div><?php endif; ?>
+                <?php if ($flash['ok']): ?><div class="alert alert-success"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-check', 'svg-icon'); ?><span><?php echo htmlspecialchars($flash['ok'], ENT_QUOTES); ?></span></div><?php endif; ?>
+                <?php if ($flash['err']): ?><div class="alert alert-danger"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon'); ?><span><?php echo htmlspecialchars($flash['err'], ENT_QUOTES); ?></span></div><?php endif; ?>
                 <?php if (!empty($msBulkClear)): ?><script>try { sessionStorage.removeItem('fx_bulk_sel:' + location.pathname + ':default'); } catch (e) {}</script><?php endif; ?>
 
                 <?php if (!$tableMissing && empty($panels)): ?>
                     <div class="alert alert-warning">
-                        <?php echo icon('circle-exclamation', 'svg-icon'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon'); ?>
                         <span>هیچ پنل «فروش دستی» ثبت نشده است. ابتدا از ربات مدیریت یک پنل از نوع فروش دستی بسازید.</span>
                     </div>
                 <?php endif; ?>
@@ -883,10 +351,10 @@ function faoxima_ms_status_label(string $s): array
                     ?>
                     <div class="stat-row">
                         <div class="stat-chip">کل: <strong><?php echo $counts['total']; ?></strong></div>
-                        <div class="stat-chip stat-chip--success"><?php echo icon('circle-check', 'svg-icon svg-sm'); ?> موجود: <strong><?php echo $counts['active']; ?></strong></div>
-                        <div class="stat-chip stat-chip--accent"><?php echo icon('cart-check', 'svg-icon svg-sm'); ?> فروخته شده: <strong><?php echo $counts['selled']; ?></strong></div>
+                        <div class="stat-chip stat-chip--success"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-check', 'svg-icon svg-sm'); ?> موجود: <strong><?php echo $counts['active']; ?></strong></div>
+                        <div class="stat-chip stat-chip--accent"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('cart-check', 'svg-icon svg-sm'); ?> فروخته شده: <strong><?php echo $counts['selled']; ?></strong></div>
                         <div class="stat-chip stat-chip--storage" style="cursor: pointer;" onclick="openModal('modal-ms-storage-settings')" title="تنظیم سقف ذخیره‌سازی فایل‌ها">
-                            <?php echo icon('hard-drive', 'svg-icon svg-sm'); ?> ذخیره‌سازی: <strong><?php echo $usedGbVal; ?> / <?php echo $maxStorageGb; ?> GB (<?php echo $percentUsedVal; ?>%)</strong>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('hard-drive', 'svg-icon svg-sm'); ?> ذخیره‌سازی: <strong><?php echo $usedGbVal; ?> / <?php echo $maxStorageGb; ?> GB (<?php echo $percentUsedVal; ?>%)</strong>
                         </div>
                     </div>
 
@@ -899,21 +367,21 @@ function faoxima_ms_status_label(string $s): array
                                 <input type="hidden" name="dmode" value="<?php echo htmlspecialchars($daysMode, ENT_QUOTES); ?>">
                             <?php endif; ?>
                             <input type="search" name="q" class="form-control" style="flex:1 1 240px; min-width:0;" placeholder="جستجو در نام کانفیگ، محصول یا کاربر…" value="<?php echo htmlspecialchars($msQ, ENT_QUOTES); ?>">
-                            <button type="submit" class="btn btn-sm btn-primary"><?php echo icon('search', 'svg-icon svg-sm'); ?> جستجو</button>
-                            <?php if ($msQ !== ''): ?><a href="manual_service.php?<?php echo htmlspecialchars(faoxima_ms_qs(['q' => null, 'p' => null]), ENT_QUOTES); ?>" class="btn btn-sm btn-outline">حذف فیلتر</a><?php endif; ?>
+                            <button type="submit" class="btn btn-sm btn-primary"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('search', 'svg-icon svg-sm'); ?> جستجو</button>
+                            <?php if ($msQ !== ''): ?><a href="manual_service.php?<?php echo htmlspecialchars(\Faoxima\Admin\Web\Pages\ManualServiceRequestHelpers::faoxima_ms_qs(['q' => null, 'p' => null]), ENT_QUOTES); ?>" class="btn btn-sm btn-outline">حذف فیلتر</a><?php endif; ?>
                         </form>
                         <div class="cfg-filterbar__row">
-                            <span class="cfg-filterbar__label"><?php echo icon('filter', 'svg-icon svg-sm'); ?> وضعیت:</span>
+                            <span class="cfg-filterbar__label"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('filter', 'svg-icon svg-sm'); ?> وضعیت:</span>
                             <div class="cfg-seg" role="group" aria-label="فیلتر وضعیت">
                                 <?php
                                 $statusFilters = [
                                     'all'      => 'همه',
-                                    'active'   => icon('circle-check', 'svg-icon svg-sm') . ' موجود',
-                                    'selled'   => icon('cart-check', 'svg-icon svg-sm') . ' فروخته شده',
+                                    'active'   => \Faoxima\Admin\Web\Support\Icons::icon('circle-check', 'svg-icon svg-sm') . ' موجود',
+                                    'selled'   => \Faoxima\Admin\Web\Support\Icons::icon('cart-check', 'svg-icon svg-sm') . ' فروخته شده',
                                 ];
                                 foreach ($statusFilters as $fk => $fl):
                                     $isActive = ($statusFilter === $fk);
-                                    $qp = faoxima_ms_qs(['cstatus' => $fk, 'p' => null]);
+                                    $qp = \Faoxima\Admin\Web\Pages\ManualServiceRequestHelpers::faoxima_ms_qs(['cstatus' => $fk, 'p' => null]);
                                 ?>
                                     <a href="manual_service.php?<?php echo htmlspecialchars($qp, ENT_QUOTES); ?>"
                                         class="btn btn-sm <?php echo $isActive ? 'btn-primary' : 'btn-outline'; ?>"
@@ -922,8 +390,8 @@ function faoxima_ms_status_label(string $s): array
                             </div>
                             <?php if (!empty($panels)): ?>
                                 <div class="cfg-actions">
-                                    <span class="cfg-filterbar__label"><?php echo icon('server', 'svg-icon svg-sm'); ?> پنل:</span>
-                                    <select class="form-control" style="min-width:190px;" aria-label="فیلتر بر اساس پنل" onchange="location.href='manual_service.php?<?php echo htmlspecialchars(faoxima_ms_qs(['panel' => null, 'p' => null]), ENT_QUOTES); ?>&panel='+encodeURIComponent(this.value);">
+                                    <span class="cfg-filterbar__label"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('server', 'svg-icon svg-sm'); ?> پنل:</span>
+                                    <select class="form-control" style="min-width:190px;" aria-label="فیلتر بر اساس پنل" onchange="location.href='manual_service.php?<?php echo htmlspecialchars(\Faoxima\Admin\Web\Pages\ManualServiceRequestHelpers::faoxima_ms_qs(['panel' => null, 'p' => null]), ENT_QUOTES); ?>&panel='+encodeURIComponent(this.value);">
                                         <option value="">همه پنل‌ها</option>
                                         <?php foreach ($panels as $p): ?>
                                             <option value="<?php echo htmlspecialchars($p['code_panel'], ENT_QUOTES); ?>" <?php echo $panelFilter === (string)$p['code_panel'] ? 'selected' : ''; ?>>
@@ -941,7 +409,7 @@ function faoxima_ms_status_label(string $s): array
                             <form method="GET" action="manual_service.php" class="cfg-daysfilter">
                                 <input type="hidden" name="cstatus" value="<?php echo htmlspecialchars($statusFilter, ENT_QUOTES); ?>">
                                 <?php if ($panelFilter !== ''): ?><input type="hidden" name="panel" value="<?php echo htmlspecialchars($panelFilter, ENT_QUOTES); ?>"><?php endif; ?>
-                                <span class="cfg-filterbar__label"><?php echo icon('hourglass', 'svg-icon svg-sm'); ?> روز مانده:</span>
+                                <span class="cfg-filterbar__label"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('hourglass', 'svg-icon svg-sm'); ?> روز مانده:</span>
                                 <select name="dmode" class="form-control" aria-label="نوع مقایسه روز مانده">
                                     <option value="lte" <?php echo $daysMode === 'lte' ? 'selected' : ''; ?>>کمتر از</option>
                                     <option value="eq" <?php echo $daysMode === 'eq'  ? 'selected' : ''; ?>>برابر</option>
@@ -950,11 +418,11 @@ function faoxima_ms_status_label(string $s): array
                                 <input type="number" name="days" min="0" step="1" class="form-control" placeholder="روز"
                                     value="<?php echo $daysFilter !== null ? (int)$daysFilter : ''; ?>" aria-label="تعداد روز مانده">
                                 <button type="submit" class="btn btn-sm <?php echo $daysFilter !== null ? 'btn-primary' : 'btn-outline'; ?>">
-                                    <?php echo icon('filter', 'svg-icon svg-sm'); ?> اعمال
+                                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('filter', 'svg-icon svg-sm'); ?> اعمال
                                 </button>
                                 <?php if ($daysFilter !== null): ?>
-                                    <a class="btn btn-sm btn-outline" href="manual_service.php?<?php echo htmlspecialchars(faoxima_ms_qs(['days' => null, 'dmode' => null, 'p' => null]), ENT_QUOTES); ?>" title="حذف فیلتر روز">
-                                        <?php echo icon('xmark', 'svg-icon svg-sm'); ?> پاک کردن
+                                    <a class="btn btn-sm btn-outline" href="manual_service.php?<?php echo htmlspecialchars(\Faoxima\Admin\Web\Pages\ManualServiceRequestHelpers::faoxima_ms_qs(['days' => null, 'dmode' => null, 'p' => null]), ENT_QUOTES); ?>" title="حذف فیلتر روز">
+                                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('xmark', 'svg-icon svg-sm'); ?> پاک کردن
                                     </a>
                                 <?php endif; ?>
                             </form>
@@ -963,20 +431,20 @@ function faoxima_ms_status_label(string $s): array
 
                     <?php if ($daysFilter !== null && $invoiceTableMissing): ?>
                         <div class="alert alert-warning">
-                            <?php echo icon('circle-exclamation', 'svg-icon'); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon'); ?>
                             <span>جدول <code>invoice</code> در دسترس نیست، بنابراین فیلتر «روز مانده» اعمال نشد و همه‌ی موارد نمایش داده می‌شوند.</span>
                         </div>
                     <?php endif; ?>
                     <?php if ($scanTruncated): ?>
                         <div class="alert alert-warning">
-                            <?php echo icon('circle-exclamation', 'svg-icon'); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon'); ?>
                             <span>برای فیلتر «روز مانده» فقط <?php echo (int)FAOXIMA_REMAINING_SCAN_CAP; ?> مورد آخر بررسی شد. موارد قدیمی‌تر در این نتیجه نیستند — برای بررسی کامل ابتدا با فیلتر وضعیت یا پنل محدوده را کوچک‌تر کنید.</span>
                         </div>
                     <?php endif; ?>
 
                     <?php if (empty($configs)): ?>
                         <div class="card empty-state">
-                            <?php echo icon('cart-check', 'svg-icon svg-2xl'); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('cart-check', 'svg-icon svg-2xl'); ?>
                             <div class="empty-state__text">کانفیگی برای نمایش وجود ندارد.</div>
                         </div>
                     <?php else: ?>
@@ -984,7 +452,7 @@ function faoxima_ms_status_label(string $s): array
                         ?>
                         <form method="POST" action="manual_service.php" id="ms-bulk-form" style="display:none;"
                             onsubmit="return faoximaMsBulkConfirm();">
-                            <?php echo fx_csrf_field(); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                             <input type="hidden" name="_action" value="ms_bulk_delete">
                         </form>
 
@@ -996,7 +464,7 @@ function faoxima_ms_status_label(string $s): array
                             <span class="bulk-bar__count" id="ms-bulk-count">موردی انتخاب نشده</span>
                             <div class="bulk-bar__actions">
                                 <button type="submit" form="ms-bulk-form" class="btn btn-sm btn-outline btn-outline-danger bulk-bar__btn js-bulk-delete-btn" id="ms-bulk-btn" style="display:none;">
-                                    <?php echo icon('trash', 'svg-icon svg-sm'); ?> حذف انتخاب‌شده‌ها
+                                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon svg-sm'); ?> حذف انتخاب‌شده‌ها
                                 </button>
                             </div>
                         </div>
@@ -1022,7 +490,7 @@ function faoxima_ms_status_label(string $s): array
                                 $isGroup = ($grp['type'] === 'group' && count($rows) > 1);
                                 $head = $rows[0];
                                 $st  = (string)$head['status'];
-                                [$stLabel, $stClass] = faoxima_ms_status_label($st);
+                                [$stLabel, $stClass] = \Faoxima\Admin\Web\Pages\ManualServiceRequestHelpers::faoxima_ms_status_label($st);
                                 $pName = $panelNameOf[(string)$head['codepanel']] ?? (string)$head['codepanel'];
                                 $prName = $productNameOf[(string)$head['codeproduct']] ?? (string)$head['codeproduct'];
                                 $rem = $remainingOf[(int)$head['id']] ?? null;
@@ -1044,27 +512,27 @@ function faoxima_ms_status_label(string $s): array
                                             <?php echo htmlspecialchars((string)$cfg['namerecord'], ENT_QUOTES); ?>
                                             <span class="badge <?php echo $stClass; ?>"><?php echo $stLabel; ?></span>
                                             <?php if ($st === 'selled'): ?>
-                                                <?php echo faoxima_remaining_badge($rem); ?>
+                                                <?php echo \Faoxima\Admin\Web\Support\Remaining::faoxima_remaining_badge($rem); ?>
                                             <?php endif; ?>
                                             <?php if ($fext !== ''): ?><span class="ms-ext">.<?php echo htmlspecialchars($fext, ENT_QUOTES); ?></span><?php endif; ?>
                                         </div>
                                         <div class="ms-row__actions">
                                             <form method="POST" action="manual_service.php" onsubmit="return confirm('این کانفیگ برای همیشه از دیتابیس حذف شود؟ این عمل بازگشت‌پذیر نیست.');">
-                                                <?php echo fx_csrf_field(); ?>
+                                                <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                                                 <input type="hidden" name="_action" value="ms_delete_config_hard">
                                                 <input type="hidden" name="config_id" value="<?php echo $cid; ?>">
                                                 <input type="hidden" name="allow_selled" value="1">
-                                                <button type="submit" class="btn btn-sm btn-outline btn-outline-danger"><?php echo icon('trash', 'svg-icon svg-sm'); ?> حذف</button>
+                                                <button type="submit" class="btn btn-sm btn-outline btn-outline-danger"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon svg-sm'); ?> حذف</button>
                                             </form>
                                         </div>
                                     </div>
                                     <div class="ms-row__meta">
-                                        <span><?php echo icon('server', 'svg-icon svg-sm'); ?> پنل: <b><?php echo htmlspecialchars($pName, ENT_QUOTES); ?></b></span>
-                                        <span><?php echo icon('package', 'svg-icon svg-sm'); ?> محصول: <b><?php echo htmlspecialchars($prName, ENT_QUOTES); ?></b></span>
+                                        <span><?php echo \Faoxima\Admin\Web\Support\Icons::icon('server', 'svg-icon svg-sm'); ?> پنل: <b><?php echo htmlspecialchars($pName, ENT_QUOTES); ?></b></span>
+                                        <span><?php echo \Faoxima\Admin\Web\Support\Icons::icon('package', 'svg-icon svg-sm'); ?> محصول: <b><?php echo htmlspecialchars($prName, ENT_QUOTES); ?></b></span>
                                         <?php if ($prodDays > 0 && ($st !== 'selled' || $rem === null)): ?>
-                                            <span><?php echo icon('hourglass', 'svg-icon svg-sm'); ?> مدت محصول: <b><?php echo $prodDays; ?> روز</b></span>
+                                            <span><?php echo \Faoxima\Admin\Web\Support\Icons::icon('hourglass', 'svg-icon svg-sm'); ?> مدت محصول: <b><?php echo $prodDays; ?> روز</b></span>
                                         <?php endif; ?>
-                                        <?php if (trim((string)($cfg['username'] ?? '')) !== ''): ?><span><?php echo icon('user', 'svg-icon svg-sm'); ?> <?php echo htmlspecialchars((string)$cfg['username'], ENT_QUOTES); ?></span><?php endif; ?>
+                                        <?php if (trim((string)($cfg['username'] ?? '')) !== ''): ?><span><?php echo \Faoxima\Admin\Web\Support\Icons::icon('user', 'svg-icon svg-sm'); ?> <?php echo htmlspecialchars((string)$cfg['username'], ENT_QUOTES); ?></span><?php endif; ?>
                                     </div>
                                 </div>
                             <?php else:
@@ -1088,29 +556,29 @@ function faoxima_ms_status_label(string $s): array
                                                     style="display:none;">
                                             <?php endforeach; ?>
                                             <?php echo htmlspecialchars($groupName, ENT_QUOTES); ?>
-                                            <span class="badge badge-active"><?php echo icon('package', 'svg-icon svg-sm'); ?> چندموردی (<?php echo count($rows); ?>)</span>
+                                            <span class="badge badge-active"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('package', 'svg-icon svg-sm'); ?> چندموردی (<?php echo count($rows); ?>)</span>
                                             <span class="badge <?php echo $stClass; ?>"><?php echo $stLabel; ?></span>
                                             <?php if ($st === 'selled'): ?>
-                                                <?php echo faoxima_remaining_badge($rem); ?>
+                                                <?php echo \Faoxima\Admin\Web\Support\Remaining::faoxima_remaining_badge($rem); ?>
                                             <?php endif; ?>
                                         </div>
                                         <div class="ms-row__actions">
                                             <form method="POST" action="manual_service.php" onsubmit="return confirm('کل این بستهٔ چندموردی (<?php echo count($rows); ?> مورد) برای همیشه از دیتابیس حذف شود؟ این عمل بازگشت‌پذیر نیست.');">
-                                                <?php echo fx_csrf_field(); ?>
+                                                <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                                                 <input type="hidden" name="_action" value="ms_delete_group_hard">
                                                 <input type="hidden" name="group_id" value="<?php echo htmlspecialchars($grp['group_id'], ENT_QUOTES); ?>">
                                                 <input type="hidden" name="allow_selled" value="1">
-                                                <button type="submit" class="btn btn-sm btn-outline btn-outline-danger"><?php echo icon('trash', 'svg-icon svg-sm'); ?> حذف بسته</button>
+                                                <button type="submit" class="btn btn-sm btn-outline btn-outline-danger"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon svg-sm'); ?> حذف بسته</button>
                                             </form>
                                         </div>
                                     </div>
                                     <div class="ms-row__meta">
-                                        <span><?php echo icon('server', 'svg-icon svg-sm'); ?> پنل: <b><?php echo htmlspecialchars($pName, ENT_QUOTES); ?></b></span>
-                                        <span><?php echo icon('package', 'svg-icon svg-sm'); ?> محصول: <b><?php echo htmlspecialchars($prName, ENT_QUOTES); ?></b></span>
+                                        <span><?php echo \Faoxima\Admin\Web\Support\Icons::icon('server', 'svg-icon svg-sm'); ?> پنل: <b><?php echo htmlspecialchars($pName, ENT_QUOTES); ?></b></span>
+                                        <span><?php echo \Faoxima\Admin\Web\Support\Icons::icon('package', 'svg-icon svg-sm'); ?> محصول: <b><?php echo htmlspecialchars($prName, ENT_QUOTES); ?></b></span>
                                         <?php if ($prodDays > 0 && ($st !== 'selled' || $rem === null)): ?>
-                                            <span><?php echo icon('hourglass', 'svg-icon svg-sm'); ?> مدت محصول: <b><?php echo $prodDays; ?> روز</b></span>
+                                            <span><?php echo \Faoxima\Admin\Web\Support\Icons::icon('hourglass', 'svg-icon svg-sm'); ?> مدت محصول: <b><?php echo $prodDays; ?> روز</b></span>
                                         <?php endif; ?>
-                                        <?php if (trim((string)($head['username'] ?? '')) !== ''): ?><span><?php echo icon('user', 'svg-icon svg-sm'); ?> <?php echo htmlspecialchars((string)$head['username'], ENT_QUOTES); ?></span><?php endif; ?>
+                                        <?php if (trim((string)($head['username'] ?? '')) !== ''): ?><span><?php echo \Faoxima\Admin\Web\Support\Icons::icon('user', 'svg-icon svg-sm'); ?> <?php echo htmlspecialchars((string)$head['username'], ENT_QUOTES); ?></span><?php endif; ?>
                                     </div>
                                     <div class="ms-group-items">
                                         <?php foreach ($rows as $r):
@@ -1128,13 +596,13 @@ function faoxima_ms_status_label(string $s): array
 
                         <?php if ($pages > 1 && count($configs) > 500): ?>
                             <div class="cfg-pagination">
-                                <?php $baseQp = htmlspecialchars(faoxima_ms_qs(['p' => null]), ENT_QUOTES); ?>
+                                <?php $baseQp = htmlspecialchars(\Faoxima\Admin\Web\Pages\ManualServiceRequestHelpers::faoxima_ms_qs(['p' => null]), ENT_QUOTES); ?>
                                 <?php if ($page > 1): ?>
-                                    <a class="btn btn-sm btn-outline" href="manual_service.php?<?php echo $baseQp; ?>&p=<?php echo $page - 1; ?>"><?php echo icon('chevron-right', 'svg-icon svg-sm'); ?></a>
+                                    <a class="btn btn-sm btn-outline" href="manual_service.php?<?php echo $baseQp; ?>&p=<?php echo $page - 1; ?>"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('chevron-right', 'svg-icon svg-sm'); ?></a>
                                 <?php endif; ?>
                                 <span class="cfg-pagination__info">صفحه <?php echo $page; ?> از <?php echo $pages; ?> — <?php echo (int)$total; ?> مورد</span>
                                 <?php if ($page < $pages): ?>
-                                    <a class="btn btn-sm btn-outline" href="manual_service.php?<?php echo $baseQp; ?>&p=<?php echo $page + 1; ?>"><?php echo icon('chevron-left', 'svg-icon svg-sm'); ?></a>
+                                    <a class="btn btn-sm btn-outline" href="manual_service.php?<?php echo $baseQp; ?>&p=<?php echo $page + 1; ?>"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('chevron-left', 'svg-icon svg-sm'); ?></a>
                                 <?php endif; ?>
                             </div>
                         <?php endif; ?>
@@ -1144,13 +612,13 @@ function faoxima_ms_status_label(string $s): array
                         <div class="modal-box" style="max-width: 540px;">
                             <div class="modal-head">
                                 <span class="modal-head__title">
-                                    <?php echo icon('gear', 'svg-icon svg-sm'); ?>
+                                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('gear', 'svg-icon svg-sm'); ?>
                                     حداکثر حجم ذخیره‌سازی فایل‌ها (گیگابایت)
                                 </span>
                                 <button type="button" class="modal-close" onclick="closeModal('modal-ms-storage-settings')">&times;</button>
                             </div>
                             <form method="POST" action="manual_service.php" autocomplete="off">
-                                <?php echo fx_csrf_field(); ?>
+                                <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                                 <input type="hidden" name="_action" value="update_storage_limit">
                                 <div class="modal-body" style="padding: 1.25rem;">
                                     <div class="ms-storage-summary">
@@ -1183,7 +651,7 @@ function faoxima_ms_status_label(string $s): array
                                 <div class="modal-foot">
                                     <button type="button" class="btn btn-outline" onclick="closeModal('modal-ms-storage-settings')">انصراف</button>
                                     <button type="submit" class="btn btn-primary">
-                                        <?php echo icon('circle-check', 'svg-icon svg-sm'); ?>
+                                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-check', 'svg-icon svg-sm'); ?>
                                         <span>ذخیره و اعمال تنظیمات</span>
                                     </button>
                                 </div>
@@ -1199,7 +667,7 @@ function faoxima_ms_status_label(string $s): array
                                     <button type="button" class="modal-close" onclick="closeModal('modal-ms-add')">&times;</button>
                                 </div>
                                 <form method="POST" action="manual_service.php" enctype="multipart/form-data" id="ms-add-form">
-                                    <?php echo fx_csrf_field(); ?>
+                                    <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                                     <input type="hidden" name="_action" value="ms_add_config">
                                     <input type="hidden" name="items_json" id="ms-bulk-items-json">
 
@@ -1234,14 +702,14 @@ function faoxima_ms_status_label(string $s): array
                                             <label class="mode-pill" data-source="file">
                                                 <input type="radio" name="config_source" value="file" required>
                                                 <div class="mode-pill__text">
-                                                    <div class="mode-pill__title"><?php echo icon('package', 'svg-icon svg-sm'); ?> به صورت فایل</div>
+                                                    <div class="mode-pill__title"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('package', 'svg-icon svg-sm'); ?> به صورت فایل</div>
                                                     <small class="mode-pill__hint">آپلود فایل‌های کانفیگ</small>
                                                 </div>
                                             </label>
                                             <label class="mode-pill" data-source="text">
                                                 <input type="radio" name="config_source" value="text" checked>
                                                 <div class="mode-pill__text">
-                                                    <div class="mode-pill__title"><?php echo icon('text', 'svg-icon svg-sm'); ?> به صورت تایپ / متن</div>
+                                                    <div class="mode-pill__title"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('text', 'svg-icon svg-sm'); ?> به صورت تایپ / متن</div>
                                                     <small class="mode-pill__hint">وارد کردن متنی کانفیگ یا لینک اشتراک</small>
                                                 </div>
                                             </label>
@@ -1256,21 +724,21 @@ function faoxima_ms_status_label(string $s): array
                                                 <label class="mode-pill" data-mode="single">
                                                     <input type="radio" name="entry_mode" value="single" checked>
                                                     <div class="mode-pill__text">
-                                                        <div class="mode-pill__title"><?php echo icon('plus', 'svg-icon svg-sm'); ?> تکی</div>
+                                                        <div class="mode-pill__title"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon svg-sm'); ?> تکی</div>
                                                         <small class="mode-pill__hint">یک فایل، یا یک کانفیگ/لینک</small>
                                                     </div>
                                                 </label>
                                                 <label class="mode-pill" data-mode="multi">
                                                     <input type="radio" name="entry_mode" value="multi">
                                                     <div class="mode-pill__text">
-                                                        <div class="mode-pill__title"><?php echo icon('package', 'svg-icon svg-sm'); ?> چندموردی</div>
+                                                        <div class="mode-pill__title"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('package', 'svg-icon svg-sm'); ?> چندموردی</div>
                                                         <small class="mode-pill__hint">چند فایل/کانفیگ به‌عنوان یک تحویل واحد</small>
                                                     </div>
                                                 </label>
                                                 <label class="mode-pill" data-mode="bulk">
                                                     <input type="radio" name="entry_mode" value="bulk">
                                                     <div class="mode-pill__text">
-                                                        <div class="mode-pill__title"><?php echo icon('package', 'svg-icon svg-sm'); ?> دسته‌ای</div>
+                                                        <div class="mode-pill__title"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('package', 'svg-icon svg-sm'); ?> دسته‌ای</div>
                                                         <small class="mode-pill__hint">چند فایل یا چند کانفیگ/لینک با هم</small>
                                                     </div>
                                                 </label>
@@ -1282,7 +750,7 @@ function faoxima_ms_status_label(string $s): array
                                                     <label class="form-label">فایل کانفیگ</label>
                                                     <label class="ms-dropzone" id="ms-dropzone-single">
                                                         <input type="file" name="single_file" id="ms-single-file">
-                                                        <span class="ms-dropzone__icon"><?php echo icon('arrow-up', 'svg-icon svg-lg'); ?></span>
+                                                        <span class="ms-dropzone__icon"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('arrow-up', 'svg-icon svg-lg'); ?></span>
                                                         <span class="ms-dropzone__text" id="ms-single-file-name">فایل را اینجا رها کنید یا برای انتخاب کلیک کنید</span>
                                                         <button type="button" class="ms-dropzone__clear" id="ms-single-file-clear" title="حذف فایل" style="display:none;">&times;</button>
                                                     </label>
@@ -1291,7 +759,7 @@ function faoxima_ms_status_label(string $s): array
                                                     <label class="mode-pill mode-pill--wide">
                                                         <input type="checkbox" name="file_has_sub_link" id="ms-single-file-sub-toggle" value="1">
                                                         <div class="mode-pill__text">
-                                                            <div class="mode-pill__title"><?php echo icon('link', 'svg-icon svg-sm'); ?> لینک اشتراک</div>
+                                                            <div class="mode-pill__title"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('link', 'svg-icon svg-sm'); ?> لینک اشتراک</div>
                                                             <small class="mode-pill__hint">اگر این کانفیگ لینک اشتراک مجزا دارد، فعال کنید.</small>
                                                         </div>
                                                     </label>
@@ -1322,7 +790,7 @@ function faoxima_ms_status_label(string $s): array
                                                 <label class="mode-pill mode-pill--wide">
                                                     <input type="checkbox" name="send_as_file" id="ms-send-as-file-toggle" value="1">
                                                     <div class="mode-pill__text">
-                                                        <div class="mode-pill__title"><?php echo icon('fileText', 'svg-icon svg-sm'); ?> ارسال محتوای متنی به صورت فایل</div>
+                                                        <div class="mode-pill__title"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('fileText', 'svg-icon svg-sm'); ?> ارسال محتوای متنی به صورت فایل</div>
                                                         <small class="mode-pill__hint">اگر فعال باشد، کانفیگِ متنی به کاربر به شکل فایل تحویل داده می‌شود.</small>
                                                     </div>
                                                 </label>
@@ -1343,7 +811,7 @@ function faoxima_ms_status_label(string $s): array
                                                     <label class="mode-pill mode-pill--wide">
                                                         <input type="checkbox" name="has_sub_link" id="ms-single-sub-toggle" value="1">
                                                         <div class="mode-pill__text">
-                                                            <div class="mode-pill__title"><?php echo icon('link', 'svg-icon svg-sm'); ?> لینک اشتراک</div>
+                                                            <div class="mode-pill__title"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('link', 'svg-icon svg-sm'); ?> لینک اشتراک</div>
                                                             <small class="mode-pill__hint">اگر این کانفیگ لینک اشتراک مجزا دارد، فعال کنید.</small>
                                                         </div>
                                                     </label>
@@ -1368,7 +836,7 @@ function faoxima_ms_status_label(string $s): array
                                                         <label class="mode-pill mode-pill--wide">
                                                             <input type="checkbox" id="ms-bulk-sub-toggle" value="1">
                                                             <div class="mode-pill__text">
-                                                                <div class="mode-pill__title"><?php echo icon('link', 'svg-icon svg-sm'); ?> لینک اشتراک</div>
+                                                                <div class="mode-pill__title"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('link', 'svg-icon svg-sm'); ?> لینک اشتراک</div>
                                                                 <small class="mode-pill__hint">برای این کانفیگ لینک اشتراک ثبت شود.</small>
                                                             </div>
                                                         </label>
@@ -1389,7 +857,7 @@ function faoxima_ms_status_label(string $s): array
 
                                     <div class="modal-foot">
                                         <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('modal-ms-add')">انصراف</button>
-                                        <button type="submit" class="btn btn-primary btn-sm"><?php echo icon('plus', 'svg-icon svg-sm'); ?> ثبت</button>
+                                        <button type="submit" class="btn btn-primary btn-sm"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon svg-sm'); ?> ثبت</button>
                                     </div>
                                 </form>
                             </div>
@@ -1556,7 +1024,7 @@ function faoxima_ms_status_label(string $s): array
                     '<label class="form-label">فایل کانفیگ</label>' +
                     '<label class="ms-dropzone">' +
                     '<input type="file" name="bulk_files[' + idx + ']" class="file-step-input">' +
-                    '<span class="ms-dropzone__icon"><?php echo icon("arrow-up", "svg-icon svg-lg"); ?></span>' +
+                    '<span class="ms-dropzone__icon"><?php echo \Faoxima\Admin\Web\Support\Icons::icon("arrow-up", "svg-icon svg-lg"); ?></span>' +
                     '<span class="ms-dropzone__text file-step-label">فایل را اینجا رها کنید یا برای انتخاب کلیک کنید</span>' +
                     '<button type="button" class="ms-dropzone__clear file-step-clear" style="display:none;">&times;</button>' +
                     '</label>' +
@@ -1565,7 +1033,7 @@ function faoxima_ms_status_label(string $s): array
                     '<label class="mode-pill mode-pill--wide">' +
                     '<input type="checkbox" name="bulk_file_has_subs[' + idx + ']" value="1" class="file-step-sub-toggle">' +
                     '<div class="mode-pill__text">' +
-                    '<div class="mode-pill__title"><?php echo icon("link", "svg-icon svg-sm"); ?> لینک اشتراک</div>' +
+                    '<div class="mode-pill__title"><?php echo \Faoxima\Admin\Web\Support\Icons::icon("link", "svg-icon svg-sm"); ?> لینک اشتراک</div>' +
                     '<small class="mode-pill__hint">برای این فایل لینک اشتراک ثبت شود.</small>' +
                     '</div>' +
                     '</label>' +

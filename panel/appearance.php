@@ -1,5 +1,9 @@
 <?php
 
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'appearance.php';
+
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 if (session_status() === PHP_SESSION_NONE) {
     ini_set('session.cookie_samesite', 'Lax');
     ini_set('session.cookie_httponly', '1');
@@ -8,12 +12,15 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
-require_once __DIR__ . '/lib/icons.php';
 
-if (empty($_SESSION['user']) || !is_string($_SESSION['user']) || $_SESSION['user'] === '') {
-    header('Location: login.php');
-    exit;
+if (\Faoxima\Admin\Web\Pages\AppearanceRequest::handle(
+
+    ) !== true) {
+    unset($adminWebPage);
+    return;
 }
+
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -111,15 +118,15 @@ if (empty($_SESSION['user']) || !is_string($_SESSION['user']) || $_SESSION['user
                     <div class="page-head__sub">رنگ اصلی پنل را انتخاب کنید</div>
                 </div>
                 <div class="chip-row">
-                    <a href="index.php" class="chip"><?php echo icon('home', 'svg-icon svg-sm'); ?><span>داشبورد</span></a>
+                    <a href="index.php" class="chip"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('home', 'svg-icon svg-sm'); ?><span>داشبورد</span></a>
                 </div>
             </div>
 
             <div class="card ap-card">
-                <div class="ap-heading"><div class="ap-section-title"><?php echo icon('palette', 'svg-icon'); ?> رنگ پنل</div><span class="ap-live">اعمال و ذخیرهٔ خودکار</span></div>
+                <div class="ap-heading"><div class="ap-section-title"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('palette', 'svg-icon'); ?> رنگ پنل</div><span class="ap-live">اعمال و ذخیرهٔ خودکار</span></div>
                 <div class="ap-lead">یک رنگ از پیش‌فرض‌ها انتخاب کنید یا کد رنگ دلخواه‌تان را وارد کنید. رنگ بلافاصله اعمال می‌شود.</div>
 
-                <div class="ap-demo" aria-hidden="true"><span class="ap-demo__label">پیش‌نمایش رنگ انتخابی</span><div class="ap-demo__items"><span class="ap-demo__primary"><?php echo icon('check', 'svg-icon'); ?> دکمهٔ اصلی</span><span class="ap-demo__soft"><?php echo icon('home', 'svg-icon'); ?> بخش انتخاب‌شده</span></div></div>
+                <div class="ap-demo" aria-hidden="true"><span class="ap-demo__label">پیش‌نمایش رنگ انتخابی</span><div class="ap-demo__items"><span class="ap-demo__primary"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('check', 'svg-icon'); ?> دکمهٔ اصلی</span><span class="ap-demo__soft"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('home', 'svg-icon'); ?> بخش انتخاب‌شده</span></div></div>
 
                 <div class="ap-grid" id="ap-grid">
                     <button type="button" class="ap-swatch" data-color="blue"><span>آبی</span><span class="ap-dot" style="background:#3b82f6"></span></button>

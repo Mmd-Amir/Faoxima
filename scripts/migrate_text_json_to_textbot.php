@@ -6,7 +6,7 @@ if (php_sapi_name() !== 'cli') {
 }
 
 require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../re/rx/function/database_helpers_1.php';
+require_once __DIR__ . '/../src/bootstrap.php';
 
 $jsonFile = __DIR__ . '/../text.json';
 if (!is_file($jsonFile)) {
@@ -59,11 +59,11 @@ foreach ($flat as $key => $text) {
     }
 }
 
-if (function_exists('faoxima_bust_bot_selectcache')) {
-    faoxima_bust_bot_selectcache('textbot');
+if (method_exists(\Faoxima\Core\Database\SelectCache::class, 'faoxima_bust_bot_selectcache')) {
+    \Faoxima\Core\Database\SelectCache::faoxima_bust_bot_selectcache('textbot');
 }
-if (function_exists('clearSelectCache')) {
-    clearSelectCache('textbot');
+if (method_exists(\Faoxima\Core\Database\SelectCache::class, 'clearSelectCache')) {
+    \Faoxima\Core\Database\SelectCache::clearSelectCache('textbot');
 }
 
 echo "Inserted: $inserted, Healed: $healed, Skipped(already customized or oversized): $skipped\n";

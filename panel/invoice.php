@@ -1,12 +1,15 @@
 <?php
+
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'invoice.php';
+
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 ini_set('session.cookie_samesite', 'Lax');
 ini_set('session.cookie_httponly', '1');
 session_start();
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
 require_once __DIR__ . '/../jdf.php';
-require_once __DIR__ . '/lib/icons.php';
-require_once __DIR__ . '/lib/pagination.php';
 require_once __DIR__ . '/lib/bulk_delete.php';
 require_once __DIR__ . '/lib/date_filter.php';
 require_once __DIR__ . '/lib/status_filter.php';
@@ -14,130 +17,31 @@ require_once __DIR__ . '/lib/search_filter.php';
 require_once __DIR__ . '/lib/extra_filter.php';
 require_once __DIR__ . '/lib/csrf.php';
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindParam("username", $_SESSION["user"], PDO::PARAM_STR);
-$query->execute();
-$result = $query->fetch(PDO::FETCH_ASSOC);
-
-if (!isset($_SESSION["user"]) || !$result) {
-    header('Location: login.php');
+if (\Faoxima\Admin\Web\Pages\InvoiceRequest::handle(
+        df: $df,
+        invDateKeep: $invDateKeep,
+        invDeleteBlocked: $invDeleteBlocked,
+        invDeleteNote: $invDeleteNote,
+        invExtraKeep: $invExtraKeep,
+        invFilterActive: $invFilterActive,
+        invFilterCriteria: $invFilterCriteria,
+        invFilterParams: $invFilterParams,
+        invQ: $invQ,
+        invStatus: $invStatus,
+        invStatusActive: $invStatusActive,
+        invStatusOptions: $invStatusOptions,
+        listinvoice: $listinvoice,
+        pdo: $pdo ?? null,
+        pg: $pg,
+        query: $query,
+        result: $result,
+        v: $v
+    ) !== true) {
+    unset($adminWebPage);
     return;
 }
 
-fx_csrf_guard();
-
-$invQ = trim((string)($_GET['q'] ?? ''));
-$df = fx_date_filter_resolve();
-$invStatusOptions = [
-    'unpaid'        => 'در انتظار پرداخت',
-    'active'        => 'فعال',
-    'disabledn'     => 'ناموجود در پنل',
-    'disabled'      => 'غیرفعال شده',
-    'end_of_time'   => 'اتمام زمان',
-    'end_of_volume' => 'اتمام حجم',
-    'sendedwarn'    => 'هشدار پایانی',
-    'send_on_hold'  => 'خطای اتصال',
-    'removebyuser'  => 'حذف توسط کاربر',
-    'removebyadmin' => 'حذف توسط ادمین',
-];
-$invStatus = fx_status_filter_current();
-$invAf = fx_amount_filter_resolve();
-$invProduct = fx_extra_text_param('product');
-$invLocation = fx_extra_text_param('location', 300);
-$invPmatchRaw = $_GET['pmatch'] ?? '';
-$invPmatch = $invPmatchRaw === 'exact' ? 'exact' : '';
-$invExtraKeep = array_merge(fx_amount_filter_keep($invAf), [
-    'product' => $invProduct !== '' ? $invProduct : null,
-    'pmatch' => $invPmatch !== '' ? $invPmatch : null,
-    'location' => $invLocation !== '' ? $invLocation : null,
-]);
-$invTestScope = $invPmatch === 'exact' && $invProduct === 'سرویس تست';
-
-$invDeleteBlocked = !is_string($invPmatchRaw) || ($invPmatchRaw !== '' && $invPmatch === '');
-foreach (['min_price', 'max_price'] as $invAk) {
-    $invAv = $_GET[$invAk] ?? '';
-    if (!is_string($invAv) || (trim($invAv) !== '' && fx_amount_param($invAk) === null)) $invDeleteBlocked = true;
-}
-foreach (['product' => 200, 'location' => 300] as $invTk => $invTmax) {
-    $invTv = $_GET[$invTk] ?? '';
-    if (!is_string($invTv) || mb_strlen(trim($invTv), 'UTF-8') > $invTmax) $invDeleteBlocked = true;
-}
-foreach (['dpreset', 'ddays', 'dfrom', 'dto'] as $invDk) {
-    $invDv = $_GET[$invDk] ?? '';
-    if ((!is_string($invDv) || trim($invDv) !== '') && !$df['active']) $invDeleteBlocked = true;
-}
-
-$whereSql = '1=1';
-$whereParams = [];
-if ($invQ !== '') {
-    $invLike = '%' . $invQ . '%';
-    $whereSql .= ' AND (id_invoice LIKE :l1 OR id_user LIKE :l2 OR username LIKE :l3 OR name_product LIKE :l4)';
-    $whereParams[':l1'] = $invLike;
-    $whereParams[':l2'] = $invLike;
-    $whereParams[':l3'] = $invLike;
-    $whereParams[':l4'] = $invLike;
-}
-if ($df['active']) {
-    $whereSql .= ' AND time_sell BETWEEN :dfrom AND :dto';
-    $whereParams[':dfrom'] = $df['from'];
-    $whereParams[':dto'] = $df['to'];
-}
-$whereSql .= fx_status_filter_sql('Status', $invStatus, $invStatusOptions, $whereParams, ':statusVal');
-$whereSql .= fx_amount_filter_sql('price_product', $invAf, $whereParams, 'am');
-if ($invProduct !== '' && $invPmatch === 'exact') {
-    $whereSql .= ' AND name_product = :xprod';
-    $whereParams[':xprod'] = $invProduct;
-} elseif ($invProduct !== '') {
-    $whereSql .= ' AND name_product LIKE :xprod';
-    $whereParams[':xprod'] = '%' . $invProduct . '%';
-}
-if ($invLocation !== '') {
-    $whereSql .= ' AND Service_location LIKE :xloc';
-    $whereParams[':xloc'] = '%' . $invLocation . '%';
-}
-
-$invStatusActive = $invStatus !== '' && isset($invStatusOptions[$invStatus]);
-if ($invStatus !== '' && !$invStatusActive) $invDeleteBlocked = true;
-$invFilterActive = $invQ !== '' || $df['active'] || $invStatusActive || $invAf['active'] || $invProduct !== '' || $invLocation !== '';
-$invDateKeep = fx_filter_delete_date_params('', $df['active']);
-$invFilterParams = array_merge(['q' => $invQ !== '' ? $invQ : null, 'status' => $invStatusActive ? $invStatus : null], $invDateKeep, $invExtraKeep);
-$invExtraCriteria = array_filter([
-    'مبلغ' => $invAf['label'],
-    'محصول' => $invProduct !== '' ? ($invPmatch === 'exact' ? $invProduct . ' (تطابق دقیق)' : $invProduct) : '',
-    'لوکیشن' => $invLocation,
-], function ($v) { return $v !== ''; });
-$invFilterCriteria = array_merge(fx_filter_delete_criteria($invStatusActive ? $invStatusOptions[$invStatus] : '', $df, $invQ), $invExtraCriteria);
-$invDeleteNote = ($invTestScope ? 'حذف فقط به رکوردهای فاکتور «سرویس تست» مطابق فیلتر محدود است. ' : '')
-    . 'این عملیات فقط رکوردهای سفارش (تاریخچه فاکتور) را از پایگاه داده ربات حذف می‌کند و هیچ اکانت یا کانفیگی از پنل خارجی حذف نمی‌شود.';
-if (fx_filter_delete_requested()) {
-    $fdRes = ($invFilterActive && !$invDeleteBlocked) ? fx_filter_delete_where($pdo, 'invoice', $whereSql, $whereParams) : [0, 0];
-    fx_filter_delete_redirect('invoice.php', $invFilterParams, (int)$fdRes[0], (int)$fdRes[1], '', !empty($fdRes[2]));
-}
-
-if (!empty($_POST['action']) && $_POST['action'] === 'bulk_delete') {
-    $requestedIds = $_POST['ids'] ?? [];
-    $requestedIds = is_array($requestedIds) ? $requestedIds : [];
-    $invBulkKeep = $invFilterParams;
-    if (isset($_GET['p']) && is_string($_GET['p']) && ctype_digit($_GET['p'])) $invBulkKeep['p'] = $_GET['p'];
-    $invBulkFailed = false;
-    $deletedCount = 0;
-    try {
-        $deletedCount = fx_bulk_delete_ids($pdo, 'invoice', 'id_invoice', $requestedIds, false);
-    } catch (\Throwable $e) {
-        fx_delete_log_error('bulk_delete', 'invoice', $e);
-        $invBulkFailed = true;
-    }
-    fx_bulk_delete_redirect('invoice.php', count($requestedIds), $deletedCount, '', $invBulkKeep, $invBulkFailed);
-}
-
-$pg = fx_paginate($pdo, "SELECT COUNT(*) FROM invoice WHERE $whereSql", $whereParams, 5);
-
-$query = $pdo->prepare("SELECT * FROM invoice WHERE $whereSql ORDER BY id_invoice DESC LIMIT :perPage OFFSET :offset");
-foreach ($whereParams as $k => $v) $query->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
-$query->bindValue(':perPage', $pg['perPage'], PDO::PARAM_INT);
-$query->bindValue(':offset', $pg['offset'], PDO::PARAM_INT);
-$query->execute();
-$listinvoice = $query->fetchAll();
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -168,12 +72,12 @@ $listinvoice = $query->fetchAll();
                 </div>
             </div>
 
-            <?php echo fx_bulk_delete_flash_html(); ?>
+            <?php echo \Faoxima\Admin\Web\Support\BulkDelete::fx_bulk_delete_flash_html(); ?>
 
-            <?php echo fx_filter_delete_flash_html(); ?>
+            <?php echo \Faoxima\Admin\Web\Support\BulkDelete::fx_filter_delete_flash_html(); ?>
 
             <div class="invoice-overview">
-                <div class="invoice-overview__main"><span class="invoice-overview__icon" aria-hidden="true"><?php echo icon('cart-check-round', 'svg-icon'); ?></span><div><span><?php echo $invFilterActive ? 'سفارش‌های مطابق فیلتر' : 'کل سفارش‌های ثبت‌شده'; ?></span><strong><?php echo strtr(number_format((int)$pg['total']), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?><small>سفارش</small></strong></div></div>
+                <div class="invoice-overview__main"><span class="invoice-overview__icon" aria-hidden="true"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('cart-check-round', 'svg-icon'); ?></span><div><span><?php echo $invFilterActive ? 'سفارش‌های مطابق فیلتر' : 'کل سفارش‌های ثبت‌شده'; ?></span><strong><?php echo strtr(number_format((int)$pg['total']), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?><small>سفارش</small></strong></div></div>
                 <div class="invoice-overview__detail"><span>وضعیت انتخاب‌شده</span><b><?php echo htmlspecialchars($invStatusActive ? $invStatusOptions[$invStatus] : 'همهٔ وضعیت‌ها', ENT_QUOTES, 'UTF-8'); ?></b></div>
                 <div class="invoice-overview__detail"><span>بازهٔ نمایش</span><b><?php echo htmlspecialchars($df['active'] ? $df['label'] : 'تمام تاریخ‌ها', ENT_QUOTES, 'UTF-8'); ?></b></div>
                 <?php if ($invFilterActive): ?><a href="invoice.php" class="btn btn-outline btn-sm invoice-reset">پاک‌کردن فیلترها</a><?php endif; ?>
@@ -181,29 +85,29 @@ $listinvoice = $query->fetchAll();
 
             <details class="wrapper fx-page-list fx-filter-drawer fx-page-invoices">
                 <summary class="fx-filter-drawer__summary">
-                    <span class="fx-filter-drawer__icon" aria-hidden="true"><?php echo icon('filter', 'svg-icon'); ?></span>
+                    <span class="fx-filter-drawer__icon" aria-hidden="true"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('filter', 'svg-icon'); ?></span>
                     <span class="fx-filter-drawer__text"><strong>جستجو و فیلترها</strong><small>جستجو، وضعیت و بازهٔ زمانی</small></span>
                     <span class="fx-filter-drawer__action"><span class="fx-filter-drawer__show">نمایش فیلترها</span><span class="fx-filter-drawer__hide">بستن فیلترها</span></span>
-                    <span class="fx-filter-drawer__chevron" aria-hidden="true"><?php echo icon('chevron-down', 'svg-icon'); ?></span>
+                    <span class="fx-filter-drawer__chevron" aria-hidden="true"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('chevron-down', 'svg-icon'); ?></span>
                 </summary>
-            <?php echo fx_search_ui('invoice.php', $invQ, array_merge(['status' => $invStatus !== '' ? $invStatus : null], $invDateKeep, $invExtraKeep), 'جستجو در شناسه سفارش، آیدی کاربر، نام کانفیگ یا محصول…'); ?>
+            <?php echo \Faoxima\Admin\Web\Support\SearchFilter::fx_search_ui('invoice.php', $invQ, array_merge(['status' => $invStatus !== '' ? $invStatus : null], $invDateKeep, $invExtraKeep), 'جستجو در شناسه سفارش، آیدی کاربر، نام کانفیگ یا محصول…'); ?>
 
-            <?php echo fx_status_filter_ui('invoice.php', $invStatusOptions, $invStatus, array_merge(['q' => $invQ !== '' ? $invQ : null], $invDateKeep, $invExtraKeep)); ?>
+            <?php echo \Faoxima\Admin\Web\Support\StatusFilter::fx_status_filter_ui('invoice.php', $invStatusOptions, $invStatus, array_merge(['q' => $invQ !== '' ? $invQ : null], $invDateKeep, $invExtraKeep)); ?>
 
             <?php if ($invDeleteBlocked): ?>
                 <div class="alert" style="background:var(--color-warning-soft); border:1px solid var(--color-warning); color:var(--color-warning); padding:12px 16px; border-radius:var(--radius-md); margin-bottom:18px;">برخی مقادیر فیلتر نامعتبر هستند و نادیده گرفته شدند؛ برای جلوگیری از حذف ناخواسته، «حذف همه نتایج فیلترشده» غیرفعال است.</div>
             <?php endif; ?>
 
-            <?php $fxFd = fx_filter_delete_parts('invoice.php', $invFilterParams, ($invFilterActive && !$invDeleteBlocked) ? (int)$pg['total'] : 0, $invFilterCriteria, '', $invDeleteNote); ?>
+            <?php $fxFd = \Faoxima\Admin\Web\Support\BulkDelete::fx_filter_delete_parts('invoice.php', $invFilterParams, ($invFilterActive && !$invDeleteBlocked) ? (int)$pg['total'] : 0, $invFilterCriteria, '', $invDeleteNote); ?>
             <?php $fxFdExtra = $fxFd['button'] !== '' ? '<div class="fx-date-filter__active">' . htmlspecialchars($invDeleteNote, ENT_QUOTES, 'UTF-8') . '</div>' : ''; ?>
-            <?php echo fx_date_filter_ui('invoice.php', '', array_merge(['q' => $invQ !== '' ? $invQ : null, 'status' => $invStatus !== '' ? $invStatus : null], $invExtraKeep), '', $fxFd['button'], $fxFd['form'] . $fxFdExtra, true); ?>
+            <?php echo \Faoxima\Admin\Web\Support\DateFilter::fx_date_filter_ui('invoice.php', '', array_merge(['q' => $invQ !== '' ? $invQ : null, 'status' => $invStatus !== '' ? $invStatus : null], $invExtraKeep), '', $fxFd['button'], $fxFd['form'] . $fxFdExtra, true); ?>
             </details>
 
             <div class="card invoice-results">
                 <div class="invoice-results__head"><div><h2>آرشیو سفارش‌ها</h2><p>جزئیات خریدها، وضعیت سرویس و اطلاعات کاربران</p></div><span class="invoice-page-count"><?php echo strtr(number_format(count($listinvoice)), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?> سفارش در این صفحه</span></div>
-<?php $invBulkAction = fx_qs(array_merge($invFilterParams, ['p' => (isset($_GET['p']) && is_string($_GET['p']) && ctype_digit($_GET['p'])) ? $_GET['p'] : null])); ?>
+<?php $invBulkAction = \Faoxima\Admin\Web\Support\Pagination::fx_qs(array_merge($invFilterParams, ['p' => (isset($_GET['p']) && is_string($_GET['p']) && ctype_digit($_GET['p'])) ? $_GET['p'] : null])); ?>
                 <form method="POST" action="<?php echo htmlspecialchars('invoice.php' . ($invBulkAction !== '' ? '?' . $invBulkAction : ''), ENT_QUOTES, 'UTF-8'); ?>" id="bulk-form">
-                <?php echo fx_csrf_field(); ?>
+                <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                 <input type="hidden" name="action" value="bulk_delete">
                 <div class="table-wrap">
                     <table id="invoiceTable" class="display app-table app-table--summary" style="width:100%">
@@ -266,12 +170,12 @@ $listinvoice = $query->fetchAll();
                     foreach (['dpreset', 'ddays', 'dfrom', 'dto', 'status'] as $dk) {
                         if (isset($_GET[$dk]) && $_GET[$dk] !== '') $invKeep[$dk] = $_GET[$dk];
                     }
-                    echo fx_pager_html($pg['page'], $pg['pages'], $pg['total'], count($listinvoice), 'invoice.php', $invKeep);
+                    echo \Faoxima\Admin\Web\Support\Pagination::fx_pager_html($pg['page'], $pg['pages'], $pg['total'], count($listinvoice), 'invoice.php', $invKeep);
                     ?>
                 </div>
                 <div style="padding:12px 0;">
                     <button type="submit" class="btn btn-soft-danger btn-sm js-bulk-delete-btn" style="display:none;" onclick="return confirm('آیا از حذف سفارشات انتخاب‌شده مطمئن هستید؟')">
-                        <?php echo icon('trash', 'svg-icon'); ?> حذف انتخاب‌شده‌ها
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon'); ?> حذف انتخاب‌شده‌ها
                     </button>
                 </div>
                 </form>

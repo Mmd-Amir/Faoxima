@@ -17,23 +17,23 @@ function readJsonFileIfExists($path, $default = [])
 
 function DirectPaymentbot($order_id,$image = 'images.jpg'){
     global $pdo,$ManagePanel,$textbotlang,$keyboardextendfnished,$keyboard,$Confirm_pay,$from_id,$message_id,$datatextbot;
-    $setting = select("setting", "*");
-    $Payment_report = select("Payment_report", "*", "id_order", $order_id,"select");
-    $paymentNote = function_exists('formatPaymentReportNote')
-        ? formatPaymentReportNote($Payment_report['dec_not_confirmed'] ?? null)
+    $setting = \Faoxima\Core\Database\Db::select("setting", "*");
+    $Payment_report = \Faoxima\Core\Database\Db::select("Payment_report", "*", "id_order", $order_id,"select");
+    $paymentNote = method_exists(\Faoxima\Payments\Settlement\PendingInvoices::class, 'formatPaymentReportNote')
+        ? \Faoxima\Payments\Settlement\PendingInvoices::formatPaymentReportNote($Payment_report['dec_not_confirmed'] ?? null)
         : ($Payment_report['dec_not_confirmed'] ?? '');
     $format_price_cart = number_format($Payment_report['price']);
-    $Balance_id = select("user", "*", "id", $Payment_report['id_user'],"select");
+    $Balance_id = \Faoxima\Core\Database\Db::select("user", "*", "id", $Payment_report['id_user'],"select");
     $Balance_id['Balance'] = json_decode(file_get_contents("data/{$Payment_report['id_user']}/{$Payment_report['id_user']}.json"),true)['Balance'];
-    update("user","Processing_value","0", "id",$Balance_id['id']);
-    update("user","Processing_value_one","0", "id",$Balance_id['id']);
-    update("user","Processing_value_tow","0", "id",$Balance_id['id']);
-    update("user","Processing_value_four","0", "id",$Balance_id['id']);
+    \Faoxima\Core\Database\Db::update("user","Processing_value","0", "id",$Balance_id['id']);
+    \Faoxima\Core\Database\Db::update("user","Processing_value_one","0", "id",$Balance_id['id']);
+    \Faoxima\Core\Database\Db::update("user","Processing_value_tow","0", "id",$Balance_id['id']);
+    \Faoxima\Core\Database\Db::update("user","Processing_value_four","0", "id",$Balance_id['id']);
         $Balance_confrim = intval($Balance_id['Balance']) + intval($Payment_report['price']);
         $userbalance = json_decode(file_get_contents("data/{$Payment_report['id_user']}/{$Payment_report['id_user']}.json"),true);
         $userbalance['Balance'] = $Balance_confrim;
         file_put_contents("data/{$Payment_report['id_user']}/{$Payment_report['id_user']}.json",json_encode($userbalance));
-        update("Payment_report","payment_Status","paid","id_order",$Payment_report['id_order']);
+        \Faoxima\Core\Database\Db::update("Payment_report","payment_Status","paid","id_order",$Payment_report['id_order']);
         $Payment_report['price'] = number_format($Payment_report['price'], 0);
         $format_price_cart = $Payment_report['price'];
         if($Payment_report['Payment_Method'] == "cart to cart" or   $Payment_report['Payment_Method'] == "arze digital offline"){

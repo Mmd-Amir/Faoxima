@@ -2163,6 +2163,7 @@ async function renderExtraPanel($panel, info, username, kind, reload) {
 
     const $btn = $host.querySelector('#extra-submit');
     const $label = $btn.querySelector('.extra-label');
+    const confirmationIds = new Map();
     $btn.addEventListener('click', async () => {
         const a = parseInt($amount.value || '0', 10);
         if (!a || a < minA || a > maxA) {
@@ -2179,6 +2180,12 @@ async function renderExtraPanel($panel, info, username, kind, reload) {
                 ? { username, kind, amount: a, discount_code: appliedDiscount }
                 : { username, kind, amount: a };
             if (fxQuote) extraBody.fx_quote = fxQuote;
+            const inputs = JSON.stringify([a, appliedDiscount || '']);
+            if (!confirmationIds.has(inputs)) {
+                const bytes = crypto.getRandomValues(new Uint8Array(16));
+                confirmationIds.set(inputs, Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join(''));
+            }
+            extraBody.operation_id = confirmationIds.get(inputs);
             const res = await call('service_extra_confirm', {
                 method: 'POST',
                 body: extraBody,

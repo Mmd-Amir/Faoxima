@@ -1,135 +1,31 @@
 <?php
+
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'seeting_x_ui.php';
+
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 ini_set('session.cookie_samesite', 'Lax');
 ini_set('session.cookie_httponly', '1');
 session_start();
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
 
-function ensureXuiTableExists(PDO $pdo)
-{
-    try {
-        $result = $pdo->query("SHOW TABLES LIKE 'x_ui'");
-        if ($result === false || $result->rowCount() === 0) {
-            $pdo->exec(
-                "CREATE TABLE IF NOT EXISTS `x_ui` (" .
-                "`codepanel` VARCHAR(100) NOT NULL," .
-                "`setting` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL," .
-                "`protocol` VARCHAR(100) DEFAULT NULL," .
-                "PRIMARY KEY (`codepanel`)" .
-                ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-            );
-        }
-    } catch (PDOException $e) {
-        error_log('Failed to ensure x_ui table: ' . $e->getMessage());
-        throw $e;
-    }
-}
-
-ensureXuiTableExists($pdo);
-
-function synchronizeXuiPanels(PDO $pdo)
-{
-    try {
-        $panels = $pdo->query("SELECT code_panel FROM marzban_panel");
-        if ($panels !== false) {
-            $insert = $pdo->prepare("INSERT INTO x_ui (codepanel, setting) VALUES (:codepanel, '{}') ON DUPLICATE KEY UPDATE codepanel = codepanel");
-            while ($panel = $panels->fetch(PDO::FETCH_ASSOC)) {
-                if (!empty($panel['code_panel'])) {
-                    $insert->execute([':codepanel' => $panel['code_panel']]);
-                }
-            }
-        }
-    } catch (PDOException $e) {
-        error_log('Failed to synchronize x_ui table with marzban_panel: ' . $e->getMessage());
-        throw $e;
-    }
-}
-
-synchronizeXuiPanels($pdo);
-
-function update($table, $field, $newValue, $whereField = null, $whereValue = null) {
-    global $pdo,$user;
-
-    if ($whereField !== null) {
-        $stmt = $pdo->prepare("SELECT $field FROM $table WHERE $whereField = ? FOR UPDATE");
-        $stmt->execute([$whereValue]);
-        $currentValue = $stmt->fetchColumn();
-        $stmt = $pdo->prepare("UPDATE $table SET $field = ? WHERE $whereField = ?");
-        $stmt->execute([$newValue, $whereValue]);
-    } else {
-        $stmt = $pdo->prepare("UPDATE $table SET $field = ?");
-        $stmt->execute([$newValue]);
-    }
-    $date = date("Y-m-d");
-    $logss = "{$table}_{$field}_{$newValue}_{$whereField}_{$whereValue}_{$user['step']}_$date";
-    if($field != "message_count" || $field != "last_message_time"){
-        file_put_contents('log.txt',"\n".$logss,FILE_APPEND);
-    }
-}
-
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindParam("username", $_SESSION["user"], PDO::PARAM_STR);
-$query->execute();
-$result = $query->fetch(PDO::FETCH_ASSOC);
-
-$query = $pdo->prepare("SELECT code_panel, name_panel FROM marzban_panel ORDER BY name_panel");
-$query->execute();
-$resultpanel = $query->fetchAll(PDO::FETCH_ASSOC);
-
-if( !isset($_SESSION["user"]) || !$result ){
-    header('Location: login.php');
+if (\Faoxima\Admin\Web\Pages\SeetingXUiRequest::handle(
+        action: $action,
+        pdo: $pdo ?? null,
+        query: $query,
+        result: $result,
+        resultpanel: $resultpanel,
+        sanitizedPanelCode: $sanitizedPanelCode,
+        selectedPanelCode: $selectedPanelCode,
+        settingsValueForTextarea: $settingsValueForTextarea,
+        stmt: $stmt
+    ) !== true) {
+    unset($adminWebPage);
     return;
 }
 
-$action = $_GET['action'] ?? '';
-$selectedPanelCode = '';
-$settingsValue = '';
-
-if ($action === 'save' && $_SERVER['REQUEST_METHOD'] === 'POST'){
-    $selectedPanelCode = $_POST['namepanel'] ?? '';
-    $settingsValue = $_POST['settings'] ?? '';
-    if ($selectedPanelCode !== '') {
-        $stmt = $pdo->prepare("SELECT 1 FROM x_ui WHERE codepanel = :codepanel");
-        $stmt->execute([':codepanel' => $selectedPanelCode]);
-        if ($stmt->fetchColumn() === false) {
-            $insert = $pdo->prepare("INSERT INTO x_ui (codepanel, setting) VALUES (:codepanel, :setting)");
-            $insert->execute([
-                ':codepanel' => $selectedPanelCode,
-                ':setting' => $settingsValue
-            ]);
-        } else {
-            $updateStmt = $pdo->prepare("UPDATE x_ui SET setting = :setting WHERE codepanel = :codepanel");
-            $updateStmt->execute([
-                ':setting' => $settingsValue,
-                ':codepanel' => $selectedPanelCode
-            ]);
-        }
-    }
-    header('Location: seeting_x_ui.php');
-    exit;
-}
-
-if ($action === 'change' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $selectedPanelCode = $_POST['namepanel'] ?? '';
-}
-
-$sanitizedPanelCode = htmlspecialchars($selectedPanelCode, ENT_QUOTES, 'UTF-8');
-
-if ($action === 'change' && $selectedPanelCode !== '') {
-    $stmt = $pdo->prepare("SELECT setting FROM x_ui WHERE codepanel=:codepanel");
-    $stmt->execute([':codepanel' => $selectedPanelCode]);
-    $getsetting = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($getsetting && isset($getsetting['setting'])) {
-        $decoded = json_decode($getsetting['setting'], true);
-        if (json_last_error() === JSON_ERROR_NONE) {
-            $settingsValue = json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        } else {
-            $settingsValue = $getsetting['setting'];
-        }
-    }
-}
-
-$settingsValueForTextarea = htmlspecialchars($settingsValue, ENT_NOQUOTES, 'UTF-8');
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark" data-color="blue">

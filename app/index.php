@@ -47,15 +47,15 @@ $brandMode = 'dark';
 if (is_file(__DIR__ . '/../config.php') && is_file(__DIR__ . '/../function.php')) {
     @require_once __DIR__ . '/../config.php';
     @require_once __DIR__ . '/../function.php';
-    if (isset($GLOBALS['pdo']) && $GLOBALS['pdo'] instanceof PDO && function_exists('select')) {
+    if (isset($GLOBALS['pdo']) && $GLOBALS['pdo'] instanceof PDO && \Faoxima\Core\Database\Db::runtimeReady()) {
         try {
-            $nameRow = select('shopSetting', '*', 'Namevalue', 'brand_name', 'select');
-            $markRow = select('shopSetting', '*', 'Namevalue', 'brand_mark', 'select');
-            $titleRow = select('shopSetting', '*', 'Namevalue', 'brand_title', 'select');
-            $logoRow = select('shopSetting', '*', 'Namevalue', 'brand_logo', 'select');
-            $logoStateRow = select('shopSetting', '*', 'Namevalue', 'brand_logo_state', 'select');
-            $accentRow = select('shopSetting', '*', 'Namevalue', 'brand_accent', 'select');
-            $qrDisabledRow = select('shopSetting', '*', 'Namevalue', 'qr_disabled', 'select');
+            $nameRow = \Faoxima\Core\Database\Db::select('shopSetting', '*', 'Namevalue', 'brand_name', 'select');
+            $markRow = \Faoxima\Core\Database\Db::select('shopSetting', '*', 'Namevalue', 'brand_mark', 'select');
+            $titleRow = \Faoxima\Core\Database\Db::select('shopSetting', '*', 'Namevalue', 'brand_title', 'select');
+            $logoRow = \Faoxima\Core\Database\Db::select('shopSetting', '*', 'Namevalue', 'brand_logo', 'select');
+            $logoStateRow = \Faoxima\Core\Database\Db::select('shopSetting', '*', 'Namevalue', 'brand_logo_state', 'select');
+            $accentRow = \Faoxima\Core\Database\Db::select('shopSetting', '*', 'Namevalue', 'brand_accent', 'select');
+            $qrDisabledRow = \Faoxima\Core\Database\Db::select('shopSetting', '*', 'Namevalue', 'qr_disabled', 'select');
             if (is_array($accentRow) && isset($accentRow['value']) && preg_match('/^#[0-9a-fA-F]{6}$/', (string)$accentRow['value'])) {
                 $brandAccent = strtolower((string)$accentRow['value']);
             }
@@ -121,10 +121,7 @@ $qrEnabled = $qrEnabled ?? true;
 
 $hardR = preg_replace('/[^A-Za-z0-9]/', '', (string)($_GET['_r'] ?? ''));
 $versionSafe = preg_replace('/[^A-Za-z0-9._-]/', '', (string)$version);
-function fx_asset_v(string $absPath, string $versionSafe, string $hardR): string {
-    $stamp = (string) @filemtime($absPath);
-    return $versionSafe . '.' . $stamp . ($hardR !== '' ? '.' . $hardR : '');
-}
+
 
 $config = [
     'basename'    => $basename,
@@ -146,12 +143,12 @@ $config = [
     ],
 ];
 
-$sdkLocal    = htmlspecialchars($assetPrefix . 'js/telegram-web-app.js?v=' . fx_asset_v(__DIR__ . '/js/telegram-web-app.js', $versionSafe, $hardR), ENT_QUOTES);
+$sdkLocal    = htmlspecialchars($assetPrefix . 'js/telegram-web-app.js?v=' . \Faoxima\Api\Runtime\AppShell::fx_asset_v(__DIR__ . '/js/telegram-web-app.js', $versionSafe, $hardR), ENT_QUOTES);
 $sdkFallback = 'https://telegram.org/js/telegram-web-app.js';
-$cssUrl      = htmlspecialchars($assetPrefix . 'assets/css/app.css?v=' . fx_asset_v(__DIR__ . '/assets/css/app.css', $versionSafe, $hardR), ENT_QUOTES);
+$cssUrl      = htmlspecialchars($assetPrefix . 'assets/css/app.css?v=' . \Faoxima\Api\Runtime\AppShell::fx_asset_v(__DIR__ . '/assets/css/app.css', $versionSafe, $hardR), ENT_QUOTES);
 
 
-$jsUrl       = htmlspecialchars($assetPrefix . 'assets/v1.3.0/app.js?v=' . fx_asset_v(__DIR__ . '/assets/v1.3.0/app.js', $versionSafe, $hardR), ENT_QUOTES);
+$jsUrl       = htmlspecialchars($assetPrefix . 'assets/v1.3.0/app.js?v=' . \Faoxima\Api\Runtime\AppShell::fx_asset_v(__DIR__ . '/assets/v1.3.0/app.js', $versionSafe, $hardR), ENT_QUOTES);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">

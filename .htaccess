@@ -1,4 +1,19 @@
 Options -Indexes
-<FilesMatch "(?i)(^\.|^error_log$|^hash\.txt$|^ss$|^log\.txt$|^cartlist\.txt$|\.(zip|sql|log|env|bak|tmp|err|ya?ml|sh|ini|conf|json)$)">
+
+# Internal code, dependencies, tooling and version-control metadata are never served over HTTP.
+# (The public entries - index.php, admin.php, webhooks.php, api/, app/, payment/, panel/, sub/, installer/ - stay reachable.)
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(?:src|vendor|tests|docker|scripts|lib|graphify-out)(?:/|$) - [F,L]
+    RewriteRule ^panel/lib(?:/|$) - [F,L]
+    RewriteRule (?:^|/)\.(?!well-known(?:/|$)) - [F,L]
+</IfModule>
+
+<FilesMatch "(?i)(^\.|^error_log$|^hash\.txt$|^ss$|^log\.txt$|^cartlist\.txt$|\.(zip|sql|log|env|bak|tmp|err|ya?ml|sh|ini|conf|json|md|lock|dist|pem|key|crt|db|sqlite3?|orig|swp|phar|phtml|pht|php[0-9]+)$)">
     Require all denied
 </FilesMatch>
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "no-referrer"
+</IfModule>

@@ -1,5 +1,6 @@
 <?php
 
+// legacy runtime bootstrap (global scope): config.php, function.php, botapi.php, ini and output buffering
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/../botapi.php';
@@ -9,73 +10,18 @@ ini_set('default_charset', 'UTF-8');
 ini_set('error_log', 'error_log');
 
 $headrs = getallheaders();
-$setting = select("setting", "*");
+$setting = \Faoxima\Core\Database\Db::select("setting", "*");
 
 
 require_once __DIR__ . '/../lib/ApiCredential.php';
-$headrs = array_change_key_case($headrs, CASE_LOWER);
-$tokenOk = FaoximaApiCredential::valid($headrs['token'] ?? null, (string) ($APIKEY ?? ''));
-if (!$tokenOk){
-    http_response_code(403);
-    echo json_encode(array(
-        'status' => false,
-        'msg' => "token invalid"
-        ));
-    return;
-}
-$method = $_SERVER['REQUEST_METHOD'];
 
-$data = json_decode(file_get_contents("php://input"),true);
-if(!is_array($data)){
-    echo json_encode(array(
-        'status' => false,
-        'msg' => "data invalid",
-        'obj' => []
-        ));
-        return;
-}
-$data = sanitize_recursive($data);
-$stmt = $pdo->prepare("INSERT IGNORE INTO logs_api (header,data,time,ip,actions) VALUES (:header,:data,:time,:ip,:actions)");
-$stmt->execute([
-    ':header' => json_encode(FaoximaApiCredential::redactHeaders($headrs)),
-    ':data' => json_encode(FaoximaApiCredential::redactAuditFields($data)),
-    ':time' => date('Y/m/d H:i:s'),
-    ':ip' => $_SERVER['REMOTE_ADDR'] ?? null,
-    ':actions' => $data['actions'] ?? null,
-]);
-switch ($data['actions']) {
-    case 'services':
-        if($method != "GET"){
-    echo json_encode(array(
-        'status' => false,
-        'msg' => "method invalid; is mthod must GET"
-        ));
-    return;
-}
+require_once __DIR__ . '/../src/bootstrap.php';
 
-
-        $limitVal = 0;
-        if (isset($data['limit']) && is_numeric($data['limit'])) {
-            $limitVal = max(0, min((int) $data['limit'], 10000));
-        }
-        if ($limitVal > 0) {
-            $stmt = $pdo->prepare("SELECT id,id_user,username,time,price,type,status FROM service_other LIMIT :lim");
-            $stmt->bindValue(':lim', $limitVal, PDO::PARAM_INT);
-        } else {
-            $stmt = $pdo->prepare("SELECT id,id_user,username,time,price,type,status FROM service_other");
-        }
-        $stmt->execute();
-        $users = $stmt->fetchAll();
-        echo json_encode(array(
-        'status' => true,
-        'msg' => "Successful",
-        'obj' => $users
-        ));
-        break;
-    default:
-        echo json_encode(array(
-        'status' => false,
-        'msg' => "Action Invalid"
-        ));
-        break;
-}
+return \Faoxima\Api\Endpoints\Service::handle(
+    APIKEY: $APIKEY ?? null,
+    data: $data,
+    headrs: $headrs ?? null,
+    method: $method,
+    pdo: $pdo ?? null,
+    stmt: $stmt
+);

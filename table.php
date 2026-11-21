@@ -367,7 +367,7 @@ if (!function_exists('ensureMarzbanGuardFieldsMigrated')) {
         ];
 
         foreach ($guardColumns as [$field, $default, $datatype]) {
-            addFieldToTable("marzban_panel", $field, $default, $datatype);
+            \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", $field, $default, $datatype);
         }
     }
 }
@@ -387,7 +387,7 @@ if (!function_exists('ensureRebeccaPanelFieldsMigrated')) {
         ];
 
         foreach ($rebeccaColumns as [$field, $default, $datatype]) {
-            addFieldToTable("marzban_panel", $field, $default, $datatype);
+            \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", $field, $default, $datatype);
         }
     }
 }
@@ -446,37 +446,37 @@ try {
         $stmt->execute();
     }
     {
-        addFieldToTable($tableName, 'token', null, "VARCHAR(100)");
-        addFieldToTable($tableName, 'status_cron', "1", "VARCHAR(20)");
-        addFieldToTable($tableName, 'expire', NULL, "VARCHAR(100)");
-        addFieldToTable($tableName, 'limitchangeloc', '0', "VARCHAR(50)");
-        addFieldToTable($tableName, 'bottype', '0', "TEXT");
-        addFieldToTable($tableName, 'score', '0', "INT");
-        addFieldToTable($tableName, 'checkstatus', '0', "VARCHAR(50)");
-        addFieldToTable($tableName, 'joinchannel', '0', "VARCHAR(100)");
-        addFieldToTable($tableName, 'maxbuyagent', '0');
-        addFieldToTable($tableName, 'agent', 'f');
-        addFieldToTable($tableName, 'verify', '1');
-        addFieldToTable($tableName, 'register', 'none');
-        addFieldToTable($tableName, 'auth_exempt', '0', "varchar(20)");
-        addFieldToTable($tableName, 'namecustom', 'none');
-        addFieldToTable($tableName, 'number_username', '100');
-        addFieldToTable($tableName, 'cardpayment', '1');
-        addFieldToTable($tableName, 'card_verify_bypass', '0', 'TINYINT(1)');
-        addFieldToTable($tableName, 'affiliatescount', '0');
-        addFieldToTable($tableName, 'affiliates', '0');
-        addFieldToTable($tableName, 'message_count', '0');
-        addFieldToTable($tableName, 'last_message_time', '0');
-        addFieldToTable($tableName, 'Processing_value_four', '');
-        addFieldToTable($tableName, 'username', 'none');
-        addFieldToTable($tableName, 'Processing_value', 'none');
-        addFieldToTable($tableName, 'number', 'none');
-        addFieldToTable($tableName, 'pagenumber', '');
-        addFieldToTable($tableName, 'codeInvitation', null);
-        addFieldToTable($tableName, 'pricediscount', "0");
-        addFieldToTable($tableName, 'hide_mini_app_instruction', '0', "VARCHAR(20)");
-        addFieldToTable($tableName, 'Processing_value_price', null, "VARCHAR(100)");
-        addFieldToTable($tableName, 'last_seen_notification_id', null, "INT");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'token', null, "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'status_cron', "1", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'expire', NULL, "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'limitchangeloc', '0', "VARCHAR(50)");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'bottype', '0', "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'score', '0', "INT");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'checkstatus', '0', "VARCHAR(50)");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'joinchannel', '0', "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'maxbuyagent', '0');
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'agent', 'f');
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'verify', '1');
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'register', 'none');
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'auth_exempt', '0', "varchar(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'namecustom', 'none');
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'number_username', '100');
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'cardpayment', '1');
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'card_verify_bypass', '0', 'TINYINT(1)');
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'affiliatescount', '0');
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'affiliates', '0');
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'message_count', '0');
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'last_message_time', '0');
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'Processing_value_four', '');
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'username', 'none');
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'Processing_value', 'none');
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'number', 'none');
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'pagenumber', '');
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'codeInvitation', null);
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'pricediscount', "0");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'hide_mini_app_instruction', '0', "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'Processing_value_price', null, "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'last_seen_notification_id', null, "INT");
         rxSafeModifyColumn($connect, $tableName, 'limit_usertest', 'INT NOT NULL DEFAULT 1', 'int', false, '1');
         rxSafeModifyColumn($connect, $tableName, 'roll_Status', 'BOOL NOT NULL DEFAULT 0', 'tinyint(1)', false, '0');
         rxSafeModifyColumn($connect, $tableName, 'username', "VARCHAR(500) NOT NULL DEFAULT ''", 'varchar(500)', false, '', 'utf8mb4_unicode_ci');
@@ -501,14 +501,14 @@ try {
         rxSafeModifyColumn($connect, $tableName, 'cardpayment', "VARCHAR(100) NOT NULL DEFAULT '1'", 'varchar(100)', false, '1', 'utf8mb4_unicode_ci');
 
 
-        addFieldToTable($tableName, 'antispam_window_start', '0', "VARCHAR(20)");
-        addFieldToTable($tableName, 'antispam_window_count', '0', "VARCHAR(20)");
-        addFieldToTable($tableName, 'antispam_muted_until', '0', "VARCHAR(20)");
-        addFieldToTable($tableName, 'step_stack', '[]', "TEXT");
-        addFieldToTable($tableName, 'nav_state', 'home', "VARCHAR(64)");
-        addFieldToTable($tableName, 'reply_kb_cleared', '0', "VARCHAR(1)");
-        addFieldToTable($tableName, 'reply_kb_cleanup_msg_id', '0', "VARCHAR(20)");
-        addFieldToTable($tableName, 'source', null, "VARCHAR(64) NULL");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'antispam_window_start', '0', "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'antispam_window_count', '0', "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'antispam_muted_until', '0', "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'step_stack', '[]', "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'nav_state', 'home', "VARCHAR(64)");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'reply_kb_cleared', '0', "VARCHAR(1)");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'reply_kb_cleanup_msg_id', '0', "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable($tableName, 'source', null, "VARCHAR(64) NULL");
     }
 } catch (PDOException $e) {
     error_log('[panels] ' . $e->getMessage());
@@ -535,9 +535,9 @@ try {
         ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
         $stmt->execute();
     } else {
-        addFieldToTable("help", "category", null, "TEXT");
-        addFieldToTable("help", "app_title", null, "VARCHAR(255)");
-        addFieldToTable("help", "app_link", null, "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("help", "category", null, "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("help", "app_title", null, "VARCHAR(255)");
+        \Faoxima\Core\Database\Db::addFieldToTable("help", "app_link", null, "TEXT");
     }
 } catch (Exception $e) {
     error_log('[panels] ' . $e->getMessage());
@@ -670,27 +670,27 @@ try {
         $stmt = $pdo->prepare("INSERT INTO setting (Bot_Status,roll_Status,get_number,limit_usertest_all,iran_number,NotUser,affiliatesstatus,affiliatespercentage,removedayc,showcard,statuscategory,numbercount,statusnewuser,statusagentrequest,volumewarn,inlinebtnmain,verifystart,statussupportpv,statusnamecustom,statuscategorygenral,agentreqprice,cronvolumere,bulkbuy,on_hold_day,verifybucodeuser,scorestatus,Lottery_prize,wheelـluck,wheelـluck_price,iplogin,daywarn,categoryhelp,linkappstatus,languageen,languageru,wheelagent,Lotteryagent,statusfirstwheel,statuslimitchangeloc,limitnumber,Debtsettlement,Dice,keyboardmain,statusnoteforf,statuscopycart,timeauto_not_verify,status_keyboard_config,cron_status) VALUES ('botstatuson','rolleon','offAuthenticationphone','1','offAuthenticationiran','offnotuser','offaffiliates','0','0','1','offcategory','0','onnewuser','onrequestagent','2','offinline','offverify','offpvsupport','offnamecustom','offcategorys','0','5','onbulk','4','offverify','0','$DATAAWARD','0','0','0','2','0','0','0','0','1','1','0','0','$limitlist','1','0','$keyboardmain','1','0','4','1','$status_cron')");
         $stmt->execute();
     } else {
-        addFieldToTable("setting", "cron_status", $status_cron, "TEXT");
-        addFieldToTable("setting", "status_keyboard_config", "1", "varchar(20)");
-        addFieldToTable("setting", "statusnoteforf", "1", "varchar(20)");
-        addFieldToTable("setting", "timeauto_not_verify", "4", "varchar(20)");
-        addFieldToTable("setting", "statuscopycart", "0", "varchar(20)");
-        addFieldToTable("setting", "keyboardmain", $keyboardmain, "TEXT");
-        addFieldToTable("setting", "Dice", '0', "varchar(45)");
-        addFieldToTable("setting", "Debtsettlement", '1', "varchar(45)");
-        addFieldToTable("setting", "limitnumber", $limitlist, "varchar(200)");
-        addFieldToTable("setting", "statuslimitchangeloc", "0", "varchar(45)");
-        addFieldToTable("setting", "statusfirstwheel", "0", "varchar(45)");
-        addFieldToTable("setting", "Lotteryagent", "1", "varchar(45)");
-        addFieldToTable("setting", "wheelagent", "1", "varchar(45)");
-        addFieldToTable("setting", "languageru", "0", "varchar(45)");
-        addFieldToTable("setting", "languageen", "0", "varchar(45)");
-        addFieldToTable("setting", "linkappstatus", "0", "varchar(45)");
-        addFieldToTable("setting", "categoryhelp", "0", "varchar(45)");
-        addFieldToTable("setting", "daywarn", "2", "varchar(45)");
-        addFieldToTable("setting", "btn_status_extned", "0", "varchar(45)");
-        addFieldToTable("setting", "auth_scope", "all", "varchar(20)");
-        addFieldToTable("setting", "iplogin", "[]", "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "cron_status", $status_cron, "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "status_keyboard_config", "1", "varchar(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "statusnoteforf", "1", "varchar(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "timeauto_not_verify", "4", "varchar(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "statuscopycart", "0", "varchar(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "keyboardmain", $keyboardmain, "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "Dice", '0', "varchar(45)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "Debtsettlement", '1', "varchar(45)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "limitnumber", $limitlist, "varchar(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "statuslimitchangeloc", "0", "varchar(45)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "statusfirstwheel", "0", "varchar(45)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "Lotteryagent", "1", "varchar(45)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "wheelagent", "1", "varchar(45)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "languageru", "0", "varchar(45)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "languageen", "0", "varchar(45)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "linkappstatus", "0", "varchar(45)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "categoryhelp", "0", "varchar(45)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "daywarn", "2", "varchar(45)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "btn_status_extned", "0", "varchar(45)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "auth_scope", "all", "varchar(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "iplogin", "[]", "TEXT");
         $stmt_ip = $pdo->prepare("SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'setting' AND COLUMN_NAME = 'iplogin'");
         $stmt_ip->execute();
         $ip_col_type = $stmt_ip->fetchColumn();
@@ -707,68 +707,68 @@ try {
             }
             echo "iplogin column migrated to TEXT ✅<br>";
         }
-        addFieldToTable("setting", "wheelـluck_price", "0", "varchar(45)");
-        addFieldToTable("setting", "wheelـluck", "0", "varchar(45)");
-        addFieldToTable("setting", "Lottery_prize", $DATAAWARD, "TEXT");
-        addFieldToTable("setting", "scorestatus", "0", "VARCHAR(100)");
-        addFieldToTable("setting", "verifybucodeuser", "offverify", "VARCHAR(100)");
-        addFieldToTable("setting", "on_hold_day", "4", "VARCHAR(100)");
-        addFieldToTable("setting", "bulkbuy", "onbulk", "VARCHAR(100)");
-        addFieldToTable("setting", "statuscategorygenral", "offcategorys", "VARCHAR(100)");
-        addFieldToTable("setting", "cronvolumere", "5", "VARCHAR(100)");
-        addFieldToTable("setting", "agentreqprice", "0", "VARCHAR(100)");
-        addFieldToTable("setting", "statusnamecustom", "offnamecustom", "VARCHAR(100)");
-        addFieldToTable("setting", "id_support", "0", "VARCHAR(100)");
-        addFieldToTable("setting", "statussupportpv", "offpvsupport", "VARCHAR(100)");
-        addFieldToTable("setting", "affiliatespercentage", "0", "VARCHAR(600)");
-        addFieldToTable("setting", "inlinebtnmain", "offinline", "VARCHAR(200)");
-        addFieldToTable("setting", "auto_remove_reply_keyboard", "on", "VARCHAR(20)");
-        addFieldToTable("setting", "user_rich_buttons_enabled", "off", "VARCHAR(20)");
-        addFieldToTable("setting", "user_rich_sections", null, "TEXT");
-        addFieldToTable("user", "ui_section", null, "VARCHAR(24)");
-        addFieldToTable("setting", "volumewarn", "2", "VARCHAR(200)");
-        addFieldToTable("setting", "statusagentrequest", "onrequestagent", "VARCHAR(600)");
-        addFieldToTable("setting", "statusnewuser", "onnewuser", "VARCHAR(600)");
-        addFieldToTable("setting", "numbercount", "0", "VARCHAR(600)");
-        addFieldToTable("setting", "statuscategory", "offcategory", "VARCHAR(600)");
-        addFieldToTable("setting", "showcard", "1", "VARCHAR(200)");
-        addFieldToTable("setting", "removedayc", "1", "VARCHAR(200)");
-        addFieldToTable("setting", "affiliatesstatus", "offaffiliates", "VARCHAR(600)");
-        addFieldToTable("setting", "NotUser", "offnotuser", "VARCHAR(200)");
-        addFieldToTable("setting", "iran_number", "offAuthenticationiran", "VARCHAR(200)");
-        addFieldToTable("setting", "get_number", "onAuthenticationphone", "VARCHAR(200)");
-        addFieldToTable("setting", "limit_usertest_all", "1", "VARCHAR(200)");
-        addFieldToTable("setting", "Channel_Report", "0", "VARCHAR(200)");
-        addFieldToTable("setting", "Bot_Status", "botstatuson", "VARCHAR(200)");
-        addFieldToTable("setting", "roll_Status", "rolleon", "VARCHAR(200)");
-        addFieldToTable("setting", "verifystart", "offverify", "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "wheelـluck_price", "0", "varchar(45)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "wheelـluck", "0", "varchar(45)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "Lottery_prize", $DATAAWARD, "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "scorestatus", "0", "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "verifybucodeuser", "offverify", "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "on_hold_day", "4", "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "bulkbuy", "onbulk", "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "statuscategorygenral", "offcategorys", "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "cronvolumere", "5", "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "agentreqprice", "0", "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "statusnamecustom", "offnamecustom", "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "id_support", "0", "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "statussupportpv", "offpvsupport", "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "affiliatespercentage", "0", "VARCHAR(600)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "inlinebtnmain", "offinline", "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "auto_remove_reply_keyboard", "on", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "user_rich_buttons_enabled", "off", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "user_rich_sections", null, "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("user", "ui_section", null, "VARCHAR(24)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "volumewarn", "2", "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "statusagentrequest", "onrequestagent", "VARCHAR(600)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "statusnewuser", "onnewuser", "VARCHAR(600)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "numbercount", "0", "VARCHAR(600)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "statuscategory", "offcategory", "VARCHAR(600)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "showcard", "1", "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "removedayc", "1", "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "affiliatesstatus", "offaffiliates", "VARCHAR(600)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "NotUser", "offnotuser", "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "iran_number", "offAuthenticationiran", "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "get_number", "onAuthenticationphone", "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "limit_usertest_all", "1", "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "Channel_Report", "0", "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "Bot_Status", "botstatuson", "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "roll_Status", "rolleon", "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "verifystart", "offverify", "VARCHAR(200)");
 
-        addFieldToTable("setting", "premium_emoji_status", "0", "VARCHAR(20)");
-        addFieldToTable("setting", "keyboard_styles_all", "{}", "TEXT");
-        addFieldToTable("setting", "account_keyboard_layout", null, "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "premium_emoji_status", "0", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "keyboard_styles_all", "{}", "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "account_keyboard_layout", null, "TEXT");
 
 
-        addFieldToTable("setting", "antispam_status", "0", "VARCHAR(20)");
-        addFieldToTable("setting", "antispam_msg_count", "5", "VARCHAR(20)");
-        addFieldToTable("setting", "antispam_seconds", "3", "VARCHAR(20)");
-        addFieldToTable("setting", "antispam_mute_seconds", "5", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "antispam_status", "0", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "antispam_msg_count", "5", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "antispam_seconds", "3", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "antispam_mute_seconds", "5", "VARCHAR(20)");
 
-        addFieldToTable("setting", "proxy_telegram_status", "0", "VARCHAR(20)");
-        addFieldToTable("setting", "proxy_telegram_url", "", "VARCHAR(500)");
-        addFieldToTable("setting", "proxy_panel_status", "0", "VARCHAR(20)");
-        addFieldToTable("setting", "proxy_panel_url", "", "VARCHAR(500)");
-        addFieldToTable("setting", "card_verify_status", "offcardverify", "VARCHAR(20)");
-        addFieldToTable("setting", "card_verify_scope", "all", "VARCHAR(20)");
-        addFieldToTable("setting", "card_verify_min_amount", "0", "VARCHAR(20)");
-        addFieldToTable("setting", "receipt_topic_reporting", "1", "VARCHAR(20)");
-        addFieldToTable("setting", "subscription_link_button", "1", "VARCHAR(20)");
-        addFieldToTable("setting", "PublicLog_Channel", "", "VARCHAR(600)");
-        addFieldToTable("setting", "PublicLog_Status", "0", "VARCHAR(20)");
-        addFieldToTable("setting", "PublicLog_NewSub", "1", "VARCHAR(20)");
-        addFieldToTable("setting", "PublicLog_Renewal", "1", "VARCHAR(20)");
-        addFieldToTable("setting", "PublicLog_VolumeTopup", "1", "VARCHAR(20)");
-        addFieldToTable("setting", "PublicLog_TimeExtra", "1", "VARCHAR(20)");
-        addFieldToTable("setting", "PublicLog_WalletDeposit", "0", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "proxy_telegram_status", "0", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "proxy_telegram_url", "", "VARCHAR(500)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "proxy_panel_status", "0", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "proxy_panel_url", "", "VARCHAR(500)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "card_verify_status", "offcardverify", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "card_verify_scope", "all", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "card_verify_min_amount", "0", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "receipt_topic_reporting", "1", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "subscription_link_button", "1", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "PublicLog_Channel", "", "VARCHAR(600)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "PublicLog_Status", "0", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "PublicLog_NewSub", "1", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "PublicLog_Renewal", "1", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "PublicLog_VolumeTopup", "1", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "PublicLog_TimeExtra", "1", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("setting", "PublicLog_WalletDeposit", "0", "VARCHAR(20)");
     }
 } catch (Exception $e) {
     error_log('[panels] ' . $e->getMessage());
@@ -804,13 +804,13 @@ try {
             ':password_hash' => password_hash($randomString, PASSWORD_DEFAULT),
         ]);
     } else {
-        addFieldToTable("admin", "rule", "administrator", "VARCHAR(200)");
-        addFieldToTable("admin", "username", null, "VARCHAR(200)");
-        addFieldToTable("admin", "password", null, "VARCHAR(200)");
-        addFieldToTable("admin", "password_hash", null, "VARCHAR(255)");
-        addFieldToTable("admin", "iplogin", null, "VARCHAR(1000)");
-        addFieldToTable("admin", "last_ticket_seen", "0", "INT(11)");
-        addFieldToTable("admin", "ad_modal_hidden_until", "0", "INT(11)");
+        \Faoxima\Core\Database\Db::addFieldToTable("admin", "rule", "administrator", "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("admin", "username", null, "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("admin", "password", null, "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("admin", "password_hash", null, "VARCHAR(255)");
+        \Faoxima\Core\Database\Db::addFieldToTable("admin", "iplogin", null, "VARCHAR(1000)");
+        \Faoxima\Core\Database\Db::addFieldToTable("admin", "last_ticket_seen", "0", "INT(11)");
+        \Faoxima\Core\Database\Db::addFieldToTable("admin", "ad_modal_hidden_until", "0", "INT(11)");
     }
 } catch (Exception $e) {
     error_log('[panels] ' . $e->getMessage());
@@ -842,9 +842,9 @@ try {
                 }
             }
         }
-        addFieldToTable("channels", "remark", null, "VARCHAR(200)");
-        addFieldToTable("channels", "linkjoin", null, "VARCHAR(200)");
-        addFieldToTable("channels", "link", null, "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("channels", "remark", null, "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("channels", "linkjoin", null, "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("channels", "link", null, "VARCHAR(200)");
     }
 } catch (Exception $e) {
     error_log('[panels] ' . $e->getMessage());
@@ -954,78 +954,78 @@ try {
             'n2' => "365"
         ));
         $panelPositionColumnExisted = rxTableColumnExists($connect, "marzban_panel", "position");
-        addFieldToTable("marzban_panel", "position", null, "INT(11) NOT NULL DEFAULT 0");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "position", null, "INT(11) NOT NULL DEFAULT 0");
         if (!$panelPositionColumnExisted) {
             $connect->query("SET @fx_pos := 0");
             $connect->query("UPDATE marzban_panel SET position = (@fx_pos := @fx_pos + 1) ORDER BY id ASC");
         }
-        addFieldToTable("marzban_panel", "on_hold_test", "1", "VARCHAR(60)");
-        addFieldToTable("marzban_panel", "version_panel", "0", "VARCHAR(60)");
-        addFieldToTable("marzban_panel", "proxies", null, "TEXT");
-        addFieldToTable("marzban_panel", "inbounds", null, "TEXT");
-        addFieldToTable("marzban_panel", "api_key", null, "VARCHAR(500)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "on_hold_test", "1", "VARCHAR(60)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "version_panel", "0", "VARCHAR(60)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "proxies", null, "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "inbounds", null, "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "api_key", null, "VARCHAR(500)");
         $pasarguardAuthModeColumnExisted = rxTableColumnExists($connect, "marzban_panel", "pasarguard_auth_mode");
-        addFieldToTable("marzban_panel", "pasarguard_auth_mode", "api_key", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "pasarguard_auth_mode", "api_key", "VARCHAR(20)");
         if (!$pasarguardAuthModeColumnExisted) {
             $connect->query("UPDATE marzban_panel SET pasarguard_auth_mode = 'api_key' WHERE type = 'pasarguard'");
         }
-        addFieldToTable("marzban_panel", "xui_api_token", null, "VARCHAR(1000)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "xui_api_token", null, "VARCHAR(1000)");
         $xuiApiModeColumnExisted = rxTableColumnExists($connect, "marzban_panel", "xui_api_mode");
-        addFieldToTable("marzban_panel", "xui_api_mode", "legacy", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "xui_api_mode", "legacy", "VARCHAR(20)");
         if (!$xuiApiModeColumnExisted) {
             $connect->query("UPDATE marzban_panel SET xui_api_mode = 'token' WHERE type = 'x-ui_single' AND xui_api_token IS NOT NULL AND xui_api_token <> '' AND xui_api_mode = 'legacy'");
         }
-        addFieldToTable("marzban_panel", "xui_monitor_state", null, "TEXT");
-        addFieldToTable("marzban_panel", "ip_limit_guard", "offipguard", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "xui_monitor_state", null, "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "ip_limit_guard", "offipguard", "VARCHAR(20)");
         rxSafeModifyColumn($connect, "marzban_panel", "ip_limit_guard", "VARCHAR(20) NULL DEFAULT 'offipguard'", "varchar(20)", true, "offipguard", "utf8mb4_unicode_ci");
-        addFieldToTable("marzban_panel", "customvolume", $VALUE, "TEXT");
-        addFieldToTable("marzban_panel", "subvip", "offsubvip", "VARCHAR(60)");
-        addFieldToTable("marzban_panel", "changeloc", "offchangeloc", "VARCHAR(60)");
-        addFieldToTable("marzban_panel", "hide_user", null, "TEXT");
-        addFieldToTable("marzban_panel", "guard_service_ids", null, "TEXT");
-        addFieldToTable("marzban_panel", "guard_note", null, "TEXT");
-        addFieldToTable("marzban_panel", "guard_auto_delete_days", 0, "INT(11)");
-        addFieldToTable("marzban_panel", "guard_auto_renewals", null, "TEXT");
-        addFieldToTable("marzban_panel", "guard_version", 'v1', "VARCHAR(10)");
-        addFieldToTable("marzban_panel", "status_extend", "on_extend", "VARCHAR(50)");
-        addFieldToTable("marzban_panel", "code_panel", null, "VARCHAR(50)");
-        addFieldToTable("marzban_panel", "priceextravolume", $valueprice, "VARCHAR(500)");
-        addFieldToTable("marzban_panel", "pricecustomvolume", $valueprice, "VARCHAR(500)");
-        addFieldToTable("marzban_panel", "pricecustomtime", $valueprice, "VARCHAR(500)");
-        addFieldToTable("marzban_panel", "priceextratime", $valueprice, "VARCHAR(500)");
-        addFieldToTable("marzban_panel", "priceChangeloc", "0", "VARCHAR(100)");
-        addFieldToTable("marzban_panel", "mainvolume", $valuemain, "VARCHAR(500)");
-        addFieldToTable("marzban_panel", "maxvolume", $valuemax, "VARCHAR(500)");
-        addFieldToTable("marzban_panel", "maintime", $valuemain, "VARCHAR(500)");
-        addFieldToTable("marzban_panel", "maxtime", $valuemax_time, "VARCHAR(500)");
-        addFieldToTable("marzban_panel", "MethodUsername", "آیدی عددی + حروف و عدد رندوم", "VARCHAR(100)");
-        addFieldToTable("marzban_panel", "datelogin", null, "TEXT");
-        addFieldToTable("marzban_panel", "val_usertest", "100", "VARCHAR(50)");
-        addFieldToTable("marzban_panel", "time_usertest", "1", "VARCHAR(50)");
-        addFieldToTable("marzban_panel", "secret_code", null, "VARCHAR(200)");
-        addFieldToTable("marzban_panel", "inboundstatus", "offinbounddisable", "VARCHAR(50)");
-        addFieldToTable("marzban_panel", "inbound_deactive", "0", "VARCHAR(100)");
-        addFieldToTable("marzban_panel", "agent", "all", "VARCHAR(50)");
-        addFieldToTable("marzban_panel", "inboundid", "1", "VARCHAR(50)");
-        addFieldToTable("marzban_panel", "linksubx", null, "VARCHAR(200)");
-        addFieldToTable("marzban_panel", "conecton", "offconecton", "VARCHAR(100)");
-        addFieldToTable("marzban_panel", "type", "marzban", "VARCHAR(50)");
-        addFieldToTable("marzban_panel", "Methodextend", "ریست حجم و زمان", "VARCHAR(100)");
-        addFieldToTable("marzban_panel", "namecustom", "vpn", "VARCHAR(100)");
-        addFieldToTable("marzban_panel", "limit_panel", "unlimted", "VARCHAR(50)");
-        addFieldToTable("marzban_panel", "TestAccount", "ONTestAccount", "VARCHAR(50)");
-        addFieldToTable("marzban_panel", "status", "active", "VARCHAR(50)");
-        addFieldToTable("marzban_panel", "sublink", "onsublink", "VARCHAR(50)");
-        addFieldToTable("marzban_panel", "config", "offconfig", "VARCHAR(50)");
-        addFieldToTable("marzban_panel", "auto_file", "offautofile", "VARCHAR(20)");
-        addFieldToTable("marzban_panel", "national_net_status", "off_national_net", "VARCHAR(50)");
-        addFieldToTable("marzban_panel", "stock_source_panel", null, "VARCHAR(191)");
-        addFieldToTable("marzban_panel", "remna_api_token", null, "VARCHAR(2000)");
-        addFieldToTable("marzban_panel", "remna_squad", null, "VARCHAR(200)");
-        addFieldToTable("marzban_panel", "remna_revoke", "off", "VARCHAR(20)");
-        addFieldToTable("marzban_panel", "remna_server_picker", "off", "VARCHAR(20)");
-        addFieldToTable("marzban_panel", "remna_usage_btn", "on", "VARCHAR(20)");
-        addFieldToTable("marzban_panel", "rebecca_service_id", null, "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "customvolume", $VALUE, "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "subvip", "offsubvip", "VARCHAR(60)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "changeloc", "offchangeloc", "VARCHAR(60)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "hide_user", null, "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "guard_service_ids", null, "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "guard_note", null, "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "guard_auto_delete_days", 0, "INT(11)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "guard_auto_renewals", null, "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "guard_version", 'v1', "VARCHAR(10)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "status_extend", "on_extend", "VARCHAR(50)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "code_panel", null, "VARCHAR(50)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "priceextravolume", $valueprice, "VARCHAR(500)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "pricecustomvolume", $valueprice, "VARCHAR(500)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "pricecustomtime", $valueprice, "VARCHAR(500)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "priceextratime", $valueprice, "VARCHAR(500)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "priceChangeloc", "0", "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "mainvolume", $valuemain, "VARCHAR(500)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "maxvolume", $valuemax, "VARCHAR(500)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "maintime", $valuemain, "VARCHAR(500)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "maxtime", $valuemax_time, "VARCHAR(500)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "MethodUsername", "آیدی عددی + حروف و عدد رندوم", "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "datelogin", null, "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "val_usertest", "100", "VARCHAR(50)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "time_usertest", "1", "VARCHAR(50)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "secret_code", null, "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "inboundstatus", "offinbounddisable", "VARCHAR(50)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "inbound_deactive", "0", "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "agent", "all", "VARCHAR(50)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "inboundid", "1", "VARCHAR(50)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "linksubx", null, "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "conecton", "offconecton", "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "type", "marzban", "VARCHAR(50)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "Methodextend", "ریست حجم و زمان", "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "namecustom", "vpn", "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "limit_panel", "unlimted", "VARCHAR(50)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "TestAccount", "ONTestAccount", "VARCHAR(50)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "status", "active", "VARCHAR(50)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "sublink", "onsublink", "VARCHAR(50)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "config", "offconfig", "VARCHAR(50)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "auto_file", "offautofile", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "national_net_status", "off_national_net", "VARCHAR(50)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "stock_source_panel", null, "VARCHAR(191)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "remna_api_token", null, "VARCHAR(2000)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "remna_squad", null, "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "remna_revoke", "off", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "remna_server_picker", "off", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "remna_usage_btn", "on", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("marzban_panel", "rebecca_service_id", null, "VARCHAR(100)");
     }
     ensureMarzbanGuardFieldsMigrated();
     ensureRebeccaPanelFieldsMigrated();
@@ -1101,7 +1101,7 @@ try {
         KEY idx_jovad_remote (code_panel, remote_id),
         KEY idx_jovad_label (code_panel, label)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-    addFieldToTable("jovadpanel_configs", "renewal_state", null, "MEDIUMTEXT");
+    \Faoxima\Core\Database\Db::addFieldToTable("jovadpanel_configs", "renewal_state", null, "MEDIUMTEXT");
     $connect->query("CREATE TABLE IF NOT EXISTS jovadpanel_orders (
         id_invoice VARCHAR(191) NOT NULL PRIMARY KEY,
         code_panel VARCHAR(100) NOT NULL,
@@ -1115,8 +1115,8 @@ try {
         updated_at INT UNSIGNED NOT NULL DEFAULT 0,
         KEY idx_jovad_order_panel (code_panel, username)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-    addFieldToTable("jovadpanel_orders", "channels", null, "VARCHAR(64)");
-    addFieldToTable("jovadpanel_orders", "channel_source", null, "VARCHAR(20)");
+    \Faoxima\Core\Database\Db::addFieldToTable("jovadpanel_orders", "channels", null, "VARCHAR(64)");
+    \Faoxima\Core\Database\Db::addFieldToTable("jovadpanel_orders", "channel_source", null, "VARCHAR(20)");
     rxSafeAddColumn($connect, "marzban_panel", "jovad_devices", "VARCHAR(20) NULL");
     rxSafeAddColumn($connect, "marzban_panel", "jovad_channels", "VARCHAR(64) NULL");
 } catch (Exception $e) {
@@ -1180,14 +1180,14 @@ try {
             error_log("[table.php] table remnawave_users: " . mysqli_error($connect));
         }
     } else {
-        addFieldToTable("remnawave_users", "panel_uuid", null, "VARCHAR(200)");
-        addFieldToTable("remnawave_users", "short_uuid", null, "VARCHAR(200)");
-        addFieldToTable("remnawave_users", "subscription_url", null, "VARCHAR(2000)");
-        addFieldToTable("remnawave_users", "name_panel", null, "VARCHAR(2000)");
-        addFieldToTable("remnawave_users", "status", "active", "VARCHAR(100)");
-        addFieldToTable("remnawave_users", "created_at", null, "VARCHAR(20)");
-        addFieldToTable("remnawave_users", "remna_tier", "", "VARCHAR(40)");
-        addFieldToTable("remnawave_users", "panel_user_id", null, "VARCHAR(40)");
+        \Faoxima\Core\Database\Db::addFieldToTable("remnawave_users", "panel_uuid", null, "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("remnawave_users", "short_uuid", null, "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("remnawave_users", "subscription_url", null, "VARCHAR(2000)");
+        \Faoxima\Core\Database\Db::addFieldToTable("remnawave_users", "name_panel", null, "VARCHAR(2000)");
+        \Faoxima\Core\Database\Db::addFieldToTable("remnawave_users", "status", "active", "VARCHAR(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable("remnawave_users", "created_at", null, "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("remnawave_users", "remna_tier", "", "VARCHAR(40)");
+        \Faoxima\Core\Database\Db::addFieldToTable("remnawave_users", "panel_user_id", null, "VARCHAR(40)");
     }
 } catch (Exception $e) {
     error_log('[panels] ' . $e->getMessage());
@@ -1282,21 +1282,21 @@ try {
             error_log("[table.php] table product: " . mysqli_error($connect));
         }
     } else {
-        addFieldToTable("product", "one_buy_status", "0", "VARCHAR(20)");
-        addFieldToTable("product", "Location", null, "VARCHAR(200)");
-        addFieldToTable("product", "inbounds", null, "TEXT");
-        addFieldToTable("product", "proxies", null, "TEXT");
-        addFieldToTable("product", "category", null, "varchar(200)");
-        addFieldToTable("product", "note", '', "TEXT");
-        addFieldToTable("product", "hide_panel", '{}', "TEXT");
-        addFieldToTable("product", "data_limit_reset", "no_reset", "varchar(100)");
-        addFieldToTable("product", "agent", "f", "varchar(50)");
-        addFieldToTable("product", "code_product", null, "varchar(50)");
-        addFieldToTable("product", "position", "0", "INT(11)");
-        addFieldToTable("product", "ip_limit", "0", "VARCHAR(20)");
-        addFieldToTable("product", "hwid_limit", "0", "VARCHAR(20)");
-        addFieldToTable("product", "symbolic_limit_enabled", "0", "VARCHAR(20)");
-        addFieldToTable("product", "symbolic_limit_users", "0", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("product", "one_buy_status", "0", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("product", "Location", null, "VARCHAR(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("product", "inbounds", null, "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("product", "proxies", null, "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("product", "category", null, "varchar(200)");
+        \Faoxima\Core\Database\Db::addFieldToTable("product", "note", '', "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("product", "hide_panel", '{}', "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("product", "data_limit_reset", "no_reset", "varchar(100)");
+        \Faoxima\Core\Database\Db::addFieldToTable("product", "agent", "f", "varchar(50)");
+        \Faoxima\Core\Database\Db::addFieldToTable("product", "code_product", null, "varchar(50)");
+        \Faoxima\Core\Database\Db::addFieldToTable("product", "position", "0", "INT(11)");
+        \Faoxima\Core\Database\Db::addFieldToTable("product", "ip_limit", "0", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("product", "hwid_limit", "0", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("product", "symbolic_limit_enabled", "0", "VARCHAR(20)");
+        \Faoxima\Core\Database\Db::addFieldToTable("product", "symbolic_limit_users", "0", "VARCHAR(20)");
         $__prodLocCol = $connect->query("SHOW FULL COLUMNS FROM product LIKE 'Location'");
         $__prodLocRow = $__prodLocCol ? $__prodLocCol->fetch_assoc() : null;
         if ($__prodLocRow && strpos((string)($__prodLocRow['Type'] ?? ''), '500') === false) {
@@ -1456,8 +1456,8 @@ try {
             error_log("[table.php] table Payment_report: " . mysqli_error($connect));
         }
     } else {
-        ensureTableUtf8mb4('Payment_report');
-        addFieldToTable("Payment_report", "message_id", null, "INT");
+        \Faoxima\Core\Database\Db::ensureTableUtf8mb4('Payment_report');
+        \Faoxima\Core\Database\Db::addFieldToTable("Payment_report", "message_id", null, "INT");
         $Check_filde = $connect->query("SHOW COLUMNS FROM Payment_report LIKE 'Payment_Method'");
         if (mysqli_num_rows($Check_filde) != 1) {
             $connect->query("ALTER TABLE Payment_report ADD Payment_Method VARCHAR(200)");
@@ -2186,20 +2186,18 @@ try {
         ['dyn_queued_renewal_activated_tpl', "با سلام خدمت شما کاربر گرامی 👋\n✅ رزرو اشتراک سرویس {username} فعال شد و حجم و زمان سرویس شما تمدید گردید."],
         ['dyn_errors_queued_renewal_exists', "❌ یک رزرو اشتراک برای این سرویس در انتظار فعال‌سازی است. مبلغی از حساب شما کسر نشد."]
     ];
-    if (function_exists('rxRenewalTextDefaults')) {
-        foreach (rxRenewalTextDefaults() as $rxRenewalTextKey => $rxRenewalTextValue) {
+    if (method_exists(\Faoxima\Services\Renewal\RenewalText::class, 'rxRenewalTextDefaults')) {
+        foreach (\Faoxima\Services\Renewal\RenewalText::rxRenewalTextDefaults() as $rxRenewalTextKey => $rxRenewalTextValue) {
             $insertQueries[] = ['dyn_renewal_' . $rxRenewalTextKey, $rxRenewalTextValue];
         }
     }
-    $rxTonpayTemplatesFile = __DIR__ . '/re/rx/function/tonpay_templates.php';
-    if (is_file($rxTonpayTemplatesFile)) {
-        require_once $rxTonpayTemplatesFile;
-        foreach (tonpayTemplateDefaults() as $rxTonpayTemplateKey => $rxTonpayTemplateValue) {
+    if (method_exists(\Faoxima\Payments\Gateways\Tonpay\Templates::class, 'tonpayTemplateDefaults')) {
+        foreach (\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayTemplateDefaults() as $rxTonpayTemplateKey => $rxTonpayTemplateValue) {
             $insertQueries[] = [$rxTonpayTemplateKey, $rxTonpayTemplateValue];
         }
         if ($table_exists) {
-            $rxTonpayWarningNew = $connect->real_escape_string(tonpayTemplateDefaults()['dyn_tonpay_amount_warning']);
-            $rxTonpayWarningOld = $connect->real_escape_string(tonpayLegacyAmountWarningDefault());
+            $rxTonpayWarningNew = $connect->real_escape_string(\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayTemplateDefaults()['dyn_tonpay_amount_warning']);
+            $rxTonpayWarningOld = $connect->real_escape_string(\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayLegacyAmountWarningDefault());
             $connect->query("UPDATE textbot SET text = '$rxTonpayWarningNew' WHERE id_text = 'dyn_tonpay_amount_warning' AND text = '$rxTonpayWarningOld'");
             $connect->query("UPDATE textbot SET text = REPLACE(text, '<b>پرداخت کارت‌به‌کارت (تون‌پی)</b>', '<b>{gateway_title}</b>') WHERE id_text IN ('dyn_tonpay_invoice_tpl', 'dyn_tonpay_progress_tpl')");
         }
@@ -2664,7 +2662,7 @@ try {
 }
 
 try {
-    $connect->query(rx_stats_sales_history_schema());
+    $connect->query(\Faoxima\Admin\Reporting\Statistics::rx_stats_sales_history_schema());
 } catch (Exception $e) {
     error_log('[invoice-sales-history-migrate] ' . $e->getMessage());
 }
@@ -2873,8 +2871,8 @@ try {
 }
 
 try {
-    if (rxTableColumnExists($connect, 'marzban_panel', 'shop_features') && function_exists('panel_features_snapshot_json')) {
-        $rxShopFeaturesSnapshot = panel_features_snapshot_json();
+    if (rxTableColumnExists($connect, 'marzban_panel', 'shop_features') && method_exists(\Faoxima\Services\Panels\PanelFeatures::class, 'panel_features_snapshot_json')) {
+        $rxShopFeaturesSnapshot = \Faoxima\Services\Panels\PanelFeatures::panel_features_snapshot_json();
         if (is_string($rxShopFeaturesSnapshot) && $rxShopFeaturesSnapshot !== '') {
             $rxSnapshotEscaped = $connect->real_escape_string($rxShopFeaturesSnapshot);
             $rxPanelsResult = $connect->query("SELECT code_panel, shop_features FROM marzban_panel");
@@ -2958,14 +2956,14 @@ try {
     $table_exists = ($result->num_rows > 0);
 
     if (!$table_exists) {
-        $result = $connect->query(rx_rn_queued_table_ddl());
+        $result = $connect->query(\Faoxima\Services\Renewal\ReservationStore::queuedTableDdl());
         if (!$result) {
             error_log("[table.php] table queued_renewal: " . mysqli_error($connect));
         }
     } else {
         rxSafeAddIndex($connect, "queued_renewal", "idx_queued_renewal_username_status", "username", 191);
     }
-    if (!rx_rn_ensure_schema()) {
+    if (!\Faoxima\Services\Renewal\ReservationStore::ensureSchema($pdo)) {
         error_log("[table.php] renewal schema migration failed");
     }
 } catch (Exception $e) {
@@ -3080,7 +3078,7 @@ try {
             error_log("[table.php] table Requestagent: " . mysqli_error($connect));
         }
     } else {
-        ensureTableUtf8mb4('Requestagent');
+        \Faoxima\Core\Database\Db::ensureTableUtf8mb4('Requestagent');
     }
 } catch (Exception $e) {
     error_log('[panels] ' . $e->getMessage());
@@ -3185,7 +3183,7 @@ try {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci");
         $stmt->execute();
     } else {
-        addFieldToTable("support_message", "result", "0", "TEXT");
+        \Faoxima\Core\Database\Db::addFieldToTable("support_message", "result", "0", "TEXT");
     }
 } catch (PDOException $e) {
     error_log('[panels] ' . $e->getMessage());
@@ -3253,7 +3251,7 @@ try {
             error_log("[table.php] table botsaz: " . mysqli_error($connect));
         }
     } else {
-        addFieldToTable("botsaz", "hide_panel", "{}", "JSON");
+        \Faoxima\Core\Database\Db::addFieldToTable("botsaz", "hide_panel", "{}", "JSON");
     }
 } catch (Exception $e) {
     error_log('[panels] ' . $e->getMessage());
@@ -3312,7 +3310,7 @@ try {
         }
     } else {
         $categoryPositionColumnExisted = rxTableColumnExists($connect, "category", "position");
-        addFieldToTable("category", "position", null, "INT(11) NOT NULL DEFAULT 0");
+        \Faoxima\Core\Database\Db::addFieldToTable("category", "position", null, "INT(11) NOT NULL DEFAULT 0");
         if (!$categoryPositionColumnExisted) {
             $connect->query("SET @fx_pos := 0");
             $connect->query("UPDATE category SET position = (@fx_pos := @fx_pos + 1) ORDER BY id ASC");
@@ -3343,7 +3341,7 @@ try {
 
 
 try {
-    $paySettingRow = select("PaySetting", "ValuePay", "NamePay", "maxbalance", "select");
+    $paySettingRow = \Faoxima\Core\Database\Db::select("PaySetting", "ValuePay", "NamePay", "maxbalance", "select");
     $paySettingValue = is_array($paySettingRow) && isset($paySettingRow['ValuePay']) ? $paySettingRow['ValuePay'] : null;
     $balancemain = is_string($paySettingValue) ? json_decode($paySettingValue, true) : null;
     if (!is_array($balancemain) || !isset($balancemain['f'])) {
@@ -3357,8 +3355,8 @@ try {
             "n" => "20000",
             "n2" => "20000",
         ));
-        update("PaySetting", "ValuePay", $value, "NamePay", "maxbalance");
-        update("PaySetting", "ValuePay", $valuemain, "NamePay", "minbalance");
+        \Faoxima\Core\Database\Db::update("PaySetting", "ValuePay", $value, "NamePay", "maxbalance");
+        \Faoxima\Core\Database\Db::update("PaySetting", "ValuePay", $valuemain, "NamePay", "minbalance");
     }
     $connect->query("ALTER TABLE `invoice` CHANGE `Volume` `Volume` VARCHAR(200)");
     $connect->query("ALTER TABLE `invoice` CHANGE `price_product` `price_product` VARCHAR(200)");
@@ -3390,7 +3388,7 @@ try {
 $hookParams = [
     'url' => "https://$domainhosts/index.php",
 ];
-$secretTok = function_exists('getTelegramExpectedSecretToken') ? getTelegramExpectedSecretToken() : '';
+$secretTok = method_exists(\Faoxima\Telegram\Support\Transport::class, 'getTelegramExpectedSecretToken') ? \Faoxima\Telegram\Support\Transport::getTelegramExpectedSecretToken() : '';
 if ($secretTok !== '') {
     $hookParams['secret_token'] = $secretTok;
 }
@@ -3743,12 +3741,12 @@ try {
 
     try {
         $rxWalletHasPdo = isset($pdo) && $pdo instanceof PDO;
-        if ($rxWalletHasPdo && function_exists('rx_pf_wallet_ready')) {
-            if (!rx_pf_wallet_ready()) {
+        if ($rxWalletHasPdo && method_exists(\Faoxima\Payments\Fulfillment\FulfillmentRuntime::class, 'rx_pf_wallet_ready')) {
+            if (!\Faoxima\Payments\Fulfillment\FulfillmentRuntime::rx_pf_wallet_ready()) {
                 throw new RuntimeException('wallet_ledger schema reconciliation failed; inspect PAYMENT_FULFILLMENT_WALLET_SCHEMA_FAILED');
             }
             $rxWalletSchemaError = '';
-        } elseif (!$rxWalletHasPdo || !function_exists('rx_pf_wallet_ready')) {
+        } elseif (!$rxWalletHasPdo || !method_exists(\Faoxima\Payments\Fulfillment\FulfillmentRuntime::class, 'rx_pf_wallet_ready')) {
             $connect->query("CREATE TABLE IF NOT EXISTS wallet_ledger (
             id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             id_user VARCHAR(200) NOT NULL,
@@ -3804,8 +3802,8 @@ try {
     }
 
     try {
-        if (function_exists('rx_sbv_ddl')) {
-            foreach (rx_sbv_ddl() as $sbvTable => $sbvDdl) {
+        if (is_callable([\Faoxima\Payments\Receipts\Settings::class, 'ddl'])) {
+            foreach (\Faoxima\Payments\Receipts\Settings::ddl() as $sbvTable => $sbvDdl) {
                 if (!$connect->query($sbvDdl)) {
                     error_log('[table.php] ' . $sbvTable . ' create: ' . mysqli_error($connect));
                 }
@@ -3983,38 +3981,38 @@ try {
 
 
 try {
-    addFieldToTable("setting", "premium_emoji_status", "0", "VARCHAR(20)");
-    addFieldToTable("setting", "keyboard_styles_all", "{}", "TEXT");
-    addFieldToTable("setting", "account_keyboard_layout", null, "TEXT");
-    addFieldToTable("setting", "forced_miniapp_mode", "0", "VARCHAR(20)");
-    addFieldToTable("setting", "miniapp_ticket_mode", "0", "VARCHAR(20)");
+    \Faoxima\Core\Database\Db::addFieldToTable("setting", "premium_emoji_status", "0", "VARCHAR(20)");
+    \Faoxima\Core\Database\Db::addFieldToTable("setting", "keyboard_styles_all", "{}", "TEXT");
+    \Faoxima\Core\Database\Db::addFieldToTable("setting", "account_keyboard_layout", null, "TEXT");
+    \Faoxima\Core\Database\Db::addFieldToTable("setting", "forced_miniapp_mode", "0", "VARCHAR(20)");
+    \Faoxima\Core\Database\Db::addFieldToTable("setting", "miniapp_ticket_mode", "0", "VARCHAR(20)");
 } catch (Exception $e) {
     file_put_contents('error_log', '[table.php setting kb cols] ' . $e->getMessage() . "\n", FILE_APPEND);
 }
 
 try {
-    addFieldToTable("setting", "redis_enabled", "0", "VARCHAR(20)");
+    \Faoxima\Core\Database\Db::addFieldToTable("setting", "redis_enabled", "0", "VARCHAR(20)");
 } catch (Exception $e) {
     file_put_contents('error_log', '[table.php setting redis_enabled] ' . $e->getMessage() . "\n", FILE_APPEND);
 }
 
 try {
-    addFieldToTable("setting", "banner_start_status", "0", "VARCHAR(20)");
-    addFieldToTable("setting", "banner_start_file_id", "", "VARCHAR(255)");
-    addFieldToTable("setting", "banner_cart_status", "0", "VARCHAR(20)");
-    addFieldToTable("setting", "banner_cart_file_id", "", "VARCHAR(255)");
-    addFieldToTable("setting", "banner_buy_status", "0", "VARCHAR(20)");
-    addFieldToTable("setting", "banner_buy_file_id", "", "VARCHAR(255)");
+    \Faoxima\Core\Database\Db::addFieldToTable("setting", "banner_start_status", "0", "VARCHAR(20)");
+    \Faoxima\Core\Database\Db::addFieldToTable("setting", "banner_start_file_id", "", "VARCHAR(255)");
+    \Faoxima\Core\Database\Db::addFieldToTable("setting", "banner_cart_status", "0", "VARCHAR(20)");
+    \Faoxima\Core\Database\Db::addFieldToTable("setting", "banner_cart_file_id", "", "VARCHAR(255)");
+    \Faoxima\Core\Database\Db::addFieldToTable("setting", "banner_buy_status", "0", "VARCHAR(20)");
+    \Faoxima\Core\Database\Db::addFieldToTable("setting", "banner_buy_file_id", "", "VARCHAR(255)");
 } catch (Exception $e) {
     file_put_contents('error_log', '[table.php setting banner cols] ' . $e->getMessage() . "\n", FILE_APPEND);
 }
 
 try {
-    addFieldToTable("setting", "start_media_status", "0", "VARCHAR(20) NULL DEFAULT '0'");
-    addFieldToTable("setting", "start_media_type", "", "VARCHAR(32) NULL DEFAULT ''");
-    addFieldToTable("setting", "start_media_file_id", "", "VARCHAR(512) NULL DEFAULT ''");
-    addFieldToTable("setting", "start_media_text", "", "VARCHAR(255) NULL DEFAULT ''");
-    addFieldToTable("setting", "start_media_entities", null, "TEXT NULL");
+    \Faoxima\Core\Database\Db::addFieldToTable("setting", "start_media_status", "0", "VARCHAR(20) NULL DEFAULT '0'");
+    \Faoxima\Core\Database\Db::addFieldToTable("setting", "start_media_type", "", "VARCHAR(32) NULL DEFAULT ''");
+    \Faoxima\Core\Database\Db::addFieldToTable("setting", "start_media_file_id", "", "VARCHAR(512) NULL DEFAULT ''");
+    \Faoxima\Core\Database\Db::addFieldToTable("setting", "start_media_text", "", "VARCHAR(255) NULL DEFAULT ''");
+    \Faoxima\Core\Database\Db::addFieldToTable("setting", "start_media_entities", null, "TEXT NULL");
 } catch (Exception $e) {
     file_put_contents('error_log', '[table.php setting start media cols] ' . $e->getMessage() . "\n", FILE_APPEND);
 }
@@ -4033,7 +4031,7 @@ try {
 }
 
 try {
-    addFieldToTable("setting", "config_file_custom_status", "0", "VARCHAR(20) NULL DEFAULT '0'");
+    \Faoxima\Core\Database\Db::addFieldToTable("setting", "config_file_custom_status", "0", "VARCHAR(20) NULL DEFAULT '0'");
 } catch (Throwable $e) {
     file_put_contents('error_log', '[table.php setting config file naming col] ' . $e->getMessage() . "\n", FILE_APPEND);
 }

@@ -702,8 +702,8 @@ function rx_table_migrations_verify_ready(array $dbInfo, ?array &$diagnostics = 
             $diagnostics['non_transactional_tables'][] = 'wallet_ledger:' . (string) $walletEngine;
         }
         if (!in_array('wallet_ledger', $diagnostics['missing_tables'], true)) {
-            require_once dirname(__DIR__, 2) . '/re/rx/function/payment_fulfillment.php';
-            $walletSchema = rx_pf_wallet_schema_verify($pdo);
+            require_once dirname(__DIR__, 2) . '/src/bootstrap.php';
+            $walletSchema = \Faoxima\Payments\Fulfillment\FulfillmentRuntime::rx_pf_wallet_schema_verify($pdo);
             if (empty($walletSchema['ok'])) {
                 $diagnostics['wallet_schema'][] = (string) ($walletSchema['reason'] ?? 'wallet_ledger schema verification failed');
             }

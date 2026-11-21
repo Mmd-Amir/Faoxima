@@ -83,7 +83,7 @@ function resolveGlobalCustomVolumeFlagFromShopSettings()
 {
     global $customVolumeFlagKeys;
     foreach ($customVolumeFlagKeys as $key) {
-        $row = select("shopSetting", "*", "Namevalue", $key, "select");
+        $row = \Faoxima\Core\Database\Db::select("shopSetting", "*", "Namevalue", $key, "select");
         if (!is_array($row)) {
             continue;
         }
@@ -131,11 +131,11 @@ function isCustomVolumeEnabledForAgent($panel, $agent)
 }
 
 $text_bot_var = json_decode(file_get_contents('text.json'), true);
-if (!checktelegramip())
+if (!\Faoxima\Telegram\Support\Transport::checktelegramip())
     die("Unauthorized access");
 
 $textbotlang = json_decode(file_get_contents($Pathfiles . 'text.json'), true)['fa'];
-$dataBase = select("botsaz", "*", "bot_token", $ApiToken, "select");
+$dataBase = \Faoxima\Core\Database\Db::select("botsaz", "*", "bot_token", $ApiToken, "select");
 $admin_ids = json_decode($dataBase['admin_ids']);
 $setting = json_decode($dataBase['setting'], true);
 if (!empty($setting['channel'])) {
@@ -163,13 +163,13 @@ if (!empty($setting['channel'])) {
 
 if (!isset($setting['show_product'])) {
     $setting['show_product'] = false;
-    update("botsaz", "setting", json_encode($setting), "bot_token", $ApiToken);
+    \Faoxima\Core\Database\Db::update("botsaz", "setting", json_encode($setting), "bot_token", $ApiToken);
 }
 if (!isset($setting['active_step_note'])) {
     $setting['active_step_note'] = false;
-    update("botsaz", "setting", json_encode($setting), "bot_token", $ApiToken);
+    \Faoxima\Core\Database\Db::update("botsaz", "setting", json_encode($setting), "bot_token", $ApiToken);
 }
-$settingmain = select("setting", "*", null, null, "select");
+$settingmain = \Faoxima\Core\Database\Db::select("setting", "*", null, null, "select");
 $globalCustomVolumeFlag = resolveGlobalCustomVolumeFlag((array)$setting, (array)$settingmain);
 if ($globalCustomVolumeFlag === null) {
     $shopSettingFlag = resolveGlobalCustomVolumeFlagFromShopSettings();
@@ -178,7 +178,7 @@ if ($globalCustomVolumeFlag === null) {
     }
 }
 $showcard = 1;
-$users_ids = select("user", "*", "bottype", $ApiToken, "FETCH_COLUMN");
+$users_ids = \Faoxima\Core\Database\Db::select("user", "*", "bottype", $ApiToken, "FETCH_COLUMN");
 if (!is_dir('data')) {
     mkdir('data');
 }
@@ -222,26 +222,26 @@ if ($from_id != 0) {
     $stmt->bindParam(':processing_value_four', $initialProcessingValueFour);
     $stmt->execute();
 }
-$user = select("user", "*", "id", $from_id, "select");
+$user = \Faoxima\Core\Database\Db::select("user", "*", "id", $from_id, "select");
 $user['Balance'] = json_decode(file_get_contents("data/$from_id/$from_id.json"), true)['Balance'];
-$usernameinvoice = select("invoice", "username", null, null, "FETCH_COLUMN");
-$buyreport = select("topicid", "idreport", "report", "buyreport", "select")['idreport'];
-$reportnight = select("topicid", "idreport", "report", "reportnight", "select")['idreport'];
-$reporttest = select("topicid", "idreport", "report", "reporttest", "select")['idreport'];
-$errorreport = select("topicid", "idreport", "report", "errorreport", "select")['idreport'];
-$porsantreport = select("topicid", "idreport", "report", "porsantreport", "select")['idreport'];
-$reportcron = select("topicid", "idreport", "report", "reportcron", "select")['idreport'];
-$otherservice = select("topicid", "idreport", "report", "otherservice", "select")['idreport'];
+$usernameinvoice = \Faoxima\Core\Database\Db::select("invoice", "username", null, null, "FETCH_COLUMN");
+$buyreport = \Faoxima\Core\Database\Db::select("topicid", "idreport", "report", "buyreport", "select")['idreport'];
+$reportnight = \Faoxima\Core\Database\Db::select("topicid", "idreport", "report", "reportnight", "select")['idreport'];
+$reporttest = \Faoxima\Core\Database\Db::select("topicid", "idreport", "report", "reporttest", "select")['idreport'];
+$errorreport = \Faoxima\Core\Database\Db::select("topicid", "idreport", "report", "errorreport", "select")['idreport'];
+$porsantreport = \Faoxima\Core\Database\Db::select("topicid", "idreport", "report", "porsantreport", "select")['idreport'];
+$reportcron = \Faoxima\Core\Database\Db::select("topicid", "idreport", "report", "reportcron", "select")['idreport'];
+$otherservice = \Faoxima\Core\Database\Db::select("topicid", "idreport", "report", "otherservice", "select")['idreport'];
 
-$paymentreports = select("topicid", "idreport", "report", "paymentreport", "select")['idreport'];
-$admin_idsmain = select("admin", "id_admin", null, null, "FETCH_COLUMN");
-$id_invoice = select("invoice", "id_invoice", null, null, "FETCH_COLUMN");
-$userbot = select("user", "*", "id", $dataBase['id_user'], "select");
+$paymentreports = \Faoxima\Core\Database\Db::select("topicid", "idreport", "report", "paymentreport", "select")['idreport'];
+$admin_idsmain = \Faoxima\Core\Database\Db::select("admin", "id_admin", null, null, "FETCH_COLUMN");
+$id_invoice = \Faoxima\Core\Database\Db::select("invoice", "id_invoice", null, null, "FETCH_COLUMN");
+$userbot = \Faoxima\Core\Database\Db::select("user", "*", "id", $dataBase['id_user'], "select");
 if ($user['bottype'] != $ApiToken) {
-    update("user", "bottype", $ApiToken, "id", $from_id);
+    \Faoxima\Core\Database\Db::update("user", "bottype", $ApiToken, "id", $from_id);
 }
 if ($user['username'] != $username) {
-    update("user", "username", $username, "id", $from_id);
+    \Faoxima\Core\Database\Db::update("user", "username", $username, "id", $from_id);
 }
 if ($text == "/start") {
     $textstart = "✋سلام $first_name عزیز به ربات ما خوش اومدی.
@@ -257,21 +257,21 @@ if ($text == "/start") {
         }
     }
     sendmessage($from_id, $textstart, $keyboard, 'html');
-    update("user", "Processing_value", "0", "id", $from_id);
-    update("user", "Processing_value_one", "0", "id", $from_id);
-    update("user", "Processing_value_tow", "0", "id", $from_id);
-    update("user", "Processing_value_four", "0", "id", $from_id);
-    step('home', $from_id);
+    \Faoxima\Core\Database\Db::update("user", "Processing_value", "0", "id", $from_id);
+    \Faoxima\Core\Database\Db::update("user", "Processing_value_one", "0", "id", $from_id);
+    \Faoxima\Core\Database\Db::update("user", "Processing_value_tow", "0", "id", $from_id);
+    \Faoxima\Core\Database\Db::update("user", "Processing_value_four", "0", "id", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
     return;
 } elseif ($text == "🏠 بازگشت به منوی اصلی" || $datain == "backuser") {
     if ($datain == "backuser")
         deletemessage($from_id, $message_id);
     sendmessage($from_id, "▶️ به منوی اصلی بازگشتید!", $keyboard, 'html');
-    step('home', $from_id);
-    update("user", "Processing_value", "0", "id", $from_id);
-    update("user", "Processing_value_one", "0", "id", $from_id);
-    update("user", "Processing_value_tow", "0", "id", $from_id);
-    update("user", "Processing_value_four", "0", "id", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
+    \Faoxima\Core\Database\Db::update("user", "Processing_value", "0", "id", $from_id);
+    \Faoxima\Core\Database\Db::update("user", "Processing_value_one", "0", "id", $from_id);
+    \Faoxima\Core\Database\Db::update("user", "Processing_value_tow", "0", "id", $from_id);
+    \Faoxima\Core\Database\Db::update("user", "Processing_value_four", "0", "id", $from_id);
     return;
 } elseif ($text == $text_bot_var['btn_keyboard']['wallet'] or $datain == "account") {
     $dateacc = jdate('Y/m/d');
@@ -298,7 +298,7 @@ if ($text == "/start") {
 
 📆 $dateacc → ⏰ $timeacc";
     if ($datain == "account") {
-        step("home", $from_id);
+        \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
         Editmessagetext($from_id, $message_id, $text_account, $KeyboardBalance);
     } else {
         sendmessage($from_id, $text_account, $KeyboardBalance, 'HTML');
@@ -315,7 +315,7 @@ if ($text == "/start") {
         return;
     }
     $pages = 1;
-    update("user", "pagenumber", $pages, "id", $from_id);
+    \Faoxima\Core\Database\Db::update("user", "pagenumber", $pages, "id", $from_id);
     $page = 1;
     $items_per_page = 20;
     $start_index = ($page - 1) * $items_per_page;
@@ -402,7 +402,7 @@ if ($text == "/start") {
     $keyboardlists['inline_keyboard'][] = $pagination_buttons;
     $keyboardlists['inline_keyboard'][] = $backuser;
     $keyboard_json = json_encode($keyboardlists);
-    update("user", "pagenumber", $next_page, "id", $from_id);
+    \Faoxima\Core\Database\Db::update("user", "pagenumber", $next_page, "id", $from_id);
     Editmessagetext($from_id, $message_id, "🛍 برای مشاهده اطلاعات سرویس خود از لیست زیر سرویس خود را انتخاب نمایید", $keyboard_json);
 } elseif ($datain == 'previous_page') {
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :id_user AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold') AND bottype = :apibot");
@@ -451,7 +451,7 @@ if ($text == "/start") {
     $keyboardlists['inline_keyboard'][] = $pagination_buttons;
     $keyboardlists['inline_keyboard'][] = $backuser;
     $keyboard_json = json_encode($keyboardlists);
-    update("user", "pagenumber", $previous_page, "id", $from_id);
+    \Faoxima\Core\Database\Db::update("user", "pagenumber", $previous_page, "id", $from_id);
     Editmessagetext($from_id, $message_id, "🛍 برای مشاهده اطلاعات سرویس خود از لیست زیر سرویس خود را انتخاب نمایید", $keyboard_json);
 } elseif ($text == $text_bot_var['btn_keyboard']['support']) {
     $textsupport = "📞 برای ارتباط با ما  روی دکمه زیر کلیک کنید";
@@ -464,7 +464,7 @@ if ($text == "/start") {
     ]);
     sendmessage($from_id, $textsupport, $Keyboardsupport, 'html');
 } elseif ($text == $text_bot_var['btn_keyboard']['test']) {
-    $locationproduct = select("marzban_panel", "*", "TestAccount", "ONTestAccount", "count");
+    $locationproduct = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "TestAccount", "ONTestAccount", "count");
     if ($locationproduct == 0) {
         sendmessage($from_id, "❌ سرویس تست درحال حاضر غیرفعال می باشد.", null, 'HTML');
         return;
@@ -478,14 +478,14 @@ if ($text == "/start") {
     }
 }
 if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $datain, $dataget) || ($text == $text_bot_var['btn_keyboard']['test'])) {
-    $userlimit = select("user", "*", "id", $from_id, "select");
+    $userlimit = \Faoxima\Core\Database\Db::select("user", "*", "id", $from_id, "select");
     if ($userlimit['limit_usertest'] <= 0) {
         sendmessage($from_id, "⚠️ محدودیت دریافت اکانت تست شما به پایان رسیده است .", $keyboard, 'html');
         return;
     }
-    $locationproduct = select("marzban_panel", "*", "TestAccount", "ONTestAccount", "count");
+    $locationproduct = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "TestAccount", "ONTestAccount", "count");
     if ($locationproduct == 1) {
-        $panel = select("marzban_panel", "*", "TestAccount", "ONTestAccount", "select");
+        $panel = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "TestAccount", "ONTestAccount", "select");
         if ($panel['hide_user'] != null) {
             $list_user = json_decode($panel['hide_user'], true);
             if (in_array($from_id, $list_user)) {
@@ -505,11 +505,11 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
             }
         }
     }
-    $marzban_list_get = select("marzban_panel", "*", "code_panel", $location, "select");
+    $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "code_panel", $location, "select");
     if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
         if ($user['step'] != "createusertest") {
-            step('createusertest', $from_id);
-            update("user", "Processing_value_one", $location, "id", $from_id);
+            \Faoxima\Telegram\Navigation\Steps::step('createusertest', $from_id);
+            \Faoxima\Core\Database\Db::update("user", "Processing_value_one", $location, "id", $from_id);
             sendmessage($from_id, $textbotlang['users']['selectusername'], $backuser, 'html');
             return;
         }
@@ -538,12 +538,12 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         }
     }
     $limit_usertest = $userlimit['limit_usertest'] - 1;
-    update("user", "limit_usertest", $limit_usertest, "id", $from_id);
+    \Faoxima\Core\Database\Db::update("user", "limit_usertest", $limit_usertest, "id", $from_id);
     $randomString = bin2hex(random_bytes(4));
     $text = strtolower($text);
-    $marzban_list_get = select("marzban_panel", "*", "code_panel", $name_panel, "select");
+    $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "code_panel", $name_panel, "select");
     $text = strtolower($text);
-    $username_ac = generateUsername($from_id, $marzban_list_get['MethodUsername'], $user['username'], $randomString, $text, $marzban_list_get['namecustom'], $user['namecustom']);
+    $username_ac = \Faoxima\Services\Delivery\ServiceDelivery::generateUsername($from_id, $marzban_list_get['MethodUsername'], $user['username'], $randomString, $text, $marzban_list_get['namecustom'], $user['namecustom']);
     $username_ac = strtolower($username_ac);
     $DataUserOut = $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_ac);
     $random_number = rand(1000000, 9999999);
@@ -572,7 +572,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     $stmt->close();
     $dataoutput = $ManagePanel->createUser($marzban_list_get['name_panel'], "usertest", $username_ac, $datac);
     if (empty($dataoutput['username'])) {
-        $dataoutput['msg'] = rx_panel_error_text($dataoutput['msg'] ?? null, $dataoutput['detail'] ?? null);
+        $dataoutput['msg'] = \Faoxima\Services\Panels\PanelMessages::rx_panel_error_text($dataoutput['msg'] ?? null, $dataoutput['detail'] ?? null);
         sendmessage($from_id, $textbotlang['users']['usertest']['errorcreat'], $keyboard, 'html');
         $texterros = "
 ⭕️ یک کاربر قصد دریافت اکانت  تست داشت که ساخت کانفیگ با خطا مواجه شده و به کاربر کانفیگ داده نشد
@@ -589,8 +589,8 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
                 'parse_mode' => "HTML"
             ], $APIKEY);
         }
-        step('home', $from_id);
-        update("invoice", "Status", "Unsuccessful", "id_invoice", $randomString);
+        \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
+        \Faoxima\Core\Database\Db::update("invoice", "Status", "Unsuccessful", "id_invoice", $randomString);
         return;
     }
     $output_config_link = "";
@@ -639,10 +639,10 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
     }
     $connectionLinksBlock = implode("\n\n", $connectionSections);
     $textcreatuser = str_replace('{connection_links}', $connectionLinksBlock, $textcreatuser);
-    if (function_exists('isQrDisabled')) {
-        $__vpnQrOff = isQrDisabled();
-    } elseif (function_exists('select')) {
-        $__row = select("shopSetting", "*", "Namevalue", "qr_disabled", "select");
+    if (method_exists(\Faoxima\Telegram\Support\InfoCardRenderer::class, 'isQrDisabled')) {
+        $__vpnQrOff = \Faoxima\Telegram\Support\InfoCardRenderer::isQrDisabled();
+    } elseif (\Faoxima\Core\Database\Db::runtimeReady()) {
+        $__row = \Faoxima\Core\Database\Db::select("shopSetting", "*", "Namevalue", "qr_disabled", "select");
         $__vpnQrOff = is_array($__row) && ((string)($__row['value'] ?? '0')) === '1';
     } else {
         $__vpnQrOff = false;
@@ -652,9 +652,9 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
             sendmessage($from_id, $textcreatuser, null, 'HTML');
         } else {
             $urlimage = "$from_id$randomString.png";
-            $qrCode = createqrcode($output_config_link);
+            $qrCode = \Faoxima\Telegram\Support\QrAndKeys::createqrcode($output_config_link);
             file_put_contents($urlimage, $qrCode->getString());
-            if (!addBackgroundImage($urlimage, $qrCode, $Pathfiles . 'images.jpg')) {
+            if (!\Faoxima\Telegram\Support\QrAndKeys::addBackgroundImage($urlimage, $qrCode, $Pathfiles . 'images.jpg')) {
                 error_log("Unable to apply background image for QR code using path '{$Pathfiles}images.jpg'");
             }
             telegram('sendphoto', [
@@ -677,9 +677,9 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
                 sendmessage($from_id, $textcreatuser, null, 'HTML');
             } else {
                 $urlimage = "$from_id$randomString.png";
-                $qrCode = createqrcode($config);
+                $qrCode = \Faoxima\Telegram\Support\QrAndKeys::createqrcode($config);
                 file_put_contents($urlimage, $qrCode->getString());
-                if (!addBackgroundImage($urlimage, $qrCode, $Pathfiles . 'images.jpg')) {
+                if (!\Faoxima\Telegram\Support\QrAndKeys::addBackgroundImage($urlimage, $qrCode, $Pathfiles . 'images.jpg')) {
                     error_log("Unable to apply background image for QR code using path '{$Pathfiles}images.jpg'");
                 }
                 telegram('sendphoto', [
@@ -697,13 +697,13 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
         sendmessage($from_id, $textcreatuser, $usertestinfo, 'HTML');
     }
     sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'HTML');
-    step('home', $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
     if ($marzban_list_get['MethodUsername'] == "متن دلخواه + عدد ترتیبی" || $marzban_list_get['MethodUsername'] == "نام کاربری + عدد به ترتیب" || $marzban_list_get['MethodUsername'] == "آیدی عددی+عدد ترتیبی" || $marzban_list_get['MethodUsername'] == "متن دلخواه نماینده + عدد ترتیبی") {
         $value = intval($user['number_username']) + 1;
-        update("user", "number_username", $value, "id", $from_id);
+        \Faoxima\Core\Database\Db::update("user", "number_username", $value, "id", $from_id);
         if ($marzban_list_get['MethodUsername'] == "متن دلخواه + عدد ترتیبی" || $marzban_list_get['MethodUsername'] == "متن دلخواه نماینده + عدد ترتیبی") {
             $value = intval($settingmain['numbercount']) + 1;
-            update("setting", "numbercount", $value);
+            \Faoxima\Core\Database\Db::update("setting", "numbercount", $value);
         }
     }
     $timejalali = jdate('Y/m/d H:i:s');
@@ -730,7 +730,7 @@ if ($user['step'] == "createusertest" || preg_match('/locationtest_(.*)/', $data
 }
 if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note']) {
     sendmessage($from_id, $textbotlang['users']['sell']['notestep'], $backuser, 'HTML');
-    step("statusnamecustom", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("statusnamecustom", $from_id);
     return;
 } elseif ($text == $text_bot_var['btn_keyboard']['buy'] || $user['step'] == "statusnamecustom") {
     $locationproduct = mysqli_query($connect, "SELECT * FROM marzban_panel  WHERE status = 'active'");
@@ -740,7 +740,7 @@ if ($text == $text_bot_var['btn_keyboard']['buy'] && $setting['active_step_note'
     }
 if (mysqli_num_rows($locationproduct) == 1) {
     $location = mysqli_fetch_assoc($locationproduct)['name_panel'];
-    $locationproduct = select("marzban_panel", "*", "name_panel", $location, "select");
+    $locationproduct = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $location, "select");
     $query = "SELECT * FROM product
               WHERE (Location = '{$locationproduct['name_panel']}' OR Location = '/all')
               AND (agent = '{$userbot['agent']}' OR agent = 'all')";
@@ -767,11 +767,11 @@ if (mysqli_num_rows($locationproduct) == 1) {
             }
         }
         if ($user['step'] == "statusnamecustom") {
-            savedata('clear', "note", $text);
-            savedata('save', "name_panel", $location);
-            step("home", $from_id);
+            \Faoxima\Telegram\Conversation\ConversationData::savedata('clear', "note", $text);
+            \Faoxima\Telegram\Conversation\ConversationData::savedata('save', "name_panel", $location);
+            \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
         } else {
-            savedata('clear', "name_panel", $location);
+            \Faoxima\Telegram\Conversation\ConversationData::savedata('clear', "name_panel", $location);
         }
         $marzban_list_get = $locationproduct;
         if ($productnotexits != 0 and $setting['show_product'] == false) {
@@ -783,7 +783,7 @@ if (mysqli_num_rows($locationproduct) == 1) {
                 } else {
                     $keyboarddata = "selectproductbuy_";
                 }
-                $prodcut = KeyboardProduct(
+                $prodcut = \Faoxima\Telegram\Keyboard\LegacyFunctionsHelpers::KeyboardProduct(
                     $marzban_list_get['name_panel'],
                     $query,
                     0,
@@ -796,7 +796,7 @@ if (mysqli_num_rows($locationproduct) == 1) {
                 sendmessage($from_id, "🛍️ لطفاً سرویسی که می‌خواهید خریداری کنید را انتخاب کنید!", $prodcut, 'HTML');
                 return;
             } else {
-                $nullproduct = select("product", "*", "agent", $userbot['agent'], "count");
+                $nullproduct = \Faoxima\Core\Database\Db::select("product", "*", "agent", $userbot['agent'], "count");
                 if ($nullproduct == 0) {
                     sendmessage($from_id, $textbotlang['Admin']['Product']['nullpProduct'], null, 'HTML');
                     return;
@@ -804,7 +804,7 @@ if (mysqli_num_rows($locationproduct) == 1) {
                 sendmessage(
                     $from_id,
                     "📌 دسته بندی خود را انتخاب نمایید!",
-                    KeyboardCategory($marzban_list_get['name_panel'], $userbot['agent'], "backuser"),
+                    \Faoxima\Telegram\Keyboard\LegacyFunctionsHelpers::KeyboardCategory($marzban_list_get['name_panel'], $userbot['agent'], "backuser"),
                     'HTML'
                 );
                 return;
@@ -827,7 +827,7 @@ if (mysqli_num_rows($locationproduct) == 1) {
         🔔قیمت هر گیگ حجم $eextraprice تومان می باشد.
         🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
                 sendmessage($from_id, $textcustom, $backuser, 'html');
-                step('gettimecustomvol', $from_id);
+                \Faoxima\Telegram\Navigation\Steps::step('gettimecustomvol', $from_id);
 
             } else {
                 sendmessage($from_id, $textbotlang['Admin']['Product']['nullpProduct'], null, 'HTML');
@@ -836,15 +836,15 @@ if (mysqli_num_rows($locationproduct) == 1) {
         }
     }
     if ($user['step'] == "statusnamecustom") {
-        savedata('clear', "note", $text);
-        step("home", $from_id);
+        \Faoxima\Telegram\Conversation\ConversationData::savedata('clear', "note", $text);
+        \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
     }
     sendmessage($from_id, "📌 موقعیت سرویس خود را انتخاب کنید", $list_marzban_panel_user, 'HTML');
 
 } elseif ($datain == "customvolumebuy") {
 
     $userdate        = json_decode($user['Processing_value'], true);
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
+    $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
     $eextraprice     = $setting['pricevolume'];
     $mainvolume      = json_decode($marzban_list_get['mainvolume'], true);
     $mainvolume      = $mainvolume[$userbot['agent']];
@@ -855,17 +855,17 @@ if (mysqli_num_rows($locationproduct) == 1) {
 🔔قیمت هر گیگ حجم $eextraprice تومان می باشد.
 🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
     sendmessage($from_id, $textcustom, $backuser, 'html');
-    step('gettimecustomvol', $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step('gettimecustomvol', $from_id);
 
 } elseif (preg_match('/^location_(.*)/', $datain, $dataget)) {
 
     $userdate        = json_decode($user['Processing_value'], true);
-    $locationproduct = select("marzban_panel", "*", "code_panel", $dataget[1], "select");
+    $locationproduct = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "code_panel", $dataget[1], "select");
 
     if (isset($userdate['note'])) {
-        savedata("save", "name_panel", $locationproduct['name_panel']);
+        \Faoxima\Telegram\Conversation\ConversationData::savedata("save", "name_panel", $locationproduct['name_panel']);
     } else {
-        savedata("clear", "name_panel", $locationproduct['name_panel']);
+        \Faoxima\Telegram\Conversation\ConversationData::savedata("clear", "name_panel", $locationproduct['name_panel']);
     }
 
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold') AND  Service_location = '{$locationproduct['name_panel']}'");
@@ -896,7 +896,7 @@ if (mysqli_num_rows($locationproduct) == 1) {
             } else {
                 $keyboarddata = "selectproductbuy_";
             }
-            $prodcut = KeyboardProduct(
+            $prodcut = \Faoxima\Telegram\Keyboard\LegacyFunctionsHelpers::KeyboardProduct(
                 $locationproduct['name_panel'],
                 $query,
                 0,
@@ -908,12 +908,12 @@ if (mysqli_num_rows($locationproduct) == 1) {
             );
             Editmessagetext($from_id, $message_id, "🛍️ لطفاً سرویسی که می‌خواهید خریداری کنید را انتخاب کنید!", $prodcut, 'HTML');
         } else {
-            $nullproduct = select("product", "*", "agent", $userbot['agent'], "count");
+            $nullproduct = \Faoxima\Core\Database\Db::select("product", "*", "agent", $userbot['agent'], "count");
             if ($nullproduct == 0) {
                 sendmessage($from_id, $textbotlang['Admin']['Product']['nullpProduct'], null, 'HTML');
                 return;
             }
-            Editmessagetext($from_id, $message_id, "📌 دسته بندی خود را انتخاب نمایید!", KeyboardCategory($locationproduct['name_panel'], $userbot['agent'], "backuser"));
+            Editmessagetext($from_id, $message_id, "📌 دسته بندی خود را انتخاب نمایید!", \Faoxima\Telegram\Keyboard\LegacyFunctionsHelpers::KeyboardCategory($locationproduct['name_panel'], $userbot['agent'], "backuser"));
         }
 
     } else {
@@ -935,7 +935,7 @@ if (mysqli_num_rows($locationproduct) == 1) {
     🔔قیمت هر گیگ حجم $eextraprice تومان می باشد.
     🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
             sendmessage($from_id, $textcustom, $backuser, 'html');
-            step('gettimecustomvol', $from_id);
+            \Faoxima\Telegram\Navigation\Steps::step('gettimecustomvol', $from_id);
 
         } else {
             sendmessage($from_id, $textbotlang['Admin']['Product']['nullpProduct'], null, 'HTML');
@@ -946,9 +946,9 @@ if (mysqli_num_rows($locationproduct) == 1) {
 } elseif (preg_match('/^categorynames_(.*)/', $datain, $dataget)) {
 
     $categorynames = $dataget[1];
-    $categorynames = select("category", "remark", "id", $categorynames, "select")['remark'];
+    $categorynames = \Faoxima\Core\Database\Db::select("category", "remark", "id", $categorynames, "select")['remark'];
     $userdate      = json_decode($user['Processing_value'], true);
-    $locationproduct = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "seelct");
+    $locationproduct = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "seelct");
 
     $query = "SELECT * FROM product
           WHERE (Location = '{$locationproduct['name_panel']}' OR Location = '/all')
@@ -962,7 +962,7 @@ if (mysqli_num_rows($locationproduct) == 1) {
     } else {
         $keyboarddata = "selectproductbuy_";
     }
-    $prodcut = KeyboardProduct(
+    $prodcut = \Faoxima\Telegram\Keyboard\LegacyFunctionsHelpers::KeyboardProduct(
         $locationproduct['name_panel'],
         $query,
         0,
@@ -977,7 +977,7 @@ if (mysqli_num_rows($locationproduct) == 1) {
 } elseif ($user['step'] == "gettimecustomvol") {
 
     $userdate        = json_decode($user['Processing_value'], true);
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
+    $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
 
     $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
     $mainvolume = $mainvolume[$userbot['agent']];
@@ -999,21 +999,21 @@ if (mysqli_num_rows($locationproduct) == 1) {
     }
 
     $customtimevalueprice = $setting['pricetime'];
-    savedata("save", "volume", $text);
+    \Faoxima\Telegram\Conversation\ConversationData::savedata("save", "volume", $text);
     $textcustom = "⌛️ زمان سرویس خود را انتخاب نمایید
 📌 تعرفه هر روز  : $customtimevalueprice  تومان
 ⚠️ حداقل زمان $maintime روز  و حداکثر $maxtime روز  می توانید تهیه کنید";
     sendmessage($from_id, $textcustom, $backuser, 'html');
 
     if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
-        step('getvolumecustomusername', $from_id);
+        \Faoxima\Telegram\Navigation\Steps::step('getvolumecustomusername', $from_id);
     } else {
-        step('getvolumecustomuser', $from_id);
+        \Faoxima\Telegram\Navigation\Steps::step('getvolumecustomuser', $from_id);
     }
 
 } elseif ($user['step'] == "getvolumecustomusername" || preg_match('/selectproductbuyy_(.*)/', $datain, $dataget)) {
     $userdate = json_decode($user['Processing_value'], true);
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
+    $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
     if ($user['step'] == "getvolumecustomusername") {
         if (!ctype_digit($text)) {
             sendmessage($from_id, $textbotlang['Admin']['Product']['Invalidtime'], $backuser, 'HTML');
@@ -1028,12 +1028,12 @@ if (mysqli_num_rows($locationproduct) == 1) {
             sendmessage($from_id, $texttime, $backuser, 'HTML');
             return;
         }
-        step('endstepuserscustom', $from_id);
-        savedata("save", "time", $text);
+        \Faoxima\Telegram\Navigation\Steps::step('endstepuserscustom', $from_id);
+        \Faoxima\Telegram\Conversation\ConversationData::savedata("save", "time", $text);
     } else {
         $prodcut = $dataget[1];
-        savedata("save", "code_product", $prodcut);
-        step('endstepusers', $from_id);
+        \Faoxima\Telegram\Conversation\ConversationData::savedata("save", "code_product", $prodcut);
+        \Faoxima\Telegram\Navigation\Steps::step('endstepusers', $from_id);
     }
     sendmessage($from_id, $textbotlang['users']['selectusername'], $backuser, 'html');
 } elseif ($user['step'] == "endstepusers" || $user['step'] == "endstepuserscustom" || $user['step'] == "getvolumecustomuser" || preg_match('/selectproductbuy_(.*)/', $datain, $dataget)) {
@@ -1043,7 +1043,7 @@ if (mysqli_num_rows($locationproduct) == 1) {
             sendmessage($from_id, "زمان نامعتبر است", $backuser, 'HTML');
             return;
         }
-        $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
+        $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
         $maintime = json_decode($marzban_list_get['maintime'], true);
         $maintime = $maintime[$userbot['agent']];
         $maxtime = json_decode($marzban_list_get['maxtime'], true);
@@ -1053,13 +1053,13 @@ if (mysqli_num_rows($locationproduct) == 1) {
             sendmessage($from_id, $texttime, $backuser, 'HTML');
             return;
         }
-        savedata("save", "time", $text);
+        \Faoxima\Telegram\Conversation\ConversationData::savedata("save", "time", $text);
         $userdate['time'] = $text;
     }
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
+    $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
     if ($marzban_list_get['status'] == "disable") {
         sendmessage($from_id, "❌ این پنل در دسترس نیست لطفا از پنل دیگری خرید را انجام دهید.", $backuser, 'html');
-        step("home", $from_id);
+        \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
         return;
     }
     if ($marzban_list_get['MethodUsername'] == $textbotlang['users']['customusername'] || $marzban_list_get['MethodUsername'] == "نام کاربری دلخواه + عدد رندوم") {
@@ -1080,17 +1080,17 @@ if (mysqli_num_rows($locationproduct) == 1) {
     $needsProductCode = !in_array($user['step'], ['endstepuserscustom', 'getvolumecustomuser'], true);
     if ($needsProductCode && ($code_product === null || $code_product === '')) {
         sendmessage($from_id, "❌ خطایی در هنگام خرید رخ داده لطفا مراحل را از اول طی کنید", $keyboard, 'html');
-        step("home", $from_id);
+        \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
         return;
     }
     if (!in_array($user['step'], ["endstepuserscustom", "getvolumecustomuser"])) {
-        $product = select("product", "*", "code_product", $code_product);
+        $product = \Faoxima\Core\Database\Db::select("product", "*", "code_product", $code_product);
         if ($product == false) {
             sendmessage($from_id, "❌ خطایی در هنگام خرید رخ داده لطفا مراحل را از اول طی کنید", $keyboard, 'html');
-            step("home", $from_id);
+            \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
             return;
         }
-        savedata("save", "code_product", $code_product);
+        \Faoxima\Telegram\Conversation\ConversationData::savedata("save", "code_product", $code_product);
         $productlist = readJsonFileIfExists('product.json');
         if (isset($productlist[$product['code_product']])) {
             $product['price_product'] = $productlist[$product['code_product']];
@@ -1114,9 +1114,9 @@ if (mysqli_num_rows($locationproduct) == 1) {
         );
     }
     $randomString = bin2hex(random_bytes(2));
-    $username_ac = generateUsername($from_id, $marzban_list_get['MethodUsername'], $username, $randomString, $text, $marzban_list_get['namecustom'], $user['namecustom']);
+    $username_ac = \Faoxima\Services\Delivery\ServiceDelivery::generateUsername($from_id, $marzban_list_get['MethodUsername'], $username, $randomString, $text, $marzban_list_get['namecustom'], $user['namecustom']);
     $username_ac = strtolower($username_ac);
-    savedata("save", "username", $username_ac);
+    \Faoxima\Telegram\Conversation\ConversationData::savedata("save", "username", $username_ac);
     $DataUserOut = $ManagePanel->DataUser($marzban_list_get['name_panel'], $username_ac);
     $random_number = rand(1000000, 9999999);
     if (isset($DataUserOut['username']) || in_array($username_ac, $usernameinvoice)) {
@@ -1152,29 +1152,29 @@ if (mysqli_num_rows($locationproduct) == 1) {
     } else {
         sendmessage($from_id, $textin, $payment, 'HTML');
     }
-    step('payment', $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step('payment', $from_id);
 } elseif ($user['step'] == "payment" && $datain == "confirmandgetservice") {
     $userdate = json_decode($user['Processing_value'], true);
     Editmessagetext($from_id, $message_id, $text_inline, json_encode(['inline_keyboard' => []]));
     if (!isset($userdate['name_panel'])) {
         sendmessage($from_id, "❌ خطایی رخ داده است مراحل خرید را از اول انجام دهید", $keyboard, 'html');
-        step("home", $from_id);
+        \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
         return;
     }
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
+    $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
     if ($marzban_list_get == false) {
         sendmessage($from_id, "❌ خطایی رخ داده است مراحل خرید را از اول انجام دهید", $keyboard, 'html');
-        step("home", $from_id);
+        \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
         return;
     }
     if ($marzban_list_get['status'] == "disable") {
         sendmessage($from_id, "❌ این پنل در دسترس نیست لطفا از پنل دیگری خرید را انجام دهید.", $backuser, 'html');
-        step("home", $from_id);
+        \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
         return;
     }
     if (isset($userdate['code_product'])) {
         $product = $userdate['code_product'];
-        $product = select("product", "*", "code_product", $product);
+        $product = \Faoxima\Core\Database\Db::select("product", "*", "code_product", $product);
         $priceBot = $product['price_product'];
         $productlist = readJsonFileIfExists('product.json');
         if (isset($productlist[$product['code_product']])) {
@@ -1205,11 +1205,11 @@ if (mysqli_num_rows($locationproduct) == 1) {
             "data_limit_reset" => "no_reset"
         );
     }
-    $botbalance = select("botsaz", "*", "bot_token", $ApiToken, "select");
-    $userbotbalance = select("user", "*", "id", $botbalance['id_user'], "select");
+    $botbalance = \Faoxima\Core\Database\Db::select("botsaz", "*", "bot_token", $ApiToken, "select");
+    $userbotbalance = \Faoxima\Core\Database\Db::select("user", "*", "id", $botbalance['id_user'], "select");
     if (($datafactor['price_productMain'] > $userbotbalance['Balance']) && $userbotbalance['agent'] != "n2") {
         sendmessage($from_id, "❌ خطایی در خرید رخ داده است برای رفع مشکل با پشتیبانی در ارتباط باشید", $keyboard, 'HTML');
-        step("home", $from_id);
+        \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
         foreach ($admin_ids as $admin) {
             sendmessage($admin, "❌ ادمین عزیز موجودی شما به پایان رسید برای فعالسازی به ربات اصلی مراجعه و ربات خود را شارژ نمایید.", null, 'HTML');
         }
@@ -1228,7 +1228,7 @@ if (mysqli_num_rows($locationproduct) == 1) {
         $randomString = $random_number . $randomString;
     }
     if ($marzban_list_get['type'] == "Manualsale") {
-        $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
+        $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
         $stmt = $pdo->prepare("SELECT * FROM manualsell WHERE codepanel = :codepanel AND codeproduct = :codeproduct AND status = 'active'");
         $stmt->bindParam(':codepanel', $marzban_list_get['code_panel']);
         $stmt->bindParam(':codeproduct', $datafactor['code_product']);
@@ -1249,12 +1249,12 @@ if (mysqli_num_rows($locationproduct) == 1) {
     $stmt->execute();
     $stmt->close();
     if ($datafactor['price_product'] > $user['Balance'] && intval($datafactor['price_product']) != 0) {
-        $marzbandirectpay = select("shopSetting", "*", "Namevalue", "statusdirectpabuy", "select")['value'];
+        $marzbandirectpay = \Faoxima\Core\Database\Db::select("shopSetting", "*", "Namevalue", "statusdirectpabuy", "select")['value'];
         $Balance_prim = $datafactor['price_product'] - $user['Balance'];
         if ($Balance_prim <= 1)
             $Balance_prim = 0;
-        $minbalance = number_format(json_decode(select("PaySetting", "*", "NamePay", "minbalance", "select")['ValuePay'], true)[$userbot['agent']]);
-        $maxbalance = number_format(json_decode(select("PaySetting", "*", "NamePay", "maxbalance", "select")['ValuePay'], true)[$userbot['agent']]);
+        $minbalance = number_format(json_decode(\Faoxima\Core\Database\Db::select("PaySetting", "*", "NamePay", "minbalance", "select")['ValuePay'], true)[$userbot['agent']]);
+        $maxbalance = number_format(json_decode(\Faoxima\Core\Database\Db::select("PaySetting", "*", "NamePay", "maxbalance", "select")['ValuePay'], true)[$userbot['agent']]);
         $bakinfos = json_encode([
             'inline_keyboard' => [
                 [
@@ -1265,7 +1265,7 @@ if (mysqli_num_rows($locationproduct) == 1) {
         Editmessagetext($from_id, $message_id, "❌ موجودی شما برای خرید سرویس کافی نمی باشد.
 💸  برای افزایش موجودی مبلغ را  به تومان وارد کنید:
 ✅  حداقل مبلغ $minbalance حداکثر مبلغ $maxbalance تومان می باشد", $bakinfos, 'HTML');
-        step('get_price', $from_id);
+        \Faoxima\Telegram\Navigation\Steps::step('get_price', $from_id);
         return;
     }
     Editmessagetext($from_id, $message_id, "♻️ در حال ساختن سرویس شما...", null);
@@ -1284,7 +1284,7 @@ if (mysqli_num_rows($locationproduct) == 1) {
     );
     $dataoutput = $ManagePanel->createUser($marzban_list_get['name_panel'], $datafactor['code_product'], $username_ac, $datac);
     if (empty($dataoutput['username'])) {
-        $dataoutput['msg'] = rx_panel_error_text($dataoutput['msg'] ?? null, $dataoutput['detail'] ?? null);
+        $dataoutput['msg'] = \Faoxima\Services\Panels\PanelMessages::rx_panel_error_text($dataoutput['msg'] ?? null, $dataoutput['detail'] ?? null);
         sendmessage($from_id, $textbotlang['users']['sell']['ErrorConfig'], $keyboard, 'HTML');
         $texterros = "⭕️ خطای ساخت اشتراک  در ربات نماینده
 ✍️ دلیل خطا :
@@ -1300,10 +1300,10 @@ if (mysqli_num_rows($locationproduct) == 1) {
                 'parse_mode' => "HTML"
             ], $APIKEY);
         }
-        step('home', $from_id);
+        \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
         return;
     }
-    update("invoice", "Status", "active", "username", $username_ac);
+    \Faoxima\Core\Database\Db::update("invoice", "Status", "active", "username", $username_ac);
     $configqr = "";
     $output_config_link = "";
     $config = "";
@@ -1386,13 +1386,13 @@ if (mysqli_num_rows($locationproduct) == 1) {
             if ($marzban_list_get['sublink'] == "offsublink") {
                 $output_config_link = $configqr;
             }
-            if (function_exists('isQrDisabled') && isQrDisabled()) {
+            if (method_exists(\Faoxima\Telegram\Support\InfoCardRenderer::class, 'isQrDisabled') && \Faoxima\Telegram\Support\InfoCardRenderer::isQrDisabled()) {
                 sendmessage($from_id, $textcreatuser, null, 'HTML');
             } else {
                 $urlimage = "$from_id$randomString.png";
-                $qrCode = createqrcode($output_config_link);
+                $qrCode = \Faoxima\Telegram\Support\QrAndKeys::createqrcode($output_config_link);
                 file_put_contents($urlimage, $qrCode->getString());
-                if (!addBackgroundImage($urlimage, $qrCode, $Pathfiles . 'images.jpg')) {
+                if (!\Faoxima\Telegram\Support\QrAndKeys::addBackgroundImage($urlimage, $qrCode, $Pathfiles . 'images.jpg')) {
                     error_log("Unable to apply background image for QR code using path '{$Pathfiles}images.jpg'");
                 }
                 telegram('sendphoto', [
@@ -1423,16 +1423,16 @@ if (mysqli_num_rows($locationproduct) == 1) {
         file_put_contents("data/$from_id/$from_id.json", json_encode($userbalance));
     }
     $Balancebot = $userbotbalance['Balance'] - $datafactor['price_productMain'];
-    update("user", "Balance", $Balancebot, "id", $userbotbalance['id']);
+    \Faoxima\Core\Database\Db::update("user", "Balance", $Balancebot, "id", $userbotbalance['id']);
     if ($marzban_list_get['MethodUsername'] == "متن دلخواه + عدد ترتیبی" || $marzban_list_get['MethodUsername'] == "نام کاربری + عدد به ترتیب" || $marzban_list_get['MethodUsername'] == "آیدی عددی+عدد ترتیبی" || $marzban_list_get['MethodUsername'] == "متن دلخواه نماینده + عدد ترتیبی") {
         $value = intval($user['number_username']) + 1;
-        update("user", "number_username", $value, "id", $from_id);
+        \Faoxima\Core\Database\Db::update("user", "number_username", $value, "id", $from_id);
         if ($marzban_list_get['MethodUsername'] == "متن دلخواه + عدد ترتیبی" || $marzban_list_get['MethodUsername'] == "متن دلخواه نماینده + عدد ترتیبی") {
             $value = intval($settingmain['numbercount']) + 1;
-            update("setting", "numbercount", $value);
+            \Faoxima\Core\Database\Db::update("setting", "numbercount", $value);
         }
     }
-    $balanceformatsell = number_format(select("user", "Balance", "id", $from_id, "select")['Balance'], 0);
+    $balanceformatsell = number_format(\Faoxima\Core\Database\Db::select("user", "Balance", "id", $from_id, "select")['Balance'], 0);
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE name_product != 'سرویس تست'  AND id_user = :id_user");
     $stmt->bindParam(':id_user', $from_id);
     $stmt->execute();
@@ -1473,8 +1473,8 @@ $textonebuy
             'parse_mode' => "HTML"
         ], $APIKEY);
     }
-    update("user", "Processing_value_four", "none", "id", $from_id);
-    step('home', $from_id);
+    \Faoxima\Core\Database\Db::update("user", "Processing_value_four", "none", "id", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
 } elseif ($datain == "AddBalance") {
     $bakinfos = json_encode([
         'inline_keyboard' => [
@@ -1484,7 +1484,7 @@ $textonebuy
         ]
     ]);
     Editmessagetext($from_id, $message_id, $text_bot_var['text_account']['add_balance'], $bakinfos);
-    step("get_price", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("get_price", $from_id);
 } elseif ($user['step'] == "get_price") {
     if (!ctype_digit($text)) {
         sendmessage($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backuser, 'HTML');
@@ -1499,15 +1499,15 @@ $textonebuy
     $stmt->bind_param("ssssssss", $from_id, $randomString, $dateacc, $text, $payment_Status, $Payment_Method, $invoice, $ApiToken);
     $stmt->execute();
     sendmessage($from_id, $setting['cart_info'], $backuser, 'HTML');
-    step("getresidcart", $from_id);
-    savedata("clear", "id_order", $randomString);
+    \Faoxima\Telegram\Navigation\Steps::step("getresidcart", $from_id);
+    \Faoxima\Telegram\Conversation\ConversationData::savedata("clear", "id_order", $randomString);
 } elseif ($user['step'] == "getresidcart") {
     if (empty($photo)) {
         sendmessage($from_id, "❌ لطفاً فقط تصویر رسید را ارسال کنید.", null, 'HTML');
         return;
     }
     $userdate = json_decode($user['Processing_value'], true);
-    $PaymentReport = select("Payment_report", '*', "id_order", $userdate['id_order'], "select");
+    $PaymentReport = \Faoxima\Core\Database\Db::select("Payment_report", '*', "id_order", $userdate['id_order'], "select");
     $Confirm_pay = json_encode([
         'inline_keyboard' => [
             [
@@ -1537,9 +1537,9 @@ $textonebuy
             ]);
         }
         sendmessage($id_admin, $textsendrasid, $Confirm_pay, 'HTML');
-        step('home', $id_admin);
+        \Faoxima\Telegram\Navigation\Steps::step('home', $id_admin);
     }
-    step('home', $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
     sendmessage($from_id, "💎 رسید شما ارسال و پس از بررسی حساب کاربری شما شارژ خواهد شد.", $keyboard, 'HTML');
 } elseif (preg_match('/product_(\w+)/', $datain, $dataget)) {
     $username = $dataget[1];
@@ -1552,24 +1552,24 @@ $textonebuy
     $username = $nameloc['id_invoice'];
     if (!in_array($nameloc['Status'], ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold'])) {
         sendmessage($from_id, "❌ امکان مشاهده اطلاعات اکانت درحال حاضر وجود ندارد", $keyboard, 'html');
-        step('home', $from_id);
+        \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
         return;
     }
-    $marzban = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
+    $marzban = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
     if ($marzban['name_panel'] != null) {
-        update("user", "Processing_value_four", $marzban['name_panel'], "id", $from_id);
+        \Faoxima\Core\Database\Db::update("user", "Processing_value_four", $marzban['name_panel'], "id", $from_id);
     }
     $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
-    update("invoice", "user_info", json_encode($DataUserOut), "id_invoice", $nameloc['id_invoice']);
+    \Faoxima\Core\Database\Db::update("invoice", "user_info", json_encode($DataUserOut), "id_invoice", $nameloc['id_invoice']);
     if (isset($DataUserOut['msg']) && $DataUserOut['msg'] == "User not found") {
-        update("invoice", "Status", "disabledn", "id_invoice", $nameloc['id_invoice']);
+        \Faoxima\Core\Database\Db::update("invoice", "Status", "disabledn", "id_invoice", $nameloc['id_invoice']);
         sendmessage($from_id, $textbotlang['users']['stateus']['UserNotFound'], $keyboard, 'html');
-        step('home', $from_id);
+        \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
         return;
     }
     if ($DataUserOut['status'] == "Unsuccessful") {
         sendmessage($from_id, $textbotlang['users']['stateus']['panelNotConnected'], $keyboard, 'html');
-        step('home', $from_id);
+        \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
         return;
     }
     if ($DataUserOut['online_at'] == "online") {
@@ -1611,12 +1611,12 @@ $textonebuy
 
     $expirationDate = $DataUserOut['expire'] ? jdate('Y/m/d', $DataUserOut['expire']) : $textbotlang['users']['stateus']['Unlimited'];
 
-    $LastTraffic = $DataUserOut['data_limit'] ? formatBytes($DataUserOut['data_limit']) : $textbotlang['users']['stateus']['Unlimited'];
+    $LastTraffic = $DataUserOut['data_limit'] ? \Faoxima\Core\Support\Formatting::formatBytes($DataUserOut['data_limit']) : $textbotlang['users']['stateus']['Unlimited'];
 
     $output = $DataUserOut['data_limit'] - $DataUserOut['used_traffic'];
-    $RemainingVolume = $DataUserOut['data_limit'] ? formatBytes($output) : "نامحدود";
+    $RemainingVolume = $DataUserOut['data_limit'] ? \Faoxima\Core\Support\Formatting::formatBytes($output) : "نامحدود";
 
-    $usedTrafficGb = $DataUserOut['used_traffic'] ? formatBytes($DataUserOut['used_traffic']) : $textbotlang['users']['stateus']['Notconsumed'];
+    $usedTrafficGb = $DataUserOut['used_traffic'] ? \Faoxima\Core\Support\Formatting::formatBytes($DataUserOut['used_traffic']) : $textbotlang['users']['stateus']['Notconsumed'];
 
     $timeDiff = $DataUserOut['expire'] - time();
     if ($timeDiff < 0) {
@@ -1691,7 +1691,7 @@ $textonebuy
     }
     $keyboardsetting['inline_keyboard'][] = [['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => 'backorder']];
     if ($marzban['type'] == "Manualsale") {
-        $userinfo = select("manualsell", "*", "username", $nameloc['username'], "select");
+        $userinfo = \Faoxima\Core\Database\Db::select("manualsell", "*", "username", $nameloc['username'], "select");
         if (is_array($userinfo)) {
             $mExt = strtolower(ltrim(trim((string)($userinfo['file_ext'] ?? '')), '.'));
             $mContent = (string)($userinfo['contentrecord'] ?? '');
@@ -1803,14 +1803,14 @@ $textonebuy
 } elseif (preg_match('/extend_(\w+)/', $datain, $dataget)) {
 
     $id_invoice = $dataget[1];
-    savedata("clear", "id_invoice", $id_invoice);
-    $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
+    \Faoxima\Telegram\Conversation\ConversationData::savedata("clear", "id_invoice", $id_invoice);
+    $nameloc = \Faoxima\Core\Database\Db::select("invoice", "*", "id_invoice", $id_invoice, "select");
     if ($nameloc == false) {
         sendmessage($from_id, "❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.", null, 'HTML');
         return;
     }
 
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
+    $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
     if ($marzban_list_get['status_extend'] == "off_extend") {
         sendmessage($from_id, "❌ امکان تمدید در این پنل وجود ندارد", null, 'html');
         return;
@@ -1831,10 +1831,10 @@ $textonebuy
         return;
     }
 
-    savedata("save", "name_panel", $nameloc['Service_location']);
+    \Faoxima\Telegram\Conversation\ConversationData::savedata("save", "name_panel", $nameloc['Service_location']);
     deletemessage($from_id, $message_id);
 
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
+    $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
     $query = "SELECT * FROM product
               WHERE (Location = '{$nameloc['Service_location']}' OR Location = '/all')
               AND (agent = '{$userbot['agent']}' OR agent = 'all')";
@@ -1850,7 +1850,7 @@ $textonebuy
         $query = "SELECT * FROM product
                   WHERE (Location = '{$marzban_list_get['name_panel']}' OR Location = '/all')
                   AND (agent = '{$userbot['agent']}' OR agent = 'all')";
-        $prodcut = KeyboardProduct(
+        $prodcut = \Faoxima\Telegram\Keyboard\LegacyFunctionsHelpers::KeyboardProduct(
             $marzban_list_get['name_panel'],
             $query,
             0,
@@ -1875,13 +1875,13 @@ $textonebuy
 🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
 
         sendmessage($from_id, $textcustom, $backuser, 'html');
-        step('gettimecustomvolextend', $from_id);
+        \Faoxima\Telegram\Navigation\Steps::step('gettimecustomvolextend', $from_id);
     }
 
 } elseif ($datain == "customvolumeextend") {
 
     $userdate = json_decode($user['Processing_value'], true);
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
+    $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $userdate['name_panel'], "select");
 
     $custompricevalue = $setting['pricevolume'];
     $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
@@ -1894,15 +1894,15 @@ $textonebuy
 🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
 
     sendmessage($from_id, $textcustom, $backuser, 'html');
-    step('gettimecustomvolextend', $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step('gettimecustomvolextend', $from_id);
 
 } elseif ($user['step'] == "gettimecustomvolextend") {
 
-    savedata("save", "volume", $text);
+    \Faoxima\Telegram\Conversation\ConversationData::savedata("save", "volume", $text);
 
     $userdate = json_decode($user['Processing_value'], true);
-    $nameloc = select("invoice", "*", "id_invoice", $userdate['id_invoice'], "select");
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
+    $nameloc = \Faoxima\Core\Database\Db::select("invoice", "*", "id_invoice", $userdate['id_invoice'], "select");
+    $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
 
     $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
     $mainvolume = $mainvolume[$userbot['agent']];
@@ -1929,7 +1929,7 @@ $textonebuy
     ⚠️ حداقل زمان $maintime روز  و حداکثر $maxtime روز  می توانید تهیه کنید";
 
     sendmessage($from_id, $textcustom, $backuser, 'html');
-    step("gettimecustomextend", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("gettimecustomextend", $from_id);
 
 } elseif ($user['step'] == "gettimecustomextend" || preg_match('/^selectproductextends_(.*)/', $datain, $dataget)) {
     if ($user['step'] == "gettimecustomextend") {
@@ -1939,8 +1939,8 @@ $textonebuy
         }
     }
     $userdate = json_decode($user['Processing_value'], true);
-    $nameloc = select("invoice", "*", "id_invoice", $userdate['id_invoice'], "select");
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
+    $nameloc = \Faoxima\Core\Database\Db::select("invoice", "*", "id_invoice", $userdate['id_invoice'], "select");
+    $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
     if ($user['step'] == "gettimecustomextend") {
         $maintime = json_decode($marzban_list_get['maintime'], true);
         $maintime = $maintime[$userbot['agent']];
@@ -1960,11 +1960,11 @@ $textonebuy
             "Service_time" => $text,
             "price_product" => ($userdate['volume'] * $custompricevalue) + ($text * $customtimevalueprice)
         );
-        savedata("save", "time", $text);
+        \Faoxima\Telegram\Conversation\ConversationData::savedata("save", "time", $text);
     } else {
         $product = $dataget[1];
-        savedata("save", "code_product", $product);
-        $product = select("product", "*", "code_product", $product);
+        \Faoxima\Telegram\Conversation\ConversationData::savedata("save", "code_product", $product);
+        $product = \Faoxima\Core\Database\Db::select("product", "*", "code_product", $product);
         $productlist = readJsonFileIfExists('product.json');
         if (isset($productlist[$product['code_product']])) {
             $product['price_product'] = $productlist[$product['code_product']];
@@ -1999,20 +1999,20 @@ $textonebuy
     } else {
         sendmessage($from_id, $textextend, $keyboardextend, 'HTML');
     }
-    step("home", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
 } elseif (preg_match('/^confirmserivce-(.*)/', $datain, $dataget)) {
     Editmessagetext($from_id, $message_id, $text_inline, json_encode(['inline_keyboard' => []]));
     $id_invoice = $dataget[1];
     $userdate = json_decode($user['Processing_value'], true);
-    $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
+    $nameloc = \Faoxima\Core\Database\Db::select("invoice", "*", "id_invoice", $id_invoice, "select");
+    $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
     if ($marzban_list_get['status_extend'] == "off_extend") {
         sendmessage($from_id, "❌ امکان تمدید در این پنل وجود ندارد", null, 'html');
         return;
     }
     if (isset($userdate['code_product'])) {
         $product = $userdate['code_product'];
-        $product = select("product", "*", "code_product", $product);
+        $product = \Faoxima\Core\Database\Db::select("product", "*", "code_product", $product);
         $productlist = readJsonFileIfExists('product.json');
         $priceproductmain = $product['price_product'];
         if (isset($productlist[$product['code_product']])) {
@@ -2043,23 +2043,23 @@ $textonebuy
     }
     $productlist_name = readJsonFileIfExists('product_name.json');
     $datafactor['name_product'] = empty($productlist_name[$datafactor['code_product']]) ? $datafactor['name_product'] : $productlist_name[$datafactor['code_product']];
-    $botbalance = select("botsaz", "*", "bot_token", $ApiToken, "select");
-    $userbotbalance = select("user", "*", "id", $botbalance['id_user'], "select");
+    $botbalance = \Faoxima\Core\Database\Db::select("botsaz", "*", "bot_token", $ApiToken, "select");
+    $userbotbalance = \Faoxima\Core\Database\Db::select("user", "*", "id", $botbalance['id_user'], "select");
     if ($datafactor['price_productMain'] >= $userbotbalance['Balance'] && $userbotbalance['agent'] != "n2") {
         sendmessage($from_id, "❌ خطایی در خرید رخ داده است برای رفع مشکل با پشتیبانی در ارتباط باشید", $keyboard, 'HTML');
-        step("home", $from_id);
+        \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
         foreach ($admin_ids as $admin) {
             sendmessage($admin, "❌ ادمین عزیز موجودی شما به پایان رسید برای فعالسازی به ربات اصلی مراجعه و ربات خود را شارژ نمایید.", null, 'HTML');
         }
         return;
     }
     if ($datafactor['price_product'] > $user['Balance'] && intval($datafactor['price_product']) != 0) {
-        $marzbandirectpay = select("shopSetting", "*", "Namevalue", "statusdirectpabuy", "select")['value'];
+        $marzbandirectpay = \Faoxima\Core\Database\Db::select("shopSetting", "*", "Namevalue", "statusdirectpabuy", "select")['value'];
         $Balance_prim = $datafactor['price_product'] - $user['Balance'];
         if ($Balance_prim <= 1)
             $Balance_prim = 0;
-        $minbalance = number_format(json_decode(select("PaySetting", "*", "NamePay", "minbalance", "select")['ValuePay'], true)[$userbot['agent']]);
-        $maxbalance = number_format(json_decode(select("PaySetting", "*", "NamePay", "maxbalance", "select")['ValuePay'], true)[$userbot['agent']]);
+        $minbalance = number_format(json_decode(\Faoxima\Core\Database\Db::select("PaySetting", "*", "NamePay", "minbalance", "select")['ValuePay'], true)[$userbot['agent']]);
+        $maxbalance = number_format(json_decode(\Faoxima\Core\Database\Db::select("PaySetting", "*", "NamePay", "maxbalance", "select")['ValuePay'], true)[$userbot['agent']]);
         $bakinfos = json_encode([
             'inline_keyboard' => [
                 [
@@ -2070,13 +2070,13 @@ $textonebuy
         Editmessagetext($from_id, $message_id, "❌ موجودی شما برای خرید سرویس کافی نمی باشد.
 💸  برای افزایش موجودی مبلغ را  به تومان وارد کنید:
 ✅  حداقل مبلغ $minbalance حداکثر مبلغ $maxbalance تومان می باشد", $bakinfos, 'HTML');
-        step('get_price', $from_id);
+        \Faoxima\Telegram\Navigation\Steps::step('get_price', $from_id);
         return;
     }
     $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
     $extend = $ManagePanel->extend($marzban_list_get['Methodextend'], $datafactor['Volume_constraint'], $datafactor['Service_time'], $nameloc['username'], $datafactor['code_product'], $marzban_list_get['code_panel']);
-    if ($extend['status'] == false && !rxRenewalIsPending($extend)) {
-        $extend['msg'] = rx_panel_error_text($extend['msg'] ?? null, $extend['detail'] ?? null);
+    if ($extend['status'] == false && !\Faoxima\Services\Renewal\RenewalText::rxRenewalIsPending($extend)) {
+        $extend['msg'] = \Faoxima\Services\Panels\PanelMessages::rx_panel_error_text($extend['msg'] ?? null, $extend['detail'] ?? null);
         $textreports = "
 خطای تمدید سرویس در ربات نماینده
 نام پنل : {$marzban_list_get['name_panel']}
@@ -2108,7 +2108,7 @@ $textonebuy
     $stmt->bind_param("sssssss", $from_id, $nameloc['username'], $value, $type, $dateacc, $datafactor['price_product'], json_encode($extend));
     $stmt->execute();
     $stmt->close();
-    update("invoice", "Status", "active", "id_invoice", $id_invoice);
+    \Faoxima\Core\Database\Db::update("invoice", "Status", "active", "id_invoice", $id_invoice);
     if (intval($datafactor['price_product']) != 0) {
         $Balance_prim = $user['Balance'] - $datafactor['price_product'];
         $userbalance = json_decode(file_get_contents("data/$from_id/$from_id.json"), true);
@@ -2120,7 +2120,7 @@ $textonebuy
         $datafactor['price_productMain'] = $datafactor['price_productMain'] - $resultper;
     }
     $Balancebot = $userbotbalance['Balance'] - $datafactor['price_productMain'];
-    update("user", "Balance", $Balancebot, "id", $userbotbalance['id']);
+    \Faoxima\Core\Database\Db::update("user", "Balance", $Balancebot, "id", $userbotbalance['id']);
     $keyboardextendfnished = json_encode([
         'inline_keyboard' => [
             [
@@ -2169,8 +2169,8 @@ $textonebuy
     }
 } elseif (preg_match('/changelink_(\w+)/', $datain, $dataget)) {
     $id_invoice = $dataget[1];
-    $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
+    $nameloc = \Faoxima\Core\Database\Db::select("invoice", "*", "id_invoice", $id_invoice, "select");
+    $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
     $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
     if ($DataUserOut['status'] == "Unsuccessful") {
         sendmessage($from_id, $textbotlang['users']['stateus']['error'], null, 'html');
@@ -2193,8 +2193,8 @@ $textonebuy
     Editmessagetext($from_id, $message_id, $textbotlang['users']['changelink']['warnchange'], $keyboardextend);
 } elseif (preg_match('/confirmchange_(\w+)/', $datain, $dataget)) {
     $id_invoice = $dataget[1];
-    $nameloc = select("invoice", "*", "id_invoice", $id_invoice, "select");
-    $marzban_list_get = select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
+    $nameloc = \Faoxima\Core\Database\Db::select("invoice", "*", "id_invoice", $id_invoice, "select");
+    $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
     $DataUserOut = $ManagePanel->Revoke_sub($nameloc['Service_location'], $nameloc['username']);
     if ($DataUserOut['status'] == "Unsuccessful") {
         sendmessage($from_id, '❌ خطایی در تغییر لینک رخ داده است.', null, 'HTML');

@@ -1,0 +1,67 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Faoxima\Api\Handlers;
+
+final class TimeRangesHandler extends \Faoxima\Api\Handlers\BaseHandler
+{
+
+
+    private const RANGES = [
+        ['days' => 1,   'aliases' => [1],          'label' => '1day'],
+        ['days' => 7,   'aliases' => [7],          'label' => '7day'],
+        ['days' => 30,  'aliases' => [30, 31],     'label' => '1'],
+        ['days' => 60,  'aliases' => [60, 61],     'label' => '2'],
+        ['days' => 90,  'aliases' => [90, 91],     'label' => '3'],
+        ['days' => 120, 'aliases' => [120, 121],   'label' => '4'],
+        ['days' => 180, 'aliases' => [180, 181],   'label' => '6'],
+        ['days' => 365, 'aliases' => [365],        'label' => '365'],
+        ['days' => 0,   'aliases' => [0],          'label' => 'unlimited'],
+    ];
+
+    public function handle(): void
+    {
+        $this->requireMethod('GET');
+
+        global $textbotlang;
+
+        $codePanel = $this->resolveCountryId();
+        if ($codePanel === '') {
+            \Faoxima\Api\Runtime\Response::badRequest('country_id is required');
+        }
+        $panel = $this->loadPanelByCode($codePanel);
+        if (\Faoxima\Services\Panels\Drivers\JovadPanel::jovadMiniAppReject($panel)) {
+            return;
+        }
+        if (!\Faoxima\Services\Panels\PanelFeatures::panel_feature_enabled($panel, 'categorytime')) {
+            \Faoxima\Api\Runtime\Response::ok([]);
+        }
+
+        $userAgent = $this->user['agent'] ?? 'f';
+        $rawTimes = array_map('strval', array_column(\Faoxima\Api\Runtime\Db::fetchAll(
+            "SELECT Service_time FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))",
+            [':location' => $panel['name_panel'], ':agent' => $userAgent]
+        ), 'Service_time'));
+        $rawTimes = array_values(array_unique($rawTimes));
+
+        $list = [];
+        foreach (self::RANGES as $range) {
+            $hit = false;
+            foreach ($range['aliases'] as $alias) {
+                if (in_array((string)$alias, $rawTimes, true)) { $hit = true; break; }
+            }
+            if (!$hit) continue;
+
+            $name = $textbotlang['Admin']['month'][$range['label']] ?? (string)$range['days'];
+            $list[] = [
+                'id' => 0,
+                'name' => $name,
+                'day' => $range['days'],
+            ];
+        }
+
+        \Faoxima\Api\Runtime\Response::ok($list);
+    }
+}
+

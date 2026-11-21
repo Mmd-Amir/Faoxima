@@ -1,6 +1,9 @@
 <?php
 
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'stock.php';
 
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
     define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
 }
@@ -9,616 +12,93 @@ ini_set('session.cookie_httponly', '1');
 session_start();
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
-require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/lib/remaining.php';
-require_once __DIR__ . '/lib/item_parser.php';
 require_once __DIR__ . '/lib/bulk_delete.php';
-require_once __DIR__ . '/../re/rx/function/nm_stock.php';
 
-fx_admin_require_access($pdo);
-
-
-$tables = ['nm_stock_shelves' => false, 'nm_config_stock' => false];
-foreach ($tables as $t => $_) {
-    try {
-        $r = $pdo->prepare("SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t LIMIT 1");
-        $r->execute([':t' => $t]);
-        $tables[$t] = (bool)$r->fetchColumn();
-    } catch (\Throwable $e) {
-    }
+if (\Faoxima\Admin\Web\Pages\StockRequest::handle(
+        flash: $flash,
+        invoiceTableMissing: $invoiceTableMissing,
+        nationalPanels: $nationalPanels,
+        p: $p,
+        panelNameOf: $panelNameOf,
+        panels: $panels,
+        pdo: $pdo ?? null,
+        productByCode: $productByCode,
+        products: $products,
+        r: $r,
+        tableMissing: $tableMissing
+    ) !== true) {
+    unset($adminWebPage);
+    return;
 }
-$tableMissing = !($tables['nm_stock_shelves'] && $tables['nm_config_stock']);
-
-$invoiceTableMissing = true;
-try {
-    $r = $pdo->prepare("SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'invoice' LIMIT 1");
-    $r->execute();
-    $invoiceTableMissing = !(bool)$r->fetchColumn();
-} catch (\Throwable $e) {
+if (\Faoxima\Admin\Web\Pages\StockActions::handle(
+        action: $action,
+        adminWebPage: $adminWebPage ?? null,
+        bad: $bad ?? null,
+        badSub: $badSub ?? null,
+        cfgFilter: $cfgFilter,
+        daysActive: $daysActive,
+        daysFilter: $daysFilter,
+        daysMode: $daysMode,
+        duplicate: $duplicate ?? null,
+        flash: $flash,
+        invoiceTableMissing: $invoiceTableMissing ?? null,
+        n: $n ?? null,
+        name: $name,
+        nationalPanels: $nationalPanels ?? null,
+        ok: $ok,
+        panelNameOf: $panelNameOf ?? null,
+        payload: $payload,
+        pdo: $pdo ?? null,
+        productByCode: $productByCode ?? null,
+        remainingOf: $remainingOf,
+        scanTruncated: $scanTruncated,
+        selectedShelf: $selectedShelf,
+        sh: $sh,
+        shelfCounts: $shelfCounts,
+        stmt: $stmt,
+        tableMissing: $tableMissing ?? null,
+        viewShelfId: $viewShelfId
+    ) !== true) {
+    unset($adminWebPage);
+    return;
 }
-
-$flash = ['ok' => '', 'err' => ($_GET['delete_error'] ?? '') === '1' ? 'حذف انجام نشد. جزئیات در لاگ سرور ثبت شد.' : ''];
-if (($_GET['import_error'] ?? '') === '1') {
-    $flash['err'] = 'ورود کانفیگ‌ها انجام نشد. جزئیات در لاگ سرور ثبت شد.';
-}
-
-function faoxima_stock_days_qs(): string
-{
-    $raw = isset($_POST['days']) ? trim((string)$_POST['days']) : '';
-    if ($raw === '' || !ctype_digit($raw)) return '';
-    return '&days=' . (int)$raw . '&dmode=' . urlencode(faoxima_remaining_dmode($_POST['dmode'] ?? ''));
-}
-
-
-$panels = [];
-try {
-    $r = $pdo->query("SELECT code_panel, name_panel, type, national_net_status FROM marzban_panel ORDER BY name_panel ASC");
-    if ($r) $panels = $r->fetchAll(PDO::FETCH_ASSOC);
-} catch (\Throwable $e) {
-}
-
-$products = [];
-try {
-    $r = $pdo->query("SELECT * FROM product ORDER BY id ASC");
-    if ($r) $products = $r->fetchAll(PDO::FETCH_ASSOC);
-} catch (\Throwable $e) {
-}
-
-$panelNameOf = [];
-foreach ($panels as $p) $panelNameOf[(string)$p['code_panel']] = (string)$p['name_panel'];
-
-$nationalPanels = array_values(array_filter($panels, 'nmPanelNationalEnabled'));
-$nationalNetActive = !empty($nationalPanels);
-
-$productByCode = [];
-foreach ($products as $p) {
-    $code = (string)($p['code_product'] ?? '');
-    if ($code !== '') $productByCode[$code] = $p;
-}
-
-
-function faoxima_product_name(array $p): string
-{
-    return (string)($p['name_product'] ?? $p['Name_product'] ?? '');
-}
-function faoxima_product_volume(array $p): float
-{
-    if (isset($p['Volume_constraint'])) return (float)$p['Volume_constraint'];
-    if (isset($p['volume_product']))    return (float)$p['volume_product'];
-    return 0.0;
-}
-function faoxima_product_days(array $p): int
-{
-    if (isset($p['Service_time'])) return (int)$p['Service_time'];
-    if (isset($p['time_product'])) return (int)$p['time_product'];
-    return 0;
-}
-function faoxima_product_price(array $p): int
-{
-    if (isset($p['Price_product'])) return (int)$p['Price_product'];
-    if (isset($p['price_product'])) return (int)$p['price_product'];
-    return 0;
+if (\Faoxima\Admin\Web\Pages\StockSearchResults::handle(
+        adminWebPage: $adminWebPage ?? null,
+        allowedStatuses: $allowedStatuses,
+        cfgFilter: $cfgFilter,
+        cfgPage: $cfgPage,
+        cfgPages: $cfgPages,
+        cfgQ: $cfgQ,
+        cfgTotal: $cfgTotal,
+        daysActive: $daysActive ?? null,
+        daysFilter: $daysFilter ?? null,
+        daysMode: $daysMode ?? null,
+        flash: $flash,
+        invoiceTableMissing: $invoiceTableMissing ?? null,
+        params: $params,
+        pdo: $pdo ?? null,
+        r: $r,
+        remainingOf: $remainingOf,
+        row: $row,
+        scanTruncated: $scanTruncated,
+        selectedShelf: $selectedShelf,
+        sh: $sh,
+        shelfConfigs: $shelfConfigs,
+        shelfCounts: $shelfCounts,
+        shelfDays: $shelfDays,
+        shelves: $shelves,
+        sid: $sid,
+        st: $st,
+        stmt: $stmt,
+        tableMissing: $tableMissing ?? null,
+        viewShelfId: $viewShelfId ?? null
+    ) !== true) {
+    unset($adminWebPage);
+    return;
 }
 
-
-function fx_stock_shelf_input(array $post, array $productByCode, array $nationalPanels, array $panelNameOf): array
-{
-    $name          = trim((string)($post['name']             ?? ''));
-    $selectedPanel = trim((string)($post['source_codepanel'] ?? ''));
-    $codeProduct   = trim((string)($post['codeproduct']      ?? ''));
-
-    $productName = '';
-    $volumeGb    = (float)($post['volume_gb']    ?? 0);
-    $serviceDays = (int)($post['service_days']   ?? 0);
-    $price       = (int)($post['price']          ?? 0);
-    if (isset($productByCode[$codeProduct])) {
-        $p = $productByCode[$codeProduct];
-        $productName = faoxima_product_name($p);
-        if ($volumeGb    <= 0) $volumeGb    = faoxima_product_volume($p);
-        if ($serviceDays <= 0) $serviceDays = faoxima_product_days($p);
-        if ($price       <= 0) $price       = faoxima_product_price($p);
-    }
-
-    $errors = [];
-    if (empty($nationalPanels))                  $errors[] = 'هیچ پنلی با وضعیت شبکه ملی فعال یافت نشد. امکان افزودن انبار وجود ندارد.';
-    if ($name === '')                            $errors[] = 'نام انبار خالی است.';
-    elseif (mb_strlen($name, 'UTF-8') > 190)     $errors[] = 'نام انبار بیش از حد طولانی است.';
-    if ($volumeGb < 0    || $volumeGb > 100000)  $errors[] = 'حجم نامعتبر است.';
-    if ($serviceDays < 0 || $serviceDays > 36500) $errors[] = 'مدت سرویس نامعتبر است.';
-    if ($price < 0)                              $errors[] = 'قیمت نمی‌تواند منفی باشد.';
-
-    $validNationalCodes = [];
-    foreach ($nationalPanels as $pp) $validNationalCodes[(string)$pp['code_panel']] = true;
-    if (!isset($validNationalCodes[$selectedPanel])) $errors[] = 'پنل انتخاب‌شده نامعتبر است.';
-
-    if ($codeProduct === '') {
-        $errors[] = 'انتخاب محصول الزامی است.';
-    } elseif (isset($validNationalCodes[$selectedPanel])) {
-        $selectedPanelName = $panelNameOf[$selectedPanel] ?? '';
-        if (!isset($productByCode[$codeProduct])) {
-            $errors[] = 'محصول انتخاب‌شده نامعتبر است.';
-        } else {
-            $prodLocation = (string)($productByCode[$codeProduct]['Location'] ?? '');
-            if ($prodLocation !== '/all' && $prodLocation !== $selectedPanelName) {
-                $errors[] = 'محصول انتخاب‌شده متعلق به پنل انتخابی نیست.';
-            }
-        }
-    }
-    return [$name, $selectedPanel, $codeProduct, $productName, $volumeGb, $serviceDays, $price, $errors];
-}
-
-function fx_stock_config_metadata(string $cfg, ?string $sub, array $shelf): array
-{
-    $fmt = 'text';
-    if ($cfg === '' && $sub !== null)                                                                      $fmt = 'subscription';
-    elseif (preg_match('/^(vmess|vless|trojan|ss|ssr|hysteria2|hy2|tuic|wireguard):\/\//i', $cfg))           $fmt = 'single';
-    elseif (stripos($cfg, '[Interface]') !== false || stripos($cfg, 'PrivateKey') !== false)                 $fmt = 'wireguard';
-
-    $tier = 'auto';
-    $extractedVol = null;
-    $targetText = $cfg !== '' ? $cfg : ($sub ?? '');
-    if (preg_match('/(?:^|[^0-9])([1-9][0-9]{0,2})\s*(?:gb|g|گیگ|گیگابایت)(?:[^0-9]|$)/iu', $targetText, $m)) {
-        $extractedVol = (int)$m[1];
-    } elseif (preg_match('/(?:^|[^0-9])([1-9][0-9]{0,2})\s*[-_]\s*([1-9][0-9]{0,2})(?:[^0-9]|$)/u', $targetText, $m)) {
-        $tier = ((int)$m[1]) . '-' . ((int)$m[2]);
-    }
-    if ($tier === 'auto') {
-        $vol = $extractedVol !== null ? $extractedVol : (int)ceil((float)$shelf['volume_gb']);
-        if ($vol <= 0)      $tier = 'auto';
-        elseif ($vol <= 10) $tier = '10-10';
-        else {
-            $lower = (int)(floor(($vol - 1) / 10) * 10);
-            $tier  = $lower . '-' . ($lower + 10);
-        }
-    }
-    return [$fmt, $tier];
-}
-
-function fx_stock_import_configs(PDO $pdo, int $shelfId, array $entries): array
-{
-    return fx_admin_config_transaction($pdo, 'nm_config_stock', 'stock_import', static function () use ($pdo, $shelfId, $entries): array {
-        $lockShelf = $pdo->prepare('SELECT * FROM nm_stock_shelves WHERE id = ? FOR UPDATE');
-        $lockShelf->execute([$shelfId]);
-        $shelf = $lockShelf->fetch(PDO::FETCH_ASSOC);
-        $lockShelf->closeCursor();
-        if (!$shelf) {
-            throw new RuntimeException('Stock shelf is no longer available');
-        }
-
-        $ok = 0;
-        $duplicate = 0;
-        $bad = 0;
-        $badSub = 0;
-        foreach ($entries as $entry) {
-            $cfg = $entry['cfg'];
-            $sub = $entry['sub'] !== '' ? $entry['sub'] : null;
-
-            if ($cfg === '' && $sub === null) {
-                $bad++;
-                continue;
-            }
-            if ($cfg !== '' && mb_strlen($cfg, 'UTF-8') < 8) {
-                $bad++;
-                continue;
-            }
-
-            try {
-                [$fmt, $tier] = fx_stock_config_metadata($cfg, $sub, $shelf);
-
-                $stmt = $pdo->prepare(
-                    "INSERT IGNORE INTO nm_config_stock
-                    (shelf_id, codepanel, codeproduct, tier, format, content, sub_link, status, created_at)
-                 VALUES
-                    (:shelf_id, :codepanel, :codeproduct, :tier, :format, :content, :sub_link, 'active', :ct)"
-                );
-                $stmt->execute([
-                    ':shelf_id'    => (int)$shelf['id'],
-                    ':codepanel'   => (string)$shelf['stock_codepanel'],
-                    ':codeproduct' => (string)$shelf['codeproduct'],
-                    ':tier'        => $tier,
-                    ':format'      => $fmt,
-                    ':content'     => $cfg,
-                    ':sub_link'    => $sub,
-                    ':ct'          => time(),
-                ]);
-                if ($stmt->rowCount() > 0) $ok++;
-                else                       $duplicate++;
-            } catch (\Throwable $e) {
-                if (!$pdo->inTransaction()) {
-                    throw $e;
-                }
-                $bad++;
-                fx_delete_log_error('stock_import_item', 'nm_config_stock', $e);
-            }
-        }
-        return [$ok, $duplicate, $bad, $badSub];
-    });
-}
-
-if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    fx_csrf_guard();
-    $action = $_POST['_action'] ?? '';
-
-    if ($action === 'add_shelf') {
-        [$name, $selectedPanel, $codeProduct, $productName, $volumeGb, $serviceDays, $price, $errors] = fx_stock_shelf_input($_POST, $productByCode, $nationalPanels, $panelNameOf);
-
-        $sourcePanel = $selectedPanel;
-        $stockPanel  = $selectedPanel;
-
-        if (!empty($errors)) {
-            $flash['err'] = '• ' . implode("<br>• ", array_map(fn($e) => htmlspecialchars($e, ENT_QUOTES, 'UTF-8'), $errors));
-        } else {
-            try {
-                $dup = $pdo->prepare("SELECT 1 FROM nm_stock_shelves WHERE name = :n AND source_codepanel = :sp LIMIT 1");
-                $dup->execute([':n' => $name, ':sp' => $sourcePanel]);
-                if ($dup->fetchColumn()) {
-                    $flash['err'] = 'انباری با همین نام و پنل مبدأ از قبل وجود دارد.';
-                }
-            } catch (\Throwable $e) {
-            }
-
-            if (!$flash['err']) {
-                try {
-                    $stmt = $pdo->prepare(
-                        "INSERT INTO nm_stock_shelves
-                         (name, source_codepanel, stock_codepanel, codeproduct, product_name,
-                          volume_gb, service_days, price, status, created_at)
-                         VALUES (:n, :sp, :tp, :cp, :pn, :v, :d, :p, 'active', :t)"
-                    );
-                    $stmt->execute([
-                        ':n'  => $name,
-                        ':sp' => $sourcePanel,
-                        ':tp' => $stockPanel,
-                        ':cp' => $codeProduct,
-                        ':pn' => $productName,
-                        ':v'  => $volumeGb,
-                        ':d'  => $serviceDays,
-                        ':p' => $price,
-                        ':t'  => time(),
-                    ]);
-                    $flash['ok'] = 'انبار جدید ثبت شد.';
-                } catch (\Throwable $e) {
-                    $flash['err'] = 'افزودن ناموفق: ' . $e->getMessage();
-                }
-            }
-        }
-    } elseif ($action === 'delete_shelf') {
-        $id = (int)($_POST['id'] ?? 0);
-        if ($id > 0) {
-            try {
-                fx_admin_delete_configs($pdo, 'nm_config_stock', 'shelf_id = ?', [$id], $id);
-                $flash['ok'] = 'انبار و کانفیگ‌های آن حذف شد.';
-            } catch (\Throwable $e) {
-                $flash['err'] = 'حذف انجام نشد. جزئیات در لاگ سرور ثبت شد.';
-            }
-        }
-    } elseif ($action === 'add_configs') {
-        $shelfId    = (int)($_POST['shelf_id'] ?? 0);
-        $configsRaw = (string)($_POST['configs']   ?? '');
-        $itemsJson  = (string)($_POST['items_json'] ?? '');
-        $entryMode  = (string)($_POST['entry_mode'] ?? 'single');
-        $entryMode  = ($entryMode === 'bulk') ? 'bulk' : 'single';
-        $payload    = ($itemsJson !== '') ? $itemsJson : $configsRaw;
-
-        $shelf = null;
-        try {
-            $sh = $pdo->prepare("SELECT * FROM nm_stock_shelves WHERE id = :id");
-            $sh->execute([':id' => $shelfId]);
-            $shelf = $sh->fetch(PDO::FETCH_ASSOC) ?: null;
-        } catch (\Throwable $e) {
-        }
-
-        if (!$shelf) {
-            $flash['err'] = 'انبار انتخابی پیدا نشد.';
-        } elseif (trim($payload) === '') {
-            $flash['err'] = 'هیچ کانفیگی وارد نشده است.';
-        } else {
-            $entries = faoxima_pair_configs_and_links($payload);
-
-            if (empty($entries)) {
-                $flash['err'] = 'هیچ کانفیگی وارد نشده است.';
-            } else {
-                $tooManyInSingleMode = false;
-                if ($entryMode === 'single' && count($entries) > 1) {
-                    $tooManyInSingleMode = true;
-                    $flash['err'] = 'در حالت «تکی» فقط یک کانفیگ (یا یک کانفیگ همراه با لینکِ اشتراکش) مجاز است. شما ' . count($entries) . ' آیتم وارد کرده‌اید. برای ثبت چند کانفیگ با هم، از حالت «دسته‌ای» استفاده کنید.';
-                }
-
-                if (!$tooManyInSingleMode) {
-                    try {
-                        [$ok, $duplicate, $bad, $badSub] = fx_stock_import_configs($pdo, $shelfId, $entries);
-                    } catch (Throwable $e) {
-                        header('Location: stock.php?shelf=' . $shelfId . '&import_error=1');
-                        exit;
-                    }
-
-                    $parts = ["ثبت‌شده: {$ok}"];
-                    if ($duplicate > 0) $parts[] = "تکراری: {$duplicate}";
-                    if ($bad       > 0) $parts[] = "نامعتبر: {$bad}";
-                    if ($badSub    > 0) $parts[] = "لینک اشتراک نامعتبر (کانفیگ ثبت شد): {$badSub}";
-                    $msg = 'نتیجه ورود کانفیگ‌ها — ' . implode(' · ', $parts);
-                    if ($ok === 0 && $duplicate > 0) {
-                        $flash['err'] = $msg . ' (این کانفیگ‌ها از قبل در انبار موجودند)';
-                    } else {
-                        $flash['ok'] = $msg;
-                    }
-                    header('Location: stock.php?shelf=' . $shelfId);
-                    exit;
-                }
-            }
-        }
-    } elseif ($action === 'delete_config_hard') {
-
-        $configId = (int)($_POST['config_id'] ?? 0);
-        $shelfId  = (int)($_POST['shelf_id']  ?? 0);
-        $configDeleted = false;
-        $deleteFailed = false;
-        if ($configId > 0) {
-            try {
-                $configDeleted = fx_admin_delete_configs($pdo, 'nm_config_stock', 'id = ?', [$configId]) > 0;
-                $flash['ok'] = $configDeleted ? 'کانفیگ برای همیشه از دیتابیس حذف شد.' : 'کانفیگ پیدا نشد.';
-            } catch (\Throwable $e) {
-                $deleteFailed = true;
-                $flash['err'] = 'حذف انجام نشد. جزئیات در لاگ سرور ثبت شد.';
-            }
-        }
-        $redir = 'stock.php?shelf=' . $shelfId;
-        if (!empty($_POST['cstatus'])) $redir .= '&cstatus=' . urlencode((string)$_POST['cstatus']);
-        if (!empty($_POST['cpage']))   $redir .= '&cpage=' . (int)$_POST['cpage'];
-        $redir .= faoxima_stock_days_qs();
-        if ($configDeleted) $redir .= '&bulkclear=1';
-        if ($deleteFailed) $redir .= '&delete_error=1';
-        if ($shelfId > 0) {
-            header('Location: ' . $redir);
-            exit;
-        }
-    } elseif ($action === 'stock_bulk_delete') {
-
-        $shelfId = (int)($_POST['shelf_id'] ?? 0);
-        $ids = fx_bulk_positive_ids((array)($_POST['ids'] ?? []));
-        $ids = array_slice($ids, 0, 500);
-        $deleteFailed = false;
-
-        if (!$ids) {
-            $flash['err'] = 'موردی برای حذف انتخاب نشده بود.';
-        } elseif ($shelfId <= 0) {
-            $flash['err'] = 'انبار مشخص نشده است.';
-        } else {
-            try {
-                $ph = implode(',', array_fill(0, count($ids), '?'));
-                $n = fx_admin_delete_configs($pdo, 'nm_config_stock', "shelf_id = ? AND id IN ($ph)", array_merge([$shelfId], $ids));
-                $flash['ok'] = $n > 0
-                    ? $n . ' کانفیگ برای همیشه از دیتابیس حذف شد.'
-                    : 'هیچ کانفیگی حذف نشد.';
-            } catch (\Throwable $e) {
-                $deleteFailed = true;
-                $flash['err'] = 'حذف انجام نشد. جزئیات در لاگ سرور ثبت شد.';
-            }
-        }
-
-        $redir = 'stock.php?shelf=' . $shelfId;
-        if (!empty($_POST['cstatus'])) $redir .= '&cstatus=' . urlencode((string)$_POST['cstatus']);
-        if (!empty($_POST['cpage']))   $redir .= '&cpage=' . (int)$_POST['cpage'];
-        $redir .= faoxima_stock_days_qs();
-        if (!empty($n)) $redir .= '&bulkclear=1';
-        if ($deleteFailed) $redir .= '&delete_error=1';
-        if ($shelfId > 0) {
-            header('Location: ' . $redir);
-            exit;
-        }
-    } elseif ($action === 'delete_filtered_configs') {
-        $shelfId = (int)($_POST['shelf_id'] ?? 0);
-        $cfgFilter = (string)($_POST['cstatus'] ?? 'all');
-        $allowed = ['active', 'reserved', 'delivered', 'disabled'];
-        $filteredDeleted = 0;
-        if ($shelfId > 0) {
-            try {
-                if ($cfgFilter !== 'all' && in_array($cfgFilter, $allowed, true)) {
-                    $filteredDeleted = fx_admin_delete_configs($pdo, 'nm_config_stock', 'shelf_id = ? AND status = ?', [$shelfId, $cfgFilter]);
-                } else {
-                    $filteredDeleted = fx_admin_delete_configs($pdo, 'nm_config_stock', 'shelf_id = ?', [$shelfId]);
-                }
-                $flash['ok'] = $filteredDeleted . ' کانفیگ برای همیشه از دیتابیس حذف شد.';
-            } catch (\Throwable $e) {
-                $flash['err'] = 'حذف انجام نشد. جزئیات در لاگ سرور ثبت شد.';
-            }
-            $redir = 'stock.php?shelf=' . $shelfId . '&cstatus=' . urlencode($cfgFilter);
-            if ($filteredDeleted > 0) $redir .= '&bulkclear=1';
-            if ($flash['err'] !== '') $redir .= '&delete_error=1';
-            header('Location: ' . $redir);
-            exit;
-        }
-    } elseif ($action === 'delete_active_configs') {
-
-        $shelfId = (int)($_POST['shelf_id'] ?? 0);
-        $activeDeleted = 0;
-        if ($shelfId > 0) {
-            try {
-                $stmt = $pdo->prepare("DELETE FROM nm_config_stock WHERE shelf_id = :id AND status = 'active'");
-                $stmt->execute([':id' => $shelfId]);
-                $activeDeleted = $stmt->rowCount();
-                $flash['ok'] = $activeDeleted . ' کانفیگ فعال برای همیشه از دیتابیس حذف شد.';
-            } catch (\Throwable $e) {
-                $flash['err'] = 'حذف ناموفق: ' . $e->getMessage();
-            }
-            $redir = 'stock.php?shelf=' . $shelfId . faoxima_stock_days_qs();
-            if ($activeDeleted > 0) $redir .= '&bulkclear=1';
-            header('Location: ' . $redir);
-            exit;
-        }
-    }
-}
-
-
-$viewShelfId   = isset($_GET['shelf']) ? (int)$_GET['shelf'] : 0;
-$selectedShelf = null;
-$shelfCounts   = [];
-$remainingOf   = [];
-$scanTruncated = false;
-
-$daysRaw    = isset($_GET['days']) ? trim((string)$_GET['days']) : '';
-$daysFilter = ($daysRaw !== '' && ctype_digit($daysRaw)) ? (int)$daysRaw : null;
-$daysMode   = faoxima_remaining_dmode($_GET['dmode'] ?? '');
-$daysActive = ($daysFilter !== null && !$invoiceTableMissing);
-
-
-function faoxima_stock_resolve_remaining(PDO $pdo, array $rows, int $shelfDays, bool $invoiceMissing): array
-{
-    $out = [];
-    $sold = ['reserved' => true, 'delivered' => true];
-
-    $invIds = [];
-    foreach ($rows as $r) {
-        if (!isset($sold[(string)($r['status'] ?? '')])) continue;
-        $iv = trim((string)($r['assigned_invoice'] ?? ''));
-        if ($iv !== '') $invIds[] = $iv;
-    }
-    $inv = ($invIds && !$invoiceMissing) ? faoxima_remaining_fetch_by_invoice($pdo, $invIds) : [];
-
-    foreach ($rows as $r) {
-        $id = (int)$r['id'];
-        if (!isset($sold[(string)($r['status'] ?? '')])) {
-            $out[$id] = null;
-            continue;
-        }
-
-        $iv        = trim((string)($r['assigned_invoice'] ?? ''));
-        $invRow    = ($iv !== '' && isset($inv[$iv])) ? $inv[$iv] : null;
-        $delivered = (int)($r['delivered_at'] ?? 0);
-        $sellTs    = $delivered > 0 ? $delivered : ($invRow['time_sell'] ?? null);
-        if ($sellTs === null || $sellTs === '') {
-            $out[$id] = null;
-            continue;
-        }
-
-        $uname    = $r['assigned_user'] ?? ($invRow['username'] ?? '');
-        $prodName = $invRow['name_product'] ?? '';
-        $out[$id] = faoxima_remaining_days($sellTs, $shelfDays, $uname, $prodName);
-    }
-    return $out;
-}
-
-if (!$tableMissing) {
-    try {
-        $staleReservedBefore = time() - 600;
-        $pdo->exec("UPDATE nm_config_stock SET status='active', assigned_user='', assigned_invoice='', assigned_mode='', reserved_at=NULL WHERE status='reserved' AND (reserved_at IS NULL OR reserved_at < {$staleReservedBefore})");
-    } catch (\Throwable $e) {
-    }
-}
-if (!$tableMissing) {
-    try {
-        $stmt = $pdo->query(
-            "SELECT shelf_id, status, COUNT(*) AS cnt FROM nm_config_stock
-             WHERE shelf_id IS NOT NULL GROUP BY shelf_id, status"
-        );
-        if ($stmt) {
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-                $sid = (int)$row['shelf_id'];
-                $st  = (string)$row['status'];
-                if (!isset($shelfCounts[$sid])) {
-                    $shelfCounts[$sid] = ['total' => 0, 'active' => 0, 'reserved' => 0, 'delivered' => 0, 'disabled' => 0];
-                }
-                if (isset($shelfCounts[$sid][$st])) $shelfCounts[$sid][$st] = (int)$row['cnt'];
-                $shelfCounts[$sid]['total'] += (int)$row['cnt'];
-            }
-        }
-    } catch (\Throwable $e) {
-    }
-}
-
-$shelves = [];
-$shelfConfigs = [];
-if (!$tableMissing) {
-    try {
-        $r = $pdo->query("SELECT * FROM nm_stock_shelves ORDER BY id DESC");
-        if ($r) $shelves = $r->fetchAll(PDO::FETCH_ASSOC);
-    } catch (\Throwable $e) {
-        $flash['err'] = $flash['err'] ?: 'بارگذاری ناموفق: ' . $e->getMessage();
-    }
-    if ($viewShelfId > 0) {
-        foreach ($shelves as $sh) {
-            if ((int)$sh['id'] === $viewShelfId) {
-                $selectedShelf = $sh;
-                break;
-            }
-        }
-        if ($selectedShelf) {
-            $allowedStatuses = ['active', 'reserved', 'delivered', 'disabled'];
-            $cfgFilter = isset($_GET['cstatus']) ? (string)$_GET['cstatus'] : 'all';
-            if ($cfgFilter !== 'all' && !in_array($cfgFilter, $allowedStatuses, true)) $cfgFilter = 'all';
-            $cfgPerPage = 500;
-            $cfgPage = isset($_GET['cpage']) ? max(1, (int)$_GET['cpage']) : 1;
-
-            $cfgQ = trim((string)($_GET['q'] ?? ''));
-
-            $whereSql = "shelf_id = :id";
-            $params = [':id' => $viewShelfId];
-            if ($cfgFilter !== 'all') {
-                $whereSql .= " AND status = :st";
-                $params[':st'] = $cfgFilter;
-            }
-            if ($cfgQ !== '') {
-                $whereSql .= " AND (content LIKE :q1 OR assigned_user LIKE :q2 OR sub_link LIKE :q3)";
-                $cfgLike = '%' . $cfgQ . '%';
-                $params[':q1'] = $cfgLike;
-                $params[':q2'] = $cfgLike;
-                $params[':q3'] = $cfgLike;
-            }
-
-            $cfgTotal = 0;
-            $shelfDays = (int)($selectedShelf['service_days'] ?? 0);
-
-            if (!$daysActive) {
-                try {
-                    $cnt = $pdo->prepare("SELECT COUNT(*) FROM nm_config_stock WHERE {$whereSql}");
-                    $cnt->execute($params);
-                    $cfgTotal = (int)$cnt->fetchColumn();
-                } catch (\Throwable $e) {
-                }
-                $cfgPages = max(1, (int)ceil($cfgTotal / $cfgPerPage));
-                if ($cfgPage > $cfgPages) $cfgPage = $cfgPages;
-                $cfgOffset = ($cfgPage - 1) * $cfgPerPage;
-
-                try {
-                    $r = $pdo->prepare("SELECT * FROM nm_config_stock WHERE {$whereSql} ORDER BY id DESC LIMIT {$cfgPerPage} OFFSET {$cfgOffset}");
-                    $r->execute($params);
-                    $shelfConfigs = $r->fetchAll(PDO::FETCH_ASSOC);
-                } catch (\Throwable $e) {
-                }
-                $remainingOf = faoxima_stock_resolve_remaining($pdo, $shelfConfigs, $shelfDays, $invoiceTableMissing);
-            } else {
-                $scanLimit = FAOXIMA_REMAINING_SCAN_CAP + 1;
-                $scanned = [];
-                try {
-                    $r = $pdo->prepare("SELECT * FROM nm_config_stock WHERE {$whereSql} ORDER BY id DESC LIMIT {$scanLimit}");
-                    $r->execute($params);
-                    $scanned = $r->fetchAll(PDO::FETCH_ASSOC);
-                } catch (\Throwable $e) {
-                }
-                [$cfgTotal, $cfgPages, $cfgPage, $shelfConfigs, $remainingOf, $scanTruncated] = faoxima_remaining_filter_page(
-                    $scanned, $cfgPage, $cfgPerPage, $daysMode, $daysFilter,
-                    static fn (array $rows) => faoxima_stock_resolve_remaining($pdo, $rows, $shelfDays, $invoiceTableMissing)
-                );
-            }
-        }
-    }
-}
-
-function faoxima_stock_status_label(string $s): array
-{
-    switch ($s) {
-        case 'active':
-            return [icon('circle-check', 'svg-icon svg-sm') . ' موجود', 'badge-active'];
-        case 'reserved':
-            return [icon('lock', 'svg-icon svg-sm') . ' رزرو', 'badge-warning'];
-        case 'delivered':
-            return [icon('package', 'svg-icon svg-sm') . ' تحویل شده', 'badge-info'];
-        case 'disabled':
-            return [icon('xmark', 'svg-icon svg-sm') . ' غیرفعال', 'badge-block'];
-        default:
-            return [htmlspecialchars($s, ENT_QUOTES), 'badge-gray'];
-    }
-}
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -978,8 +458,8 @@ function faoxima_stock_status_label(string $s): array
                     <div class="page-head">
                         <div>
                             <div class="page-head__title">
-                                <a href="stock.php" class="page-head__back"><?php echo icon('arrow-left', 'svg-icon svg-sm'); ?></a>
-                                <?php echo icon('package', 'svg-icon svg-lg'); ?>
+                                <a href="stock.php" class="page-head__back"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('arrow-left', 'svg-icon svg-sm'); ?></a>
+                                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('package', 'svg-icon svg-lg'); ?>
                                 <?php echo htmlspecialchars($selectedShelf['name'], ENT_QUOTES, 'UTF-8'); ?>
                             </div>
                             <div class="page-head__sub">
@@ -991,21 +471,21 @@ function faoxima_stock_status_label(string $s): array
                         </div>
                         <div>
                             <button class="btn btn-primary" onclick="openModal('modal-add-configs')">
-                                <?php echo icon('plus', 'svg-icon svg-sm'); ?>
+                                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon svg-sm'); ?>
                                 <span>افزودن کانفیگ</span>
                             </button>
                         </div>
                     </div>
 
-                    <?php if ($flash['ok']): ?><div class="alert alert-success"><?php echo icon('circle-check', 'svg-icon'); ?><span><?php echo htmlspecialchars($flash['ok'], ENT_QUOTES); ?></span></div><?php endif; ?>
-                    <?php if ($flash['err']): ?><div class="alert alert-danger"><?php echo icon('circle-exclamation', 'svg-icon'); ?><span><?php echo $flash['err']; ?></span></div><?php endif; ?>
+                    <?php if ($flash['ok']): ?><div class="alert alert-success"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-check', 'svg-icon'); ?><span><?php echo htmlspecialchars($flash['ok'], ENT_QUOTES); ?></span></div><?php endif; ?>
+                    <?php if ($flash['err']): ?><div class="alert alert-danger"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon'); ?><span><?php echo $flash['err']; ?></span></div><?php endif; ?>
 
                     <?php $counts = $shelfCounts[$viewShelfId] ?? ['total' => 0, 'active' => 0, 'reserved' => 0, 'delivered' => 0, 'disabled' => 0]; ?>
                     <div class="stat-row">
                         <div class="stat-chip">کل: <strong><?php echo $counts['total']; ?></strong></div>
-                        <div class="stat-chip stat-chip--success"><?php echo icon('circle-check', 'svg-icon svg-sm'); ?> موجود: <strong><?php echo $counts['active']; ?></strong></div>
-                        <div class="stat-chip stat-chip--accent"><?php echo icon('package', 'svg-icon svg-sm'); ?> تحویل شده: <strong><?php echo $counts['delivered']; ?></strong></div>
-                        <?php if ($counts['reserved'] > 0): ?><div class="stat-chip stat-chip--warning"><?php echo icon('lock', 'svg-icon svg-sm'); ?> رزرو: <strong><?php echo $counts['reserved']; ?></strong></div><?php endif; ?>
+                        <div class="stat-chip stat-chip--success"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-check', 'svg-icon svg-sm'); ?> موجود: <strong><?php echo $counts['active']; ?></strong></div>
+                        <div class="stat-chip stat-chip--accent"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('package', 'svg-icon svg-sm'); ?> تحویل شده: <strong><?php echo $counts['delivered']; ?></strong></div>
+                        <?php if ($counts['reserved'] > 0): ?><div class="stat-chip stat-chip--warning"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('lock', 'svg-icon svg-sm'); ?> رزرو: <strong><?php echo $counts['reserved']; ?></strong></div><?php endif; ?>
                     </div>
 
                     <?php $cfgFilter = $cfgFilter ?? 'all';
@@ -1031,10 +511,10 @@ function faoxima_stock_status_label(string $s): array
                     };
                     ?>
                     <?php if ($daysFilter !== null && $invoiceTableMissing): ?>
-                        <div class="alert alert-warning"><?php echo icon('circle-exclamation', 'svg-icon'); ?><span>جدول فاکتورها (invoice) در دسترس نیست، بنابراین فیلتر روزهای باقی‌مانده اعمال نشد.</span></div>
+                        <div class="alert alert-warning"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon'); ?><span>جدول فاکتورها (invoice) در دسترس نیست، بنابراین فیلتر روزهای باقی‌مانده اعمال نشد.</span></div>
                     <?php endif; ?>
                     <?php if ($scanTruncated): ?>
-                        <div class="alert alert-warning"><?php echo icon('circle-exclamation', 'svg-icon'); ?><span>برای این فیلتر فقط <?php echo (int)FAOXIMA_REMAINING_SCAN_CAP; ?> کانفیگ آخر بررسی شد. ممکن است موارد قدیمی‌تری هم مطابق فیلتر باشند که در این لیست دیده نمی‌شوند.</span></div>
+                        <div class="alert alert-warning"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon'); ?><span>برای این فیلتر فقط <?php echo (int)FAOXIMA_REMAINING_SCAN_CAP; ?> کانفیگ آخر بررسی شد. ممکن است موارد قدیمی‌تری هم مطابق فیلتر باشند که در این لیست دیده نمی‌شوند.</span></div>
                     <?php endif; ?>
                     <?php
                     $daysHiddenBar = '';
@@ -1054,19 +534,19 @@ function faoxima_stock_status_label(string $s): array
                                 <input type="hidden" name="dmode" value="<?php echo htmlspecialchars($daysMode, ENT_QUOTES); ?>">
                             <?php endif; ?>
                             <input type="search" name="q" class="form-control" style="flex:1 1 240px; min-width:0;" placeholder="جستجو در محتوا، کاربر یا لینک سابسکریپشن…" value="<?php echo htmlspecialchars($cfgQ, ENT_QUOTES); ?>">
-                            <button type="submit" class="btn btn-sm btn-primary"><?php echo icon('search', 'svg-icon svg-sm'); ?> جستجو</button>
+                            <button type="submit" class="btn btn-sm btn-primary"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('search', 'svg-icon svg-sm'); ?> جستجو</button>
                             <?php if ($cfgQ !== ''): ?><a href="stock.php?<?php echo $stockQs(['q' => null, 'cpage' => null]); ?>" class="btn btn-sm btn-outline">حذف فیلتر</a><?php endif; ?>
                         </form>
                         <?php // Row 1 — status segments
                         ?>
                         <div class="cfg-filterbar__row">
-                            <span class="cfg-filterbar__label"><?php echo icon('filter', 'svg-icon svg-sm'); ?> وضعیت:</span>
+                            <span class="cfg-filterbar__label"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('filter', 'svg-icon svg-sm'); ?> وضعیت:</span>
                             <div class="cfg-seg" role="group" aria-label="فیلتر وضعیت">
                                 <?php
                                 $cfgFilters = [
                                     'all'       => 'همه',
-                                    'active'    => icon('circle-check', 'svg-icon svg-sm') . ' موجود',
-                                    'delivered' => icon('package', 'svg-icon svg-sm') . ' تحویل شده',
+                                    'active'    => \Faoxima\Admin\Web\Support\Icons::icon('circle-check', 'svg-icon svg-sm') . ' موجود',
+                                    'delivered' => \Faoxima\Admin\Web\Support\Icons::icon('package', 'svg-icon svg-sm') . ' تحویل شده',
                                 ];
                                 foreach ($cfgFilters as $fk => $fl):
                                     $isActive = ($cfgFilter === $fk);
@@ -1084,7 +564,7 @@ function faoxima_stock_status_label(string $s): array
                             <form method="GET" action="stock.php" class="cfg-daysfilter">
                                 <input type="hidden" name="shelf" value="<?php echo $viewShelfId; ?>">
                                 <input type="hidden" name="cstatus" value="<?php echo htmlspecialchars($cfgFilter, ENT_QUOTES); ?>">
-                                <span class="cfg-filterbar__label"><?php echo icon('hourglass', 'svg-icon svg-sm'); ?> روز مانده:</span>
+                                <span class="cfg-filterbar__label"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('hourglass', 'svg-icon svg-sm'); ?> روز مانده:</span>
                                 <select name="dmode" class="form-control" aria-label="نوع مقایسه روز مانده">
                                     <option value="lte" <?php echo $daysMode === 'lte' ? 'selected' : ''; ?>>کمتر از</option>
                                     <option value="eq" <?php echo $daysMode === 'eq'  ? 'selected' : ''; ?>>برابر</option>
@@ -1093,12 +573,12 @@ function faoxima_stock_status_label(string $s): array
                                 <input type="number" name="days" min="0" step="1" class="form-control" placeholder="روز"
                                     value="<?php echo $daysFilter !== null ? (int)$daysFilter : ''; ?>" aria-label="تعداد روز مانده">
                                 <button type="submit" class="btn btn-sm <?php echo $daysFilter !== null ? 'btn-primary' : 'btn-outline'; ?>">
-                                    <?php echo icon('filter', 'svg-icon svg-sm'); ?> اعمال
+                                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('filter', 'svg-icon svg-sm'); ?> اعمال
                                 </button>
                                 <?php if ($daysFilter !== null): ?>
                                     <a class="btn btn-sm btn-outline" title="حذف فیلتر روز"
                                         href="stock.php?<?php echo $stockQs(['days' => null, 'dmode' => null, 'cpage' => null]); ?>">
-                                        <?php echo icon('xmark', 'svg-icon svg-sm'); ?> پاک کردن
+                                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('xmark', 'svg-icon svg-sm'); ?> پاک کردن
                                     </a>
                                 <?php endif; ?>
                             </form>
@@ -1107,17 +587,17 @@ function faoxima_stock_status_label(string $s): array
                         <?php // Row 3 — bulk maintenance actions, isolated from the filters 
                         ?>
                         <div class="cfg-filterbar__row cfg-filterbar__row--split">
-                            <span class="cfg-filterbar__label"><?php echo icon('trash', 'svg-icon svg-sm'); ?> عملیات گروهی:</span>
+                            <span class="cfg-filterbar__label"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon svg-sm'); ?> عملیات گروهی:</span>
                             <div class="cfg-actions">
                                 <?php if ($counts['active'] > 0): ?>
                                     <form method="POST" action="stock.php"
                                         onsubmit="return confirm('همه <?php echo $counts['active']; ?> کانفیگ فعال این انبار برای همیشه از دیتابیس حذف شوند؟ این عمل بازگشت‌پذیر نیست.');">
-                                        <?php echo fx_csrf_field(); ?>
+                                        <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                                         <input type="hidden" name="_action" value="delete_active_configs">
                                         <input type="hidden" name="shelf_id" value="<?php echo $viewShelfId; ?>">
                                         <?php echo $daysHiddenBar; ?>
                                         <button type="submit" class="btn btn-sm btn-soft-danger">
-                                            <?php echo icon('trash', 'svg-icon svg-sm'); ?>
+                                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon svg-sm'); ?>
                                             حذف فعال‌ها
                                         </button>
                                     </form>
@@ -1125,18 +605,18 @@ function faoxima_stock_status_label(string $s): array
                                 <?php if ($daysFilter !== null): ?>
                                     <span class="btn btn-sm btn-outline btn-outline-danger is-disabled"
                                         title="با فعال بودن فیلتر روز غیرفعال است — برای حذف موارد فیلترشده از انتخاب گروهی استفاده کنید.">
-                                        <?php echo icon('trash', 'svg-icon svg-sm'); ?>
+                                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon svg-sm'); ?>
                                         حذف دائمی این فیلتر از دیتابیس
                                     </span>
                                 <?php else: ?>
                                     <form method="POST" action="stock.php"
                                         onsubmit="return confirm('<?php echo $cfgFilter === 'all' ? 'همه کانفیگ‌های این انبار' : 'کانفیگ‌های فیلترشده'; ?> برای همیشه از دیتابیس حذف شوند؟ این عمل بازگشت‌پذیر نیست.');">
-                                        <?php echo fx_csrf_field(); ?>
+                                        <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                                         <input type="hidden" name="_action" value="delete_filtered_configs">
                                         <input type="hidden" name="shelf_id" value="<?php echo $viewShelfId; ?>">
                                         <input type="hidden" name="cstatus" value="<?php echo htmlspecialchars($cfgFilter, ENT_QUOTES); ?>">
                                         <button type="submit" class="btn btn-sm btn-outline btn-outline-danger">
-                                            <?php echo icon('trash', 'svg-icon svg-sm'); ?>
+                                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon svg-sm'); ?>
                                             حذف دائمی <?php echo $cfgFilter === 'all' ? 'کل' : 'این فیلتر'; ?> از دیتابیس
                                         </button>
                                     </form>
@@ -1147,7 +627,7 @@ function faoxima_stock_status_label(string $s): array
 
                     <?php if (empty($shelfConfigs)): ?>
                         <div class="card empty-state">
-                            <?php echo icon('package', 'svg-icon svg-2xl'); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('package', 'svg-icon svg-2xl'); ?>
                             <div class="empty-state__text"><?php echo ($cfgTotal === 0 && $cfgFilter !== 'all') ? 'کانفیگی با این فیلتر یافت نشد.' : 'هنوز کانفیگی در این انبار ثبت نشده است.'; ?></div>
                             <button class="btn btn-primary empty-state__action" onclick="openModal('modal-add-configs')">افزودن اولین کانفیگ</button>
                         </div>
@@ -1155,7 +635,7 @@ function faoxima_stock_status_label(string $s): array
                         <?php  ?>
                         <form method="POST" action="stock.php" id="stock-bulk-form" style="display:none;"
                             onsubmit="return faoximaStockBulkConfirm();">
-                            <?php echo fx_csrf_field(); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                             <input type="hidden" name="_action" value="stock_bulk_delete">
                             <input type="hidden" name="shelf_id" value="<?php echo $viewShelfId; ?>">
                             <input type="hidden" name="cstatus" value="<?php echo htmlspecialchars($cfgFilter, ENT_QUOTES); ?>">
@@ -1170,13 +650,13 @@ function faoxima_stock_status_label(string $s): array
                             <span class="bulk-bar__count" id="stock-bulk-count">موردی انتخاب نشده</span>
                             <div class="bulk-bar__actions">
                                 <button type="submit" form="stock-bulk-form" class="btn btn-sm btn-outline btn-outline-danger bulk-bar__btn js-bulk-delete-btn" id="stock-bulk-btn" style="display:none;">
-                                    <?php echo icon('trash', 'svg-icon svg-sm'); ?> حذف انتخاب‌شده‌ها
+                                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon svg-sm'); ?> حذف انتخاب‌شده‌ها
                                 </button>
                             </div>
                         </div>
                         <div class="stock-configs-list">
                             <?php foreach ($shelfConfigs as $cfg):
-                                [$stLabel, $stClass] = faoxima_stock_status_label((string)$cfg['status']);
+                                [$stLabel, $stClass] = \Faoxima\Admin\Web\Pages\StockRequestHelpers::faoxima_stock_status_label((string)$cfg['status']);
                                 $cfgStatus = (string)$cfg['status'];
                                 $cfgId = (int)$cfg['id'];
                                 $rem = $remainingOf[$cfgId] ?? null;
@@ -1190,18 +670,18 @@ function faoxima_stock_status_label(string $s): array
                                                 aria-label="انتخاب این کانفیگ برای حذف گروهی">
                                             <span class="badge <?php echo $stClass; ?>"><?php echo $stLabel; ?></span>
                                             <?php if ($rem !== null): ?>
-                                                <?php echo faoxima_remaining_badge($rem); ?>
+                                                <?php echo \Faoxima\Admin\Web\Support\Remaining::faoxima_remaining_badge($rem); ?>
                                             <?php elseif ($shelfDays > 0): ?>
-                                                <span class="config-meta-tag"><?php echo icon('hourglass', 'svg-icon svg-sm'); ?> مدت: <?php echo (int)$shelfDays; ?> روز</span>
+                                                <span class="config-meta-tag"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('hourglass', 'svg-icon svg-sm'); ?> مدت: <?php echo (int)$shelfDays; ?> روز</span>
                                             <?php endif; ?>
                                             <?php if (!empty($cfg['sub_link'])): ?>
-                                                <span class="config-meta-tag config-meta-tag--accent"><?php echo icon('link', 'svg-icon svg-sm'); ?> سابسکریپشن دارد</span>
+                                                <span class="config-meta-tag config-meta-tag--accent"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('link', 'svg-icon svg-sm'); ?> سابسکریپشن دارد</span>
                                             <?php endif; ?>
                                             <?php if (!empty($cfg['assigned_user'])): ?>
-                                                <span class="config-meta-tag"><?php echo icon('user', 'svg-icon svg-sm'); ?> <?php echo htmlspecialchars((string)$cfg['assigned_user'], ENT_QUOTES); ?></span>
+                                                <span class="config-meta-tag"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('user', 'svg-icon svg-sm'); ?> <?php echo htmlspecialchars((string)$cfg['assigned_user'], ENT_QUOTES); ?></span>
                                             <?php endif; ?>
                                             <?php if ($cfgStatus === 'reserved' || $cfgStatus === 'delivered'): ?>
-                                                <span class="config-meta-tag"><?php echo icon('lock', 'svg-icon svg-sm'); ?> متصل به سرویس</span>
+                                                <span class="config-meta-tag"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('lock', 'svg-icon svg-sm'); ?> متصل به سرویس</span>
                                             <?php endif; ?>
                                         </div>
                                         <div class="config-row__actions">
@@ -1213,7 +693,7 @@ function faoxima_stock_status_label(string $s): array
                                             }
                                             ?>
                                             <form method="POST" action="stock.php" onsubmit="return confirm('این کانفیگ برای همیشه از دیتابیس حذف شود؟ این عمل بازگشت‌پذیر نیست.');">
-                                                <?php echo fx_csrf_field(); ?>
+                                                <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                                                 <input type="hidden" name="_action" value="delete_config_hard">
                                                 <input type="hidden" name="config_id" value="<?php echo $cfgId; ?>">
                                                 <input type="hidden" name="shelf_id" value="<?php echo $viewShelfId; ?>">
@@ -1221,7 +701,7 @@ function faoxima_stock_status_label(string $s): array
                                                 <input type="hidden" name="cpage" value="<?php echo (int)$cfgPage; ?>">
                                                 <?php echo $daysHidden; ?>
                                                 <button type="submit" class="btn btn-sm btn-outline btn-outline-danger" title="حذف دائمی از دیتابیس">
-                                                    <?php echo icon('trash', 'svg-icon svg-sm'); ?> حذف دائمی
+                                                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon svg-sm'); ?> حذف دائمی
                                                 </button>
                                             </form>
                                         </div>
@@ -1262,7 +742,7 @@ function faoxima_stock_status_label(string $s): array
                                 <button type="button" class="modal-close" onclick="closeModal('modal-add-configs')">&times;</button>
                             </div>
                             <form method="POST" action="stock.php" id="add-configs-form">
-                                <?php echo fx_csrf_field(); ?>
+                                <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                                 <input type="hidden" name="_action" value="add_configs">
                                 <input type="hidden" name="shelf_id" value="<?php echo $viewShelfId; ?>">
 
@@ -1273,14 +753,14 @@ function faoxima_stock_status_label(string $s): array
                                         <label class="mode-pill" data-mode="single">
                                             <input type="radio" name="entry_mode" value="single" checked>
                                             <div class="mode-pill__text">
-                                                <div class="mode-pill__title"><?php echo icon('plus', 'svg-icon svg-sm'); ?> تکی</div>
+                                                <div class="mode-pill__title"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon svg-sm'); ?> تکی</div>
                                                 <small class="mode-pill__hint">یک کانفیگ یا لینک</small>
                                             </div>
                                         </label>
                                         <label class="mode-pill" data-mode="bulk">
                                             <input type="radio" name="entry_mode" value="bulk">
                                             <div class="mode-pill__text">
-                                                <div class="mode-pill__title"><?php echo icon('package', 'svg-icon svg-sm'); ?> دسته‌ای</div>
+                                                <div class="mode-pill__title"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('package', 'svg-icon svg-sm'); ?> دسته‌ای</div>
                                                 <small class="mode-pill__hint">چند کانفیگ/لینک با هم</small>
                                             </div>
                                         </label>
@@ -1288,7 +768,7 @@ function faoxima_stock_status_label(string $s): array
                                 </div>
 
                                 <div id="entry-mode-error" class="alert alert-danger entry-mode-error" style="display:none;">
-                                    <?php echo icon('xmark', 'svg-icon svg-sm'); ?>
+                                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('xmark', 'svg-icon svg-sm'); ?>
                                     <span></span>
                                 </div>
 
@@ -1303,7 +783,7 @@ function faoxima_stock_status_label(string $s): array
                                         <label class="mode-pill mode-pill--wide">
                                             <input type="checkbox" name="has_sub_link" id="stock-single-sub-toggle" value="1">
                                             <div class="mode-pill__text">
-                                                <div class="mode-pill__title"><?php echo icon('link', 'svg-icon svg-sm'); ?> لینک اشتراک</div>
+                                                <div class="mode-pill__title"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('link', 'svg-icon svg-sm'); ?> لینک اشتراک</div>
                                                 <small class="mode-pill__hint">اگر این کانفیگ لینک اشتراک مجزا دارد، فعال کنید.</small>
                                             </div>
                                         </label>
@@ -1329,7 +809,7 @@ function faoxima_stock_status_label(string $s): array
                                             <label class="mode-pill mode-pill--wide">
                                                 <input type="checkbox" id="stock-bulk-sub-toggle" value="1">
                                                 <div class="mode-pill__text">
-                                                    <div class="mode-pill__title"><?php echo icon('link', 'svg-icon svg-sm'); ?> لینک اشتراک</div>
+                                                    <div class="mode-pill__title"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('link', 'svg-icon svg-sm'); ?> لینک اشتراک</div>
                                                     <small class="mode-pill__hint">برای این کانفیگ لینک اشتراک ثبت شود.</small>
                                                 </div>
                                             </label>
@@ -1348,7 +828,7 @@ function faoxima_stock_status_label(string $s): array
                                 <div class="modal-foot">
                                     <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('modal-add-configs')">انصراف</button>
                                     <button type="submit" class="btn btn-primary btn-sm">
-                                        <?php echo icon('plus', 'svg-icon svg-sm'); ?>
+                                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon svg-sm'); ?>
                                         ثبت
                                     </button>
                                 </div>
@@ -1362,7 +842,7 @@ function faoxima_stock_status_label(string $s): array
                     <div class="page-head">
                         <div>
                             <div class="page-head__title">
-                                <?php echo icon('package', 'svg-icon svg-lg'); ?>
+                                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('package', 'svg-icon svg-lg'); ?>
                                 انبار شبکه ملی
                             </div>
                             <div class="page-head__sub">مدیریت انبارهای کانفیگ — هر انبار یک ترکیب پنل و محصول دارد</div>
@@ -1370,7 +850,7 @@ function faoxima_stock_status_label(string $s): array
                         <?php if (!$tableMissing): ?>
                             <div>
                                 <button class="btn btn-primary" onclick="openModal('modal-add-shelf')">
-                                    <?php echo icon('plus', 'svg-icon svg-sm'); ?>
+                                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon svg-sm'); ?>
                                     <span>افزودن انبار</span>
                                 </button>
                             </div>
@@ -1379,17 +859,17 @@ function faoxima_stock_status_label(string $s): array
 
                     <?php if ($tableMissing): ?>
                         <div class="alert alert-warning">
-                            <?php echo icon('circle-exclamation', 'svg-icon'); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon'); ?>
                             <span>جدول‌های انبار هنوز ساخته نشده‌اند. یکبار از این صفحه خارج شده و دوباره وارد شوید — جدول‌ها به‌صورت خودکار توسط <code>lib/schema.php</code> ساخته می‌شوند.</span>
                         </div>
                     <?php endif; ?>
 
-                    <?php if ($flash['ok']): ?><div class="alert alert-success"><?php echo icon('circle-check', 'svg-icon'); ?><span><?php echo htmlspecialchars($flash['ok'], ENT_QUOTES); ?></span></div><?php endif; ?>
-                    <?php if ($flash['err']): ?><div class="alert alert-danger"><?php echo icon('circle-exclamation', 'svg-icon'); ?><span><?php echo $flash['err']; ?></span></div><?php endif; ?>
+                    <?php if ($flash['ok']): ?><div class="alert alert-success"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-check', 'svg-icon'); ?><span><?php echo htmlspecialchars($flash['ok'], ENT_QUOTES); ?></span></div><?php endif; ?>
+                    <?php if ($flash['err']): ?><div class="alert alert-danger"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon'); ?><span><?php echo $flash['err']; ?></span></div><?php endif; ?>
 
                     <?php if (!$tableMissing && empty($shelves)): ?>
                         <div class="card empty-state">
-                            <?php echo icon('package', 'svg-icon svg-2xl'); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('package', 'svg-icon svg-2xl'); ?>
                             <div class="empty-state__text">هنوز انباری ثبت نشده است.</div>
                             <button class="btn btn-primary empty-state__action" onclick="openModal('modal-add-shelf')">افزودن اولین انبار</button>
                         </div>
@@ -1403,7 +883,7 @@ function faoxima_stock_status_label(string $s): array
                             ?>
                                 <div class="shelf-card">
                                     <div class="shelf-card__head">
-                                        <div class="shelf-card__title"><span class="shelf-card__symbol"><?php echo icon('package', 'svg-icon'); ?></span><?php echo htmlspecialchars($sh['name'], ENT_QUOTES, 'UTF-8'); ?></div>
+                                        <div class="shelf-card__title"><span class="shelf-card__symbol"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('package', 'svg-icon'); ?></span><?php echo htmlspecialchars($sh['name'], ENT_QUOTES, 'UTF-8'); ?></div>
                                         <?php if ($isActive): ?><span class="badge badge-active">فعال</span>
                                         <?php else: ?><span class="badge badge-block">غیرفعال</span><?php endif; ?>
                                     </div>
@@ -1414,22 +894,22 @@ function faoxima_stock_status_label(string $s): array
                                         <div><span class="shelf-card__key">قیمت:</span><span class="shelf-card__price"><?php echo number_format((int)$sh['price']); ?> <small class="currency-unit">تومان</small></span></div>
 
                                         <div class="stat-row shelf-card__stats">
-                                            <div class="stat-chip stat-chip--success"><?php echo icon('circle-check', 'svg-icon svg-sm'); ?> موجود <strong><?php echo $cnt['active']; ?></strong></div>
-                                            <?php if ($cnt['delivered'] > 0): ?><div class="stat-chip stat-chip--accent"><?php echo icon('package', 'svg-icon svg-sm'); ?> تحویل <strong><?php echo $cnt['delivered']; ?></strong></div><?php endif; ?>
-                                            <?php if ($cnt['reserved'] > 0): ?><div class="stat-chip stat-chip--warning"><?php echo icon('lock', 'svg-icon svg-sm'); ?> رزرو <strong><?php echo $cnt['reserved']; ?></strong></div><?php endif; ?>
+                                            <div class="stat-chip stat-chip--success"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-check', 'svg-icon svg-sm'); ?> موجود <strong><?php echo $cnt['active']; ?></strong></div>
+                                            <?php if ($cnt['delivered'] > 0): ?><div class="stat-chip stat-chip--accent"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('package', 'svg-icon svg-sm'); ?> تحویل <strong><?php echo $cnt['delivered']; ?></strong></div><?php endif; ?>
+                                            <?php if ($cnt['reserved'] > 0): ?><div class="stat-chip stat-chip--warning"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('lock', 'svg-icon svg-sm'); ?> رزرو <strong><?php echo $cnt['reserved']; ?></strong></div><?php endif; ?>
                                         </div>
 
                                         <div class="shelf-card__foot">
                                             <a href="stock.php?shelf=<?php echo $sid; ?>" class="btn btn-sm btn-primary shelf-card__manage">
-                                                <?php echo icon('package', 'svg-icon svg-sm'); ?>
+                                                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('package', 'svg-icon svg-sm'); ?>
                                                 مدیریت کانفیگ‌ها
                                             </a>
                                             <form method="POST" action="stock.php" onsubmit="return confirm('انبار «<?php echo htmlspecialchars($sh['name'], ENT_QUOTES); ?>» و <?php echo $cnt['total']; ?> کانفیگ آن حذف شوند؟');">
-                                                <?php echo fx_csrf_field(); ?>
+                                                <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                                                 <input type="hidden" name="_action" value="delete_shelf">
                                                 <input type="hidden" name="id" value="<?php echo $sid; ?>">
                                                 <button type="submit" class="btn btn-sm btn-soft-danger">
-                                                    <?php echo icon('trash', 'svg-icon svg-sm'); ?>
+                                                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon svg-sm'); ?>
                                                 </button>
                                             </form>
                                         </div>
@@ -1447,7 +927,7 @@ function faoxima_stock_status_label(string $s): array
                                 <button type="button" class="modal-close" onclick="closeModal('modal-add-shelf')">&times;</button>
                             </div>
                             <form method="POST" action="stock.php">
-                                <?php echo fx_csrf_field(); ?>
+                                <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                                 <input type="hidden" name="_action" value="add_shelf">
 
                                 <div class="form-group">
@@ -1456,7 +936,7 @@ function faoxima_stock_status_label(string $s): array
                                 </div>
                                 <?php if (empty($nationalPanels)): ?>
                                     <div class="alert alert-danger">
-                                        <?php echo icon('circle-exclamation', 'svg-icon'); ?>
+                                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon'); ?>
                                         <span>هیچ پنلی با وضعیت شبکه ملی فعال یافت نشد. امکان افزودن انبار وجود ندارد.</span>
                                     </div>
                                 <?php else: ?>
@@ -1477,15 +957,15 @@ function faoxima_stock_status_label(string $s): array
                                     <label class="form-label">محصول مرتبط</label>
                                     <select name="codeproduct" class="form-control" id="product-select" required>
                                         <?php foreach ($products as $p):
-                                            $v = faoxima_product_volume($p);
-                                            $d = faoxima_product_days($p);
-                                            $pr = faoxima_product_price($p);
+                                            $v = \Faoxima\Admin\Web\Pages\StockRequestHelpers::faoxima_product_volume($p);
+                                            $d = \Faoxima\Admin\Web\Pages\StockRequestHelpers::faoxima_product_days($p);
+                                            $pr = \Faoxima\Admin\Web\Pages\StockRequestHelpers::faoxima_product_price($p);
                                             $loc = (string)($p['Location'] ?? '');
                                         ?>
                                             <option value="<?php echo htmlspecialchars($p['code_product'] ?? '', ENT_QUOTES); ?>"
                                                 data-volume="<?php echo $v; ?>" data-days="<?php echo $d; ?>" data-price="<?php echo $pr; ?>"
                                                 data-location="<?php echo htmlspecialchars($loc, ENT_QUOTES); ?>">
-                                                <?php echo htmlspecialchars(faoxima_product_name($p), ENT_QUOTES); ?>
+                                                <?php echo htmlspecialchars(\Faoxima\Admin\Web\Pages\StockRequestHelpers::faoxima_product_name($p), ENT_QUOTES); ?>
                                                 (<?php echo ($v == 0) ? 'نامحدود' : $v . 'گیگ'; ?> — <?php echo $d; ?>روز)
                                             </option>
                                         <?php endforeach; ?>
@@ -1511,7 +991,7 @@ function faoxima_stock_status_label(string $s): array
                                 <div class="modal-foot">
                                     <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('modal-add-shelf')">انصراف</button>
                                     <button type="submit" class="btn btn-primary btn-sm" <?php echo empty($nationalPanels) ? 'disabled' : ''; ?>>
-                                        <?php echo icon('plus', 'svg-icon svg-sm'); ?>
+                                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon svg-sm'); ?>
                                         افزودن انبار
                                     </button>
                                 </div>

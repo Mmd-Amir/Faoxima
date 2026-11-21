@@ -1,6 +1,9 @@
 <?php
 
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'shopsettings.php';
 
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
     define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
 }
@@ -14,119 +17,24 @@ ini_set('session.cookie_httponly', '1');
 session_start();
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
-require_once __DIR__ . '/lib/icons.php';
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindValue(":username", $_SESSION["user"] ?? '', PDO::PARAM_STR);
-$query->execute();
-$adminRow = $query->fetch(PDO::FETCH_ASSOC);
-if (!isset($_SESSION["user"]) || !$adminRow) {
-    header('Location: login.php');
-    exit;
+if (\Faoxima\Admin\Web\Pages\ShopsettingsRequest::handle(
+        SHOP_GROUPS: $SHOP_GROUPS,
+        _csrf: $_csrf,
+        pdo: $pdo ?? null,
+        query: $query,
+        r: $r,
+        row: $row,
+        savedNum: $savedNum,
+        shopRows: $shopRows,
+        showSaved: $showSaved,
+        tableMissing: $tableMissing
+    ) !== true) {
+    unset($adminWebPage);
+    return;
 }
 
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-$_csrf = $_SESSION['csrf_token'];
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $incoming = $_POST['_csrf'] ?? '';
-    if (!hash_equals($_SESSION['csrf_token'], $incoming)) {
-        http_response_code(403);
-        exit('درخواست نامعتبر — توکن CSRF اشتباه است');
-    }
-}
-
-
-$tableMissing = false;
-try {
-    $check = $pdo->query("SHOW TABLES LIKE 'shopSetting'");
-    if ($check && $check->fetchColumn() === false) $tableMissing = true;
-} catch (\Throwable $e) {
-    $tableMissing = true;
-}
-
-
-$SHOP_GROUPS = [
-    'capabilities' => [
-        'title' => 'قابلیت‌های فروشگاه',
-        'icon'  => 'package',
-        'fields' => [
-            ['type' => 'toggle', 'name' => 'statusextra',        'label' => 'فعال‌سازی خرید حجم اضافه',          'on' => 'onextra',         'off' => 'offextra'],
-            ['type' => 'toggle', 'name' => 'statustimeextra',    'label' => 'فعال‌سازی خرید زمان اضافه',         'on' => 'ontimeextraa',    'off' => 'offtimeextraa'],
-            ['type' => 'toggle', 'name' => 'statusdirectpabuy',  'label' => 'پرداخت مستقیم (بدون شارژ کیف پول)','on' => 'ondirectbuy',     'off' => 'offdirectbuy'],
-            ['type' => 'toggle', 'name' => 'statusdisorder',     'label' => 'حالت غیرفعال‌سازی فروش (Disorder)', 'on' => 'ondisorder',      'off' => 'offdisorder'],
-            ['type' => 'toggle', 'name' => 'statuschangeservice','label' => 'اجازه‌ی تغییر سرویس',                'on' => 'onstatus',        'off' => 'offstatus'],
-            ['type' => 'toggle', 'name' => 'statusshowprice',    'label' => 'نمایش قیمت روی محصولات',            'on' => 'onshowprice',     'off' => 'offshowprice'],
-            ['type' => 'toggle', 'name' => 'configshow',         'label' => 'نمایش کانفیگ به کاربر',              'on' => 'onconfig',        'off' => 'offconfig'],
-            ['type' => 'toggle', 'name' => 'backserviecstatus',  'label' => 'دکمه بازگشت در منوی سرویس',          'on' => 'on',              'off' => 'off'],
-        ],
-    ],
-
-];
-
-
-$shopRows = [];
-if (!$tableMissing) {
-    try {
-        $r = $pdo->query("SELECT Namevalue, value FROM shopSetting");
-        if ($r) {
-            foreach ($r->fetchAll(PDO::FETCH_ASSOC) as $row) {
-                $shopRows[(string)$row['Namevalue']] = (string)$row['value'];
-            }
-        }
-    } catch (\Throwable $e) {
-        error_log('[panel/shopsettings] load failed: ' . $e->getMessage());
-    }
-}
-
-
-function fx_shop_save_settings(PDO $pdo, array $groups, array $post, array $shopRows): int
-{
-    $savedCount = 0;
-    foreach ($groups as $group) {
-        foreach ($group['fields'] as $f) {
-            $key = $f['name'];
-            $cur = $shopRows[$key] ?? '';
-
-            if ($f['type'] === 'toggle') {
-                $new = isset($post['f_' . $key]) ? $f['on'] : $f['off'];
-            } else {
-                if (!array_key_exists('f_' . $key, $post)) continue;
-                $new = (string)$post['f_' . $key];
-            }
-
-            if ((string)$cur === (string)$new) continue;
-            try {
-                $stmt = $pdo->prepare(
-                    "INSERT INTO shopSetting (Namevalue, value) VALUES (:k, :v)
-                     ON DUPLICATE KEY UPDATE value = VALUES(value)"
-                );
-                $stmt->execute([':k' => $key, ':v' => $new]);
-                $savedCount++;
-            } catch (\Throwable $e) {
-                error_log('[panel/shopsettings] save ' . $key . ' failed: ' . $e->getMessage());
-            }
-        }
-    }
-    return $savedCount;
-}
-
-$savedCount = 0;
-if (!$tableMissing && $_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_save'])) {
-    $savedCount = fx_shop_save_settings($pdo, $SHOP_GROUPS, $_POST, $shopRows);
-    header('Location: shopsettings.php?saved=' . $savedCount);
-    exit;
-}
-
-$showSaved = isset($_GET['saved']);
-$savedNum  = isset($_GET['saved']) ? (int)$_GET['saved'] : 0;
-
-function faoxima_shop_is_on($cur, $on, $off) {
-    if ((string)$cur === (string)$on)  return true;
-    if ((string)$cur === (string)$off) return false;
-    return in_array(strtolower(trim((string)$cur)), ['1','on','true','yes'], true);
-}
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -151,7 +59,7 @@ function faoxima_shop_is_on($cur, $on, $off) {
             <div class="page-head">
                 <div>
                     <div class="page-head__title">
-                        <?php echo icon('package', 'svg-icon svg-lg'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('package', 'svg-icon svg-lg'); ?>
                         قابلیت‌های فروشگاه
                     </div>
                     <div class="page-head__sub">قابلیت‌های نمایش و خرید فروشگاه — مطابق منوی «🛒 وضعیت قابلیت‌های فروشگاه» در ربات</div>
@@ -160,14 +68,14 @@ function faoxima_shop_is_on($cur, $on, $off) {
 
             <?php if ($tableMissing): ?>
                 <div class="alert alert-warning">
-                    <?php echo icon('circle-exclamation', 'svg-icon'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon'); ?>
                     <span>جدول <code>shopSetting</code> در دیتابیس هنوز ساخته نشده. لطفاً یک‌بار از این صفحه خارج شده و دوباره وارد شوید — جدول به‌صورت خودکار ساخته می‌شود.</span>
                 </div>
             <?php endif; ?>
 
             <?php if ($showSaved): ?>
                 <div class="alert <?php echo $savedNum > 0 ? 'alert-success' : 'alert-warning'; ?>">
-                    <?php echo icon($savedNum > 0 ? 'circle-check' : 'circle-exclamation', 'svg-icon'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon($savedNum > 0 ? 'circle-check' : 'circle-exclamation', 'svg-icon'); ?>
                     <span>
                         <?php echo $savedNum > 0 ? ($savedNum . ' تغییر ذخیره شد.') : 'هیچ تغییری انجام نشد.'; ?>
                     </span>
@@ -183,7 +91,7 @@ function faoxima_shop_is_on($cur, $on, $off) {
                             <div class="card">
                                 <div class="card__head">
                                     <div class="card__title">
-                                        <?php echo icon($group['icon'], 'svg-icon svg-md'); ?>
+                                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon($group['icon'], 'svg-icon svg-md'); ?>
                                         <span><?php echo htmlspecialchars($group['title'], ENT_QUOTES, 'UTF-8'); ?></span>
                                     </div>
                                 </div>
@@ -200,7 +108,7 @@ function faoxima_shop_is_on($cur, $on, $off) {
                                             <?php if ($f['type'] === 'toggle'): ?>
                                                 <label class="switch" title="<?php echo htmlspecialchars($key); ?>">
                                                     <input type="checkbox" id="<?php echo $idAttr; ?>" name="<?php echo $idAttr; ?>"
-                                                        <?php echo faoxima_shop_is_on($cur, $f['on'], $f['off']) ? 'checked' : ''; ?>>
+                                                        <?php echo \Faoxima\Admin\Web\Pages\ShopsettingsRequestHelpers::faoxima_shop_is_on($cur, $f['on'], $f['off']) ? 'checked' : ''; ?>>
                                                     <span class="switch__slot"></span>
                                                 </label>
                                             <?php else: ?>
@@ -218,11 +126,11 @@ function faoxima_shop_is_on($cur, $on, $off) {
 
                     <div class="save-bar">
                         <button type="reset" class="btn btn-outline">
-                            <?php echo icon('rotate-left', 'svg-icon svg-sm'); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('rotate-left', 'svg-icon svg-sm'); ?>
                             <span>بازنشانی</span>
                         </button>
                         <button type="submit" class="btn btn-primary">
-                            <?php echo icon('check', 'svg-icon svg-sm'); ?>
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('check', 'svg-icon svg-sm'); ?>
                             <span>ذخیره</span>
                         </button>
                     </div>

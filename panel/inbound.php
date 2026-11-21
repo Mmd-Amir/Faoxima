@@ -1,4 +1,9 @@
 <?php
+
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'inbound.php';
+
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 ini_set('session.cookie_samesite', 'Lax');
 ini_set('session.cookie_httponly', '1');
 session_start();
@@ -6,17 +11,17 @@ require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
 require_once __DIR__ . '/../jdf.php';
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindParam("username", $_SESSION["user"], PDO::PARAM_STR);
-$query->execute();
-$result = $query->fetch(PDO::FETCH_ASSOC);
-$query = $pdo->prepare("SELECT * FROM Inbound");
-$query->execute();
-$listinvoice = $query->fetchAll();
-if( !isset($_SESSION["user"]) || !$result ){
-    header('Location: login.php');
+if (\Faoxima\Admin\Web\Pages\InboundRequest::handle(
+        listinvoice: $listinvoice,
+        pdo: $pdo ?? null,
+        query: $query,
+        result: $result
+    ) !== true) {
+    unset($adminWebPage);
     return;
 }
+
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark" data-color="blue">

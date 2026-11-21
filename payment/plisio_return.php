@@ -18,8 +18,8 @@ if (isset($usernamebot) && is_string($usernamebot) && trim($usernamebot) !== '')
 }
 if ($botUsername === '') {
     @require_once __DIR__ . '/../function.php';
-    if (function_exists('select')) {
-        $row = select('setting', 'usernamebot', null, null, 'select');
+    if (\Faoxima\Core\Database\Db::runtimeReady()) {
+        $row = \Faoxima\Core\Database\Db::select('setting', 'usernamebot', null, null, 'select');
         if (is_array($row) && !empty($row['usernamebot'])) {
             $botUsername = ltrim(trim((string)$row['usernamebot']), '@');
         }
@@ -28,8 +28,8 @@ if ($botUsername === '') {
 
 
 $miniappName = 'miniapp';
-if (function_exists('select')) {
-    $miniRow = select('shopSetting', '*', 'Namevalue', 'miniapp_short_name', 'select');
+if (\Faoxima\Core\Database\Db::runtimeReady()) {
+    $miniRow = \Faoxima\Core\Database\Db::select('shopSetting', '*', 'Namevalue', 'miniapp_short_name', 'select');
     if (is_array($miniRow) && !empty($miniRow['value'])) {
         $miniappName = preg_replace('/[^A-Za-z0-9_]/', '', (string)$miniRow['value']);
         if ($miniappName === '') $miniappName = 'miniapp';

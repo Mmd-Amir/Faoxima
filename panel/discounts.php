@@ -1,6 +1,9 @@
 <?php
 
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'discounts.php';
 
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
     define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
 }
@@ -15,581 +18,66 @@ session_start();
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
 require_once __DIR__ . '/../jdf.php';
-require_once __DIR__ . '/lib/icons.php';
-require_once __DIR__ . '/lib/pagination.php';
 require_once __DIR__ . '/lib/bulk_delete.php';
 require_once __DIR__ . '/lib/date_filter.php';
 require_once __DIR__ . '/lib/search_filter.php';
-require_once __DIR__ . '/lib/compact_badges.php';
 require_once __DIR__ . '/lib/csrf.php';
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindValue(":username", $_SESSION["user"] ?? '', PDO::PARAM_STR);
-$query->execute();
-$adminRow = $query->fetch(PDO::FETCH_ASSOC);
-if (!isset($_SESSION["user"]) || !$adminRow) {
-    header('Location: login.php');
-    exit;
+if (\Faoxima\Admin\Web\Pages\DiscountsRequest::handle(
+        _csrf: $_csrf,
+        action: $action,
+        df1: $df1,
+        df2: $df2,
+        discDateKeep: $discDateKeep,
+        discFilterActive: $discFilterActive,
+        discFilterCriteria: $discFilterCriteria,
+        discQ: $discQ,
+        discountAgentOptions: $discountAgentOptions,
+        discountSectionOptions: $discountSectionOptions,
+        flash: $flash,
+        giftDateKeep: $giftDateKeep,
+        giftFilterActive: $giftFilterActive,
+        giftFilterCriteria: $giftFilterCriteria,
+        giftQ: $giftQ,
+        list: $list,
+        pdo: $pdo ?? null,
+        pg1: $pg1,
+        query: $query,
+        section: $section,
+        stmt: $stmt,
+        value: $value
+    ) !== true) {
+    unset($adminWebPage);
+    return;
+}
+if (\Faoxima\Admin\Web\Pages\DiscountSearchResults::handle(
+        adminWebPage: $adminWebPage ?? null,
+        df1: $df1 ?? null,
+        df2: $df2 ?? null,
+        discDateKeep: $discDateKeep ?? null,
+        discFilterActive: $discFilterActive ?? null,
+        discQ: $discQ ?? null,
+        flash: $flash,
+        giftDateKeep: $giftDateKeep ?? null,
+        giftFilterActive: $giftFilterActive ?? null,
+        giftList: $giftList,
+        giftQ: $giftQ ?? null,
+        list: $list,
+        listcategory: $listcategory,
+        listpanel: $listpanel,
+        p: $p,
+        panelNameByCode: $panelNameByCode,
+        pdo: $pdo ?? null,
+        pg1: $pg1,
+        pg2: $pg2,
+        r: $r,
+        v: $v
+    ) !== true) {
+    unset($adminWebPage);
+    return;
 }
 
-fx_csrf_guard();
-$_csrf = fx_csrf_token();
-
-$flash = ['ok' => '', 'err' => ''];
-
-$discountSectionOptions = [
-    'all'    => 'همه بخش‌ها',
-    'buy'    => 'خرید سرویس',
-    'extend' => 'تمدید سرویس',
-    'volume' => 'حجم اضافه',
-    'time'   => 'زمان اضافه',
-    'charge' => 'شارژ کیف پول',
-];
-$discountAgentOptions = [
-    'allusers' => 'همه کاربران',
-    'f'        => 'فقط کاربر عادی',
-    'n'        => 'فقط نمایندگان',
-    'n2'       => 'فقط نمایندگان پیشرفته',
-];
-
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['_action'] ?? '';
-
-    if ($action === 'add') {
-        $code    = trim((string)($_POST['codeDiscount'] ?? ''));
-        $vtype   = (string)($_POST['type']            ?? 'percent');
-        $value   = (string)($_POST['price']           ?? '0');
-        $limit   = (int)($_POST['limitDiscount']      ?? 0);
-        $first   = !empty($_POST['usefirst']) ? '1' : '0';
-        $oneper  = !empty($_POST['useuser'])  ? '1' : '0';
-        $target  = trim((string)($_POST['target_user'] ?? ''));
-        $expDays = (int)($_POST['expire_days'] ?? 0);
-
-
-        $errors = [];
-
-
-        if ($code === '') {
-            $errors[] = 'کد تخفیف نمی‌تواند خالی باشد.';
-        } elseif (!preg_match('/^[A-Za-z0-9_\-]{2,40}$/', $code)) {
-            $errors[] = 'کد تخفیف فقط شامل حروف انگلیسی، عدد، خط تیره و آندرلاین (۲ تا ۴۰ کاراکتر).';
-        }
-
-
-        if (!in_array($vtype, ['percent', 'amount', 'free'], true)) {
-            $errors[] = 'نوع تخفیف نامعتبر است.';
-        }
-
-        $sectionList = array_values(array_unique(array_filter(array_map('trim', explode(',', (string)($_POST['section_csv'] ?? 'all'))))));
-        if (empty($sectionList)) {
-            $errors[] = 'حداقل یک بخش کد باید انتخاب شود.';
-        } elseif (array_diff($sectionList, array_keys($discountSectionOptions)) !== []) {
-            $errors[] = 'بخش کد نامعتبر است.';
-        }
-        $section = implode(',', $sectionList);
-
-
-        $numericValue = (float)$value;
-        if ($vtype === 'percent') {
-            if ($numericValue <= 0 || $numericValue > 100) {
-                $errors[] = 'درصد تخفیف باید بین ۱ تا ۱۰۰ باشد.';
-            }
-        } elseif ($vtype === 'amount') {
-            if ($numericValue <= 0) {
-                $errors[] = 'مبلغ تخفیف باید بزرگ‌تر از صفر باشد.';
-            } elseif ($numericValue > 100000000) {
-                $errors[] = 'مبلغ تخفیف بیش از حد بزرگ است.';
-            }
-        } else {
-            $value = '0';
-        }
-
-
-        if ($limit < 0) {
-            $errors[] = 'سقف کل استفاده نمی‌تواند منفی باشد.';
-        }
-
-
-        $agentList = array_values(array_unique(array_filter(array_map('trim', explode(',', (string)($_POST['agent_csv'] ?? 'allusers'))))));
-        if (empty($agentList)) {
-            $errors[] = 'گروه هدف نامعتبر است.';
-        } elseif (array_diff($agentList, array_keys($discountAgentOptions)) !== []) {
-            $errors[] = 'گروه هدف نامعتبر است.';
-        }
-        $agent = implode(',', $agentList);
-
-        if ($target !== '' && !ctype_digit($target)) {
-            $errors[] = 'آیدی عددی کاربر هدف نامعتبر است.';
-        }
-
-        $targetingMode = (string)($_POST['targeting_mode'] ?? 'none');
-        if (!in_array($targetingMode, ['none', 'category', 'panel'], true)) {
-            $errors[] = 'نحوه هدف‌گیری نامعتبر است.';
-        }
-        $codeCategorySave = 'all';
-        $codePanelTargeted = '/all';
-        if ($targetingMode === 'category') {
-            $categoryList = array_values(array_filter(array_map('trim', explode(',', (string)($_POST['code_category_csv'] ?? '')))));
-            if (empty($categoryList)) {
-                $errors[] = 'حداقل یک دسته‌بندی باید انتخاب شود.';
-            } else {
-                $codeCategorySave = implode(',', $categoryList);
-            }
-        } elseif ($targetingMode === 'panel') {
-            $panelList = array_values(array_filter(array_map('trim', explode(',', (string)($_POST['code_panel_csv'] ?? '')))));
-            if (empty($panelList)) {
-                $errors[] = 'حداقل یک پنل باید انتخاب شود.';
-            } else {
-                $codePanelTargeted = implode(',', $panelList);
-            }
-        }
-
-
-        if (empty($errors)) {
-            try {
-                $dup = $pdo->prepare("SELECT 1 FROM DiscountSell WHERE codeDiscount = :c LIMIT 1");
-                $dup->execute([':c' => $code]);
-                if ($dup->fetchColumn()) {
-                    $errors[] = 'این کد تخفیف از قبل ثبت شده است.';
-                }
-            } catch (\Throwable $e) {  }
-        }
-
-        if (!empty($errors)) {
-            $flash['err'] = '• ' . implode("<br>• ", array_map(fn($e) => htmlspecialchars($e, ENT_QUOTES, 'UTF-8'), $errors));
-        } else {
-            try {
-                $expiry = $expDays > 0 ? (string)(time() + $expDays * 86400) : '0';
-                $stmt = $pdo->prepare(
-                    "INSERT INTO DiscountSell
-                     (codeDiscount, price, limitDiscount, agent, usefirst, useuser, code_product, code_panel, time, type, usedDiscount, section, value_type, target_user, status, targeting_mode, code_category)
-                     VALUES (:c, :p, :l, :a, :f, :u, 'all', :cpanel, :t, :sec, '0', :sec2, :vt, :tg, 'active', :tm, :ccat)"
-                );
-                $stmt->execute([
-                    ':c'   => $code,
-                    ':p'   => $value,
-                    ':l'   => (string)$limit,
-                    ':a'   => $agent,
-                    ':f'   => $first,
-                    ':u'   => $oneper,
-                    ':t'   => $expiry,
-                    ':sec' => $section,
-                    ':sec2'=> $section,
-                    ':vt'  => $vtype,
-                    ':tg'  => ($target === '' ? null : $target),
-                    ':cpanel' => $codePanelTargeted,
-                    ':tm'  => $targetingMode,
-                    ':ccat'=> $codeCategorySave,
-                ]);
-                $flash['ok'] = 'کد تخفیف افزوده شد.';
-            } catch (\Throwable $e) {
-                $flash['err'] = 'خطا: ' . $e->getMessage();
-            }
-        }
-    }
-    elseif ($action === 'edit') {
-        $id      = (int)($_POST['id'] ?? 0);
-        $code    = trim((string)($_POST['codeDiscount'] ?? ''));
-        $vtype   = (string)($_POST['type']            ?? 'percent');
-        $value   = (string)($_POST['price']           ?? '0');
-        $limit   = (int)($_POST['limitDiscount']      ?? 0);
-        $first   = !empty($_POST['usefirst']) ? '1' : '0';
-        $oneper  = !empty($_POST['useuser'])  ? '1' : '0';
-        $target  = trim((string)($_POST['target_user'] ?? ''));
-        $expDays = (int)($_POST['expire_days'] ?? 0);
-
-        $errors = [];
-        if ($id <= 0) {
-            $errors[] = 'شناسه کد نامعتبر است.';
-        }
-        if ($code === '') {
-            $errors[] = 'کد تخفیف نمی‌تواند خالی باشد.';
-        } elseif (!preg_match('/^[A-Za-z0-9_\-]{2,40}$/', $code)) {
-            $errors[] = 'کد تخفیف فقط شامل حروف انگلیسی، عدد، خط تیره و آندرلاین (۲ تا ۴۰ کاراکتر).';
-        }
-        if (!in_array($vtype, ['percent', 'amount', 'free'], true)) {
-            $errors[] = 'نوع تخفیف نامعتبر است.';
-        }
-        $sectionList = array_values(array_unique(array_filter(array_map('trim', explode(',', (string)($_POST['section_csv'] ?? 'all'))))));
-        if (empty($sectionList)) {
-            $errors[] = 'حداقل یک بخش کد باید انتخاب شود.';
-        } elseif (array_diff($sectionList, array_keys($discountSectionOptions)) !== []) {
-            $errors[] = 'بخش کد نامعتبر است.';
-        }
-        $section = implode(',', $sectionList);
-        $numericValue = (float)$value;
-        if ($vtype === 'percent') {
-            if ($numericValue <= 0 || $numericValue > 100) {
-                $errors[] = 'درصد تخفیف باید بین ۱ تا ۱۰۰ باشد.';
-            }
-        } elseif ($vtype === 'amount') {
-            if ($numericValue <= 0) {
-                $errors[] = 'مبلغ تخفیف باید بزرگ‌تر از صفر باشد.';
-            } elseif ($numericValue > 100000000) {
-                $errors[] = 'مبلغ تخفیف بیش از حد بزرگ است.';
-            }
-        } else {
-            $value = '0';
-        }
-        if ($limit < 0) {
-            $errors[] = 'سقف کل استفاده نمی‌تواند منفی باشد.';
-        }
-        $agentList = array_values(array_unique(array_filter(array_map('trim', explode(',', (string)($_POST['agent_csv'] ?? 'allusers'))))));
-        if (empty($agentList)) {
-            $errors[] = 'گروه هدف نامعتبر است.';
-        } elseif (array_diff($agentList, array_keys($discountAgentOptions)) !== []) {
-            $errors[] = 'گروه هدف نامعتبر است.';
-        }
-        $agent = implode(',', $agentList);
-        if ($target !== '' && !ctype_digit($target)) {
-            $errors[] = 'آیدی عددی کاربر هدف نامعتبر است.';
-        }
-        $targetingMode = (string)($_POST['targeting_mode'] ?? 'none');
-        if (!in_array($targetingMode, ['none', 'category', 'panel'], true)) {
-            $errors[] = 'نحوه هدف‌گیری نامعتبر است.';
-        }
-        $codeCategorySave = 'all';
-        $codePanelTargeted = '/all';
-        if ($targetingMode === 'category') {
-            $categoryList = array_values(array_filter(array_map('trim', explode(',', (string)($_POST['code_category_csv'] ?? '')))));
-            if (empty($categoryList)) {
-                $errors[] = 'حداقل یک دسته‌بندی باید انتخاب شود.';
-            } else {
-                $codeCategorySave = implode(',', $categoryList);
-            }
-        } elseif ($targetingMode === 'panel') {
-            $panelList = array_values(array_filter(array_map('trim', explode(',', (string)($_POST['code_panel_csv'] ?? '')))));
-            if (empty($panelList)) {
-                $errors[] = 'حداقل یک پنل باید انتخاب شود.';
-            } else {
-                $codePanelTargeted = implode(',', $panelList);
-            }
-        }
-        if (empty($errors)) {
-            try {
-                $dup = $pdo->prepare("SELECT 1 FROM DiscountSell WHERE codeDiscount = :c AND id <> :id LIMIT 1");
-                $dup->execute([':c' => $code, ':id' => $id]);
-                if ($dup->fetchColumn()) {
-                    $errors[] = 'این کد تخفیف از قبل ثبت شده است.';
-                }
-            } catch (\Throwable $e) {  }
-        }
-        if (!empty($errors)) {
-            $flash['err'] = '• ' . implode("<br>• ", array_map(fn($e) => htmlspecialchars($e, ENT_QUOTES, 'UTF-8'), $errors));
-        } else {
-            try {
-                $expiry = $expDays > 0 ? (string)(time() + $expDays * 86400) : '0';
-                $stmt = $pdo->prepare(
-                    "UPDATE DiscountSell
-                        SET codeDiscount = :c, price = :p, limitDiscount = :l, agent = :a,
-                            usefirst = :f, useuser = :u, time = :t, section = :sec,
-                            value_type = :vt, type = :sec2, target_user = :tg,
-                            code_panel = :cpanel, code_product = 'all', targeting_mode = :tm, code_category = :ccat
-                      WHERE id = :id"
-                );
-                $stmt->execute([
-                    ':c'   => $code,
-                    ':p'   => $value,
-                    ':l'   => (string)$limit,
-                    ':a'   => $agent,
-                    ':f'   => $first,
-                    ':u'   => $oneper,
-                    ':t'   => $expiry,
-                    ':sec' => $section,
-                    ':sec2'=> $section,
-                    ':vt'  => $vtype,
-                    ':tg'  => ($target === '' ? null : $target),
-                    ':cpanel' => $codePanelTargeted,
-                    ':tm'  => $targetingMode,
-                    ':ccat'=> $codeCategorySave,
-                    ':id'  => $id,
-                ]);
-                $flash['ok'] = 'کد تخفیف ویرایش شد.';
-            } catch (\Throwable $e) {
-                $flash['err'] = 'خطا: ' . $e->getMessage();
-            }
-        }
-    }
-    elseif ($action === 'gift_add') {
-        $code    = trim((string)($_POST['code'] ?? ''));
-        $price   = (int)($_POST['gift_price'] ?? 0);
-        $limit   = (int)($_POST['gift_limit'] ?? 0);
-        $target  = trim((string)($_POST['gift_target'] ?? ''));
-        $expDays = (int)($_POST['gift_expire_days'] ?? 0);
-
-        $errors = [];
-        if ($code === '' || !preg_match('/^[A-Za-z0-9_\-]{2,40}$/', $code)) {
-            $errors[] = 'کد هدیه نامعتبر است (۲ تا ۴۰ کاراکتر، حروف/عدد/-/_).';
-        }
-        if ($price <= 0) {
-            $errors[] = 'مبلغ کد هدیه باید بزرگ‌تر از صفر باشد.';
-        }
-        if ($limit < 0) {
-            $errors[] = 'سقف استفاده نمی‌تواند منفی باشد.';
-        }
-        if ($target !== '' && !ctype_digit($target)) {
-            $errors[] = 'آیدی عددی کاربر هدف نامعتبر است.';
-        }
-        if (empty($errors)) {
-            try {
-                $dup = $pdo->prepare("SELECT 1 FROM Discount WHERE code = :c LIMIT 1");
-                $dup->execute([':c' => $code]);
-                if ($dup->fetchColumn()) {
-                    $errors[] = 'این کد هدیه از قبل ثبت شده است.';
-                }
-            } catch (\Throwable $e) {  }
-        }
-        if (!empty($errors)) {
-            $flash['err'] = '• ' . implode("<br>• ", array_map(fn($e) => htmlspecialchars($e, ENT_QUOTES, 'UTF-8'), $errors));
-        } else {
-            try {
-                $expiry = $expDays > 0 ? (string)(time() + $expDays * 86400) : null;
-                $stmt = $pdo->prepare(
-                    "INSERT INTO Discount (code, price, limituse, limitused, target_user, expire_at, status)
-                     VALUES (:c, :p, :l, '0', :tg, :ex, 'active')"
-                );
-                $stmt->execute([
-                    ':c'  => $code,
-                    ':p'  => (string)$price,
-                    ':l'  => (string)$limit,
-                    ':tg' => ($target === '' ? null : $target),
-                    ':ex' => $expiry,
-                ]);
-                $flash['ok'] = 'کد هدیه افزوده شد.';
-            } catch (\Throwable $e) {
-                $flash['err'] = 'خطا: ' . $e->getMessage();
-            }
-        }
-    }
-    elseif ($action === 'gift_edit') {
-        $id      = (int)($_POST['id'] ?? 0);
-        $code    = trim((string)($_POST['code'] ?? ''));
-        $price   = (int)($_POST['gift_price'] ?? 0);
-        $limit   = (int)($_POST['gift_limit'] ?? 0);
-        $target  = trim((string)($_POST['gift_target'] ?? ''));
-        $expDays = (int)($_POST['gift_expire_days'] ?? 0);
-
-        $errors = [];
-        if ($id <= 0) {
-            $errors[] = 'شناسه کد نامعتبر است.';
-        }
-        if ($code === '' || !preg_match('/^[A-Za-z0-9_\-]{2,40}$/', $code)) {
-            $errors[] = 'کد هدیه نامعتبر است (۲ تا ۴۰ کاراکتر، حروف/عدد/-/_).';
-        }
-        if ($price <= 0) {
-            $errors[] = 'مبلغ کد هدیه باید بزرگ‌تر از صفر باشد.';
-        }
-        if ($limit < 0) {
-            $errors[] = 'سقف استفاده نمی‌تواند منفی باشد.';
-        }
-        if ($target !== '' && !ctype_digit($target)) {
-            $errors[] = 'آیدی عددی کاربر هدف نامعتبر است.';
-        }
-        if (empty($errors)) {
-            try {
-                $dup = $pdo->prepare("SELECT 1 FROM Discount WHERE code = :c AND id <> :id LIMIT 1");
-                $dup->execute([':c' => $code, ':id' => $id]);
-                if ($dup->fetchColumn()) {
-                    $errors[] = 'این کد هدیه از قبل ثبت شده است.';
-                }
-            } catch (\Throwable $e) {  }
-        }
-        if (!empty($errors)) {
-            $flash['err'] = '• ' . implode("<br>• ", array_map(fn($e) => htmlspecialchars($e, ENT_QUOTES, 'UTF-8'), $errors));
-        } else {
-            try {
-                $expiry = $expDays > 0 ? (string)(time() + $expDays * 86400) : null;
-                $stmt = $pdo->prepare(
-                    "UPDATE Discount SET code = :c, price = :p, limituse = :l, target_user = :tg, expire_at = :ex WHERE id = :id"
-                );
-                $stmt->execute([
-                    ':c'  => $code,
-                    ':p'  => (string)$price,
-                    ':l'  => (string)$limit,
-                    ':tg' => ($target === '' ? null : $target),
-                    ':ex' => $expiry,
-                    ':id' => $id,
-                ]);
-                $flash['ok'] = 'کد هدیه ویرایش شد.';
-            } catch (\Throwable $e) {
-                $flash['err'] = 'خطا: ' . $e->getMessage();
-            }
-        }
-    }
-    elseif ($action === 'gift_delete') {
-        $id = (int)($_POST['id'] ?? 0);
-        if ($id > 0) {
-            try {
-                $pdo->prepare("DELETE FROM Discount WHERE id = :id")->execute([':id' => $id]);
-                $flash['ok'] = 'کد هدیه حذف شد.';
-            } catch (\Throwable $e) {
-                $flash['err'] = 'حذف ناموفق: ' . $e->getMessage();
-            }
-        }
-    }
-    elseif ($action === 'delete') {
-        $id = (int)($_POST['id'] ?? 0);
-        if ($id > 0) {
-            try {
-                $pdo->prepare("DELETE FROM DiscountSell WHERE id = :id")->execute([':id' => $id]);
-                $flash['ok'] = 'کد تخفیف حذف شد.';
-            } catch (\Throwable $e) {
-                $flash['err'] = 'حذف ناموفق: ' . $e->getMessage();
-            }
-        }
-    }
-    elseif ($action === 'reset_usage') {
-        $id = (int)($_POST['id'] ?? 0);
-        if ($id > 0) {
-            try {
-                $pdo->prepare("UPDATE DiscountSell SET usedDiscount = '0' WHERE id = :id")->execute([':id' => $id]);
-                $flash['ok'] = 'شمارنده استفاده صفر شد.';
-            } catch (\Throwable $e) {
-                $flash['err'] = 'بازنشانی ناموفق: ' . $e->getMessage();
-            }
-        }
-    }
-    elseif ($action === 'bulk_delete') {
-        $requestedIds = $_POST['ids'] ?? [];
-        $deletedCount = fx_bulk_delete_ids($pdo, 'DiscountSell', 'id', $requestedIds);
-        fx_bulk_delete_redirect('discounts.php', count($requestedIds), $deletedCount, '1');
-    }
-    elseif ($action === 'gift_bulk_delete') {
-        $requestedIds = $_POST['ids'] ?? [];
-        $deletedCount = fx_bulk_delete_ids($pdo, 'Discount', 'id', $requestedIds);
-        fx_bulk_delete_redirect('discounts.php', count($requestedIds), $deletedCount, '2');
-    }
-}
-
-
-$df1 = fx_date_filter_resolve('1');
-$df2 = fx_date_filter_resolve('2');
-$discQ = fx_search_current('q1');
-$giftQ = fx_search_current('q2');
-$discDateKeep = fx_filter_delete_date_params('1', $df1['active']);
-$giftDateKeep = fx_filter_delete_date_params('2', $df2['active']);
-$discFilterActive = $discQ !== '' || $df1['active'];
-$giftFilterActive = $giftQ !== '' || $df2['active'];
-$discFilterCriteria = fx_filter_delete_criteria('', $df1, $discQ);
-$giftFilterCriteria = fx_filter_delete_criteria('', $df2, $giftQ);
-
-$list = [];
-$pg1 = ['page' => 1, 'perPage' => 5, 'offset' => 0, 'total' => 0, 'pages' => 1];
-try {
-    $where1 = '1=1';
-    $params1 = [];
-    if ($df1['active']) {
-        $where1 .= ' AND `time` BETWEEN :dfrom1 AND :dto1';
-        $params1[':dfrom1'] = $df1['from'];
-        $params1[':dto1'] = $df1['to'];
-    }
-    if ($discQ !== '') {
-        $where1 .= ' AND (codeDiscount LIKE :dq1 OR target_user LIKE :dq2)';
-        $params1[':dq1'] = '%' . $discQ . '%';
-        $params1[':dq2'] = '%' . $discQ . '%';
-    }
-    if (fx_filter_delete_requested('1')) {
-        [$fdMatched, $fdDeleted] = $discFilterActive ? fx_filter_delete_where($pdo, 'DiscountSell', $where1, $params1) : [0, 0];
-        $fdParams = array_merge(['q1' => $discQ !== '' ? $discQ : null, 'q2' => $giftQ !== '' ? $giftQ : null, 'p2' => isset($_GET['p2']) && (int)$_GET['p2'] > 1 ? (string)(int)$_GET['p2'] : null], $discDateKeep, $giftDateKeep);
-        fx_filter_delete_redirect('discounts.php', $fdParams, $fdMatched, $fdDeleted, '1');
-    }
-    $pg1 = fx_paginate($pdo, "SELECT COUNT(*) FROM DiscountSell WHERE $where1", $params1, 5, 'p1');
-    $r = $pdo->prepare("SELECT * FROM DiscountSell WHERE $where1 ORDER BY id DESC LIMIT :perPage OFFSET :offset");
-    foreach ($params1 as $k => $v) $r->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
-    $r->bindValue(':perPage', $pg1['perPage'], PDO::PARAM_INT);
-    $r->bindValue(':offset', $pg1['offset'], PDO::PARAM_INT);
-    $r->execute();
-    $list = $r->fetchAll(PDO::FETCH_ASSOC);
-} catch (\Throwable $e) {
-    $flash['err'] = 'بارگذاری ناموفق: ' . $e->getMessage();
-}
-
-$giftList = [];
-$pg2 = ['page' => 1, 'perPage' => 5, 'offset' => 0, 'total' => 0, 'pages' => 1];
-try {
-    $where2 = '1=1';
-    $params2 = [];
-    if ($df2['active']) {
-        $where2 .= ' AND expire_at BETWEEN :dfrom2 AND :dto2';
-        $params2[':dfrom2'] = $df2['from'];
-        $params2[':dto2'] = $df2['to'];
-    }
-    if ($giftQ !== '') {
-        $where2 .= ' AND (code LIKE :gq1 OR target_user LIKE :gq2)';
-        $params2[':gq1'] = '%' . $giftQ . '%';
-        $params2[':gq2'] = '%' . $giftQ . '%';
-    }
-    if (fx_filter_delete_requested('2')) {
-        [$fdMatched, $fdDeleted] = $giftFilterActive ? fx_filter_delete_where($pdo, 'Discount', $where2, $params2) : [0, 0];
-        $fdParams = array_merge(['q1' => $discQ !== '' ? $discQ : null, 'q2' => $giftQ !== '' ? $giftQ : null, 'p1' => $pg1['page'] > 1 ? (string)$pg1['page'] : null], $discDateKeep, $giftDateKeep);
-        fx_filter_delete_redirect('discounts.php', $fdParams, $fdMatched, $fdDeleted, '2');
-    }
-    $pg2 = fx_paginate($pdo, "SELECT COUNT(*) FROM Discount WHERE $where2", $params2, 5, 'p2');
-    $rg = $pdo->prepare("SELECT * FROM Discount WHERE $where2 ORDER BY id DESC LIMIT :perPage OFFSET :offset");
-    foreach ($params2 as $k => $v) $rg->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
-    $rg->bindValue(':perPage', $pg2['perPage'], PDO::PARAM_INT);
-    $rg->bindValue(':offset', $pg2['offset'], PDO::PARAM_INT);
-    $rg->execute();
-    $giftList = $rg->fetchAll(PDO::FETCH_ASSOC);
-} catch (\Throwable $e) {  }
-
-$listcategory = [];
-try {
-    $catQuery = $pdo->prepare("SELECT remark FROM category ORDER BY (position = 0) ASC, position ASC, id ASC");
-    $catQuery->execute();
-    $listcategory = $catQuery->fetchAll(PDO::FETCH_COLUMN);
-} catch (\Throwable $e) {  }
-
-$listpanel = [];
-$panelNameByCode = [];
-try {
-    $panQuery = $pdo->prepare("SELECT * FROM marzban_panel ORDER BY (position = 0) ASC, position ASC, id ASC");
-    $panQuery->execute();
-    $listpanel = $panQuery->fetchAll(PDO::FETCH_ASSOC);
-    foreach ($listpanel as $p) {
-        $panelNameByCode[(string)($p['code_panel'] ?? '')] = (string)($p['name_panel'] ?? '');
-    }
-} catch (\Throwable $e) {  }
-
-function faoxima_d_label_targeting($mode, $category, $panelCode, $panelNameByCode) {
-    if ($mode === 'category') {
-        return ['🎯 دسته: ' . htmlspecialchars((string)$category, ENT_QUOTES), 'badge-purple'];
-    }
-    if ($mode === 'panel') {
-        $codes = array_values(array_filter(array_map('trim', explode(',', (string)$panelCode))));
-        $names = array_map(function ($c) use ($panelNameByCode) { return $panelNameByCode[$c] ?? $c; }, $codes);
-        return ['🎯 پنل: ' . htmlspecialchars(implode('، ', $names), ENT_QUOTES), 'badge-info'];
-    }
-    return ['بدون محدودیت هدف', 'badge-gray'];
-}
-
-function faoxima_d_label_type($t) {
-    switch ($t) {
-        case 'percent': return ['درصدی', 'badge-success'];
-        case 'amount':  return ['مبلغی', 'badge-info'];
-        case 'free':    return ['رایگان', 'badge-purple'];
-        default:        return [htmlspecialchars((string)$t, ENT_QUOTES), 'badge-gray'];
-    }
-}
-function faoxima_d_label_agent($a) {
-    $map = ['f' => 'کاربر عادی', 'n' => 'نماینده', 'n2' => 'نماینده+', 'all' => 'همه', 'allusers' => 'همه'];
-    $values = array_values(array_filter(array_map('trim', explode(',', (string)$a))));
-    if (empty($values) || in_array('allusers', $values, true) || in_array('all', $values, true)) {
-        return ['همه', 'badge-success'];
-    }
-    $names = array_map(function ($v) use ($map) { return $map[$v] ?? $v; }, $values);
-    return [htmlspecialchars(implode('، ', $names), ENT_QUOTES), count($values) > 1 ? 'badge-purple' : 'badge-info'];
-}
-function faoxima_d_label_section($s) {
-    $map = ['buy' => 'خرید', 'extend' => 'تمدید', 'volume' => 'حجم', 'time' => 'زمان', 'charge' => 'شارژ', 'all' => 'همه بخش‌ها'];
-    $values = array_values(array_filter(array_map('trim', explode(',', (string)$s))));
-    if (empty($values) || in_array('all', $values, true)) {
-        return ['همه بخش‌ها', 'badge-gray'];
-    }
-    $names = array_map(function ($v) use ($map) { return $map[$v] ?? $v; }, $values);
-    return [htmlspecialchars(implode('، ', $names), ENT_QUOTES), count($values) > 1 ? 'badge-purple' : 'badge-warning'];
-}
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -621,11 +109,11 @@ function faoxima_d_label_section($s) {
                 </div>
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
                     <button class="btn btn-soft-success" onclick="openModal('modal-add-gift')">
-                        <?php echo icon('plus', 'svg-icon svg-sm'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon svg-sm'); ?>
                         <span>افزودن کد هدیه</span>
                     </button>
                     <button class="btn btn-primary" onclick="openModal('modal-add-discount')">
-                        <?php echo icon('plus', 'svg-icon svg-sm'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon svg-sm'); ?>
                         <span>افزودن کد تخفیف</span>
                     </button>
                 </div>
@@ -633,7 +121,7 @@ function faoxima_d_label_section($s) {
 
             <?php if ($flash['ok']): ?>
                 <div class="alert" style="background:var(--color-success-soft); border:1px solid var(--color-success); color:var(--color-success); padding:12px 16px; border-radius:var(--radius-md); margin-bottom:18px; display:flex; align-items:center; gap:10px;">
-                    <?php echo icon('circle-check', 'svg-icon'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-check', 'svg-icon'); ?>
                     <span><?php echo htmlspecialchars($flash['ok'], ENT_QUOTES); ?></span>
                 </div>
             <?php endif; ?>
@@ -643,15 +131,15 @@ function faoxima_d_label_section($s) {
                 </div>
             <?php endif; ?>
 
-            <?php echo fx_bulk_delete_flash_html('1', 'کدهای تخفیف'); ?>
-            <?php echo fx_bulk_delete_flash_html('2', 'کدهای هدیه'); ?>
-            <?php echo fx_filter_delete_flash_html('1', 'کدهای تخفیف'); ?>
-            <?php echo fx_filter_delete_flash_html('2', 'کدهای هدیه'); ?>
+            <?php echo \Faoxima\Admin\Web\Support\BulkDelete::fx_bulk_delete_flash_html('1', 'کدهای تخفیف'); ?>
+            <?php echo \Faoxima\Admin\Web\Support\BulkDelete::fx_bulk_delete_flash_html('2', 'کدهای هدیه'); ?>
+            <?php echo \Faoxima\Admin\Web\Support\BulkDelete::fx_filter_delete_flash_html('1', 'کدهای تخفیف'); ?>
+            <?php echo \Faoxima\Admin\Web\Support\BulkDelete::fx_filter_delete_flash_html('2', 'کدهای هدیه'); ?>
 
-            <?php echo fx_search_ui('discounts.php', $discQ, array_merge(['p2' => $pg2['page'] > 1 ? $pg2['page'] : null, 'q2' => $giftQ !== '' ? $giftQ : null], $discDateKeep, $giftDateKeep), 'جستجو در کد تخفیف یا کاربر هدف…', 'q1'); ?>
+            <?php echo \Faoxima\Admin\Web\Support\SearchFilter::fx_search_ui('discounts.php', $discQ, array_merge(['p2' => $pg2['page'] > 1 ? $pg2['page'] : null, 'q2' => $giftQ !== '' ? $giftQ : null], $discDateKeep, $giftDateKeep), 'جستجو در کد تخفیف یا کاربر هدف…', 'q1'); ?>
 
-            <?php $fxFd = fx_filter_delete_parts('discounts.php', array_merge(['q1' => $discQ !== '' ? $discQ : null, 'q2' => $giftQ !== '' ? $giftQ : null, 'p2' => $pg2['page'] > 1 ? $pg2['page'] : null], $discDateKeep, $giftDateKeep), $discFilterActive ? (int)$pg1['total'] : 0, $discFilterCriteria, '1'); ?>
-            <?php echo fx_date_filter_ui('discounts.php', '1', array_merge(['p2' => $pg2['page'] > 1 ? $pg2['page'] : null, 'q1' => $discQ !== '' ? $discQ : null, 'q2' => $giftQ !== '' ? $giftQ : null], $giftDateKeep), 'انقضا', $fxFd['button'], $fxFd['form'], true); ?>
+            <?php $fxFd = \Faoxima\Admin\Web\Support\BulkDelete::fx_filter_delete_parts('discounts.php', array_merge(['q1' => $discQ !== '' ? $discQ : null, 'q2' => $giftQ !== '' ? $giftQ : null, 'p2' => $pg2['page'] > 1 ? $pg2['page'] : null], $discDateKeep, $giftDateKeep), $discFilterActive ? (int)$pg1['total'] : 0, $discFilterCriteria, '1'); ?>
+            <?php echo \Faoxima\Admin\Web\Support\DateFilter::fx_date_filter_ui('discounts.php', '1', array_merge(['p2' => $pg2['page'] > 1 ? $pg2['page'] : null, 'q1' => $discQ !== '' ? $discQ : null, 'q2' => $giftQ !== '' ? $giftQ : null], $giftDateKeep), 'انقضا', $fxFd['button'], $fxFd['form'], true); ?>
 
             <div class="card invoice-results">
                 <div class="invoice-results__head"><div><h2>کدهای تخفیف</h2><p>مدیریت تخفیف خرید، تمدید و سایر خدمات</p></div><span class="invoice-page-count"><?php echo strtr(number_format((int)$pg1['total']), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?> کد<?php echo $discQ !== '' ? ' مطابق جستجو' : ''; ?></span></div>
@@ -681,11 +169,11 @@ function faoxima_d_label_section($s) {
                             if (!in_array($kind, ['percent','amount','free'], true)) {
                                 $kind = in_array(($d['type'] ?? ''), ['percent','amount','free'], true) ? $d['type'] : 'percent';
                             }
-                            [$typeLabel, $typeBadge] = faoxima_d_label_type($kind);
+                            [$typeLabel, $typeBadge] = \Faoxima\Admin\Web\Pages\DiscountsRequestHelpers::faoxima_d_label_type($kind);
                             $sectionVal = $d['section'] ?? '';
                             if ($sectionVal === '') $sectionVal = in_array(($d['type'] ?? ''), ['buy','extend'], true) ? $d['type'] : 'all';
-                            [$secLabel, $secBadge] = faoxima_d_label_section($sectionVal);
-                            [$agentLabel, $agentBadge] = faoxima_d_label_agent($d['agent'] ?? '');
+                            [$secLabel, $secBadge] = \Faoxima\Admin\Web\Pages\DiscountsRequestHelpers::faoxima_d_label_section($sectionVal);
+                            [$agentLabel, $agentBadge] = \Faoxima\Admin\Web\Pages\DiscountsRequestHelpers::faoxima_d_label_agent($d['agent'] ?? '');
                             $valDisplay = htmlspecialchars((string)$d['price'], ENT_QUOTES);
                             if ($kind === 'percent') $valDisplay .= '%';
                             elseif ($kind === 'amount') $valDisplay = number_format((int)$d['price']) . ' <small>تومان</small>';
@@ -699,7 +187,7 @@ function faoxima_d_label_section($s) {
                             $editExpDays = ($editExpTs > time()) ? (int)ceil(($editExpTs - time()) / 86400) : 0;
                             $targetingMode = in_array(($d['targeting_mode'] ?? ''), ['category','panel'], true) ? $d['targeting_mode'] : 'none';
                             $codeCategoryVal = (string)($d['code_category'] ?? 'all');
-                            [$targetingLabel, $targetingBadge] = faoxima_d_label_targeting($targetingMode, $codeCategoryVal, $d['code_panel'] ?? '', $panelNameByCode);
+                            [$targetingLabel, $targetingBadge] = \Faoxima\Admin\Web\Pages\DiscountsRequestHelpers::faoxima_d_label_targeting($targetingMode, $codeCategoryVal, $d['code_panel'] ?? '', $panelNameByCode);
                         ?>
                             <tr data-detail-row data-detail-title="کد <?php echo htmlspecialchars($d['codeDiscount'], ENT_QUOTES); ?>">
                                 <td><label class="fx-check-row"><input type="checkbox" name="ids[]" value="<?php echo (int)$d['id']; ?>"></label></td>
@@ -716,7 +204,7 @@ function faoxima_d_label_section($s) {
                                         if ($targetingMode !== 'none') {
                                             $discountTypeBadgesHtml[] = '<span class="badge ' . $targetingBadge . '">' . $targetingLabel . '</span>';
                                         }
-                                        echo faoxima_render_compact_badges($discountTypeBadgesHtml);
+                                        echo \Faoxima\Admin\Web\Support\CompactBadges::faoxima_render_compact_badges($discountTypeBadgesHtml);
                                     ?>
                                 </td>
                                 <td data-label="مقدار" data-summary="1"><?php echo $valDisplay; ?></td>
@@ -755,22 +243,22 @@ function faoxima_d_label_section($s) {
                                             data-category="<?php echo htmlspecialchars($codeCategoryVal === 'all' ? '' : $codeCategoryVal, ENT_QUOTES); ?>"
                                             data-panel="<?php echo htmlspecialchars((string)($d['code_panel'] ?? ''), ENT_QUOTES); ?>"
                                             onclick="editDiscount(this)">
-                                            <?php echo icon('pen-to-square', 'svg-icon'); ?>
+                                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('pen-to-square', 'svg-icon'); ?>
                                         </button>
                                         <form method="POST" style="display:inline" onsubmit="return confirm('شمارنده استفاده این کد صفر شود؟');">
-                                            <?php echo fx_csrf_field(); ?>
+                                            <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                                             <input type="hidden" name="_action" value="reset_usage">
                                             <input type="hidden" name="id" value="<?php echo (int)$d['id']; ?>">
                                             <button type="submit" class="btn btn-sm btn-soft-warning" title="بازنشانی شمارنده استفاده">
-                                                <?php echo icon('rotate-left', 'svg-icon'); ?>
+                                                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('rotate-left', 'svg-icon'); ?>
                                             </button>
                                         </form>
                                         <form method="POST" style="display:inline" onsubmit="return confirm('کد <?php echo htmlspecialchars($d['codeDiscount'], ENT_QUOTES); ?> حذف شود؟');">
-                                            <?php echo fx_csrf_field(); ?>
+                                            <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                                             <input type="hidden" name="_action" value="delete">
                                             <input type="hidden" name="id" value="<?php echo (int)$d['id']; ?>">
                                             <button type="submit" class="btn btn-sm btn-soft-danger">
-                                                <?php echo icon('trash', 'svg-icon'); ?>
+                                                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon'); ?>
                                             </button>
                                         </form>
                                     </div>
@@ -784,21 +272,21 @@ function faoxima_d_label_section($s) {
                     foreach (['dpreset1', 'ddays1', 'dfrom1', 'dto1', 'dpreset2', 'ddays2', 'dfrom2', 'dto2'] as $dk) {
                         if (isset($_GET[$dk]) && $_GET[$dk] !== '') $d1Keep[$dk] = $_GET[$dk];
                     }
-                    echo fx_pager_html($pg1['page'], $pg1['pages'], $pg1['total'], count($list), 'discounts.php', $d1Keep, 'p1');
+                    echo \Faoxima\Admin\Web\Support\Pagination::fx_pager_html($pg1['page'], $pg1['pages'], $pg1['total'], count($list), 'discounts.php', $d1Keep, 'p1');
                     ?>
                 </div>
                 <div style="padding:12px 0;">
                     <button type="button" class="btn btn-soft-danger btn-sm js-bulk-delete-btn js-bulk-delete-btn-1" style="display:none;" onclick="faoximaBulkDelete('bulk-scope-1', 'bulk_delete', '_action')">
-                        <?php echo icon('trash', 'svg-icon'); ?> حذف انتخاب‌شده‌ها
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon'); ?> حذف انتخاب‌شده‌ها
                     </button>
                 </div>
                 </div>
             </div>
 
-            <?php echo fx_search_ui('discounts.php', $giftQ, array_merge(['p1' => $pg1['page'] > 1 ? $pg1['page'] : null, 'q1' => $discQ !== '' ? $discQ : null], $discDateKeep, $giftDateKeep), 'جستجو در کد هدیه یا کاربر هدف…', 'q2'); ?>
+            <?php echo \Faoxima\Admin\Web\Support\SearchFilter::fx_search_ui('discounts.php', $giftQ, array_merge(['p1' => $pg1['page'] > 1 ? $pg1['page'] : null, 'q1' => $discQ !== '' ? $discQ : null], $discDateKeep, $giftDateKeep), 'جستجو در کد هدیه یا کاربر هدف…', 'q2'); ?>
 
-            <?php $fxFd2 = fx_filter_delete_parts('discounts.php', array_merge(['q1' => $discQ !== '' ? $discQ : null, 'q2' => $giftQ !== '' ? $giftQ : null, 'p1' => $pg1['page'] > 1 ? $pg1['page'] : null], $discDateKeep, $giftDateKeep), $giftFilterActive ? (int)$pg2['total'] : 0, $giftFilterCriteria, '2'); ?>
-            <?php echo fx_date_filter_ui('discounts.php', '2', array_merge(['p1' => $pg1['page'] > 1 ? $pg1['page'] : null, 'q2' => $giftQ !== '' ? $giftQ : null, 'q1' => $discQ !== '' ? $discQ : null], $discDateKeep), 'انقضا', $fxFd2['button'], $fxFd2['form'], true); ?>
+            <?php $fxFd2 = \Faoxima\Admin\Web\Support\BulkDelete::fx_filter_delete_parts('discounts.php', array_merge(['q1' => $discQ !== '' ? $discQ : null, 'q2' => $giftQ !== '' ? $giftQ : null, 'p1' => $pg1['page'] > 1 ? $pg1['page'] : null], $discDateKeep, $giftDateKeep), $giftFilterActive ? (int)$pg2['total'] : 0, $giftFilterCriteria, '2'); ?>
+            <?php echo \Faoxima\Admin\Web\Support\DateFilter::fx_date_filter_ui('discounts.php', '2', array_merge(['p1' => $pg1['page'] > 1 ? $pg1['page'] : null, 'q2' => $giftQ !== '' ? $giftQ : null, 'q1' => $discQ !== '' ? $discQ : null], $discDateKeep), 'انقضا', $fxFd2['button'], $fxFd2['form'], true); ?>
 
             <div class="card invoice-results" style="margin-top:18px">
                 <div class="invoice-results__head"><div><h2>کدهای هدیه</h2><p>مدیریت اعتبار هدیه و شارژ کیف پول کاربران</p></div><span class="invoice-page-count"><?php echo strtr(number_format((int)$pg2['total']), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?> کد<?php echo $giftQ !== '' ? ' مطابق جستجو' : ''; ?></span></div>
@@ -843,13 +331,13 @@ function faoxima_d_label_section($s) {
                                             data-target="<?php echo htmlspecialchars($gtarget, ENT_QUOTES); ?>"
                                             data-exp="<?php echo (int)$gEditExpDays; ?>"
                                             onclick="editGift(this)">
-                                            <?php echo icon('pen-to-square', 'svg-icon'); ?>
+                                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('pen-to-square', 'svg-icon'); ?>
                                         </button>
                                         <form method="POST" style="display:inline" onsubmit="return confirm('کد هدیه حذف شود؟');">
-                                            <?php echo fx_csrf_field(); ?>
+                                            <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                                             <input type="hidden" name="_action" value="gift_delete">
                                             <input type="hidden" name="id" value="<?php echo (int)$g['id']; ?>">
-                                            <button type="submit" class="btn btn-sm btn-soft-danger"><?php echo icon('trash', 'svg-icon'); ?></button>
+                                            <button type="submit" class="btn btn-sm btn-soft-danger"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon'); ?></button>
                                         </form>
                                     </div>
                                 </td>
@@ -862,12 +350,12 @@ function faoxima_d_label_section($s) {
                     foreach (['dpreset1', 'ddays1', 'dfrom1', 'dto1', 'dpreset2', 'ddays2', 'dfrom2', 'dto2'] as $dk) {
                         if (isset($_GET[$dk]) && $_GET[$dk] !== '') $d2Keep[$dk] = $_GET[$dk];
                     }
-                    echo fx_pager_html($pg2['page'], $pg2['pages'], $pg2['total'], count($giftList), 'discounts.php', $d2Keep, 'p2');
+                    echo \Faoxima\Admin\Web\Support\Pagination::fx_pager_html($pg2['page'], $pg2['pages'], $pg2['total'], count($giftList), 'discounts.php', $d2Keep, 'p2');
                     ?>
                 </div>
                 <div style="padding:12px 0;">
                     <button type="button" class="btn btn-soft-danger btn-sm js-bulk-delete-btn js-bulk-delete-btn-2" style="display:none;" onclick="faoximaBulkDelete('bulk-scope-2', 'gift_bulk_delete', '_action')">
-                        <?php echo icon('trash', 'svg-icon'); ?> حذف انتخاب‌شده‌ها
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon'); ?> حذف انتخاب‌شده‌ها
                     </button>
                 </div>
                 </div>
@@ -881,7 +369,7 @@ function faoxima_d_label_section($s) {
             <button type="button" class="modal-close" onclick="closeModal('modal-add-discount')">&times;</button>
         </div>
         <form method="POST" action="discounts.php">
-            <?php echo fx_csrf_field(); ?>
+            <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
             <input type="hidden" name="_action" value="add">
 
             <div class="form-row">
@@ -989,7 +477,7 @@ function faoxima_d_label_section($s) {
             <div class="modal-foot">
                 <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('modal-add-discount')">انصراف</button>
                 <button type="submit" class="btn btn-primary btn-sm">
-                    <?php echo icon('plus', 'svg-icon svg-sm'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon svg-sm'); ?>
                     افزودن کد
                 </button>
             </div>
@@ -1004,7 +492,7 @@ function faoxima_d_label_section($s) {
             <button type="button" class="modal-close" onclick="closeModal('modal-add-gift')">&times;</button>
         </div>
         <form method="POST" action="discounts.php">
-            <?php echo fx_csrf_field(); ?>
+            <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
             <input type="hidden" name="_action" value="gift_add">
             <div class="form-row">
                 <div class="form-group">
@@ -1032,7 +520,7 @@ function faoxima_d_label_section($s) {
             </div>
             <div class="modal-foot">
                 <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('modal-add-gift')">انصراف</button>
-                <button type="submit" class="btn btn-primary btn-sm"><?php echo icon('plus', 'svg-icon svg-sm'); ?> افزودن</button>
+                <button type="submit" class="btn btn-primary btn-sm"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon svg-sm'); ?> افزودن</button>
             </div>
         </form>
     </div>
@@ -1045,7 +533,7 @@ function faoxima_d_label_section($s) {
             <button type="button" class="modal-close" onclick="closeModal('modal-edit-discount')">&times;</button>
         </div>
         <form method="POST" action="discounts.php">
-            <?php echo fx_csrf_field(); ?>
+            <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
             <input type="hidden" name="_action" value="edit">
             <input type="hidden" name="id" id="ed_id">
             <div class="form-row">
@@ -1147,7 +635,7 @@ function faoxima_d_label_section($s) {
             </div>
             <div class="modal-foot">
                 <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('modal-edit-discount')">انصراف</button>
-                <button type="submit" class="btn btn-primary btn-sm"><?php echo icon('pen-to-square', 'svg-icon svg-sm'); ?> ذخیره تغییرات</button>
+                <button type="submit" class="btn btn-primary btn-sm"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('pen-to-square', 'svg-icon svg-sm'); ?> ذخیره تغییرات</button>
             </div>
         </form>
     </div>
@@ -1160,7 +648,7 @@ function faoxima_d_label_section($s) {
             <button type="button" class="modal-close" onclick="closeModal('modal-edit-gift')">&times;</button>
         </div>
         <form method="POST" action="discounts.php">
-            <?php echo fx_csrf_field(); ?>
+            <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
             <input type="hidden" name="_action" value="gift_edit">
             <input type="hidden" name="id" id="ed_g_id">
             <div class="form-row">
@@ -1189,7 +677,7 @@ function faoxima_d_label_section($s) {
             </div>
             <div class="modal-foot">
                 <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('modal-edit-gift')">انصراف</button>
-                <button type="submit" class="btn btn-primary btn-sm"><?php echo icon('pen-to-square', 'svg-icon svg-sm'); ?> ذخیره تغییرات</button>
+                <button type="submit" class="btn btn-primary btn-sm"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('pen-to-square', 'svg-icon svg-sm'); ?> ذخیره تغییرات</button>
             </div>
         </form>
     </div>

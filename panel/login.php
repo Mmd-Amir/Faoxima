@@ -1,5 +1,9 @@
 <?php
 
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'login.php';
+
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 if (!defined('FAOXIMA_SKIP_BOTAPI_ROUTER')) {
     define('FAOXIMA_SKIP_BOTAPI_ROUTER', true);
 }
@@ -33,133 +37,27 @@ if ((!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off
 session_start();
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
-require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/lib/csrf.php';
 require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../jdf.php';
 
-function fx_login_ip_allowed($result, $user_ip): bool
-{
-    $adminIpOk = true;
-    if ($result) {
-        $rawAdminIp = $result['iplogin'] ?? null;
-        if ($rawAdminIp !== null && $rawAdminIp !== '') {
-            $adminIpDecoded = fx_admin_decode_ip_entries((string)$rawAdminIp);
-            if ($adminIpDecoded !== null) {
-                if (in_array('*', $adminIpDecoded, true) || in_array('all', $adminIpDecoded, true) || in_array('unlimited', $adminIpDecoded, true)) {
-                    $adminIpOk = true;
-                } else {
-                    $adminIpOk = in_array($user_ip, $adminIpDecoded, true);
-                }
-            } elseif ($rawAdminIp === '*' || $rawAdminIp === 'all' || $rawAdminIp === 'unlimited') {
-                $adminIpOk = true;
-            } elseif (filter_var($rawAdminIp, FILTER_VALIDATE_IP)) {
-                $adminIpOk = ($rawAdminIp === $user_ip);
-            }
-        }
-    }
-    return $adminIpOk;
+if (\Faoxima\Admin\Web\Pages\LoginRequest::handle(
+        ip_denied: $ip_denied,
+        otherreport: $otherreport,
+        password: $password,
+        pdo: $pdo ?? null,
+        result: $result,
+        setting: $setting,
+        texterrr: $texterrr,
+        user_ip: $user_ip,
+        username: $username
+    ) !== true) {
+    unset($adminWebPage);
+    return;
 }
 
-function fx_login_verify_password(PDO $pdo, $result, string $password): bool
-{
-    $passwordOk = false;
-    if ($result) {
-        $storedHash = (string)($result["password_hash"] ?? '');
-        if ($storedHash !== '' && password_verify($password, $storedHash)) {
-            $passwordOk = true;
-            if (password_needs_rehash($storedHash, PASSWORD_DEFAULT)) {
-                $rehash = $pdo->prepare("UPDATE admin SET password_hash = :h WHERE id_admin = :id");
-                $rehash->execute([':h' => password_hash($password, PASSWORD_DEFAULT), ':id' => $result['id_admin']]);
-            }
-        } elseif ($storedHash === '' && (string)$password === (string)($result["password"] ?? '') && $password !== '') {
-            $passwordOk = true;
-            $migrate = $pdo->prepare("UPDATE admin SET password_hash = :h WHERE id_admin = :id");
-            $migrate->execute([':h' => password_hash($password, PASSWORD_DEFAULT), ':id' => $result['id_admin']]);
-        }
-    }
-    return $passwordOk;
-}
-
-$user_ip = $_SERVER['REMOTE_ADDR'] ?? '';
-fx_ad_gate();
-if (empty($_SESSION['fx_ad_nonce'])) {
-    $_SESSION['fx_ad_nonce'] = bin2hex(random_bytes(16));
-}
-
-$texterrr = "";
-$ip_denied = false;
-
-if (isset($_POST['login'])) {
-    $username = isset($_POST['username']) ? trim((string)$_POST['username']) : '';
-    $password = isset($_POST['password']) ? (string)$_POST['password'] : '';
-
-    if ($username !== '' && $password !== '') {
-        $result = fx_admin_find_by_username($pdo, $username);
-
-        $passwordOk = fx_login_verify_password($pdo, $result, $password);
-
-        $adminIpOk = fx_login_ip_allowed($result, $user_ip);
-
-        if (!$result) {
-            $texterrr = 'نام کاربری یا رمزعبور وارد شده اشتباه است!';
-        } elseif (!$passwordOk) {
-            $texterrr = 'رمز صحیح نمی باشد';
-        } elseif (!$adminIpOk) {
-            http_response_code(403);
-            $ip_denied = true;
-        } else {
-
-
-            session_regenerate_id(true);
-            $_SESSION["user"] = $result["username"];
-
-
-            session_write_close();
-
-
-            header('Location: index.php', true, 302);
-
-
-            ignore_user_abort(true);
-            if (function_exists('fastcgi_finish_request')) {
-                @fastcgi_finish_request();
-            } else {
-                if (!headers_sent()) {
-                    @header('Connection: close');
-                    @header('Content-Length: 0');
-                }
-                while (ob_get_level() > 0) { @ob_end_flush(); }
-                @flush();
-            }
-
-
-            try {
-                $setting = select("setting", "*", null, null);
-                $otherreport = select("topicid", "idreport", "report", "otherreport", "select")['idreport'] ?? null;
-                if (!empty($setting['Channel_Report']) && !empty($otherreport)) {
-                    $loginText = "🔐 ورود موفق به پنل تحت وب\n\n"
-                        . "👤 نام کاربری:\n" . $username . "\n\n"
-                        . "🪪 شناسه ادمین:\n" . $result['id_admin'] . "\n\n"
-                        . "🌐 IP ورود:\n" . $user_ip . "\n\n"
-                        . "🕐 زمان ورود:\n" . (function_exists('jdate') ? jdate('Y/m/d H:i:s', time(), '', 'Asia/Tehran', 'en') : date('Y/m/d H:i:s'));
-                    telegram('sendmessage', [
-                        'chat_id'           => $setting['Channel_Report'],
-                        'message_thread_id' => $otherreport,
-                        'text'              => $loginText,
-                        'parse_mode'        => "HTML"
-                    ]);
-                }
-            } catch (\Throwable $e) {
-                @error_log('Login notify failed: ' . $e->getMessage());
-            }
-            exit;
-        }
-    } else {
-        $texterrr = 'نام کاربری یا رمز عبور خالی است.';
-    }
-}
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark" data-color="blue">
@@ -187,7 +85,7 @@ if (isset($_POST['login'])) {
 
 <?php if ($ip_denied): ?>
     <div class="ip-card">
-        <span style="font-size:48px; color: var(--accent);"><?php echo icon('shield-halved', 'svg-icon'); ?></span>
+        <span style="font-size:48px; color: var(--accent);"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('shield-halved', 'svg-icon'); ?></span>
         <h2>دسترسی غیرمجاز</h2>
         <p>IP فعلی شما در لیست IPهای مجاز این حساب قرار ندارد.<br>برای ورود، از IP مجاز استفاده کنید یا تنظیمات IP این حساب را از طریق ربات مدیریت کنید.</p>
         <div class="ip-box"><?php echo htmlspecialchars($user_ip, ENT_QUOTES, 'UTF-8'); ?></div>
@@ -205,7 +103,7 @@ if (isset($_POST['login'])) {
 
             <?php if (!empty($texterrr)): ?>
                 <div class="alert alert-error">
-                    <?php echo icon('circle-exclamation', 'svg-icon'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon'); ?>
                     <span><?php echo htmlspecialchars($texterrr, ENT_QUOTES, 'UTF-8'); ?></span>
                 </div>
             <?php endif; ?>
@@ -214,7 +112,7 @@ if (isset($_POST['login'])) {
                 <div class="form-group">
                     <label class="form-label">نام کاربری</label>
                     <div class="input-icon-wrap">
-                        <?php echo icon('user', 'svg-icon'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('user', 'svg-icon'); ?>
                         <input type="text" name="username" class="form-control" placeholder="نام کاربری..." required autofocus>
                     </div>
                 </div>
@@ -222,22 +120,22 @@ if (isset($_POST['login'])) {
                 <div class="form-group">
                     <label class="form-label">رمز عبور</label>
                     <div class="input-icon-wrap">
-                        <?php echo icon('lock', 'svg-icon'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('lock', 'svg-icon'); ?>
                         <input type="password" name="password" id="passwordInput" class="form-control" placeholder="••••••••" required>
                         <button type="button" class="toggle-pass" onclick="togglePass()" aria-label="نمایش رمز">
-                            <span id="eye-icon"><?php echo icon('eye', 'svg-icon'); ?></span>
+                            <span id="eye-icon"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('eye', 'svg-icon'); ?></span>
                         </button>
                     </div>
                 </div>
 
                 <button type="submit" name="login" class="btn btn-primary btn-block mt-2">
-                    <?php echo icon('arrow-left', 'svg-icon'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('arrow-left', 'svg-icon'); ?>
                     ورود به پنل
                 </button>
             </form>
 
             <p class="text-muted mt-2" style="font-size:11px;">
-                <?php echo icon('circle-info', 'svg-icon'); ?>
+                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-info', 'svg-icon'); ?>
                 IP شما: <span style="direction:ltr;"><?php echo htmlspecialchars($user_ip, ENT_QUOTES, 'UTF-8'); ?></span>
             </p>
 
@@ -251,7 +149,7 @@ if (isset($_POST['login'])) {
                    style="display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:var(--radius-md); background:var(--accent-soft, rgba(59,130,246,0.12)); color:var(--accent, #3b82f6); transition:transform .15s ease, background .15s ease;"
                    onmouseover="this.style.transform='translateY(-2px)';"
                    onmouseout="this.style.transform='translateY(0)';">
-                    <?php echo icon('telegram', 'svg-icon'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('telegram', 'svg-icon'); ?>
                 </a>
                 <a href="https://github.com/Mmd-Amir/Faoxima" target="_blank" rel="noopener noreferrer"
                    aria-label="مخزن گیت‌هاب فاکسیما"
@@ -259,7 +157,7 @@ if (isset($_POST['login'])) {
                    style="display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:var(--radius-md); background:var(--accent-soft, rgba(59,130,246,0.12)); color:var(--accent, #3b82f6); transition:transform .15s ease, background .15s ease;"
                    onmouseover="this.style.transform='translateY(-2px)';"
                    onmouseout="this.style.transform='translateY(0)';">
-                    <?php echo icon('github', 'svg-icon'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('github', 'svg-icon'); ?>
                 </a>
             </div>
 

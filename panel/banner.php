@@ -1,5 +1,9 @@
 <?php
 
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'banner.php';
+
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 if (session_status() === PHP_SESSION_NONE) {
     ini_set('session.cookie_samesite', 'Lax');
     ini_set('session.cookie_httponly', '1');
@@ -8,152 +12,27 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
-require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/../botapi.php';
 
-if (empty($_SESSION['user']) || !is_string($_SESSION['user']) || $_SESSION['user'] === '') {
-    header('Location: login.php');
-    exit;
+if (\Faoxima\Admin\Web\Pages\BannerRequest::handle(
+        SECTIONS: $SECTIONS,
+        _csrf: $_csrf,
+        formErrors: $formErrors,
+        key: $key,
+        meta: $meta,
+        name: $name,
+        pdo: $pdo ?? null,
+        row: $row,
+        savedNum: $savedNum,
+        settingRow: $settingRow,
+        showSaved: $showSaved,
+        stmt: $stmt
+    ) !== true) {
+    unset($adminWebPage);
+    return;
 }
 
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-$_csrf = $_SESSION['csrf_token'];
-
-$SECTIONS = [
-    'start' => ['label' => 'استارت ربات (/start)'],
-    'cart'  => ['label' => 'کارت به کارت'],
-    'buy'   => ['label' => 'خرید اشتراک'],
-];
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $incoming = $_POST['_csrf'] ?? '';
-    if (!hash_equals($_SESSION['csrf_token'], $incoming)) {
-        http_response_code(403);
-        exit('درخواست نامعتبر — توکن CSRF اشتباه است');
-    }
-}
-
-$settingRow = [];
-try {
-    $stmt = $pdo->query("SELECT * FROM setting LIMIT 1");
-    $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : null;
-    if (is_array($row)) $settingRow = $row;
-} catch (\Throwable $e) {
-    error_log('[panel/banner] load failed: ' . $e->getMessage());
-}
-
-function faoxima_banner_mint_file_id($tmpPath, $mime, $name)
-{
-    global $pdo;
-    $adminId = '';
-    try {
-        $stmt = $pdo->query("SELECT id_admin FROM admin ORDER BY id_admin ASC LIMIT 1");
-        $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : null;
-        $adminId = is_array($row) ? (string)($row['id_admin'] ?? '') : '';
-    } catch (\Throwable $e) {
-        error_log('[panel/banner] admin lookup failed: ' . $e->getMessage());
-    }
-    if ($adminId === '') {
-        return ['ok' => false, 'error' => 'هیچ ادمینی برای دریافت تصویر آزمایشی یافت نشد.'];
-    }
-    $cf = new CURLFile($tmpPath, $mime !== '' ? $mime : 'image/jpeg', $name);
-    $res = telegram('sendPhoto', [
-        'chat_id' => $adminId,
-        'photo' => $cf,
-    ]);
-    if (empty($res['ok'])) {
-        return ['ok' => false, 'error' => 'ارسال تصویر به تلگرام ناموفق بود.'];
-    }
-    $photos = $res['result']['photo'] ?? [];
-    $fileId = (is_array($photos) && $photos) ? (end($photos)['file_id'] ?? '') : '';
-    $messageId = $res['result']['message_id'] ?? null;
-    if ($messageId) {
-        deletemessage($adminId, $messageId);
-    }
-    if ($fileId === '') {
-        return ['ok' => false, 'error' => 'دریافت شناسه فایل از تلگرام ناموفق بود.'];
-    }
-    return ['ok' => true, 'file_id' => $fileId];
-}
-
-$formErrors = [];
-$savedCount = 0;
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['_save'])) {
-    foreach ($SECTIONS as $key => $meta) {
-        $statusCol = "banner_{$key}_status";
-        $fileCol = "banner_{$key}_file_id";
-
-        $newStatus = isset($_POST['f_' . $statusCol]) ? '1' : '0';
-        $newFileId = trim((string)($_POST['f_' . $fileCol] ?? ''));
-
-        $uploadKey = 'upload_' . $key;
-        if (isset($_FILES[$uploadKey]) && ($_FILES[$uploadKey]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
-            $tmp = (string)$_FILES[$uploadKey]['tmp_name'];
-            if ($tmp !== '' && is_uploaded_file($tmp)) {
-                $mime = function_exists('mime_content_type') ? (string)(mime_content_type($tmp) ?: '') : (string)($_FILES[$uploadKey]['type'] ?? '');
-                $name = (string)($_FILES[$uploadKey]['name'] ?? 'banner.jpg');
-                $mint = faoxima_banner_mint_file_id($tmp, $mime, $name);
-                if ($mint['ok']) {
-                    $newFileId = $mint['file_id'];
-                } else {
-                    $formErrors[] = "{$meta['label']}: {$mint['error']}";
-                }
-            }
-        }
-
-        if (mb_strlen($newFileId) > 255) {
-            $newFileId = mb_substr($newFileId, 0, 255);
-        }
-
-        $curStatus = (string)($settingRow[$statusCol] ?? '0');
-        $curFileId = (string)($settingRow[$fileCol] ?? '');
-
-        if ($curStatus !== $newStatus) {
-            $statusSql = "UPDATE setting SET `{$statusCol}` = :v";
-            if ($key === 'start' && $newStatus === '1' && array_key_exists('start_media_status', $settingRow)) {
-                $statusSql .= ", `start_media_status` = '0'";
-            }
-            try {
-                $upd = $pdo->prepare($statusSql);
-                $upd->bindValue(':v', $newStatus, PDO::PARAM_STR);
-                $upd->execute();
-                if ($key === 'buy' && $newStatus === '1') {
-                    try {
-                        $pdo->exec("UPDATE section_media SET media_status = '0' WHERE section_id = 'buy'");
-                    } catch (\Throwable $mediaError) {
-                        error_log('[panel/banner] buy media exclusion failed: ' . $mediaError->getMessage());
-                    }
-                }
-                $savedCount++;
-            } catch (\Throwable $e) {
-                error_log('[panel/banner] ' . $statusCol . ' failed: ' . $e->getMessage());
-            }
-        }
-        if ($curFileId !== $newFileId) {
-            try {
-                $upd = $pdo->prepare("UPDATE setting SET `{$fileCol}` = :v");
-                $upd->bindValue(':v', $newFileId, PDO::PARAM_STR);
-                $upd->execute();
-                $savedCount++;
-            } catch (\Throwable $e) {
-                error_log('[panel/banner] ' . $fileCol . ' failed: ' . $e->getMessage());
-            }
-        }
-    }
-
-    if (empty($formErrors)) {
-        header('Location: banner.php?saved=' . $savedCount);
-        exit;
-    }
-    $stmt = $pdo->query("SELECT * FROM setting LIMIT 1");
-    $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : null;
-    if (is_array($row)) $settingRow = $row;
-}
-
-$showSaved = isset($_GET['saved']);
-$savedNum  = isset($_GET['saved']) ? (int)$_GET['saved'] : 0;
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -271,7 +150,7 @@ $savedNum  = isset($_GET['saved']) ? (int)$_GET['saved'] : 0;
             <div class="page-head">
                 <div>
                     <div class="page-head__title">
-                        <?php echo icon('image', 'svg-icon svg-lg'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('image', 'svg-icon svg-lg'); ?>
                         تنظیم بنر
                     </div>
                     <div class="page-head__sub">برای استارت ربات، کارت به کارت و خرید اشتراک، بنر تصویری اختصاصی تنظیم کنید</div>
@@ -280,7 +159,7 @@ $savedNum  = isset($_GET['saved']) ? (int)$_GET['saved'] : 0;
 
             <?php if ($showSaved): ?>
                 <div class="alert alert-success">
-                    <?php echo icon('circle-check', 'svg-icon'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-check', 'svg-icon'); ?>
                     <span>
                         <?php if ($savedNum > 0): ?>
                             تغییرات ذخیره شد. (<?php echo $savedNum; ?> فیلد به‌روزرسانی شد)
@@ -293,7 +172,7 @@ $savedNum  = isset($_GET['saved']) ? (int)$_GET['saved'] : 0;
 
             <?php foreach ($formErrors as $err): ?>
                 <div class="alert alert-error">
-                    <?php echo icon('circle-exclamation', 'svg-icon'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-exclamation', 'svg-icon'); ?>
                     <span><?php echo htmlspecialchars($err, ENT_QUOTES, 'UTF-8'); ?></span>
                 </div>
             <?php endforeach; ?>
@@ -304,7 +183,7 @@ $savedNum  = isset($_GET['saved']) ? (int)$_GET['saved'] : 0;
 
                 <div class="card bn-card">
                     <div class="bn-heading">
-                        <span class="bn-heading__icon" aria-hidden="true"><?php echo icon('image', 'svg-icon'); ?></span>
+                        <span class="bn-heading__icon" aria-hidden="true"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('image', 'svg-icon'); ?></span>
                         <div><strong>بنرهای تصویری ربات</strong><p>برای هر بخش، تصویر دلخواه را با لینک، شناسهٔ تلگرام یا آپلود فایل مشخص کنید.</p></div>
                     </div>
                     <?php foreach ($SECTIONS as $key => $meta):
@@ -342,14 +221,14 @@ $savedNum  = isset($_GET['saved']) ? (int)$_GET['saved'] : 0;
                                 <div class="bn-upload" data-bn-upload>
                                     <input type="file" id="upload_<?php echo $key; ?>" name="upload_<?php echo $key; ?>" accept="image/*" data-bn-upload-input>
                                     <label for="upload_<?php echo $key; ?>" class="bn-upload__btn">
-                                        <?php echo icon('image', 'svg-icon'); ?>
+                                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('image', 'svg-icon'); ?>
                                         <span>انتخاب تصویر</span>
                                     </label>
                                     <span class="bn-upload__name" data-bn-upload-name>
                                         <?php echo $fileVal !== '' ? 'تصویری قبلاً تنظیم شده است' : 'فایلی انتخاب نشده'; ?>
                                     </span>
                                     <button type="button" class="bn-upload__clear" data-bn-upload-clear title="لغو انتخاب">
-                                        <?php echo icon('xmark', 'svg-icon'); ?>
+                                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('xmark', 'svg-icon'); ?>
                                     </button>
                                 </div>
                             </div>
@@ -361,11 +240,11 @@ $savedNum  = isset($_GET['saved']) ? (int)$_GET['saved'] : 0;
 
                 <div class="save-bar bn-savebar">
                     <button type="reset" class="btn btn-outline">
-                        <?php echo icon('rotate-left', 'svg-icon svg-sm'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('rotate-left', 'svg-icon svg-sm'); ?>
                         <span>بازنشانی</span>
                     </button>
                     <button type="submit" class="btn btn-primary">
-                        <?php echo icon('check', 'svg-icon svg-sm'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('check', 'svg-icon svg-sm'); ?>
                         <span>ذخیره تغییرات</span>
                     </button>
                 </div>

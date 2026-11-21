@@ -17,27 +17,27 @@ if (in_array($text, $textadmin) || $datain == "admin") {
     $text_admin = "Version Bot : $version
 Panel Admin";
     sendmessage($from_id, $text_admin, $keyboardadmin, 'HTML');
-    step("home", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
     return;
 }
 if ($text == "بازگشت به منوی ادمین") {
     sendmessage($from_id, "به منوی ادمین بازگشتید", $keyboardadmin, 'HTML');
-    step("home", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
     return;
 }
 if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
     sendmessage($from_id, "📌 نام کاربری جدید خود را بدون @ ارسال کنید", $backadmin, 'HTML');
-    step("getusernamesupport", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("getusernamesupport", $from_id);
 } elseif ($user['step'] == "getusernamesupport") {
     sendmessage($from_id, "✅ نام کاربری پشتیبانی برای شما با موفقیت تنظیم گردید.", $keyboardadmin, 'HTML');
-    step("home", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
     $setting['support_username'] = $text;
-    update("botsaz", "setting", json_encode($setting), "bot_token", $ApiToken);
+    \Faoxima\Core\Database\Db::update("botsaz", "setting", json_encode($setting), "bot_token", $ApiToken);
 } elseif ($text == "🔋 قیمت حجم") {
     sendmessage($from_id, "📌 قیمت هر گیگ حجم را ارسال نمایید.
 قیمت پایه حجم. : {$setting['minpricevolume']} تومان
 قیمت فعلی حجم. : {$setting['pricevolume']} تومان", $backadmin, 'HTML');
-    step("getpricvolumeadmin", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("getpricvolumeadmin", $from_id);
 } elseif ($user['step'] == "getpricvolumeadmin") {
     if (!ctype_digit($text)) {
         sendmessage($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
@@ -48,15 +48,15 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
         return;
     }
     sendmessage($from_id, "✅ قیمت حجم با موفقیت تنظیم گردید.", $keyboardprice, 'HTML');
-    step("home", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
     $setting['pricevolume'] = $text;
-    update("botsaz", "setting", json_encode($setting), "bot_token", $ApiToken);
+    \Faoxima\Core\Database\Db::update("botsaz", "setting", json_encode($setting), "bot_token", $ApiToken);
 } elseif ($text == "⌛️ قیمت زمان") {
     sendmessage($from_id, "
 📌 قیمت هر روز زمان را ارسال نمایید.
  قیمت پایه زمان. : {$setting['minpricetime']} تومان
 قیمت فعلی شما : {$setting['pricetime']} تومان", $backadmin, 'HTML');
-    step("getpricvtimeadmin", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("getpricvtimeadmin", $from_id);
 } elseif ($user['step'] == "getpricvtimeadmin") {
     if (!ctype_digit($text)) {
         sendmessage($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
@@ -67,9 +67,9 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
         return;
     }
     sendmessage($from_id, "✅ قیمت زمان با موفقیت تنظیم گردید.", $keyboardprice, 'HTML');
-    step("home", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
     $setting['pricetime'] = $text;
-    update("botsaz", "setting", json_encode($setting), "bot_token", $ApiToken);
+    \Faoxima\Core\Database\Db::update("botsaz", "setting", json_encode($setting), "bot_token", $ApiToken);
 } elseif (preg_match('/Confirm_pay_(\w+)/', $datain, $dataget)) {
     $order_id = $dataget[1];
     $Confirm_pay = json_encode([
@@ -80,7 +80,7 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
             ]
         ]
     ]);
-    $Payment_report = select("Payment_report", "*", "id_order", $order_id, "select");
+    $Payment_report = \Faoxima\Core\Database\Db::select("Payment_report", "*", "id_order", $order_id, "select");
     if ($Payment_report == false) {
         telegram('answerCallbackQuery', array(
             'callback_query_id' => $callback_query_id,
@@ -91,7 +91,7 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
         return;
     }
     $format_price_cart = number_format($Payment_report['price']);
-    $Balance_id = select("user", "*", "id", $Payment_report['id_user'], "select");
+    $Balance_id = \Faoxima\Core\Database\Db::select("user", "*", "id", $Payment_report['id_user'], "select");
     if ($Payment_report['payment_Status'] == "paid" || $Payment_report['payment_Status'] == "reject") {
         telegram('answerCallbackQuery', array(
             'callback_query_id' => $callback_query_id,
@@ -126,13 +126,13 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
             'parse_mode' => "HTML"
         ]);
     }
-    update("Payment_report", "payment_Status", "paid", "id_order", $Payment_report['id_order']);
-    update("user", "Processing_value_one", "none", "id", $Balance_id['id']);
-    update("user", "Processing_value_tow", "none", "id", $Balance_id['id']);
-    update("user", "Processing_value_four", "none", "id", $Balance_id['id']);
+    \Faoxima\Core\Database\Db::update("Payment_report", "payment_Status", "paid", "id_order", $Payment_report['id_order']);
+    \Faoxima\Core\Database\Db::update("user", "Processing_value_one", "none", "id", $Balance_id['id']);
+    \Faoxima\Core\Database\Db::update("user", "Processing_value_tow", "none", "id", $Balance_id['id']);
+    \Faoxima\Core\Database\Db::update("user", "Processing_value_four", "none", "id", $Balance_id['id']);
 } elseif (preg_match('/reject_pay_(\w+)/', $datain, $datagetr)) {
     $id_order = $datagetr[1];
-    $Payment_report = select("Payment_report", "*", "id_order", $id_order, "select");
+    $Payment_report = \Faoxima\Core\Database\Db::select("Payment_report", "*", "id_order", $id_order, "select");
     if ($Payment_report == false) {
         telegram('answerCallbackQuery', array(
             'callback_query_id' => $callback_query_id,
@@ -142,8 +142,8 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
         ));
         return;
     }
-    update("user", "Processing_value", $Payment_report['id_user'], "id", $from_id);
-    update("user", "Processing_value_one", $id_order, "id", $from_id);
+    \Faoxima\Core\Database\Db::update("user", "Processing_value", $Payment_report['id_user'], "id", $from_id);
+    \Faoxima\Core\Database\Db::update("user", "Processing_value_one", $id_order, "id", $from_id);
     if ($Payment_report['payment_Status'] == "reject" || $Payment_report['payment_Status'] == "paid") {
         telegram('answerCallbackQuery', array(
             'callback_query_id' => $callback_query_id,
@@ -153,21 +153,21 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
         ));
         return;
     }
-    update("Payment_report", "payment_Status", "reject", "id_order", $id_order);
+    \Faoxima\Core\Database\Db::update("Payment_report", "payment_Status", "reject", "id_order", $id_order);
 
     sendmessage($from_id, $textbotlang['Admin']['Payment']['Reasonrejecting'], $backadmin, 'HTML');
-    step('reject-dec', $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step('reject-dec', $from_id);
     Editmessagetext($from_id, $message_id, $text_inline, null);
 } elseif ($user['step'] == "reject-dec") {
-    $Payment_report = select("Payment_report", "*", "id_order", $user['Processing_value_one'], "select");
-    update("Payment_report", "dec_not_confirmed", $text, "id_order", $user['Processing_value_one']);
+    $Payment_report = \Faoxima\Core\Database\Db::select("Payment_report", "*", "id_order", $user['Processing_value_one'], "select");
+    \Faoxima\Core\Database\Db::update("Payment_report", "dec_not_confirmed", $text, "id_order", $user['Processing_value_one']);
     $text_reject = "❌ کاربر گرامی پرداخت شما به دلیل زیر رد گردید.
 ✍️ $text
 🛒 کد پیگیری پرداخت: {$user['Processing_value_one']}
                 ";
     sendmessage($from_id, $textbotlang['Admin']['Payment']['Rejected'], $keyboardadmin, 'HTML');
     sendmessage($user['Processing_value'], $text_reject, null, 'HTML');
-    step('home', $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
     $text_report = "❌ یک ادمین رسید پرداخت کارت به کارت را رد کرد.
 
 اطلاعات :
@@ -199,7 +199,7 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
     sendmessage($from_id, "📌 در بخش زیر می توانید لیست ادمین ها را مشاهده کنید همچنین با زدن دکمه ضربدر می توانید یک ادمین را حذف کنید", $keyboardadmin, 'HTML');
 } elseif ($datain == "addnewadmin") {
     sendmessage($from_id, $textbotlang['Admin']['manageadmin']['getid'], $backadmin, 'HTML');
-    step('addadmin', $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step('addadmin', $from_id);
 } elseif ($user['step'] == "addadmin") {
     if (!ctype_digit($text)) {
         sendmessage($from_id, $textbotlang['Admin']['agent']['invalidvlue'], $backadmin, 'HTML');
@@ -207,9 +207,9 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
     }
     sendmessage($from_id, $textbotlang['Admin']['manageadmin']['addadminset'], $keyboardadmin, 'HTML');
     sendmessage($user['Processing_value'], $textbotlang['Admin']['manageadmin']['adminedsenduser'], null, 'HTML');
-    step('home', $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
     $admin_ids[] = $text;
-    update("botsaz", "admin_ids", json_encode($admin_ids), "bot_token", $ApiToken);
+    \Faoxima\Core\Database\Db::update("botsaz", "admin_ids", json_encode($admin_ids), "bot_token", $ApiToken);
 } elseif (preg_match('/removeadmin_(\w+)/', $datain, $dataget)) {
     $idadmin = $dataget[1];
     $count = 0;
@@ -222,11 +222,11 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
     }
     unset($admin_ids[$idadmin]);
     $admin_ids = array_values($admin_ids);
-    update("botsaz", "admin_ids", json_encode($admin_ids), "bot_token", $ApiToken);
+    \Faoxima\Core\Database\Db::update("botsaz", "admin_ids", json_encode($admin_ids), "bot_token", $ApiToken);
     sendmessage($from_id, "✅ ادمین با موفقیت حذف گردید", null, 'HTML');
 } elseif ($text == "🔍 جستجو کاربر") {
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['GetIdUserunblock'], $backadmin, 'HTML');
-    step('show_info', $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step('show_info', $from_id);
 } elseif ($user['step'] == "show_info" || strpos($text, "/user ") !== false) {
     if (explode(" ", $text)[0] == "/user") {
         $id_user = explode(" ", $text)[1];
@@ -257,7 +257,7 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
         $_stmt->bind_param("s", $id_user); $_stmt->execute();
         $sumvolume = $_stmt->get_result()->fetch_assoc(); $_stmt->close();
     }
-    $user = select("user", "*", "id", $id_user, "select");
+    $user = \Faoxima\Core\Database\Db::select("user", "*", "id", $id_user, "select");
     $roll_Status = [
         '1' => $textbotlang['Admin']['ManageUser']['Acceptedphone'],
         '0' => $textbotlang['Admin']['ManageUser']['Failedphone'],
@@ -344,12 +344,12 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
 ";
     sendmessage($from_id, $textinfouser, $keyboardmanage, 'HTML');
     sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboardadmin, 'HTML');
-    step('home', $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
 } elseif (preg_match('/addbalanceuser_(\w+)/', $datain, $dataget)) {
     $iduser = $dataget[1];
-    update("user", "Processing_value", $iduser, "id", $from_id);
+    \Faoxima\Core\Database\Db::update("user", "Processing_value", $iduser, "id", $from_id);
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['addbalanceuserdec'], $backadmin, 'html');
-    step('addbalanceusercurrent', $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step('addbalanceusercurrent', $from_id);
 } elseif ($user['step'] == "addbalanceusercurrent") {
     if (!ctype_digit($text)) {
         sendmessage($from_id, $textbotlang['Admin']['Balance']['Invalidprice'], $backadmin, 'HTML');
@@ -375,12 +375,12 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
     $heibalanceuser = number_format($text, 0);
     $textadd = "💎 کاربر عزیز مبلغ $heibalanceuser تومان به موجودی کیف پول تان اضافه گردید.";
     sendmessage($user['Processing_value'], $textadd, null, 'HTML');
-    step('home', $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
 } elseif (preg_match('/lowbalanceuser_(\w+)/', $datain, $dataget)) {
     $iduser = $dataget[1];
-    update("user", "Processing_value", $iduser, "id", $from_id);
+    \Faoxima\Core\Database\Db::update("user", "Processing_value", $iduser, "id", $from_id);
     sendmessage($from_id, $textbotlang['Admin']['ManageUser']['lowbalanceuserdec'], $backadmin, 'html');
-    step('addbalanceuser', $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step('addbalanceuser', $from_id);
 } elseif ($user['step'] == "addbalanceuser") {
     if (!ctype_digit($text)) {
         sendmessage($from_id, $textbotlang['Admin']['Balance']['Invalidprice'], $backadmin, 'HTML');
@@ -406,11 +406,11 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
     $lowbalanceuser = number_format($text, 0);
     $textkam = "❌ کاربر عزیز مبلغ $lowbalanceuser تومان از  موجودی کیف پول تان کسر گردید.";
     sendmessage($user['Processing_value'], $textkam, null, 'HTML');
-    step('home', $from_id);
-    $statistics = select("user", "*", "bottype", $ApiToken, "count");
-    $Balance_user_afters = number_format(select("user", "*", "id", $user['Processing_value'], "select")['Balance']);
+    \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
+    $statistics = \Faoxima\Core\Database\Db::select("user", "*", "bottype", $ApiToken, "count");
+    $Balance_user_afters = number_format(\Faoxima\Core\Database\Db::select("user", "*", "id", $user['Processing_value'], "select")['Balance']);
 } elseif ($text == "📊 آمار ربات") {
-    $statistics = select("user", "*", "bottype", $ApiToken, "count");
+    $statistics = \Faoxima\Core\Database\Db::select("user", "*", "bottype", $ApiToken, "count");
     $stmt2 = $pdo->prepare("SELECT COUNT( DISTINCT id_user) as count FROM `invoice` WHERE name_product = 'سرویس تست' AND  bottype = '$ApiToken'");
     $stmt2->execute();
     $statisticsorder = $stmt2->fetch(PDO::FETCH_ASSOC)['count'];
@@ -440,7 +440,7 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
     $product = [];
     $getdataproduct = mysqli_query($connect, "SELECT * FROM product WHERE agent = '{$userbot['agent']}'");
     while ($row = mysqli_fetch_assoc($getdataproduct)) {
-        $panel = select("marzban_panel", "*", "name_panel", $row['Location'], "select");
+        $panel = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $row['Location'], "select");
         if (in_array($panel['name_panel'], $hide_panel))
             continue;
         $product[] = [$row['name_product']];
@@ -459,15 +459,15 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
     }
     $json_list_product_list_admin = json_encode($list_product);
     sendmessage($from_id, "از لیست زیر محصولی که می خواهید قیمت تنظیم نمایید را انتخاب کنید", $json_list_product_list_admin, 'HTML');
-    step("selectproductprice", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("selectproductprice", $from_id);
 } elseif ($user['step'] == "selectproductprice") {
-    $product = select("product", "*", "name_product", $text, "select");
+    $product = \Faoxima\Core\Database\Db::select("product", "*", "name_product", $text, "select");
     if ($product == false) {
         sendmessage($from_id, "❌ محصول انتخابی وجود ندارد.", null, 'HTML');
         return;
     }
-    savedata("clear", "code_product", $product['code_product']);
-    step("getpriceproduct", $from_id);
+    \Faoxima\Telegram\Conversation\ConversationData::savedata("clear", "code_product", $product['code_product']);
+    \Faoxima\Telegram\Navigation\Steps::step("getpriceproduct", $from_id);
     if (intval($userbot['pricediscount']) != 0) {
         $resultper = ($product['price_product'] * $userbot['pricediscount']) / 100;
         $product['price_product'] = $product['price_product'] - $resultper;
@@ -476,7 +476,7 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
 قیمت پایه :{$product['price_product']}", $backadmin, 'HTML');
 } elseif ($user['step'] == "getpriceproduct") {
     $userdata = json_decode($user['Processing_value'], true);
-    $product = select("product", "*", "code_product", $userdata['code_product'], "select");
+    $product = \Faoxima\Core\Database\Db::select("product", "*", "code_product", $userdata['code_product'], "select");
     if (!ctype_digit($text)) {
         sendmessage($from_id, $textbotlang['Admin']['agent']['invalidvlue'], null, 'HTML');
         return;
@@ -488,7 +488,7 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
     $productlist = json_decode(file_get_contents('product.json'), true);
     $productlist[$product['code_product']] = intval($text);
     file_put_contents('product.json', json_encode($productlist));
-    step("home", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
     sendmessage($from_id, "✅ قیمت با موفقیت تنظیم گردید.", $keyboardprice, 'HTML');
 } elseif ($text == "💰 تنظیمات فروشگاه") {
     sendmessage($from_id, "📌 یک گزینه را انتخاب کنید.", $keyboardprice, 'HTML');
@@ -528,7 +528,7 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
             $valuenew = false;
         }
         $setting['show_product'] = $valuenew;
-        update("botsaz", "setting", json_encode($setting), "bot_token", $ApiToken);
+        \Faoxima\Core\Database\Db::update("botsaz", "setting", json_encode($setting), "bot_token", $ApiToken);
     } elseif ($type == "statusnote") {
         if ($value == false) {
             $valuenew = true;
@@ -536,9 +536,9 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
             $valuenew = false;
         }
         $setting['active_step_note'] = $valuenew;
-        update("botsaz", "setting", json_encode($setting), "bot_token", $ApiToken);
+        \Faoxima\Core\Database\Db::update("botsaz", "setting", json_encode($setting), "bot_token", $ApiToken);
     }
-    $dataBase = select("botsaz", "*", "bot_token", $ApiToken, "select");
+    $dataBase = \Faoxima\Core\Database\Db::select("botsaz", "*", "bot_token", $ApiToken, "select");
     $setting = json_decode($dataBase['setting'], true);
     $status_custom = [
         '1' => $textbotlang['Admin']['Status']['statuson'],
@@ -570,76 +570,76 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
 } elseif ($text == "💎 متن کارت") {
     sendmessage($from_id, "📌 جهت تنظیم متن شماره کارت متن جدید را ارسال نمایید. توضیحات فعلی :", $backadmin, 'HTML');
     sendmessage($from_id, $setting['cart_info'], $backadmin, 'HTML');
-    step("getcartinfo", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("getcartinfo", $from_id);
 } elseif ($user['step'] == "getcartinfo") {
     sendmessage($from_id, "✅ توضیحات با موفقیت ذخیره گردید.", $keyboard_change_price, 'HTML');
     $setting['cart_info'] = $text;
-    update("botsaz", "setting", json_encode($setting), "bot_token", $ApiToken);
-    step("home", $from_id);
+    \Faoxima\Core\Database\Db::update("botsaz", "setting", json_encode($setting), "bot_token", $ApiToken);
+    \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
 } elseif ($text == "🛍 دکمه خرید") {
     sendmessage($from_id, "📌 جهت تنظیم متن جدید را ارسال نمایید. توضیحات فعلی :", $backadmin, 'HTML');
     sendmessage($from_id, $text_bot_var['btn_keyboard']['buy'], $backadmin, 'HTML');
-    step("gettext_buy", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("gettext_buy", $from_id);
 } elseif ($user['step'] == "gettext_buy") {
     sendmessage($from_id, "✅ متن با موفقیت ذخیره گردید.", $keyboard_change_price, 'HTML');
     $text_bot_var['btn_keyboard']['buy'] = $text;
     file_put_contents('text.json', json_encode($text_bot_var, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
-    step("home", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
 } elseif ($text == "🔑 دکمه تست") {
     sendmessage($from_id, "📌 جهت تنظیم متن جدید را ارسال نمایید. توضیحات فعلی :", $backadmin, 'HTML');
     sendmessage($from_id, $text_bot_var['btn_keyboard']['test'], $backadmin, 'HTML');
-    step("gettext_test", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("gettext_test", $from_id);
 } elseif ($user['step'] == "gettext_test") {
     sendmessage($from_id, "✅ متن با موفقیت ذخیره گردید.", $keyboard_change_price, 'HTML');
     $text_bot_var['btn_keyboard']['test'] = $text;
     file_put_contents('text.json', json_encode($text_bot_var, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
-    step("home", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
 } elseif ($text == "🛒 دکمه سرویس های من") {
     sendmessage($from_id, "📌 جهت تنظیم متن جدید را ارسال نمایید. توضیحات فعلی :", $backadmin, 'HTML');
     sendmessage($from_id, $text_bot_var['btn_keyboard']['my_service'], $backadmin, 'HTML');
-    step("gettext_my_service", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("gettext_my_service", $from_id);
 } elseif ($user['step'] == "gettext_my_service") {
     sendmessage($from_id, "✅ متن با موفقیت ذخیره گردید.", $keyboard_change_price, 'HTML');
     $text_bot_var['btn_keyboard']['my_service'] = $text;
     file_put_contents('text.json', json_encode($text_bot_var, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
-    step("home", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
 } elseif ($text == "👤 دکمه حساب کاربری") {
     sendmessage($from_id, "📌 جهت تنظیم متن جدید را ارسال نمایید. توضیحات فعلی :", $backadmin, 'HTML');
     sendmessage($from_id, $text_bot_var['btn_keyboard']['wallet'], $backadmin, 'HTML');
-    step("gettext_wallet", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("gettext_wallet", $from_id);
 } elseif ($user['step'] == "gettext_wallet") {
     sendmessage($from_id, "✅ متن با موفقیت ذخیره گردید.", $keyboard_change_price, 'HTML');
     $text_bot_var['btn_keyboard']['wallet'] = $text;
     file_put_contents('text.json', json_encode($text_bot_var, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
-    step("home", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
 } elseif ($text == "☎️ متن دکمه پشتیبانی") {
     sendmessage($from_id, "📌 جهت تنظیم متن جدید را ارسال نمایید. توضیحات فعلی :", $backadmin, 'HTML');
     sendmessage($from_id, $text_bot_var['btn_keyboard']['support'], $backadmin, 'HTML');
-    step("gettext_support", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("gettext_support", $from_id);
 } elseif ($user['step'] == "gettext_support") {
     sendmessage($from_id, "✅ متن با موفقیت ذخیره گردید.", $keyboard_change_price, 'HTML');
     $text_bot_var['btn_keyboard']['support'] = $text;
     file_put_contents('text.json', json_encode($text_bot_var, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
-    step("home", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
 } elseif ($text == "💸 متن مرحله افزایش موجودی") {
     sendmessage($from_id, "📌 جهت تنظیم متن جدید را ارسال نمایید. توضیحات فعلی :", $backadmin, 'HTML');
     sendmessage($from_id, $text_bot_var['text_account']['add_balance'], $backadmin, 'HTML');
-    step("gettext_add_balance", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("gettext_add_balance", $from_id);
 } elseif ($user['step'] == "gettext_add_balance") {
     sendmessage($from_id, "✅ متن با موفقیت ذخیره گردید.", $keyboard_change_price, 'HTML');
     $text_bot_var['text_account']['add_balance'] = $text;
     file_put_contents('text.json', json_encode($text_bot_var, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
-    step("home", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
 } elseif ($text == "📣 جوین اجباری") {
     sendmessage($from_id, "📌 کانال خود را جهت تنظیم جوین اجباری ارسال کنید
 ⚠️ ربات باید ادمین کانال باشد در غیراینصورت این قابلیت فعال نخواهد شد
 ⚠️ نام کاربری کانال باید بدون @ ارسال شود", $backadmin, 'HTML');
-    step("get_channel_id", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("get_channel_id", $from_id);
 } elseif ($user['step'] == "get_channel_id") {
     sendmessage($from_id, "✅ کانال با موفقیت ذخیره گردید.", $keyboardadmin, 'HTML');
     $setting['channel'] = $text;
-    update("botsaz", "setting", json_encode($setting), "bot_token", $ApiToken);
-    step("home", $from_id);
+    \Faoxima\Core\Database\Db::update("botsaz", "setting", json_encode($setting), "bot_token", $ApiToken);
+    \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
 } elseif ($text == "✏️ تنظیم نام محصول") {
     if (!is_file('product_name.json')) {
         file_put_contents('product_name.json', "{}");
@@ -647,7 +647,7 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
     $product = [];
     $getdataproduct = mysqli_query($connect, "SELECT * FROM product WHERE agent = '{$userbot['agent']}'");
     while ($row = mysqli_fetch_assoc($getdataproduct)) {
-        $panel = select("marzban_panel", "*", "name_panel", $row['Location'], "select");
+        $panel = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $row['Location'], "select");
         if (in_array($panel['name_panel'], $hide_panel))
             continue;
         $product[] = [$row['name_product']];
@@ -666,22 +666,22 @@ if ($text == "📞 تنظیم نام کاربری پشتیبانی") {
     ];
     $json_list_product_list_admin = json_encode($list_product);
     sendmessage($from_id, "از لیست زیر محصولی که می خواهید نام تنظیم نمایید را انتخاب کنید", $json_list_product_list_admin, 'HTML');
-    step("get_product_for_edit_name", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("get_product_for_edit_name", $from_id);
 } elseif ($user['step'] == "get_product_for_edit_name") {
-    $product = select("product", "*", "name_product", $text, "select");
+    $product = \Faoxima\Core\Database\Db::select("product", "*", "name_product", $text, "select");
     if ($product == false) {
         sendmessage($from_id, "❌ محصول انتخابی وجود ندارد.", null, 'HTML');
         return;
     }
-    savedata("clear", "code_product", $product['code_product']);
-    step("get_new_name", $from_id);
+    \Faoxima\Telegram\Conversation\ConversationData::savedata("clear", "code_product", $product['code_product']);
+    \Faoxima\Telegram\Navigation\Steps::step("get_new_name", $from_id);
     sendmessage($from_id, "📌  نام خود را ارسال کنید", $backadmin, 'HTML');
 } elseif ($user['step'] == "get_new_name") {
     $userdata = json_decode($user['Processing_value'], true);
-    $product = select("product", "*", "code_product", $userdata['code_product'], "select");
+    $product = \Faoxima\Core\Database\Db::select("product", "*", "code_product", $userdata['code_product'], "select");
     $productlist = json_decode(file_get_contents('product_name.json'), true);
     $productlist[$product['code_product']] = $text;
     file_put_contents('product_name.json', json_encode($productlist));
-    step("home", $from_id);
+    \Faoxima\Telegram\Navigation\Steps::step("home", $from_id);
     sendmessage($from_id, "✅ نام با موفقیت تنظیم گردید.", $keyboardprice, 'HTML');
 }

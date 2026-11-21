@@ -1,0 +1,179 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Faoxima\Api\Handlers;
+
+final class ServiceConfigsHandler extends \Faoxima\Api\Handlers\BaseHandler
+{
+    public function handle(): void
+    {
+        $this->requireMethod('GET');
+
+        $username = \Faoxima\Api\Runtime\Input::nullableString($this->data, 'username');
+        if ($username === null || $username === '') {
+            \Faoxima\Api\Runtime\Response::badRequest('username is required');
+        }
+
+
+        $svcHandler = new \Faoxima\Api\Handlers\ServiceHandler($this->user, $this->data);
+        $invoice = $svcHandler->lookupInvoice($username);
+        if ($invoice === null) {
+            \Faoxima\Api\Runtime\Response::notFound('Service not found');
+        }
+
+        $requestedType = \Faoxima\Api\Handlers\ServiceHandler::normalizeClientType(\Faoxima\Api\Runtime\Input::nullableString($this->data, 'client_type') ?? 'links');
+        $payload = $svcHandler->buildPayloadFromInvoice($invoice, $requestedType);
+        if ($payload === null) {
+            \Faoxima\Api\Runtime\Response::fail(502, 'Service data unavailable');
+        }
+
+        if ($requestedType !== 'links') {
+            $documents = \Faoxima\Api\Handlers\ServiceHandler::clientDocumentsFromPayload($payload, $requestedType);
+            if (!empty($documents)) {
+                $filenames = [];
+                foreach ($documents as $i => $document) {
+                    $filenames[] = \Faoxima\Api\Handlers\ServiceHandler::clientDocumentFilename($requestedType, (int)$i, count($documents));
+                }
+                \Faoxima\Api\Runtime\Response::ok([
+                    'username'              => (string)($payload['username'] ?? $username),
+                    'configs'               => $documents,
+                    'filenames'             => $filenames,
+                    'subscription_url'      => (string)($payload['subscription_url'] ?? ''),
+                    'count'                 => count($documents),
+                    'client_type'           => $requestedType,
+                    'requested_client_type' => $requestedType,
+                ]);
+            }
+        }
+
+
+        $configs = [];
+        $downloadsByConfig = [];
+        $sourceIndex = 0;
+        foreach ((array)($payload['service_output'] ?? []) as $entry) {
+            $t = strtolower((string)($entry['type'] ?? ''));
+            if ($t === 'config') {
+                $val = $entry['value'] ?? null;
+                if (is_array($val)) {
+                    foreach (array_values($val) as $localIndex => $v) {
+                        if (is_string($v) && $v !== '') {
+                            $configs[] = $v;
+                            if (!isset($downloadsByConfig[$v])) {
+                                $downloadsByConfig[$v] = ['filename' => (string) ($entry['download_filenames'][$localIndex] ?? ''), 'custom' => !empty($entry['download_custom_names'][$localIndex]), 'index' => $sourceIndex];
+                            }
+                            $sourceIndex++;
+                        }
+                    }
+                } elseif (is_string($val) && $val !== '') {
+                    foreach (preg_split('/\r?\n/', $val) as $line) {
+                        $line = trim($line);
+                        if ($line !== '') {
+                            $configs[] = $line;
+                            $downloadsByConfig[$line] = ['filename' => (string) ($entry['download_filenames'][0] ?? ''), 'custom' => !empty($entry['download_custom_names'][0]), 'index' => $sourceIndex++];
+                        }
+                    }
+                }
+            } elseif ($t === 'password' && !empty($entry['value'])) {
+                $configs[] = (string)$entry['value'];
+            }
+        }
+
+
+        if (empty($configs)) {
+            $subUrl = (string)($payload['subscription_url'] ?? '');
+            if ($subUrl !== '') {
+                $configs = $this->fetchConfigsFromSubscription($subUrl);
+            }
+        }
+
+        $configs = array_values(array_unique($configs));
+        $downloads = [];
+        foreach ($configs as $index => $config) {
+            $downloads[$index] = $downloadsByConfig[$config] ?? ['filename' => '', 'index' => $index];
+        }
+
+        \Faoxima\Api\Runtime\Response::ok([
+            'username'         => (string)($payload['username'] ?? $username),
+            'configs'          => $configs,
+            'downloads'        => $downloads,
+            'subscription_url' => (string)($payload['subscription_url'] ?? ''),
+            'count'            => count($configs),
+            'client_type'           => 'links',
+            'requested_client_type' => $requestedType,
+        ]);
+    }
+
+
+    private function fetchConfigsFromSubscription(string $url): array
+    {
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            return [];
+        }
+
+        $timeoutInfo = method_exists(\Faoxima\Services\Panels\PanelHttp::class, 'faoxima_panel_timeout_info') ? \Faoxima\Services\Panels\PanelHttp::faoxima_panel_timeout_info() : ['timeout' => 20, 'connect_timeout' => 8];
+        $tlsOptions = method_exists(\Faoxima\Services\Panels\PanelHttp::class, 'faoxima_curl_tls_options')
+            ? \Faoxima\Services\Panels\PanelHttp::faoxima_curl_tls_options()
+            : [CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2];
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_TIMEOUT        => (int) $timeoutInfo['timeout'],
+            CURLOPT_CONNECTTIMEOUT => (int) $timeoutInfo['connect_timeout'],
+            CURLOPT_USERAGENT      => 'Faoxima-Mini/1.0',
+            CURLOPT_HTTPHEADER     => ['Accept: */*'],
+        ] + $tlsOptions);
+        $body = curl_exec($ch);
+        $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($http < 200 || $http >= 400 || !is_string($body) || $body === '') {
+            return [];
+        }
+
+        $body = trim($body);
+
+
+        if (preg_match('#^(vmess|vless|trojan|ss|ssr|hysteria2?|hy2|tuic|wireguard|wg|vpn|awg|amneziawg|tg)://#im', $body)) {
+            return $this->splitConfigLines($body);
+        }
+
+
+        $decoded = $this->safeBase64Decode($body);
+        if ($decoded !== null && preg_match('#^(vmess|vless|trojan|ss|ssr|hysteria2?|hy2|tuic|wireguard|wg|vpn|awg|amneziawg|tg)://#im', $decoded)) {
+            return $this->splitConfigLines($decoded);
+        }
+
+
+        return $this->splitConfigLines($body);
+    }
+
+
+    private function safeBase64Decode(string $s): ?string
+    {
+        $clean = preg_replace('/\s+/', '', $s);
+        if ($clean === '' || !preg_match('#^[A-Za-z0-9+/=_\-]+$#', $clean)) return null;
+
+        $std = strtr($clean, '-_', '+/');
+        $pad = strlen($std) % 4;
+        if ($pad > 0) $std .= str_repeat('=', 4 - $pad);
+        $out = @base64_decode($std, true);
+        if ($out === false) return null;
+        return $out;
+    }
+
+
+    private function splitConfigLines(string $body): array
+    {
+        $lines = preg_split('/\r?\n/', $body);
+        $out = [];
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '') continue;
+            if ($line[0] === '#') continue;
+            $out[] = $line;
+        }
+        return $out;
+    }
+}

@@ -1,270 +1,44 @@
 <?php
+
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'user.php';
+
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 ini_set('session.cookie_samesite', 'Lax');
 ini_set('session.cookie_httponly', '1');
 session_start();
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
-require_once __DIR__ . '/lib/icons.php';
 require_once __DIR__ . '/lib/csrf.php';
 require_once __DIR__ . '/../botapi.php';
 require_once __DIR__ . '/../function.php';
 
-fx_admin_require_access($pdo);
-fx_csrf_guard();
-
-$query = $pdo->prepare("SELECT * FROM user WHERE id=:id");
-$query->bindParam("id", $_GET["id"], PDO::PARAM_STR);
-$query->execute();
-$user = $query->fetch(PDO::FETCH_ASSOC);
-
-$setting        = select("setting", "*", null, null);
-$otherservice   = select("topicid", "idreport", "report", "otherservice", "select")['idreport'];
-$paymentreports = select("topicid", "idreport", "report", "paymentreport", "select")['idreport'];
-
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['_action'])) {
-    $targetUid = (string)($_GET['id'] ?? '');
-    $act = (string)$_POST['_action'];
-    if (in_array($act, ['user_status', 'user_balance_add', 'user_balance_lower', 'user_agent'], true)) {
-        fx_admin_require_access($pdo, ['administrator']);
-    }
-    if ($act === 'user_status' && $targetUid !== '') {
-        $status = (string)($_POST['status'] ?? '');
-        if (in_array($status, ['block', 'active'], true)) {
-            if ($status === 'block') {
-                $textblok = "کاربر با آیدی عددی {$_GET['id']} در ربات مسدود گردید \n\n<blockquote>ادمین مسدود کننده : پنل تحت وب</blockquote>\n<blockquote>نام کاربری : {$_SESSION['user']}</blockquote>";
-                if (strlen($setting['Channel_Report']) > 0) {
-                    telegram('sendmessage', [
-                        'chat_id'           => $setting['Channel_Report'],
-                        'message_thread_id' => $otherservice,
-                        'text'              => $textblok,
-                        'parse_mode'        => "HTML"
-                    ]);
-                }
-            } else {
-                sendmessage($_GET['id'], faoxima_textbot_get('dyn_panel_user_unblocked_notice', "✳️ حساب کاربری شما از مسدودی خارج شد ✳️\nاکنون میتوانید از ربات استفاده کنید "), null, 'HTML');
-            }
-            update("user", "User_Status", $status, "id", $targetUid);
-        }
-        header("Location: user.php?id=" . urlencode($targetUid));
-        exit;
-    }
-    if ($act === 'user_balance_add' && $targetUid !== '') {
-        $amount = (int)($_POST['priceadd'] ?? 0);
-        $priceadd = number_format($amount, 0);
-        if ($amount > 0 && balance_atomic_credit($targetUid, $amount)) {
-            if (function_exists('wallet_ledger_record')) {
-                wallet_ledger_record($targetUid, 'credit', $amount, 'admin_credit', 'افزایش موجودی از پنل تحت وب');
-            }
-            $textadd  = faoxima_render_text(faoxima_textbot_get('dyn_panel_user_balance_added_tpl', '💎 کاربر عزیز مبلغ {amount} T به موجودی کیف پول تان اضافه گردید.'), ['amount' => $priceadd]);
-            sendmessage($targetUid, $textadd, null, 'HTML');
-            if (strlen($setting['Channel_Report']) > 0) {
-                $textaddbalance = "📌 یک ادمین موجودی کاربر را از پنل تحت وب افزایش داده است :\n\n<blockquote>🪪 ادمین : {$_SESSION['user']}</blockquote>\n<blockquote>👤 کاربر : {$targetUid}</blockquote>\n<blockquote>مبلغ : $priceadd</blockquote>";
-                telegram('sendmessage', [
-                    'chat_id'           => $setting['Channel_Report'],
-                    'message_thread_id' => $paymentreports,
-                    'text'              => $textaddbalance,
-                    'parse_mode'        => "HTML"
-                ]);
-            }
-        } else {
-            error_log('[panel_add_balance] credit failed for user ' . $targetUid . ' amount ' . $amount);
-        }
-        header("Location: user.php?id=" . urlencode($targetUid));
-        exit;
-    }
-    if ($act === 'user_balance_lower' && $targetUid !== '') {
-        $amount = (int)($_POST['pricelow'] ?? 0);
-        $pricelow = number_format($amount, 0);
-        $__adminDebitOk = $amount > 0 ? balance_atomic_charge($targetUid, $amount, 0) : ['ok' => false];
-        $__adminDebitOk = !empty($__adminDebitOk['ok']);
-        if ($__adminDebitOk && function_exists('wallet_ledger_record')) {
-            wallet_ledger_record($targetUid, 'debit', $amount, 'admin_debit', 'کاهش موجودی از پنل تحت وب');
-        }
-        if ($__adminDebitOk && strlen($setting['Channel_Report']) > 0) {
-            $textlowbalance = "📌 یک ادمین موجودی کاربر را از پنل تحت وب کسر کرده است :\n\n<blockquote>🪪 ادمین : {$_SESSION['user']}</blockquote>\n<blockquote>👤 کاربر : {$targetUid}</blockquote>\n<blockquote>مبلغ کسر شده : $pricelow</blockquote>";
-            telegram('sendmessage', [
-                'chat_id'           => $setting['Channel_Report'],
-                'message_thread_id' => $paymentreports,
-                'text'              => $textlowbalance,
-                'parse_mode'        => "HTML"
-            ]);
-        }
-        header("Location: user.php?id=" . urlencode($targetUid));
-        exit;
-    }
-    if ($act === 'user_agent' && $targetUid !== '') {
-        $agent = (string)($_POST['agent'] ?? '');
-        if (in_array($agent, ['f', 'n', 'n2'], true)) {
-            update("user", "agent", $agent, "id", $targetUid);
-        }
-        header("Location: user.php?id=" . urlencode($targetUid));
-        exit;
-    }
-    if ($act === 'user_message' && $targetUid !== '') {
-        $message = trim((string)($_POST['textmessage'] ?? ''));
-        if ($message !== '') {
-            $messagetext = faoxima_render_text(faoxima_textbot_get('dyn_panel_user_admin_message_tpl', "📥 یک پیام از مدیریت برای شما ارسال شد.\n\nمتن پیام : {message}"), ['message' => $message]);
-            sendmessage($targetUid, $messagetext, null, 'HTML');
-            if (strlen($setting['Channel_Report']) > 0) {
-                $textmsg = "📌 پیام مدیریت ارسال شد\n\n<blockquote>🪪 ادمین : {$_SESSION['user']}</blockquote>\n<blockquote>👤 گیرنده : {$targetUid}</blockquote>\n<blockquote>متن : {$message}</blockquote>";
-                telegram('sendmessage', [
-                    'chat_id'           => $setting['Channel_Report'],
-                    'message_thread_id' => $otherservice,
-                    'text'              => $textmsg,
-                    'parse_mode'        => "HTML"
-                ]);
-            }
-        }
-        header("Location: user.php?id=" . urlencode($targetUid));
-        exit;
-    }
-    if ($act === 'user_discount_add' && $targetUid !== '') {
-        $code    = trim((string)($_POST['codeDiscount'] ?? ''));
-        $vtype   = (string)($_POST['value_type'] ?? 'percent');
-        $section = (string)($_POST['section'] ?? 'all');
-        $value   = (string)($_POST['price'] ?? '0');
-        $limit   = (int)($_POST['limitDiscount'] ?? 0);
-        if (preg_match('/^[A-Za-z0-9_\-]{2,40}$/', $code)
-            && in_array($vtype, ['percent', 'amount', 'free'], true)
-            && in_array($section, ['all', 'buy', 'extend', 'volume', 'time', 'charge'], true)) {
-            if ($vtype === 'free') $value = '0';
-            try {
-                $dup = $pdo->prepare("SELECT 1 FROM DiscountSell WHERE codeDiscount = :c LIMIT 1");
-                $dup->execute([':c' => $code]);
-                if (!$dup->fetchColumn()) {
-                    $st = $pdo->prepare(
-                        "INSERT INTO DiscountSell
-                         (codeDiscount, price, limitDiscount, agent, usefirst, useuser, code_product, code_panel, time, type, usedDiscount, section, value_type, target_user, status)
-                         VALUES (:c, :p, :l, 'allusers', '0', '0', 'all', '/all', '0', :sec, '0', :sec2, :vt, :tg, 'active')"
-                    );
-                    $st->execute([':c' => $code, ':p' => $value, ':l' => (string)$limit, ':sec' => $section, ':sec2' => $section, ':vt' => $vtype, ':tg' => $targetUid]);
-                }
-            } catch (\Throwable $e) {  }
-        }
-        header("Location: user.php?id=" . urlencode($targetUid));
-        exit;
-    }
-    if ($act === 'user_discount_edit' && $targetUid !== '') {
-        $id      = (int)($_POST['id'] ?? 0);
-        $code    = trim((string)($_POST['codeDiscount'] ?? ''));
-        $vtype   = (string)($_POST['value_type'] ?? 'percent');
-        $section = (string)($_POST['section'] ?? 'all');
-        $value   = (string)($_POST['price'] ?? '0');
-        $limit   = (int)($_POST['limitDiscount'] ?? 0);
-        if ($id > 0
-            && preg_match('/^[A-Za-z0-9_\-]{2,40}$/', $code)
-            && in_array($vtype, ['percent', 'amount', 'free'], true)
-            && in_array($section, ['all', 'buy', 'extend', 'volume', 'time', 'charge'], true)) {
-            if ($vtype === 'free') $value = '0';
-            try {
-                $dup = $pdo->prepare("SELECT 1 FROM DiscountSell WHERE codeDiscount = :c AND id <> :id LIMIT 1");
-                $dup->execute([':c' => $code, ':id' => $id]);
-                if (!$dup->fetchColumn()) {
-                    $st = $pdo->prepare(
-                        "UPDATE DiscountSell
-                            SET codeDiscount = :c, price = :p, limitDiscount = :l,
-                                section = :sec, type = :sec2, value_type = :vt
-                          WHERE id = :id AND target_user = :tg"
-                    );
-                    $st->execute([':c' => $code, ':p' => $value, ':l' => (string)$limit, ':sec' => $section, ':sec2' => $section, ':vt' => $vtype, ':id' => $id, ':tg' => $targetUid]);
-                }
-            } catch (\Throwable $e) {  }
-        }
-        header("Location: user.php?id=" . urlencode($targetUid));
-        exit;
-    }
-    if ($act === 'user_gift_add' && $targetUid !== '') {
-        $code  = trim((string)($_POST['code'] ?? ''));
-        $price = (int)($_POST['gift_price'] ?? 0);
-        $limit = (int)($_POST['gift_limit'] ?? 0);
-        if (preg_match('/^[A-Za-z0-9_\-]{2,40}$/', $code) && $price > 0) {
-            try {
-                $dup = $pdo->prepare("SELECT 1 FROM Discount WHERE code = :c LIMIT 1");
-                $dup->execute([':c' => $code]);
-                if (!$dup->fetchColumn()) {
-                    $st = $pdo->prepare(
-                        "INSERT INTO Discount (code, price, limituse, limitused, target_user, status)
-                         VALUES (:c, :p, :l, '0', :tg, 'active')"
-                    );
-                    $st->execute([':c' => $code, ':p' => (string)$price, ':l' => (string)$limit, ':tg' => $targetUid]);
-                }
-            } catch (\Throwable $e) {  }
-        }
-        header("Location: user.php?id=" . urlencode($targetUid));
-        exit;
-    }
-    if ($act === 'user_gift_edit' && $targetUid !== '') {
-        $id    = (int)($_POST['id'] ?? 0);
-        $code  = trim((string)($_POST['code'] ?? ''));
-        $price = (int)($_POST['gift_price'] ?? 0);
-        $limit = (int)($_POST['gift_limit'] ?? 0);
-        if ($id > 0 && preg_match('/^[A-Za-z0-9_\-]{2,40}$/', $code) && $price > 0) {
-            try {
-                $dup = $pdo->prepare("SELECT 1 FROM Discount WHERE code = :c AND id <> :id LIMIT 1");
-                $dup->execute([':c' => $code, ':id' => $id]);
-                if (!$dup->fetchColumn()) {
-                    $st = $pdo->prepare(
-                        "UPDATE Discount SET code = :c, price = :p, limituse = :l WHERE id = :id AND target_user = :tg"
-                    );
-                    $st->execute([':c' => $code, ':p' => (string)$price, ':l' => (string)$limit, ':id' => $id, ':tg' => $targetUid]);
-                }
-            } catch (\Throwable $e) {  }
-        }
-        header("Location: user.php?id=" . urlencode($targetUid));
-        exit;
-    }
-    if ($act === 'user_code_delete' && $targetUid !== '') {
-        $id   = (int)($_POST['id'] ?? 0);
-        $kind = (string)($_POST['kind'] ?? '');
-        if ($id > 0) {
-            try {
-                if ($kind === 'gift') {
-                    $pdo->prepare("DELETE FROM Discount WHERE id = :id AND target_user = :u")->execute([':id' => $id, ':u' => $targetUid]);
-                } else {
-                    $pdo->prepare("DELETE FROM DiscountSell WHERE id = :id AND target_user = :u")->execute([':id' => $id, ':u' => $targetUid]);
-                }
-            } catch (\Throwable $e) {  }
-        }
-        header("Location: user.php?id=" . urlencode($targetUid));
-        exit;
-    }
-    if ($act === 'user_set_discount' && $targetUid !== '') {
-        $pd = (int)($_POST['pricediscount'] ?? 0);
-        if ($pd < 0)   $pd = 0;
-        if ($pd > 100) $pd = 100;
-        update("user", "pricediscount", $pd, "id", $targetUid);
-        header("Location: user.php?id=" . urlencode($targetUid));
-        exit;
-    }
+if (\Faoxima\Admin\Web\Pages\UserRequest::handle(
+        _csrf: $_csrf,
+        act: $act,
+        adminnumber: $adminnumber ?? null,
+        agent_display: $agent_display,
+        number_display: $number_display,
+        otherservice: $otherservice,
+        paymentreports: $paymentreports,
+        pdo: $pdo ?? null,
+        query: $query,
+        section: $section,
+        setting: $setting,
+        st: $st,
+        status: $status,
+        status_class: $status_class,
+        status_label: $status_label,
+        user: $user,
+        userCodes: $userCodes,
+        userGiftCodes: $userGiftCodes,
+        value: $value
+    ) !== true) {
+    unset($adminWebPage);
+    return;
 }
 
-$userCodes = [];
-$userGiftCodes = [];
-try {
-    $st = $pdo->prepare("SELECT * FROM DiscountSell WHERE target_user = :u ORDER BY id DESC");
-    $st->execute([':u' => (string)($_GET['id'] ?? '')]);
-    $userCodes = $st->fetchAll(PDO::FETCH_ASSOC);
-} catch (\Throwable $e) {  }
-try {
-    $st = $pdo->prepare("SELECT * FROM Discount WHERE target_user = :u ORDER BY id DESC");
-    $st->execute([':u' => (string)($_GET['id'] ?? '')]);
-    $userGiftCodes = $st->fetchAll(PDO::FETCH_ASSOC);
-} catch (\Throwable $e) {  }
-
-
-$status_label   = ($user['User_Status'] == 'block') ? 'مسدود' : 'فعال';
-$status_class   = ($user['User_Status'] == 'block') ? 'badge-danger' : 'badge-success';
-$number_display = ($user['number'] == "none") ? 'ثبت نشده' : htmlspecialchars($user['number'], ENT_QUOTES, 'UTF-8');
-
-$_csrf = fx_csrf_token();
-
-$agent_types = [
-    'f'  => 'کاربر عادی',
-    'n'  => 'نماینده معمولی',
-    'n2' => 'نماینده پیشرفته'
-];
-$agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent']] : 'نامشخص';
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -289,12 +63,12 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
             <div class="page-head">
                 <div>
                     <div class="page-head__title">
-                        <?php echo icon('user', 'svg-icon svg-lg'); ?>
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('user', 'svg-icon svg-lg'); ?>
                         پروفایل کاربر
                     </div>
                     <div class="page-head__sub">
                         <a href="users.php" class="text-link">
-                            <?php echo icon('arrow-right', 'svg-icon'); ?> بازگشت به لیست
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('arrow-right', 'svg-icon'); ?> بازگشت به لیست
                         </a>
                     </div>
                 </div>
@@ -302,13 +76,13 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
 
             <div class="profile-card">
                 <div class="avatar-circle">
-                    <?php echo icon('user', 'svg-icon'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('user', 'svg-icon'); ?>
                 </div>
                 <div class="profile-identity">
                     <p>شناسه عددی: <bdi><?php echo htmlspecialchars((string)$user['id'], ENT_QUOTES, 'UTF-8'); ?></bdi></p>
                 </div>
                 <a href="https://t.me/<?php echo urlencode($user['username']); ?>" target="_blank" rel="noopener noreferrer" class="tg-btn" aria-label="مشاهدهٔ کاربر در تلگرام">
-                    <?php echo icon('paper-plane', 'svg-icon'); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('paper-plane', 'svg-icon'); ?>
                     <bdi><?php echo htmlspecialchars($user['username'], ENT_QUOTES, 'UTF-8'); ?></bdi>
                 </a>
                 <span class="badge profile-status <?php echo $status_class; ?>"><?php echo $status_label; ?></span>
@@ -317,7 +91,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
             <div class="info-grid">
                 <div class="card">
                     <div class="card__head">
-                        <div class="card__title"><?php echo icon('circle-info', 'svg-icon svg-md'); ?><span>مشخصات حساب</span></div>
+                        <div class="card__title"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('circle-info', 'svg-icon svg-md'); ?><span>مشخصات حساب</span></div>
                     </div>
                     <div class="info-row">
                         <span class="info-label">وضعیت حساب</span>
@@ -343,7 +117,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
 
                 <div class="card">
                     <div class="card__head">
-                        <div class="card__title"><?php echo icon('chart-line', 'svg-icon svg-md'); ?><span>آمار فعالیت</span></div>
+                        <div class="card__title"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('chart-line', 'svg-icon svg-md'); ?><span>آمار فعالیت</span></div>
                     </div>
                     <div class="info-row">
                         <span class="info-label">تعداد زیرمجموعه</span>
@@ -362,7 +136,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
 
             <div class="card user-management">
                 <div class="card__head">
-                    <div class="card__title"><?php echo icon('sliders', 'svg-icon svg-md'); ?><span>عملیات مدیریت</span></div>
+                    <div class="card__title"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('sliders', 'svg-icon svg-md'); ?><span>عملیات مدیریت</span></div>
                 </div>
                 <div class="actions-grid">
                     <?php if ($user['User_Status'] == 'block'): ?>
@@ -371,7 +145,7 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                             <input type="hidden" name="_action" value="user_status">
                             <input type="hidden" name="status" value="active">
                             <button type="submit" class="btn btn-soft-success btn-block">
-                                <?php echo icon('check', 'svg-icon'); ?> رفع مسدودی
+                                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('check', 'svg-icon'); ?> رفع مسدودی
                             </button>
                         </form>
                     <?php else: ?>
@@ -380,25 +154,25 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                             <input type="hidden" name="_action" value="user_status">
                             <input type="hidden" name="status" value="block">
                             <button type="submit" class="btn btn-soft-danger btn-block">
-                                <?php echo icon('ban', 'svg-icon'); ?> مسدود کردن
+                                <?php echo \Faoxima\Admin\Web\Support\Icons::icon('ban', 'svg-icon'); ?> مسدود کردن
                             </button>
                         </form>
                     <?php endif; ?>
 
                     <button onclick="openModal('modal-add-balance')" class="btn btn-soft-info btn-block">
-                        <?php echo icon('plus', 'svg-icon'); ?> افزایش موجودی
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon'); ?> افزایش موجودی
                     </button>
 
                     <button onclick="openModal('modal-low-balance')" class="btn btn-soft-warning btn-block">
-                        <?php echo icon('minus', 'svg-icon'); ?> کسر موجودی
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('minus', 'svg-icon'); ?> کسر موجودی
                     </button>
 
                     <button onclick="openModal('modal-change-agent')" class="btn btn-soft-purple btn-block">
-                        <?php echo icon('user-tag', 'svg-icon'); ?> تغییر نوع کاربر
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('user-tag', 'svg-icon'); ?> تغییر نوع کاربر
                     </button>
 
                     <button onclick="openModal('modal-user-discount-percent')" class="btn btn-soft-purple btn-block">
-                        <?php echo icon('gift', 'svg-icon'); ?> درصد تخفیف اختصاصی
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('gift', 'svg-icon'); ?> درصد تخفیف اختصاصی
                     </button>
 
                     <form method="POST" action="user.php?id=<?php echo urlencode((string)$user['id']); ?>" style="margin:0;" onsubmit="return confirm('آیا مطمئن هستید؟')">
@@ -406,26 +180,26 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                         <input type="hidden" name="_action" value="user_agent">
                         <input type="hidden" name="agent" value="f">
                         <button type="submit" class="btn btn-soft-danger btn-block">
-                            <?php echo icon('user-xmark', 'svg-icon'); ?> حذف نمایندگی
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('user-xmark', 'svg-icon'); ?> حذف نمایندگی
                         </button>
                     </form>
 
                     <button onclick="openModal('modal-send-msg')" class="btn btn-outline btn-block">
-                        <?php echo icon('paper-plane', 'svg-icon'); ?> ارسال پیام
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('paper-plane', 'svg-icon'); ?> ارسال پیام
                     </button>
                 </div>
             </div>
 
             <div class="card user-private-codes">
                 <div class="card__head">
-                    <div class="card__title"><?php echo icon('ticket', 'svg-icon svg-md'); ?><span>کدهای اختصاصی این کاربر</span></div>
+                    <div class="card__title"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('ticket', 'svg-icon svg-md'); ?><span>کدهای اختصاصی این کاربر</span></div>
                 </div>
                 <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
                     <button onclick="openModal('modal-user-discount')" class="btn btn-soft-info btn-sm">
-                        <?php echo icon('plus', 'svg-icon'); ?> کد تخفیف اختصاصی
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon'); ?> کد تخفیف اختصاصی
                     </button>
                     <button onclick="openModal('modal-user-gift')" class="btn btn-soft-success btn-sm">
-                        <?php echo icon('plus', 'svg-icon'); ?> کد هدیه اختصاصی
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon'); ?> کد هدیه اختصاصی
                     </button>
                 </div>
                 <div class="table-wrap">
@@ -460,14 +234,14 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                                             data-price="<?php echo htmlspecialchars((string)$c['price'], ENT_QUOTES); ?>"
                                             data-limit="<?php echo (int)($c['limitDiscount'] ?? 0); ?>"
                                             onclick="editUserDiscount(this)">
-                                            <?php echo icon('pen-to-square', 'svg-icon'); ?>
+                                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('pen-to-square', 'svg-icon'); ?>
                                         </button>
                                         <form method="POST" onsubmit="return confirm('این کد حذف شود؟');">
                                             <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
                                             <input type="hidden" name="_action" value="user_code_delete">
                                             <input type="hidden" name="kind" value="discount">
                                             <input type="hidden" name="id" value="<?php echo (int)$c['id']; ?>">
-                                            <button type="submit" class="btn btn-sm btn-soft-danger"><?php echo icon('trash', 'svg-icon'); ?></button>
+                                            <button type="submit" class="btn btn-sm btn-soft-danger"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon'); ?></button>
                                         </form>
                                     </div>
                                 </td>
@@ -487,14 +261,14 @@ $agent_display = isset($agent_types[$user['agent']]) ? $agent_types[$user['agent
                                             data-price="<?php echo (int)($g['price'] ?? 0); ?>"
                                             data-limit="<?php echo (int)($g['limituse'] ?? 0); ?>"
                                             onclick="editUserGift(this)">
-                                            <?php echo icon('pen-to-square', 'svg-icon'); ?>
+                                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('pen-to-square', 'svg-icon'); ?>
                                         </button>
                                         <form method="POST" onsubmit="return confirm('این کد حذف شود؟');">
                                             <input type="hidden" name="_csrf" value="<?php echo htmlspecialchars($_csrf, ENT_QUOTES, 'UTF-8'); ?>">
                                             <input type="hidden" name="_action" value="user_code_delete">
                                             <input type="hidden" name="kind" value="gift">
                                             <input type="hidden" name="id" value="<?php echo (int)$g['id']; ?>">
-                                            <button type="submit" class="btn btn-sm btn-soft-danger"><?php echo icon('trash', 'svg-icon'); ?></button>
+                                            <button type="submit" class="btn btn-sm btn-soft-danger"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon'); ?></button>
                                         </form>
                                     </div>
                                 </td>

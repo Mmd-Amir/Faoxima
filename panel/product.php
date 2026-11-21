@@ -1,200 +1,57 @@
 <?php
+
+require_once __DIR__ . '/../src/bootstrap.php';
+
 ini_set('session.cookie_samesite', 'Lax');
 ini_set('session.cookie_httponly', '1');
 session_start();
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
-require_once __DIR__ . '/lib/icons.php';
-require_once __DIR__ . '/lib/pagination.php';
 require_once __DIR__ . '/lib/bulk_delete.php';
 require_once __DIR__ . '/lib/search_filter.php';
-require_once __DIR__ . '/lib/compact_badges.php';
 require_once __DIR__ . '/lib/csrf.php';
 require_once __DIR__ . '/lib/ordering.php';
 require_once __DIR__ . '/lib/bulk_price.php';
 require_once __DIR__ . '/../function.php';
-if (!function_exists('xui_fail2ban_status') && is_file(__DIR__ . '/../x-ui_single.php')) {
-    require_once __DIR__ . '/../x-ui_single.php';
-}
 
-fx_admin_require_access($pdo);
+\Faoxima\Admin\Web\Support\Csrf::fx_admin_require_access($pdo);
 
 if (!(isset($_GET['ajax']) && $_GET['ajax'] === 'fail2ban_check')) {
-    fx_csrf_guard();
+    \Faoxima\Admin\Web\Support\Csrf::fx_csrf_guard();
 }
-$_csrf = fx_csrf_token();
+$_csrf = \Faoxima\Admin\Web\Support\Csrf::fx_csrf_token();
 
-if (isset($_GET['ajax']) && $_GET['ajax'] === 'fail2ban_check') {
+if (($_GET['ajax'] ?? null) === 'fail2ban_check') {
     header('Content-Type: application/json; charset=utf-8');
-    $panelName = trim((string)($_GET['panel'] ?? ''));
-    $panelRow = null;
-    if ($panelName !== '') {
-        $stmtF = $pdo->prepare("SELECT * FROM marzban_panel WHERE name_panel = :n LIMIT 1");
-        $stmtF->execute([':n' => $panelName]);
-        $panelRow = $stmtF->fetch(PDO::FETCH_ASSOC) ?: null;
-    }
-    if (!$panelRow || $panelRow['type'] !== 'x-ui_single' || !function_exists('xui_panel_uses_token') || !xui_panel_uses_token($panelRow)) {
-        echo json_encode(['ok' => false, 'message' => 'not_applicable']);
-        exit;
-    }
-    $status = xui_fail2ban_status($panelRow);
-    if (empty($status['status'])) {
-        echo json_encode(['ok' => false, 'message' => 'unreachable']);
-        exit;
-    }
-    $data = $status['data'];
-    $usable = !empty($data['usable']);
-    echo json_encode(['ok' => true, 'usable' => $usable, 'installed' => !empty($data['installed']), 'enabled' => !empty($data['enabled'])]);
+    echo json_encode(\Faoxima\Admin\Web\Pages\ProductPage::fail2ban($pdo, trim((string) ($_GET['panel'] ?? ''))));
     exit;
 }
 
 if (!empty($_POST['action']) && $_POST['action'] === 'bulk_delete') {
-    fx_admin_require_access($pdo, ['administrator']);
+    \Faoxima\Admin\Web\Support\Csrf::fx_admin_require_access($pdo, ['administrator'], $adminnumber ?? null);
     $requestedIds = $_POST['ids'] ?? [];
-    $deletedCount = fx_bulk_delete_ids($pdo, 'product', 'id', $requestedIds);
-    fx_bulk_delete_redirect('product.php', count($requestedIds), $deletedCount);
+    $deletedCount = \Faoxima\Admin\Web\Support\BulkDelete::fx_bulk_delete_ids($pdo, 'product', 'id', $requestedIds);
+    \Faoxima\Admin\Web\Support\BulkDelete::fx_bulk_delete_redirect('product.php', count($requestedIds), $deletedCount);
 }
 
 if (($_POST['_action'] ?? '') === 'product_delete') {
-    fx_admin_require_access($pdo, ['administrator']);
-    $deleteId = (int)($_POST['id'] ?? 0);
-    if ($deleteId > 0) {
-        $stmt = $pdo->prepare("DELETE FROM product WHERE id = :id");
-        $stmt->bindValue(':id', $deleteId, PDO::PARAM_INT);
-        $stmt->execute();
-    }
+    \Faoxima\Admin\Web\Support\Csrf::fx_admin_require_access($pdo, ['administrator'], $adminnumber ?? null);
+    \Faoxima\Admin\Web\Pages\ProductPage::delete($pdo, (int) ($_POST['id'] ?? 0));
     header('Location: product.php');
     exit;
 }
 
-$prodQ = fx_search_current();
-$prodWhereSql = '1=1';
-$prodParams = [];
-if ($prodQ !== '') {
-    $prodLike = '%' . $prodQ . '%';
-    $prodWhereSql .= ' AND (id LIKE :pq1 OR name_product LIKE :pq2 OR Location LIKE :pq3 OR category LIKE :pq4)';
-    $prodParams[':pq1'] = $prodLike;
-    $prodParams[':pq2'] = $prodLike;
-    $prodParams[':pq3'] = $prodLike;
-    $prodParams[':pq4'] = $prodLike;
-}
-
-$pg = fx_paginate($pdo, "SELECT COUNT(*) FROM product WHERE $prodWhereSql", $prodParams, 5);
-$query = $pdo->prepare("SELECT * FROM product WHERE $prodWhereSql ORDER BY (position = 0) ASC, position ASC, id ASC LIMIT :perPage OFFSET :offset");
-foreach ($prodParams as $k => $v) $query->bindValue($k, $v, PDO::PARAM_STR);
-$query->bindValue(':perPage', $pg['perPage'], PDO::PARAM_INT);
-$query->bindValue(':offset', $pg['offset'], PDO::PARAM_INT);
-$query->execute();
-$listinvoice = $query->fetchAll();
-
-fx_order_ensure_schema($pdo, 'panel');
-fx_order_ensure_schema($pdo, 'category');
-$query = $pdo->prepare("SELECT * FROM marzban_panel ORDER BY (position = 0) ASC, position ASC, id ASC");
-$query->execute();
-$listpanel = $query->fetchAll();
-
-$panelTypeMap = [];
-foreach ($listpanel as $panelRow) {
-    $panelTypeMap[$panelRow['name_panel']] = $panelRow['type'];
-}
-
-$catQuery = $pdo->prepare("SELECT remark FROM category ORDER BY (position = 0) ASC, position ASC, id ASC");
-$catQuery->execute();
-$listcategory = $catQuery->fetchAll(PDO::FETCH_COLUMN);
-
-
+[$prodQ, $pg, $listinvoice, $listpanel, $panelTypeMap, $listcategory] = \Faoxima\Admin\Web\Pages\ProductPage::catalog($pdo, $_GET);
 $nameProduct = $_POST['nameproduct'] ?? null;
 if (!empty($nameProduct)) {
-    $randomString = bin2hex(random_bytes(2));
-    $userdata['data_limit_reset'] = "no_reset";
-
-    $product_count = select("product", "*", "name_product", $nameProduct, "count");
-    if ($product_count != 0) {
-        echo "<script>
-alert('محصول از قبل وجود دارد'); window.location.href='product.php';
-</script>";
+    $error = \Faoxima\Admin\Web\Pages\ProductPage::create($pdo, $_POST, $nameProduct);
+    if ($error !== null) {
+        echo $error;
         return;
     }
-
-    $hidepanel       = "{}";
-    $priceProduct    = $_POST['price_product']    ?? '';
-    $volumeProduct   = $_POST['volume_product']   ?? '';
-    $serviceTime     = $_POST['time_product']     ?? '';
-    $agentProduct    = $_POST['agent_product']    ?? '';
-    $agentProduct    = strtolower(trim((string)$agentProduct));
-    if (!in_array($agentProduct, ['f', 'n', 'n2', 'all'], true)) {
-        echo "<script>alert('گروه کاربری نامعتبر است'); window.location.href='product.php';</script>";
-        return;
-    }
-
-    $locationArr = explode(',', (string)($_POST['namepanel_csv'] ?? ''));
-    $locationArr = array_values(array_unique(array_filter(array_map('trim', $locationArr), function ($v) { return $v !== ''; })));
-    if (in_array('/all', $locationArr, true)) $locationArr = ['/all'];
-    $location = implode(',', $locationArr);
-
-    $categoryArr = explode(',', (string)($_POST['cetegory_product_csv'] ?? ''));
-    $newCategory = trim((string)($_POST['cetegory_product_new'] ?? ''));
-    if ($newCategory !== '') $categoryArr[] = $newCategory;
-    $categoryArr = array_values(array_unique(array_filter(array_map('trim', $categoryArr), function ($v) { return $v !== ''; })));
-    $category = implode(',', $categoryArr);
-    foreach ($categoryArr as $catValue) {
-        $catCheck = $pdo->prepare("SELECT COUNT(*) FROM category WHERE remark = :r");
-        $catCheck->execute([':r' => $catValue]);
-        if ((int)$catCheck->fetchColumn() === 0) {
-            $pdo->prepare("INSERT IGNORE INTO category (remark) VALUES (:r)")->execute([':r' => $catValue]);
-        }
-    }
-    $note            = $_POST['note_product']     ?? '';
-    $dataLimitReset  = $userdata['data_limit_reset'];
-
-    $ipLimitRaw = trim((string)($_POST['ip_limit_product'] ?? '0'));
-    if ($ipLimitRaw === '' || !ctype_digit($ipLimitRaw) || (int)$ipLimitRaw > 50) {
-        $ipLimit = '0';
-    } else {
-        $ipLimit = (string)(int)$ipLimitRaw;
-    }
-
-    $hwidLimitRaw = trim((string)($_POST['hwid_limit_product'] ?? '0'));
-    if ($hwidLimitRaw === '' || !ctype_digit($hwidLimitRaw) || (int)$hwidLimitRaw > 50) {
-        $hwidLimit = '0';
-    } else {
-        $hwidLimit = (string)(int)$hwidLimitRaw;
-    }
-
-    $symbolicLimitEnabled = !empty($_POST['symbolic_limit_enabled']) ? '1' : '0';
-    $symbolicLimitUsersRaw = trim((string)($_POST['symbolic_limit_users'] ?? '0'));
-    if ($symbolicLimitUsersRaw === '' || !ctype_digit($symbolicLimitUsersRaw) || (int)$symbolicLimitUsersRaw > 50) {
-        $symbolicLimitUsers = '0';
-    } else {
-        $symbolicLimitUsers = (string)(int)$symbolicLimitUsersRaw;
-    }
-    if ($symbolicLimitEnabled === '1' && (int)$symbolicLimitUsers <= 0) {
-        $symbolicLimitEnabled = '0';
-    }
-
-    $stmt = $pdo->prepare("INSERT IGNORE INTO product (name_product,code_product,price_product,Volume_constraint,Service_time,Location,agent,data_limit_reset,note,category,hide_panel,one_buy_status,ip_limit,hwid_limit,symbolic_limit_enabled,symbolic_limit_users) VALUES (:name_product,:code_product,:price_product,:Volume_constraint,:Service_time,:Location,:agent,:data_limit_reset,:note,:category,:hide_panel,'0',:ip_limit,:hwid_limit,:symbolic_limit_enabled,:symbolic_limit_users)");
-    $stmt->bindParam(':name_product',     $nameProduct, PDO::PARAM_STR);
-    $stmt->bindParam(':code_product',     $randomString);
-    $stmt->bindParam(':price_product',    $priceProduct, PDO::PARAM_STR);
-    $stmt->bindParam(':Volume_constraint',$volumeProduct, PDO::PARAM_STR);
-    $stmt->bindParam(':Service_time',     $serviceTime, PDO::PARAM_STR);
-    $stmt->bindParam(':Location',         $location, PDO::PARAM_STR);
-    $stmt->bindParam(':agent',            $agentProduct, PDO::PARAM_STR);
-    $stmt->bindParam(':data_limit_reset', $dataLimitReset);
-    $stmt->bindParam(':category',         $category, PDO::PARAM_STR);
-    $stmt->bindParam(':note',             $note, PDO::PARAM_STR);
-    $stmt->bindParam(':hide_panel',       $hidepanel);
-    $stmt->bindParam(':ip_limit',         $ipLimit, PDO::PARAM_STR);
-    $stmt->bindParam(':hwid_limit',       $hwidLimit, PDO::PARAM_STR);
-    $stmt->bindParam(':symbolic_limit_enabled', $symbolicLimitEnabled, PDO::PARAM_STR);
-    $stmt->bindParam(':symbolic_limit_users',   $symbolicLimitUsers, PDO::PARAM_STR);
-    $stmt->execute();
-
-    header("Location: product.php");
+    header('Location: product.php');
     exit;
 }
-
-
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -228,28 +85,28 @@ alert('محصول از قبل وجود دارد'); window.location.href='product
                 </div>
                 <div class="chip-row">
                     <button onclick="openModal('modal-add-product')" class="btn btn-primary btn-sm">
-                        <?php echo icon('plus', 'svg-icon'); ?> افزودن محصول
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('plus', 'svg-icon'); ?> افزودن محصول
                     </button>
                     <button onclick="openModal('modal-move-product')" class="btn btn-soft-purple btn-sm">
-                        <?php echo icon('arrow-right-arrow-left', 'svg-icon'); ?> جابجایی ردیف
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('arrow-right-arrow-left', 'svg-icon'); ?> جابجایی ردیف
                     </button>
                     <button onclick="openModal('modal-move-panel')" class="btn btn-soft-purple btn-sm">
-                        <?php echo icon('arrow-right-arrow-left', 'svg-icon'); ?> جابجایی پنل‌ها
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('arrow-right-arrow-left', 'svg-icon'); ?> جابجایی پنل‌ها
                     </button>
                     <button type="button" data-bp-open="modal-bulk-price" class="btn btn-soft-purple btn-sm">
-                        <?php echo icon('coins', 'svg-icon'); ?> قیمت گروهی
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('coins', 'svg-icon'); ?> قیمت گروهی
                     </button>
                 </div>
             </div>
 
-            <?php echo fx_bulk_delete_flash_html(); ?>
+            <?php echo \Faoxima\Admin\Web\Support\BulkDelete::fx_bulk_delete_flash_html(); ?>
 
-            <?php echo fx_search_ui('product.php', $prodQ, [], 'جستجو در شناسه، نام محصول، لوکیشن یا دسته‌بندی…'); ?>
+            <?php echo \Faoxima\Admin\Web\Support\SearchFilter::fx_search_ui('product.php', $prodQ, [], 'جستجو در شناسه، نام محصول، لوکیشن یا دسته‌بندی…'); ?>
 
             <div class="card product-catalog">
                 <div class="product-catalog__head"><div><h2>کاتالوگ محصولات</h2><p>قیمت، مشخصات سرویس و پنل‌های ارائه‌دهنده</p></div><span class="product-count"><?php echo strtr(number_format((int)$pg['total']), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?> محصول<?php echo $prodQ !== '' ? ' مطابق جستجو' : ''; ?></span></div>
                 <form method="POST" action="product.php" id="bulk-form">
-                    <?php echo fx_csrf_field(); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
                     <input type="hidden" name="action" value="bulk_delete">
                     <div class="table-wrap">
                     <table id="productsTable" class="display app-table app-table--summary" style="width:100%">
@@ -287,7 +144,7 @@ alert('محصول از قبل وجود دارد'); window.location.href='product
                                         $locationBadgesHtml = array_map(function ($locItem) {
                                             return '<span class="badge product-location-chip">' . htmlspecialchars($locItem === '/all' ? 'تمامی پنل‌ها' : $locItem, ENT_QUOTES, 'UTF-8') . '</span>';
                                         }, $locationItems);
-                                        echo faoxima_render_compact_badges($locationBadgesHtml);
+                                        echo \Faoxima\Admin\Web\Support\CompactBadges::faoxima_render_compact_badges($locationBadgesHtml);
                                     ?>
                                 </td>
                                 <td data-label="گروه کاربری"><span class="badge <?php echo $agent_badge; ?>"><?php echo $agent_type; ?></span></td>
@@ -296,13 +153,13 @@ alert('محصول از قبل وجود دارد'); window.location.href='product
                                         $categoryBadgesHtml = array_map(function ($catItem) {
                                             return '<span class="badge badge-gray">' . htmlspecialchars($catItem, ENT_QUOTES, 'UTF-8') . '</span>';
                                         }, $categoryItems);
-                                        echo faoxima_render_compact_badges($categoryBadgesHtml);
+                                        echo \Faoxima\Admin\Web\Support\CompactBadges::faoxima_render_compact_badges($categoryBadgesHtml);
                                     ?>
                                 </td>
                                 <td data-label="عملیات" class="cell-actions">
                                     <div class="product-actions">
                                         <a href="productedit.php?id=<?php echo $list['id']; ?>" class="btn btn-sm btn-soft-info" title="ویرایش">
-                                            <?php echo icon('pen', 'svg-icon'); ?>
+                                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('pen', 'svg-icon'); ?>
                                         </a>
                                         <button type="button" class="btn btn-sm btn-soft-purple" title="کلون"
                                             onclick="faoximaOpenClone(<?php echo htmlspecialchars(json_encode([
@@ -319,11 +176,11 @@ alert('محصول از قبل وجود دارد'); window.location.href='product
                                                 'sym_en'   => $list['symbolic_limit_enabled'] ?? '0',
                                                 'sym_us'   => $list['symbolic_limit_users'] ?? '0',
                                             ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS), ENT_QUOTES, 'UTF-8'); ?>)">
-                                            <?php echo icon('copy', 'svg-icon'); ?>
+                                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('copy', 'svg-icon'); ?>
                                         </button>
                                         <button type="button" class="btn btn-sm btn-soft-danger" title="حذف"
                                            onclick="faoximaDeleteProduct(<?php echo (int)$list['id']; ?>)">
-                                            <?php echo icon('trash', 'svg-icon'); ?>
+                                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon'); ?>
                                         </button>
                                     </div>
                                 </td>
@@ -331,11 +188,11 @@ alert('محصول از قبل وجود دارد'); window.location.href='product
                         <?php endforeach; ?>
                         </tbody>
                     </table>
-                    <?php echo fx_pager_html($pg['page'], $pg['pages'], $pg['total'], count($listinvoice), 'product.php', ['q' => $prodQ !== '' ? $prodQ : null]); ?>
+                    <?php echo \Faoxima\Admin\Web\Support\Pagination::fx_pager_html($pg['page'], $pg['pages'], $pg['total'], count($listinvoice), 'product.php', ['q' => $prodQ !== '' ? $prodQ : null]); ?>
                     </div>
                     <div style="padding:12px 0;">
                         <button type="submit" class="btn btn-soft-danger btn-sm js-bulk-delete-btn" style="display:none;" onclick="return confirm('آیا از حذف محصولات انتخاب‌شده مطمئن هستید؟')">
-                            <?php echo icon('trash', 'svg-icon'); ?> حذف انتخاب‌شده‌ها
+                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon'); ?> حذف انتخاب‌شده‌ها
                         </button>
                     </div>
                 </form>
@@ -353,7 +210,7 @@ alert('محصول از قبل وجود دارد'); window.location.href='product
             <button class="modal-close" onclick="closeModal('modal-add-product')">&times;</button>
         </div>
         <form action="product.php" method="POST">
-            <?php echo fx_csrf_field(); ?>
+            <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
             <div class="form-group">
                 <label class="form-label">نام محصول</label>
                 <input type="text" name="nameproduct" class="form-control" placeholder="نام محصول را وارد کنید" required>
@@ -441,9 +298,9 @@ alert('محصول از قبل وجود دارد'); window.location.href='product
 </div>
 
 
-<?php echo fx_order_modal_html('product', 'modal-move-product'); ?>
-<?php echo fx_order_modal_html('panel', 'modal-move-panel'); ?>
-<?php echo fx_bp_modal_html('modal-bulk-price'); ?>
+<?php echo \Faoxima\Admin\Web\Support\Ordering::fx_order_modal_html('product', 'modal-move-product'); ?>
+<?php echo \Faoxima\Admin\Web\Support\Ordering::fx_order_modal_html('panel', 'modal-move-panel'); ?>
+<?php echo \Faoxima\Admin\Web\Support\BulkPrice::fx_bp_modal_html('modal-bulk-price'); ?>
 
 
 <div id="modal-clone-product" class="modal-overlay">
@@ -453,7 +310,7 @@ alert('محصول از قبل وجود دارد'); window.location.href='product
             <button class="modal-close" onclick="closeModal('modal-clone-product')">&times;</button>
         </div>
         <form action="product.php" method="POST">
-            <?php echo fx_csrf_field(); ?>
+            <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
             <div class="form-group">
                 <label class="form-label">نام محصول</label>
                 <input type="text" name="nameproduct" id="clone_name" class="form-control" placeholder="نام محصول را وارد کنید" required>
@@ -539,7 +396,7 @@ alert('محصول از قبل وجود دارد'); window.location.href='product
     </div>
 </div>
 <form id="product-delete-form" method="POST" action="product.php" style="display:none;">
-    <?php echo fx_csrf_field(); ?>
+    <?php echo \Faoxima\Admin\Web\Support\Csrf::fx_csrf_field(); ?>
     <input type="hidden" name="_action" value="product_delete">
     <input type="hidden" name="id" value="">
 </form>

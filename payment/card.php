@@ -3,7 +3,6 @@ ini_set('error_log', 'error.log');
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../jdf.php';
 require_once __DIR__ . '/../botapi.php';
-require_once __DIR__ . '/../Marzban.php';
 require_once __DIR__ . '/../panels.php';
 require_once __DIR__ . '/../function.php';
 require_once __DIR__ . '/../keyboard.php';
@@ -25,14 +24,17 @@ if (is_array($_cvSetting) && (($_cvSetting['card_verify_status'] ?? 'offcardveri
 if($PaySetting == "onautoconfirm"){
 $name_post = array_keys($_POST);
 $name_post = array_map('htmlspecialchars', $name_post);
-$name_post = preg_split("/_+/", $name_post[0], -1);
-$secret_key = select("admin", "*", "password", base64_decode($name_post[0]), "count");
+$name_post = preg_split("/_+/", $name_post[0] ?? '', 2);
+if (count($name_post) !== 2 || $name_post[0] === '' || $name_post[1] === '') return;
+$secret_key = \Faoxima\Core\Database\Db::select("admin", "*", "password", base64_decode($name_post[0]), "count");
 if($secret_key == 0)return;
 $name_bank = $name_post[1];
-$valuepost = $_POST["{$name_post[0]}_$name_bank"];
+$valuepost = $_POST["{$name_post[0]}_$name_bank"] ?? null;
+if (!is_string($valuepost)) return;
+$amountInteger = null;
 $setting = mysqli_fetch_assoc(mysqli_query($connect, "SELECT * FROM setting"));
 $admin_ids = array_column(mysqli_fetch_all(mysqli_query($connect, "SELECT (id_admin) FROM admin"), MYSQLI_ASSOC), 'id_admin');
- $datatextbotget = select("textbot", "*",null ,null ,"fetchAll");
+ $datatextbotget = \Faoxima\Core\Database\Db::select("textbot", "*",null ,null ,"fetchAll");
     $datatxtbot = array();
 foreach ($datatextbotget as $row) {
     $datatxtbot[] = array(
@@ -95,7 +97,7 @@ if(preg_match('/\+([\d,]+)/', $valuepost, $matches)) {
     $amountInteger = str_replace(',', '', $matches[1])*0.1;
 }}
 elseif($name_bank  == "sheahr"){
-if(preg_match('/مبلغ:(\d+(?:,\d+)*)ريال//', $valuepost, $matches)) {
+if(preg_match('/مبلغ:(\d+(?:,\d+)*)ريال/u', $valuepost, $matches)) {
     $amountInteger = str_replace(',', '', $matches[1])*0.1;
 }}
 elseif($name_bank  == "maskan"){
@@ -118,13 +120,14 @@ if(preg_match('/(\d{1,3}(?:,\d{3})*\+)/', $valuepost, $matches)) {
 
 if (is_numeric($amountInteger) && substr($amountInteger, -3) === '000')return;
 if(isset($amountInteger) && $amountInteger !== NULL){
-    $_sbvExcl = (function_exists('rx_sbv_has_schema') && rx_sbv_has_schema()) ? " AND NOT EXISTS (SELECT 1 FROM card_sms_payment csp WHERE csp.id_order = Payment_report.id_order)" : "";
-    $_stmt = $connect->prepare("SELECT * FROM Payment_report WHERE price = ? AND (payment_Status = 'Unpaid' OR payment_Status = 'waiting')" . $_sbvExcl);
+    $_sbvExcl = (method_exists(\Faoxima\Payments\Receipts\ReceiptRuntime::class, 'rx_sbv_has_schema') && \Faoxima\Payments\Receipts\Settings::hasSchema($pdo)) ? " AND NOT EXISTS (SELECT 1 FROM card_sms_payment csp WHERE csp.id_order = Payment_report.id_order)" : "";
+    $_stmt = $connect->prepare("SELECT * FROM Payment_report WHERE price = ? AND Payment_Method = 'cart to cart' AND (payment_Status = 'Unpaid' OR payment_Status = 'waiting')" . $_sbvExcl);
     $_amtFloat = (float)$amountInteger;
     $_stmt->bind_param("d", $_amtFloat);
     $_stmt->execute();
     $datauser = $_stmt->get_result()->fetch_assoc();
     $_stmt->close();
+    if (!$datauser) return;
     $order_id = $datauser['id_order'];
     $_stmt = $connect->prepare("SELECT * FROM Payment_report WHERE id_order = ? LIMIT 1");
     $_stmt->bind_param("s", $order_id);
@@ -132,14 +135,14 @@ if(isset($amountInteger) && $amountInteger !== NULL){
     $Payment_report = $_stmt->get_result()->fetch_assoc();
     $_stmt->close();
     if(!isset($Payment_report['price']) || $Payment_report['price'] == null)return;
-    if (function_exists('rx_sbv_is_verify_order') && rx_sbv_is_verify_order((string) $order_id)) return;
+    if (method_exists(\Faoxima\Payments\Receipts\ReceiptRuntime::class, 'rx_sbv_is_verify_order') && \Faoxima\Payments\Receipts\ReceiptOrders::isVerifyOrder($pdo, (string) $order_id)) return;
     $_uid = $Payment_report['id_user'];
     $_stmt = $connect->prepare("SELECT * FROM user WHERE id = ? LIMIT 1");
     $_stmt->bind_param("s", $_uid);
     $_stmt->execute();
     $Balance_id = $_stmt->get_result()->fetch_assoc();
     $_stmt->close();
-    $textbotlang = languagechange('../text.json');
+    $textbotlang = \Faoxima\Telegram\Conversation\ConversationData::languagechange('../text.json');
 
     if ($Payment_report['payment_Status'] == "paid" || $Payment_report['payment_Status'] == "reject") {
         telegram('answerCallbackQuery', array(
@@ -149,21 +152,27 @@ if(isset($amountInteger) && $amountInteger !== NULL){
             'cache_time' => 5,
         ));
         return;}
-        $_claimed = RxLegacyPaymentConfirmation::claimCard($connect, $order_id);
-        if ($_claimed < 1) return;
-        if (function_exists('clearSelectCache')) clearSelectCache('Payment_report');
-        DirectPayment($order_id,"../images.jpg");
-    $_uid2 = $Payment_report['id_user'];
-    $_stmt = $connect->prepare("SELECT Balance FROM user WHERE id = ? LIMIT 1");
-    $_stmt->bind_param("s", $_uid2);
-    $_stmt->execute();
-    $balanceformatsell = number_format($_stmt->get_result()->fetch_assoc()['Balance'], 0);
-    $_stmt->close();
-    $paymentreports = select("topicid","idreport","report","paymentreport","select")['idreport'];
+        try {
+            $token = \Faoxima\Payments\Settlement\CallbackClaims::claimCard(
+                $pdo, $Payment_report, $_amtFloat, hash('sha256', $name_bank . "\n" . trim($valuepost))
+            );
+        } catch (Throwable $error) {
+            error_log('[card] verified SMS claim failed: ' . $error->getMessage());
+            return;
+        }
+        if ($token === null) return;
+        if (method_exists(\Faoxima\Core\Database\SelectCache::class, 'clearSelectCache')) \Faoxima\Core\Database\SelectCache::clearSelectCache('Payment_report');
+        $settled = \Faoxima\Payments\Settlement\CallbackClaims::settleDelivery(
+            $pdo, (string) $order_id, $Payment_report,
+            static fn ($order, $image) => \Faoxima\Services\Fulfillment\Delivery::runClaimed($pdo, $order, $token, $image, 'manual_review')['result'],
+            '../images.jpg'
+        );
+    $balanceformatsell = number_format($settled['customer']['Balance'] ?? 0, 0);
+    $paymentreports = \Faoxima\Core\Database\Db::select("topicid","idreport","report","paymentreport","select")['idreport'];
     $text_report = "یک رسید توسط ربات  تایید شد
 
 اطلاعات :
-<blockquote>💰 مبلغ پرداخت : " . rxFormatToman($Payment_report['price']) . "</blockquote>
+<blockquote>💰 مبلغ پرداخت : " . \Faoxima\Core\Support\Formatting::rxFormatToman($Payment_report['price']) . "</blockquote>
 <blockquote>👤  آیدی عددی کاربر : {$Balance_id['id']}</blockquote>
 <blockquote>👤 نام کاربری کاربر : @{$Balance_id['username']}</blockquote>
 <blockquote>موجودی کاربر : $balanceformatsell تومان</blockquote>

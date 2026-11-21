@@ -1,317 +1,51 @@
 <?php
+
+require_once __DIR__ . '/../src/bootstrap.php';
+$adminWebPage = 'cancelService.php';
+
+// legacy runtime bootstrap (global scope): session settings, config.php, ad_boot.php and library loads
 ini_set('session.cookie_samesite', 'Lax');
 ini_set('session.cookie_httponly', '1');
 session_start();
 require_once __DIR__ . '/../config.php';
 if (!@include_once __DIR__ . '/lib/ad_boot.php') { http_response_code(503); header('Retry-After: 3600'); exit; }
-require_once __DIR__ . '/lib/icons.php';
-require_once __DIR__ . '/lib/pagination.php';
 require_once __DIR__ . '/lib/bulk_delete.php';
 require_once __DIR__ . '/lib/date_filter.php';
 require_once __DIR__ . '/lib/status_filter.php';
 require_once __DIR__ . '/lib/search_filter.php';
 require_once __DIR__ . '/../function.php';
 
-$query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
-$query->bindParam("username", $_SESSION["user"], PDO::PARAM_STR);
-$query->execute();
-$result = $query->fetch(PDO::FETCH_ASSOC);
-
-if (!isset($_SESSION["user"]) || !$result) {
-    header('Location: login.php');
+if (\Faoxima\Admin\Web\Pages\CancelserviceRequest::handle(
+        cur: $cur,
+        df: $df,
+        flash: $flash,
+        method: $method,
+        pdo: $pdo ?? null,
+        query: $query,
+        r: $r,
+        reqDateKeep: $reqDateKeep,
+        reqFilterActive: $reqFilterActive,
+        reqFilterCriteria: $reqFilterCriteria,
+        reqFilterDeletable: $reqFilterDeletable,
+        reqFilterNote: $reqFilterNote,
+        reqFilterParams: $reqFilterParams,
+        reqPage: $reqPage,
+        reqPages: $reqPages,
+        reqQ: $reqQ,
+        reqStatus: $reqStatus,
+        reqStatusActive: $reqStatusActive,
+        reqStatusOptions: $reqStatusOptions,
+        reqTotal: $reqTotal,
+        result: $result,
+        rows: $rows,
+        st: $st ?? null,
+        stmt: $stmt
+    ) !== true) {
+    unset($adminWebPage);
     return;
 }
 
-/* ---------- helpers ---------- */
-function fx_table_has_col(PDO $pdo, string $table, string $col): bool {
-    try {
-        $st = $pdo->prepare("SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND COLUMN_NAME = :c LIMIT 1");
-        $st->execute([':t' => $table, ':c' => $col]);
-        return (bool)$st->fetchColumn();
-    } catch (\Throwable $e) { return false; }
-}
-/* normalized status -> [label, badgeClass, filterKey] */
-function fx_req_status($raw): array {
-    $r = strtolower(trim((string)$raw));
-    $raws = (string)$raw;
-    if (in_array($r, ['unpaid','waiting','awaitinghash','pending'], true) || strpos($r,'wait')!==false || mb_strpos($raws,'در انتظار')!==false) return ['در انتظار', 'badge-warning', 'wait'];
-    if ($r === 'paid' || $r === 'success' || mb_strpos($raws,'تایید')!==false || mb_strpos($raws,'موفق')!==false) return ['تاییدشده', 'badge-active', 'ok'];
-    if ($r === 'reject' || $r === 'rejected' || mb_strpos($raws,'رد')!==false || mb_strpos($raws,'لغو')!==false) return ['ردشده', 'badge-block', 'reject'];
-    if ($r === 'expire' || $r === 'expired' || mb_strpos($raws,'منقضی')!==false) return ['منقضی', 'badge-gray', 'expire'];
-    return [$raws !== '' ? $raws : '—', 'badge-gray', 'other'];
-}
-/* request "type" label from id_order + method */
-function fx_req_type($idOrder, $method): string {
-    $io = (string)$idOrder; $m = strtolower(trim((string)$method));
-    if ($m === 'cart to cart' || $m === 'carttocart_pv') return 'رسید بانکی';
-    if ($m === 'add balance by admin' || $m === 'low balance by admin') return 'تنظیم کیف پول (ادمین)';
-    if (in_array($m, ['plisio','nowpayment','digitaltron','arze digital offline'], true)) return 'ارز دیجیتال';
-    if ($m === 'star telegram') return 'استارز تلگرام';
-    if (strpos($io,'Add_Balance')!==false) return 'افزایش موجودی';
-    if (strpos($io,'getconfigafterpay')!==false) return 'خرید سرویس';
-    if (strpos($io,'getextenduser')!==false) return 'تمدید سرویس';
-    if (strpos($io,'getextravolumeuser')!==false) return 'حجم اضافه';
-    if (strpos($io,'getextratimeuser')!==false) return 'زمان اضافه';
-    if ($m !== '') return 'پرداخت (' . htmlspecialchars($method, ENT_QUOTES, 'UTF-8') . ')';
-    return 'پرداخت';
-}
-function fx_purpose($idOrder): string {
-    $io = (string)$idOrder;
-    if (strpos($io,'Add_Balance')!==false) return 'افزایش موجودی کیف پول';
-    if (strpos($io,'getconfigafterpay')!==false) return 'خرید سرویس';
-    if (strpos($io,'getextenduser')!==false) return 'تمدید سرویس';
-    if (strpos($io,'getextravolumeuser')!==false) return 'حجم اضافه';
-    if (strpos($io,'getextratimeuser')!==false) return 'زمان اضافه';
-    return '';
-}
-function fx_method_label($method): string {
-    $m = strtolower(trim((string)$method));
-    if ($m === '') return '';
-    $map = [
-        'cart to cart'         => 'کارت به کارت',
-        'carttocart_pv'        => 'کارت به کارت (پیروزپی)',
-        'piroozpay'            => 'پیروزپی',
-        'iranpay1'             => 'ایران‌پی',
-        'currency rial 3'      => 'ایران‌پی',
-        'plisio'               => 'ارز دیجیتال (Plisio)',
-        'nowpayment'           => 'ارز دیجیتال (NOWPayments)',
-        'digitaltron'          => 'ارز دیجیتال (دیجیتال‌ترون)',
-        'arze digital offline' => 'ارز دیجیتال (آفلاین)',
-        'star telegram'        => 'استارز تلگرام',
-        'add balance by admin' => 'افزایش موجودی توسط ادمین',
-        'low balance by admin' => 'کاهش موجودی توسط ادمین',
-    ];
-    return $map[$m] ?? (string)$method;
-}
-function fx_req_ts($value): int {
-    $v = trim((string)$value);
-    if ($v === '') return 0;
-    if (ctype_digit($v)) return (int)$v;
-    $ts = strtotime(str_replace('/', '-', $v));
-    return $ts !== false ? $ts : 0;
-}
-function fx_invoice_username($idInvoice): string {
-    $s = (string)$idInvoice;
-    if (strpos($s, '|') === false) return '';
-    $s = explode('|', $s, 2)[1];
-    $s = preg_replace('/%[0-9a-fA-F]+$/', '', $s);
-    return trim((string)$s);
-}
-
-$flash = ['ok' => '', 'err' => ''];
-
-function fx_req_delete_tokens(PDO $pdo, array $requestedTokens): int {
-    $prIds = []; $csIds = [];
-    foreach ($requestedTokens as $token) {
-        if (preg_match('/^pr:(\d+)$/', (string)$token, $m)) $prIds[] = (int)$m[1];
-        elseif (preg_match('/^cs:(\d+)$/', (string)$token, $m)) $csIds[] = (int)$m[1];
-    }
-    $deletedCount = 0;
-    if ($prIds) {
-        $ph = implode(',', array_fill(0, count($prIds), '?'));
-        $st = $pdo->prepare("SELECT id, payment_Status FROM Payment_report WHERE id IN ($ph)");
-        $st->execute($prIds);
-        $allowedPr = [];
-        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            if (in_array(strtolower((string)$row['payment_Status']), ['reject', 'rejected', 'expire', 'expired'], true)) {
-                $allowedPr[] = (int)$row['id'];
-            }
-        }
-        if ($allowedPr) $deletedCount += fx_bulk_delete_ids($pdo, 'Payment_report', 'id', $allowedPr);
-    }
-    if ($csIds) $deletedCount += fx_bulk_delete_ids($pdo, 'cancel_service', 'id', $csIds);
-    return $deletedCount;
-}
-
-if (!empty($_POST['action']) && $_POST['action'] === 'bulk_delete') {
-    $requestedTokens = $_POST['ids'] ?? [];
-    $deletedCount = fx_req_delete_tokens($pdo, is_array($requestedTokens) ? $requestedTokens : []);
-    fx_bulk_delete_redirect('cancelService.php', count($requestedTokens), $deletedCount);
-}
-
-/* ---------- delete actions ---------- */
-// legacy: delete a cancel_service row
-if (isset($_GET['removeid']) && $_GET['removeid'] !== '') {
-    try {
-        $stmt = $pdo->prepare("DELETE FROM cancel_service WHERE id = :id");
-        $stmt->execute([':id' => (int)$_GET['removeid']]);
-    } catch (\Throwable $e) {}
-    header("Location: cancelService.php");
-    exit;
-}
-// delete a resolved (reject/expire) payment request record (cleanup only)
-if (isset($_GET['delpr']) && $_GET['delpr'] !== '') {
-    try {
-        $cur = $pdo->prepare("SELECT payment_Status FROM Payment_report WHERE id = :id LIMIT 1");
-        $cur->execute([':id' => (int)$_GET['delpr']]);
-        $st = strtolower((string)$cur->fetchColumn());
-        if (in_array($st, ['reject','rejected','expire','expired'], true)) {
-            $pdo->prepare("DELETE FROM Payment_report WHERE id = :id")->execute([':id' => (int)$_GET['delpr']]);
-        }
-    } catch (\Throwable $e) {}
-    header("Location: cancelService.php");
-    exit;
-}
-
-/* ---------- aggregate all requests ---------- */
-$prHasSource = fx_table_has_col($pdo, 'Payment_report', 'source');
-$reqQ = trim((string)($_GET['q'] ?? ''));
-$reqLike = '%' . $reqQ . '%';
-$rows = [];
-
-// 1) Payment_report — admin-actionable money requests (bank receipts, wallet charges, crypto, gateway)
-try {
-    if ($reqQ !== '') {
-        $st = $pdo->prepare("SELECT * FROM Payment_report WHERE id_user LIKE :q1 OR id_order LIKE :q2 OR id_invoice LIKE :q3 ORDER BY id DESC LIMIT 1000");
-        $st->execute([':q1' => $reqLike, ':q2' => $reqLike, ':q3' => $reqLike]);
-    } else {
-        $st = $pdo->query("SELECT * FROM Payment_report ORDER BY id DESC LIMIT 1000");
-    }
-    foreach (($st ? $st->fetchAll(PDO::FETCH_ASSOC) : []) as $r) {
-        $method = (string)($r['Payment_Method'] ?? '');
-        // skip purely automatic/empty rows with no actionable method
-        [$stLabel, $stClass, $stKey] = fx_req_status($r['payment_Status'] ?? '');
-        $src = $prHasSource ? (string)($r['source'] ?? '') : '';
-        $purpose = fx_purpose($r['id_order'] ?? '');
-        if ($purpose === '') $purpose = fx_purpose($r['id_invoice'] ?? '');
-        $svcUser = fx_invoice_username($r['id_invoice'] ?? '');
-        $details = [];
-        if ($method !== '') $details[] = 'روش: ' . fx_method_label($method);
-        if ($purpose !== '') $details[] = $purpose;
-        if ($svcUser !== '') $details[] = 'سرویس: ' . $svcUser;
-        if ($stKey === 'reject' && !empty($r['dec_not_confirmed'])) $details[] = (string)$r['dec_not_confirmed'];
-        $rows[] = [
-            'sortid'  => 2000000000 + (int)($r['id'] ?? 0),
-            'sortts'  => fx_req_ts($r['time'] ?? ''),
-            'idlabel' => '#' . (int)($r['id'] ?? 0),
-            'type'    => fx_req_type($r['id_order'] ?? '', $method),
-            'source'  => ($src === 'miniapp') ? 'مینی‌اپ' : 'ربات',
-            'user'    => (string)($r['id_user'] ?? ''),
-            'details' => implode(' — ', $details),
-            'amount'  => (int)($r['price'] ?? 0),
-            'date'    => (string)($r['time'] ?? ''),
-            'stLabel' => $stLabel, 'stClass' => $stClass, 'stKey' => $stKey,
-            'del'     => in_array($stKey, ['reject','expire'], true) ? ('cancelService.php?delpr=' . (int)($r['id'] ?? 0)) : '',
-            'pk'      => 'pr:' . (int)($r['id'] ?? 0),
-            'fdok'    => in_array(strtolower((string)($r['payment_Status'] ?? '')), ['reject', 'rejected', 'expire', 'expired'], true),
-        ];
-    }
-} catch (\Throwable $e) { $flash['err'] = 'بارگذاری درخواست‌های پرداخت ناموفق: ' . $e->getMessage(); }
-
-// 2) cancel_service — service cancel requests
-try {
-    if ($reqQ !== '') {
-        $st = $pdo->prepare("SELECT * FROM cancel_service WHERE id_user LIKE :q1 OR username LIKE :q2 ORDER BY id DESC LIMIT 2000");
-        $st->execute([':q1' => $reqLike, ':q2' => $reqLike]);
-    } else {
-        $st = $pdo->query("SELECT * FROM cancel_service ORDER BY id DESC LIMIT 2000");
-    }
-    foreach (($st ? $st->fetchAll(PDO::FETCH_ASSOC) : []) as $r) {
-        [$stLabel, $stClass, $stKey] = fx_req_status($r['status'] ?? '');
-        $rows[] = [
-            'sortid'  => 1000000000 + (int)($r['id'] ?? 0),
-            'sortts'  => 0,
-            'idlabel' => 'C' . (int)($r['id'] ?? 0),
-            'type'    => 'لغو سرویس',
-            'source'  => 'ربات',
-            'user'    => (string)($r['id_user'] ?? ''),
-            'details' => 'سرویس: ' . (string)($r['username'] ?? '') . (trim((string)($r['description'] ?? '')) !== '' ? ' — ' . (string)$r['description'] : ''),
-            'amount'  => 0,
-            'date'    => '',
-            'stLabel' => $stLabel, 'stClass' => $stClass, 'stKey' => $stKey,
-            'del'     => 'cancelService.php?removeid=' . (int)($r['id'] ?? 0),
-            'pk'      => 'cs:' . (int)($r['id'] ?? 0),
-            'fdok'    => true,
-        ];
-    }
-} catch (\Throwable $e) {}
-
-// 3) national-net refund requests (invoice waiting for admin approval)
-try {
-    if ($reqQ !== '') {
-        $st = $pdo->prepare("SELECT id_invoice, id_user, username, name_product, price_product, time_sell FROM invoice WHERE Status = 'nm_refund_pending' AND (id_user LIKE :q1 OR username LIKE :q2 OR id_invoice LIKE :q3) ORDER BY id DESC LIMIT 500");
-        $st->execute([':q1' => $reqLike, ':q2' => $reqLike, ':q3' => $reqLike]);
-    } else {
-        $st = $pdo->query("SELECT id_invoice, id_user, username, name_product, price_product, time_sell FROM invoice WHERE Status = 'nm_refund_pending' ORDER BY id DESC LIMIT 500");
-    }
-    foreach (($st ? $st->fetchAll(PDO::FETCH_ASSOC) : []) as $r) {
-        $refundTs = fx_req_ts($r['time_sell'] ?? '');
-        $rows[] = [
-            'sortid'  => 1500000000,
-            'sortts'  => $refundTs,
-            'idlabel' => (string)($r['id_invoice'] ?? ''),
-            'type'    => 'بازگشت وجه (نت ملی)',
-            'source'  => 'ربات',
-            'user'    => (string)($r['id_user'] ?? ''),
-            'details' => 'سرویس: ' . (string)($r['username'] ?? '') . ' — ' . (string)($r['name_product'] ?? ''),
-            'amount'  => (int)($r['price_product'] ?? 0),
-            'date'    => $refundTs > 0 ? date('Y/m/d H:i:s', $refundTs) : '',
-            'stLabel' => 'در انتظار', 'stClass' => 'badge-warning', 'stKey' => 'wait',
-            'del'     => '',
-            'pk'      => '',
-        ];
-    }
-} catch (\Throwable $e) {}
-
-// newest first
-usort($rows, function ($a, $b) {
-    $t = ($b['sortts'] ?? 0) <=> ($a['sortts'] ?? 0);
-    if ($t !== 0) return $t;
-    return ($b['sortid'] ?? 0) <=> ($a['sortid'] ?? 0);
-});
-$df = fx_date_filter_resolve();
-if ($df['active']) {
-    $rows = array_values(array_filter($rows, function ($r) use ($df) {
-        if ((int)($r['sortts'] ?? 0) === 0) return true;
-        return fx_date_filter_matches_ts((int)$r['sortts'], $df['from'], $df['to']);
-    }));
-}
-
-$reqStatusOptions = [
-    'wait'   => 'در انتظار',
-    'ok'     => 'تاییدشده',
-    'reject' => 'ردشده',
-    'expire' => 'منقضی',
-    'other'  => 'سایر',
-];
-$reqStatus = fx_status_filter_current();
-if ($reqStatus !== '') {
-    $rows = array_values(array_filter($rows, function ($r) use ($reqStatus) {
-        return fx_status_filter_matches($reqStatus, (string)($r['stKey'] ?? ''));
-    }));
-}
-
-$reqStatusActive = $reqStatus !== '' && isset($reqStatusOptions[$reqStatus]);
-$reqFilterActive = $reqQ !== '' || $df['active'] || $reqStatusActive;
-$reqDateKeep = fx_filter_delete_date_params('', $df['active']);
-$reqFilterParams = array_merge(['q' => $reqQ !== '' ? $reqQ : null, 'status' => $reqStatusActive ? $reqStatus : null], $reqDateKeep);
-$reqFilterCriteria = fx_filter_delete_criteria($reqStatusActive ? $reqStatusOptions[$reqStatus] : '', $df, $reqQ);
-$reqFilterTokens = [];
-$reqFilterDeletable = 0;
-foreach ($rows as $r) {
-    if ((string)($r['pk'] ?? '') === '') continue;
-    $reqFilterTokens[] = (string)$r['pk'];
-    if (!empty($r['fdok'])) $reqFilterDeletable++;
-}
-if (fx_filter_delete_requested()) {
-    $fdMatched = $reqFilterActive ? count($rows) : 0;
-    $fdDeleted = ($reqFilterActive && $reqFilterTokens) ? fx_req_delete_tokens($pdo, $reqFilterTokens) : 0;
-    fx_filter_delete_redirect('cancelService.php', $reqFilterParams, $fdMatched, $fdDeleted);
-}
-$reqFilterNote = $reqFilterDeletable < count($rows)
-    ? 'از ' . number_format(count($rows)) . ' نتیجه فیلترشده فقط ' . number_format($reqFilterDeletable) . ' مورد طبق قوانین فعلی قابل حذف است و بقیه حذف نمی‌شوند.'
-    : '';
-
-foreach ($rows as $i => $r) {
-    $rows[$i]['idlabel'] = (string)($i + 1);
-}
-
-$reqPerPage = 5;
-$reqTotal = count($rows);
-$reqPages = max(1, (int)ceil($reqTotal / $reqPerPage));
-$reqPage = isset($_GET['p']) ? max(1, (int)$_GET['p']) : 1;
-if ($reqPage > $reqPages) $reqPage = $reqPages;
-$rows = array_slice($rows, ($reqPage - 1) * $reqPerPage, $reqPerPage);
+unset($adminWebPage);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl" data-theme="dark">
@@ -344,12 +78,12 @@ $rows = array_slice($rows, ($reqPage - 1) * $reqPerPage, $reqPerPage);
                 <div class="alert alert-danger" style="margin-bottom:14px;"><?php echo htmlspecialchars($flash['err'], ENT_QUOTES, 'UTF-8'); ?></div>
             <?php endif; ?>
 
-            <?php echo fx_bulk_delete_flash_html(); ?>
+            <?php echo \Faoxima\Admin\Web\Support\BulkDelete::fx_bulk_delete_flash_html(); ?>
 
-            <?php echo fx_filter_delete_flash_html(); ?>
+            <?php echo \Faoxima\Admin\Web\Support\BulkDelete::fx_filter_delete_flash_html(); ?>
 
             <div class="invoice-overview">
-                <div class="invoice-overview__main"><span class="invoice-overview__icon" aria-hidden="true"><?php echo icon('list', 'svg-icon'); ?></span><div><span><?php echo $reqFilterActive ? 'درخواست‌های مطابق فیلتر' : 'کل درخواست‌های فهرست'; ?></span><strong><?php echo strtr(number_format($reqTotal), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?><small>درخواست</small></strong></div></div>
+                <div class="invoice-overview__main"><span class="invoice-overview__icon" aria-hidden="true"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('list', 'svg-icon'); ?></span><div><span><?php echo $reqFilterActive ? 'درخواست‌های مطابق فیلتر' : 'کل درخواست‌های فهرست'; ?></span><strong><?php echo strtr(number_format($reqTotal), ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); ?><small>درخواست</small></strong></div></div>
                 <div class="invoice-overview__detail"><span>وضعیت انتخاب‌شده</span><b><?php echo htmlspecialchars($reqStatusActive ? $reqStatusOptions[$reqStatus] : 'همهٔ وضعیت‌ها', ENT_QUOTES, 'UTF-8'); ?></b></div>
                 <div class="invoice-overview__detail"><span>بازهٔ نمایش</span><b><?php echo htmlspecialchars($df['active'] ? $df['label'] : 'تمام تاریخ‌ها', ENT_QUOTES, 'UTF-8'); ?></b></div>
                 <?php if ($reqFilterActive): ?><a href="cancelService.php" class="btn btn-outline btn-sm invoice-reset">پاک‌کردن فیلترها</a><?php endif; ?>
@@ -357,17 +91,17 @@ $rows = array_slice($rows, ($reqPage - 1) * $reqPerPage, $reqPerPage);
 
             <details class="wrapper fx-page-list fx-filter-drawer fx-page-requests">
                 <summary class="fx-filter-drawer__summary">
-                    <span class="fx-filter-drawer__icon" aria-hidden="true"><?php echo icon('filter', 'svg-icon'); ?></span>
+                    <span class="fx-filter-drawer__icon" aria-hidden="true"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('filter', 'svg-icon'); ?></span>
                     <span class="fx-filter-drawer__text"><strong>جستجو و فیلترها</strong><small>جستجو، وضعیت و بازهٔ زمانی</small></span>
                     <span class="fx-filter-drawer__action"><span class="fx-filter-drawer__show">نمایش فیلترها</span><span class="fx-filter-drawer__hide">بستن فیلترها</span></span>
-                    <span class="fx-filter-drawer__chevron" aria-hidden="true"><?php echo icon('chevron-down', 'svg-icon'); ?></span>
+                    <span class="fx-filter-drawer__chevron" aria-hidden="true"><?php echo \Faoxima\Admin\Web\Support\Icons::icon('chevron-down', 'svg-icon'); ?></span>
                 </summary>
-            <?php echo fx_search_ui('cancelService.php', $reqQ, array_merge(['status' => $reqStatus !== '' ? $reqStatus : null], $reqDateKeep), 'جستجو در آیدی کاربر، شناسه سفارش یا کد پیگیری…'); ?>
+            <?php echo \Faoxima\Admin\Web\Support\SearchFilter::fx_search_ui('cancelService.php', $reqQ, array_merge(['status' => $reqStatus !== '' ? $reqStatus : null], $reqDateKeep), 'جستجو در آیدی کاربر، شناسه سفارش یا کد پیگیری…'); ?>
 
-            <?php echo fx_status_filter_ui('cancelService.php', $reqStatusOptions, $reqStatus, array_merge(['q' => $reqQ !== '' ? $reqQ : null], $reqDateKeep)); ?>
+            <?php echo \Faoxima\Admin\Web\Support\StatusFilter::fx_status_filter_ui('cancelService.php', $reqStatusOptions, $reqStatus, array_merge(['q' => $reqQ !== '' ? $reqQ : null], $reqDateKeep)); ?>
 
-            <?php $fxFd = fx_filter_delete_parts('cancelService.php', $reqFilterParams, $reqFilterActive ? $reqFilterDeletable : 0, $reqFilterCriteria, '', $reqFilterNote); ?>
-            <?php echo fx_date_filter_ui('cancelService.php', '', ['q' => $reqQ !== '' ? $reqQ : null, 'status' => $reqStatus !== '' ? $reqStatus : null], '', $fxFd['button'], $fxFd['form'], true); ?>
+            <?php $fxFd = \Faoxima\Admin\Web\Support\BulkDelete::fx_filter_delete_parts('cancelService.php', $reqFilterParams, $reqFilterActive ? $reqFilterDeletable : 0, $reqFilterCriteria, '', $reqFilterNote); ?>
+            <?php echo \Faoxima\Admin\Web\Support\DateFilter::fx_date_filter_ui('cancelService.php', '', ['q' => $reqQ !== '' ? $reqQ : null, 'status' => $reqStatus !== '' ? $reqStatus : null], '', $fxFd['button'], $fxFd['form'], true); ?>
             </details>
 
             <div class="card invoice-results">
@@ -417,7 +151,7 @@ $rows = array_slice($rows, ($reqPage - 1) * $reqPerPage, $reqPerPage);
                                 <td data-label="عملیات" class="cell-actions">
                                     <?php if ($row['del'] !== ''): ?>
                                         <a href="<?php echo htmlspecialchars($row['del'], ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-sm btn-soft-danger" onclick="return confirm('این درخواست حذف شود؟')">
-                                            <?php echo icon('trash', 'svg-icon'); ?> حذف
+                                            <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon'); ?> حذف
                                         </a>
                                     <?php else: ?>
                                         <span style="color:var(--text-muted); font-size:11px;">—</span>
@@ -432,16 +166,16 @@ $rows = array_slice($rows, ($reqPage - 1) * $reqPerPage, $reqPerPage);
                     foreach (['dpreset', 'ddays', 'dfrom', 'dto', 'status'] as $dk) {
                         if (isset($_GET[$dk]) && $_GET[$dk] !== '') $reqKeep[$dk] = $_GET[$dk];
                     }
-                    echo fx_pager_html($reqPage, $reqPages, $reqTotal, count($rows), 'cancelService.php', $reqKeep);
+                    echo \Faoxima\Admin\Web\Support\Pagination::fx_pager_html($reqPage, $reqPages, $reqTotal, count($rows), 'cancelService.php', $reqKeep);
                     ?>
                 </div>
                 <div style="padding:12px 0;">
                     <button type="submit" class="btn btn-soft-danger btn-sm js-bulk-delete-btn" style="display:none;" onclick="return confirm('آیا از حذف درخواست‌های انتخاب‌شده مطمئن هستید؟')">
-                        <?php echo icon('trash', 'svg-icon'); ?> حذف انتخاب‌شده‌ها
+                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon'); ?> حذف انتخاب‌شده‌ها
                     </button>
                 </div>
                 <div class="page-head__sub" style="margin-top:12px;">
-                    <?php echo icon('lightbulb','svg-icon svg-sm'); ?> تأیید/رد نهاییِ پرداخت‌ها و افزایش/کاهش موجودی همچنان از داخل ربات انجام می‌شود (تا حساب‌داری دوبار اعمال نشود)؛ این صفحه همه‌ی درخواست‌ها را برای مشاهده، جست‌وجو و فیلتر یک‌جا نمایش می‌دهد.
+                    <?php echo \Faoxima\Admin\Web\Support\Icons::icon('lightbulb','svg-icon svg-sm'); ?> تأیید/رد نهاییِ پرداخت‌ها و افزایش/کاهش موجودی همچنان از داخل ربات انجام می‌شود (تا حساب‌داری دوبار اعمال نشود)؛ این صفحه همه‌ی درخواست‌ها را برای مشاهده، جست‌وجو و فیلتر یک‌جا نمایش می‌دهد.
                 </div>
                 </form>
             </div>

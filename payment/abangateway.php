@@ -30,16 +30,9 @@ require_once __DIR__ . '/../jdf.php';
 if (is_file(__DIR__ . '/../vendor/autoload.php')) {
     require_once __DIR__ . '/../vendor/autoload.php';
 }
-require_once __DIR__ . '/../lib/PaymentConfirm.php';
+require_once __DIR__ . '/../src/bootstrap.php';
 
-function abangateway_callback_log(string $type, string $message, array $context = []): void
-{
-    if (function_exists('rx_log_event')) {
-        rx_log_event($type, $message, $context);
-        return;
-    }
-    error_log('[abangateway] ' . $type . ': ' . $message . ' ' . json_encode($context, JSON_UNESCAPED_UNICODE));
-}
+
 
 // The buyer's return carries ?order=…; the gateway's push carries ?order_id=….
 $order = '';
@@ -56,8 +49,8 @@ $wantsPage = stripos((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'text/html') !== 
 $state = 'missing';
 $payment = null;
 $resumeDelivery = false;
-if ($order !== '' && function_exists('select')) {
-    $row = select('Payment_report', '*', 'id_order', $order, 'select');
+if ($order !== '' && \Faoxima\Core\Database\Db::runtimeReady()) {
+    $row = \Faoxima\Core\Database\Db::select('Payment_report', '*', 'id_order', $order, 'select');
     if (is_array($row) && ($row['Payment_Method'] ?? '') === 'abangateway') {
         $payment = $row;
         $resumeDelivery = ($row['payment_Status'] ?? '') === 'paid' && (int)($row['direct_payment_done'] ?? 0) === 0;
@@ -65,7 +58,7 @@ if ($order !== '' && function_exists('select')) {
     }
 }
 
-if ($state === 'waiting' && ($resumeDelivery || function_exists('abangatewayVerifyPayment'))) {
+if ($state === 'waiting' && ($resumeDelivery || is_callable([\Faoxima\Payments\Gateways\Abangateway\Client::class, 'verifyPayment']))) {
     // The authority this bot stored when it made the link — never the one in
     // the request.
     $authority = trim((string) ($payment['dec_not_confirmed'] ?? ''));
@@ -74,22 +67,28 @@ if ($state === 'waiting' && ($resumeDelivery || function_exists('abangatewayVeri
     }
     $verify = $resumeDelivery
         ? ['paid' => true]
-        : abangatewayVerifyPayment($authority, $order, (int) ($payment['price'] ?? 0));
+        : \Faoxima\Payments\Gateways\Abangateway\Client::verifyPayment($authority, $order, (int) ($payment['price'] ?? 0));
 
     if (!empty($verify['paid'])) {
         try {
-            $result = payment_confirm_paid($order, 'chashbackabangateway', [
+            $result = \Faoxima\Payments\Settlement\Confirmation::confirmPaid($pdo, $setting ?? \Faoxima\Core\Database\Db::select('setting', '*'), $order, 'chashbackabangateway', [
                 'method' => 'آبان گیت وی 💳',
                 'extra_lines' => $authority !== '' ? ['🔗 شناسه پرداخت آبان گیت وی: ' . $authority] : [],
             ]);
-            // `ok` is false when another request settled it a moment ago;
-            // either way the order is paid now.
-            $state = 'paid';
+            if (empty($result['verified'])) {
+                $reason = (string) ($result['reason'] ?? 'confirmation_not_persisted');
+                if ($reason !== 'cancelled') {
+                    throw new RuntimeException($reason);
+                }
+                $state = 'waiting';
+            } else {
+                $state = 'paid';
+            }
             if (empty($result['ok'])) {
-                abangateway_callback_log('ABANGATEWAY_ALREADY_SETTLED', (string) ($result['reason'] ?? 'noop'), ['order_id' => $order]);
+                \Faoxima\Payments\Gateways\Abangateway\Callbacks::abangateway_callback_log('ABANGATEWAY_ALREADY_SETTLED', (string) ($result['reason'] ?? 'noop'), ['order_id' => $order]);
             }
         } catch (Throwable $e) {
-            abangateway_callback_log('ABANGATEWAY_CONFIRM_FAILED', 'payment_confirm_paid threw', [
+            \Faoxima\Payments\Gateways\Abangateway\Callbacks::abangateway_callback_log('ABANGATEWAY_CONFIRM_FAILED', 'payment_confirm_paid threw', [
                 'order_id' => $order,
                 'error' => $e->getMessage(),
             ]);
@@ -101,7 +100,7 @@ if ($state === 'waiting' && ($resumeDelivery || function_exists('abangatewayVeri
             }
         }
     } elseif (in_array((string) ($verify['message'] ?? ''), ['order mismatch', 'amount mismatch'], true)) {
-        abangateway_callback_log('ABANGATEWAY_VERIFY_MISMATCH', (string) $verify['message'], [
+        \Faoxima\Payments\Gateways\Abangateway\Callbacks::abangateway_callback_log('ABANGATEWAY_VERIFY_MISMATCH', (string) $verify['message'], [
             'order_id' => $order,
             'billed_toman' => (int) ($payment['price'] ?? 0),
             'reported_rial' => (int) ($verify['amount_rial'] ?? 0),
@@ -122,16 +121,16 @@ $botUsername = '';
 if (isset($usernamebot) && is_string($usernamebot) && trim($usernamebot) !== '') {
     $botUsername = ltrim(trim((string) $usernamebot), '@');
 }
-if ($botUsername === '' && function_exists('select')) {
-    $row = select('setting', 'usernamebot', null, null, 'select');
+if ($botUsername === '' && \Faoxima\Core\Database\Db::runtimeReady()) {
+    $row = \Faoxima\Core\Database\Db::select('setting', 'usernamebot', null, null, 'select');
     if (is_array($row) && !empty($row['usernamebot'])) {
         $botUsername = ltrim(trim((string) $row['usernamebot']), '@');
     }
 }
 
 $miniappName = 'miniapp';
-if (function_exists('select')) {
-    $miniRow = select('shopSetting', '*', 'Namevalue', 'miniapp_short_name', 'select');
+if (\Faoxima\Core\Database\Db::runtimeReady()) {
+    $miniRow = \Faoxima\Core\Database\Db::select('shopSetting', '*', 'Namevalue', 'miniapp_short_name', 'select');
     if (is_array($miniRow) && !empty($miniRow['value'])) {
         $miniappName = preg_replace('/[^A-Za-z0-9_]/', '', (string) $miniRow['value']);
         if ($miniappName === '') $miniappName = 'miniapp';

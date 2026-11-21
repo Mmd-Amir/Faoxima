@@ -54,7 +54,6 @@ su -s /bin/sh -g "$PHP_RUNTIME_GROUP" "$PHP_RUNTIME_USER" -c '
         fi
     }
     for d in . cron cronbot cronbot/.runtime logs; do check "$d"; done
-    for m in re/rx/*/manifest.php; do [ -f "$m" ] && check "${m%/manifest.php}"; done
     [ ! -d storage/private ] || check storage/private
     for f in config.php function.php cron/cron.php; do
         if [ ! -r "$f" ]; then
