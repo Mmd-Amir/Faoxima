@@ -128,7 +128,7 @@ final class PaymentMethods
             ];
             }
             $step_payment['inline_keyboard'][] = [
-                    \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => "❌ بستن لیست", 'callback_data' => "colselist"], 'colselist', $_rx_pay_styles)
+                    \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_close_list'), 'callback_data' => "colselist"], 'colselist', $_rx_pay_styles)
             ];
             $step_payment = json_encode($step_payment);
 

@@ -4232,6 +4232,14 @@ try {
     file_put_contents('error_log', '[table.php kb defaults cleanup] ' . $rxSeedErr->getMessage() . "\n", FILE_APPEND);
 }
 
+try {
+    foreach (\Faoxima\Core\Database\TextbotTemporary::ddl() as $rxTextbotTempDdl) {
+        $pdo->exec($rxTextbotTempDdl);
+    }
+} catch (Throwable $e) {
+    file_put_contents('error_log', '[table.php textbot temp tables] ' . $e->getMessage() . "\n", FILE_APPEND);
+}
+
 if (!empty($rxWalletSchemaError)) {
     throw new RuntimeException('wallet_ledger upgrade failed: ' . $rxWalletSchemaError);
 }

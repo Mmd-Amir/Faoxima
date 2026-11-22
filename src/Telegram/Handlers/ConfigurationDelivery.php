@@ -82,14 +82,14 @@ final class ConfigurationDelivery
                     sendmessage($from_id, $datatextbot['dyn_errors_config_read_error'] ?? "❌  خطا در خواندن اطلاعات کانفیگ با پشتیبانی در ارتباط باشید.", null, 'html');
                     return;
                 }
-                \Faoxima\Telegram\Conversation\OnboardingHelpers::rx_config_deliver_list($from_id, $message_id, "📌 از لیست زیر یک کانفیگ را انتخاب استفاده نمایید.", \Faoxima\Telegram\Keyboard\LegacyFunctionsHelpers::keyboard_config($manualConfigs, $nameloc['id_invoice']));
+                \Faoxima\Telegram\Conversation\OnboardingHelpers::rx_config_deliver_list($from_id, $message_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_select_config_from_list'), \Faoxima\Telegram\Keyboard\LegacyFunctionsHelpers::keyboard_config($manualConfigs, $nameloc['id_invoice']));
                 return;
             }
             $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
             if ($DataUserOut['status'] == "Unsuccessful") {
                 $offlinePanel = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
                 $offlineKeyboard = json_encode(['inline_keyboard' => [
-                    [['text' => '♻️ تمدید سرویس', 'callback_data' => 'extend_' . $nameloc['id_invoice']], ['text' => '🛒 خرید سرویس جدید', 'callback_data' => 'buy_service']],
+                    [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_renew'), 'callback_data' => 'extend_' . $nameloc['id_invoice']], ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_buy_new'), 'callback_data' => 'buy_service']],
                     [['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => 'backorder']]
                 ]]);
                 sendmessage($from_id, $datatextbot['dyn_errors_panel_connection_error'] ?? "❌ سامانه استعلام سرویس مورد نظر درحال حاضر در دسترس نیست.", $offlineKeyboard, 'html');
@@ -116,7 +116,7 @@ final class ConfigurationDelivery
                 sendmessage($from_id, \Faoxima\Telegram\Keyboard\LegacyFunctionsHelpers::keyboard_config_unavailable_text($DataUserOut, 'invalid'), null, 'html');
                 return;
             }
-            \Faoxima\Telegram\Conversation\OnboardingHelpers::rx_config_deliver_list($from_id, $message_id, "📌 از لیست زیر یک کانفیگ را انتخاب استفاده نمایید.", $configKeyboard);
+            \Faoxima\Telegram\Conversation\OnboardingHelpers::rx_config_deliver_list($from_id, $message_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_select_config_from_list'), $configKeyboard);
             break;
         case 'config_item':
             $id_invoice = $dataget[1];
@@ -156,7 +156,7 @@ final class ConfigurationDelivery
                 }
                 if ($dataget[2] == "1520") {
                     for ($i = 0; $i < count($manualConfigs); ++$i) {
-                        sendmessage($from_id, "<code>" . htmlspecialchars($manualConfigs[$i], ENT_QUOTES, 'UTF-8') . "</code>", \Faoxima\Telegram\Support\Transport::rx_copy_button_keyboard($manualConfigs[$i], '📋 کپی کانفیگ', null, 'config_copy:' . substr(sha1($manualConfigs[$i]), 0, 16)), 'HTML');
+                        sendmessage($from_id, "<code>" . htmlspecialchars($manualConfigs[$i], ENT_QUOTES, 'UTF-8') . "</code>", \Faoxima\Telegram\Support\Transport::rx_copy_button_keyboard($manualConfigs[$i], \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_copy_config'), null, 'config_copy:' . substr(sha1($manualConfigs[$i]), 0, 16)), 'HTML');
                     }
                     return;
                 }
@@ -164,7 +164,7 @@ final class ConfigurationDelivery
                     sendmessage($from_id, $datatextbot['dyn_errors_config_read_from_panel_error'] ?? "❌ خطا در خواندن کانفیگ از پنل.", null, 'html');
                     return;
                 }
-                sendmessage($from_id, "<code>" . htmlspecialchars($manualConfigs[$dataget[2]], ENT_QUOTES, 'UTF-8') . "</code>", \Faoxima\Telegram\Support\Transport::rx_copy_button_keyboard($manualConfigs[$dataget[2]], '📋 کپی کانفیگ', null, 'config_copy:' . substr(sha1($manualConfigs[$dataget[2]]), 0, 16)), 'HTML');
+                sendmessage($from_id, "<code>" . htmlspecialchars($manualConfigs[$dataget[2]], ENT_QUOTES, 'UTF-8') . "</code>", \Faoxima\Telegram\Support\Transport::rx_copy_button_keyboard($manualConfigs[$dataget[2]], \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_copy_config'), null, 'config_copy:' . substr(sha1($manualConfigs[$dataget[2]]), 0, 16)), 'HTML');
                 return;
             }
             $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
@@ -208,7 +208,7 @@ final class ConfigurationDelivery
                         $allSingleTemp = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'rxconf-' . bin2hex(random_bytes(8)) . '.conf';
                         try {
                             if (file_put_contents($allSingleTemp, (string) $allSingleFile['value']) === false) {
-                                sendmessage($from_id, '❌ خطا در آماده‌سازی فایل کانفیگ.', null, 'HTML');
+                                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_config_file_prepare_failed'), null, 'HTML');
                                 return;
                             }
                             sendDocument($from_id, $allSingleTemp, $allSingleResolved['caption'], $allSingleResolved['filename'], $configDelivery);
@@ -228,7 +228,7 @@ final class ConfigurationDelivery
                     if (method_exists(\Faoxima\Services\Panels\Drivers\JovadPanel::class, 'jovadIsProtocolMarker') && \Faoxima\Services\Panels\Drivers\JovadPanel::jovadIsProtocolMarker($allConfigItem)) {
                         $jovadAllResult = \Faoxima\Services\Panels\Drivers\JovadPanel::jovadpanelDeliverMarkerFiles($from_id, $_configgetPanelChk, $allConfigItem, null);
                         if (empty($jovadAllResult['ok'])) {
-                            sendmessage($from_id, htmlspecialchars((string) ($jovadAllResult['msg'] ?? 'خطا در دریافت فایل کانفیگ؛ دوباره تلاش کنید.'), ENT_QUOTES, 'UTF-8'), null, 'html');
+                            sendmessage($from_id, htmlspecialchars((string) ($jovadAllResult['msg'] ?? \Faoxima\Telegram\Support\MessageTemplates::plain('service_config_file_fetch_failed_default')), ENT_QUOTES, 'UTF-8'), null, 'html');
                             return;
                         }
                         continue;
@@ -249,7 +249,7 @@ final class ConfigurationDelivery
                             $allWgDest = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'rxconf-' . bin2hex(random_bytes(8)) . '.conf';
                             try {
                                 if (file_put_contents($allWgDest, $allWgConf['conf']) === false) {
-                                    sendmessage($from_id, '❌ خطا در آماده‌سازی فایل کانفیگ.', null, 'HTML');
+                                    sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_config_file_prepare_failed'), null, 'HTML');
                                     return;
                                 }
                                 sendDocument($from_id, $allWgDest, $allWgResolved['caption'], $allWgName, $configDelivery);
@@ -276,7 +276,7 @@ final class ConfigurationDelivery
                         $allRebeccaTemp = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'rxconf-' . bin2hex(random_bytes(8)) . '.tmp';
                         try {
                             if (!\Faoxima\Services\Panels\Drivers\Rebecca::rebeccaDownloadConfigFile($allRebeccaInfo['url'], $allRebeccaTemp)) {
-                                sendmessage($from_id, '❌ خطا در دریافت فایل کانفیگ از پنل.', null, 'HTML');
+                                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_config_file_panel_failed'), null, 'HTML');
                                 return;
                             }
                             sendDocument($from_id, $allRebeccaTemp, $allRebeccaResolved['caption'], $allRebeccaResolved['filename'], $configDelivery);
@@ -294,7 +294,7 @@ final class ConfigurationDelivery
                     if (preg_match('/^https?:\/\//i', $allConfigItem)) {
                         $allConfigItem = strtok($allConfigItem, '#');
                     }
-                    sendmessage($from_id, "<code>{$allConfigItem}</code>", \Faoxima\Telegram\Support\Transport::rx_copy_button_keyboard($allConfigItem, '📋 کپی کانفیگ', null, 'config_copy:' . substr(sha1($allConfigItem), 0, 16)), 'HTML');
+                    sendmessage($from_id, "<code>{$allConfigItem}</code>", \Faoxima\Telegram\Support\Transport::rx_copy_button_keyboard($allConfigItem, \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_copy_config'), null, 'config_copy:' . substr(sha1($allConfigItem), 0, 16)), 'HTML');
                 }
                 return;
             }
@@ -347,7 +347,7 @@ final class ConfigurationDelivery
                 ], JSON_UNESCAPED_UNICODE);
                 $jovadSingleResult = \Faoxima\Services\Panels\Drivers\JovadPanel::jovadpanelDeliverMarkerFiles($from_id, $_configgetPanelChk, $selectedConfig, $jovadSingleKeyboard);
                 if (empty($jovadSingleResult['ok'])) {
-                    sendmessage($from_id, htmlspecialchars((string) ($jovadSingleResult['msg'] ?? 'خطا در دریافت فایل کانفیگ؛ دوباره تلاش کنید.'), ENT_QUOTES, 'UTF-8'), null, 'html');
+                    sendmessage($from_id, htmlspecialchars((string) ($jovadSingleResult['msg'] ?? \Faoxima\Telegram\Support\MessageTemplates::plain('service_config_file_fetch_failed_default')), ENT_QUOTES, 'UTF-8'), null, 'html');
                 }
                 return;
             }
@@ -384,7 +384,7 @@ final class ConfigurationDelivery
                 && !$isStructuredConnectionInfo
                 && !preg_match('#^(tg|tg-proxy|proxy|wireguard|wg|vpn|awg|amneziawg)://#i', trim($selectedConfig))
                 && trim($selectedConfig) !== '';
-            $selectedConfigCopyKb = \Faoxima\Telegram\Support\Transport::rx_copy_button_keyboard($selectedConfig, '📋 کپی کانفیگ', null, 'config_copy:' . substr(sha1($selectedConfig), 0, 16));
+            $selectedConfigCopyKb = \Faoxima\Telegram\Support\Transport::rx_copy_button_keyboard($selectedConfig, \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_copy_config'), null, 'config_copy:' . substr(sha1($selectedConfig), 0, 16));
             if ($qrWantedForConfig) {
                 $qrCode = \Faoxima\Telegram\Support\QrAndKeys::createqrcode($selectedConfig);
                 if ($qrCode === null) {

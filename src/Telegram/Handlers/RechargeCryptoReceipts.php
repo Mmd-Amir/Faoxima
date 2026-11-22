@@ -41,7 +41,7 @@ final class RechargeCryptoReceipts
             ][$rccCur] ?? ($rccWalletsFa[$rccCur] ?? $rccCur);
             $askAmount = "💎 ارز انتخابی: <b>{$rccCurFa}</b>\n\n"
                        . "🪙 لطفاً <b>مقدار ارز پرداخت‌شده</b> را وارد کنید (مثلاً <code>0.2</code> یا <code>1.25</code>):";
-            $cancelKb = json_encode(['inline_keyboard' => [[['text' => '❌ انصراف', 'callback_data' => 'rcc_cancel']]]], JSON_UNESCAPED_UNICODE);
+            $cancelKb = json_encode(['inline_keyboard' => [[['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_cancel'), 'callback_data' => 'rcc_cancel']]]], JSON_UNESCAPED_UNICODE);
             if ($message_id) {
                 Editmessagetext($from_id, $message_id, $askAmount, $cancelKb);
             } else {
@@ -68,7 +68,7 @@ final class RechargeCryptoReceipts
             }
             \Faoxima\Core\Database\Db::update("user", "Processing_value_tow", $coinAmount, "id", $from_id);
             \Faoxima\Core\Database\Db::update("user", "Processing_value", (string) $calcIrr, "id", $from_id);
-            $cancelKb = json_encode(['inline_keyboard' => [[['text' => '❌ انصراف', 'callback_data' => 'rcc_cancel']]]], JSON_UNESCAPED_UNICODE);
+            $cancelKb = json_encode(['inline_keyboard' => [[['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_cancel'), 'callback_data' => 'rcc_cancel']]]], JSON_UNESCAPED_UNICODE);
             sendmessage(
                 $from_id,
                 "💰 <b>محاسبه‌ی خودکار قیمت</b>\n\n"
@@ -93,7 +93,7 @@ final class RechargeCryptoReceipts
             $photoKb = json_encode([
                 'inline_keyboard' => [
                     [['text' => '⏭ ارسال بدون عکس (رد شدن)', 'callback_data' => 'rcc_skip_photo']],
-                    [['text' => '❌ انصراف',                    'callback_data' => 'rcc_cancel']],
+                    [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_cancel'),                    'callback_data' => 'rcc_cancel']],
                 ],
             ], JSON_UNESCAPED_UNICODE);
             sendmessage($from_id, $datatextbot['dyn_wallet_ask_receipt_photo'] ?? "📸 <b>عکس رسید/اسکرین‌شات تراکنش</b> را ارسال کنید (اختیاری).\n\nاگر عکسی ندارید، روی دکمه «ارسال بدون عکس» بزنید.", $photoKb, 'HTML');

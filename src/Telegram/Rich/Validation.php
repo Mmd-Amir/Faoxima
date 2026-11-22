@@ -415,7 +415,7 @@ final class Validation
             return $result;
         }
         $result['valid'] = false;
-        if (!empty($context['media_count'])) {
+        if (!empty($context['media_count']) && isset($richMessage['media'])) {
             $result['reason'] = 'media_caption_table_unsupported';
             return $result;
         }

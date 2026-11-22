@@ -51,11 +51,9 @@ final class FeatureFunctionsHelpers
 
     public static function rxSendPurchaseDurationPrompt($fromId, $panel, $agent, $price, $min, $max, $backKeyboard): void
 {
-    $prompt = "⌛️ زمان سرویس خود را انتخاب نمایید
-📌 تعرفه هر روز  : " . \Faoxima\Core\Support\Formatting::rxFormatToman($price) . "  تومان
-⚠️ حداقل زمان $min روز  و حداکثر $max روز  می توانید تهیه کنید";
+    $prompt = \Faoxima\Telegram\Support\MessageTemplates::get('service_custom_duration_prompt', ['price' => \Faoxima\Core\Support\Formatting::rxFormatToman($price), 'min' => $min, 'max' => $max]);
     if (\Faoxima\Orders\Pricing\CustomDuration::fx_duration_config($panel, $agent)['enabled']) {
-        sendmessage($fromId, 'مدت سرویس را انتخاب کنید:', \Faoxima\Orders\Pricing\CustomDuration::fx_duration_keyboard($panel, $agent), 'HTML');
+        sendmessage($fromId, \Faoxima\Telegram\Support\MessageTemplates::get('service_select_duration'), \Faoxima\Orders\Pricing\CustomDuration::fx_duration_keyboard($panel, $agent), 'HTML');
     } else {
         sendmessage($fromId, $prompt, $backKeyboard, 'html');
     }
@@ -95,20 +93,20 @@ final class FeatureFunctionsHelpers
     if (!$hasMessage && empty($text)) { return false; }
     $trRecipientId = trim((string)$text);
     if (!ctype_digit($trRecipientId)) {
-        sendmessage($from_id, "❌ آیدی عددی نامعتبر است. آیدی عددی تلگرام کاربر مقصد را مجددا ارسال کنید:", null, 'HTML');
+        sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('wallet_transfer_invalid_id'), null, 'HTML');
         return false;
     }
     if ($trRecipientId === (string)$from_id) {
-        sendmessage($from_id, "❌ نمی‌توانید به خودتان موجودی انتقال دهید. آیدی عددی دیگری ارسال کنید:", null, 'HTML');
+        sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('wallet_transfer_self'), null, 'HTML');
         return false;
     }
     $trRecipientUser = \Faoxima\Core\Database\Db::select("user", "*", "id", $trRecipientId, "select");
     if (empty($trRecipientUser)) {
-        sendmessage($from_id, "❌ کاربری با این آیدی یافت نشد. آیدی عددی تلگرام کاربر مقصد را مجددا ارسال کنید:", null, 'HTML');
+        sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('wallet_transfer_recipient_not_found'), null, 'HTML');
         return false;
     }
     \Faoxima\Core\Database\Db::update("user", "Processing_value_one", $trRecipientId, "id", $from_id);
-    sendmessage($from_id, sprintf("💸 مبلغ مورد نظر برای انتقال را به تومان وارد کنید:\n✅ حداقل مبلغ %s تومان می‌باشد", number_format(RX_MIN_TRANSFER_AMOUNT)), null, 'HTML');
+    sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('wallet_transfer_ask_amount', ['min' => number_format(RX_MIN_TRANSFER_AMOUNT)]), null, 'HTML');
     \Faoxima\Telegram\Navigation\Steps::step('getTransferAmount', $from_id);
     return true;
 }
@@ -118,23 +116,23 @@ final class FeatureFunctionsHelpers
     if (!$hasMessage && empty($text)) { return false; }
     $trAmount = trim((string)$text);
     if (!ctype_digit($trAmount) || (int)$trAmount <= 0) {
-        sendmessage($from_id, "❌ مبلغ نامعتبر است. مبلغ را به تومان و به صورت عدد ارسال کنید:", null, 'HTML');
+        sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('wallet_transfer_amount_invalid'), null, 'HTML');
         return false;
     }
     $trAmount = (int)$trAmount;
     if ($trAmount < RX_MIN_TRANSFER_AMOUNT) {
-        sendmessage($from_id, sprintf("❌ مبلغ باید حداقل %s تومان باشد. مجددا ارسال کنید:", number_format(RX_MIN_TRANSFER_AMOUNT)), null, 'HTML');
+        sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('wallet_transfer_amount_below_min', ['min' => number_format(RX_MIN_TRANSFER_AMOUNT)]), null, 'HTML');
         return false;
     }
     if ((float)$user['Balance'] < $trAmount) {
-        sendmessage($from_id, "❌ موجودی کیف پول شما کافی نیست.", null, 'HTML');
+        sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('wallet_transfer_insufficient_balance'), null, 'HTML');
         \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
         return false;
     }
     $trRecipientId = $user['Processing_value_one'];
     $trRecipientUser = \Faoxima\Core\Database\Db::select("user", "*", "id", $trRecipientId, "select");
     if (empty($trRecipientUser)) {
-        sendmessage($from_id, "❌ کاربر مقصد دیگر معتبر نیست. عملیات لغو شد.", null, 'HTML');
+        sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('wallet_transfer_recipient_invalid_canceled'), null, 'HTML');
         \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
         return false;
     }
@@ -146,11 +144,11 @@ final class FeatureFunctionsHelpers
         : $trRecipientId;
     $trConfirmKb = json_encode(['inline_keyboard' => [
         [
-            \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => '✅ تایید و انتقال', 'callback_data' => 'transferbal_confirm_' . $trOperationId], 'transferbal_confirm', $_rx_acc_s),
-            \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => '❌ انصراف', 'callback_data' => 'transferbal_cancel'], 'transferbal_cancel', $_rx_acc_s),
+            \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_confirm_balance_transfer'), 'callback_data' => 'transferbal_confirm_' . $trOperationId], 'transferbal_confirm', $_rx_acc_s),
+            \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_cancel'), 'callback_data' => 'transferbal_cancel'], 'transferbal_cancel', $_rx_acc_s),
         ],
     ]], JSON_UNESCAPED_UNICODE);
-    sendmessage($from_id, sprintf("🔄 تایید انتقال موجودی\n\n👤 گیرنده: %s\n💰 مبلغ: %s تومان\n\nآیا از انجام این تراکنش اطمینان دارید؟", $trRecipientLabel, number_format($trAmount)), $trConfirmKb, 'HTML');
+    sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('wallet_transfer_confirm', ['recipient' => $trRecipientLabel, 'amount' => number_format($trAmount)]), $trConfirmKb, 'HTML');
     \Faoxima\Telegram\Navigation\Steps::step('getTransferConfirm', $from_id);
     return true;
 }
@@ -170,13 +168,13 @@ final class FeatureFunctionsHelpers
     $trAmount = (int)$user['Processing_value'];
     $trRecipientId = $user['Processing_value_one'];
     if ($trAmount < RX_MIN_TRANSFER_AMOUNT || $trRecipientId === '' || $trRecipientId === null) {
-        Editmessagetext($from_id, $message_id, "❌ اطلاعات تراکنش نامعتبر است. مجددا تلاش کنید.", null, 'HTML');
+        Editmessagetext($from_id, $message_id, \Faoxima\Telegram\Support\MessageTemplates::get('wallet_transfer_operation_invalid'), null, 'HTML');
         \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
         return false;
     }
     $trRecipientUser = \Faoxima\Core\Database\Db::select("user", "*", "id", $trRecipientId, "select");
     if (empty($trRecipientUser)) {
-        Editmessagetext($from_id, $message_id, "❌ کاربر مقصد دیگر معتبر نیست. عملیات لغو شد.", null, 'HTML');
+        Editmessagetext($from_id, $message_id, \Faoxima\Telegram\Support\MessageTemplates::get('wallet_transfer_recipient_invalid_canceled'), null, 'HTML');
         \Faoxima\Core\Database\Db::update("user", "Processing_value", "0", "id", $from_id);
         \Faoxima\Core\Database\Db::update("user", "Processing_value_one", "", "id", $from_id);
         \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
@@ -185,8 +183,8 @@ final class FeatureFunctionsHelpers
     $trCharge = \Faoxima\Wallet\Transfers\Transfers::transfer($pdo, (string)$from_id, (string)$trRecipientId, $trAmount, $trOperationId);
     if (empty($trCharge['ok'])) {
         $trError = ($trCharge['reason'] ?? '') === 'insufficient_balance'
-            ? '❌ موجودی کیف پول شما کافی نیست.'
-            : '❌ انتقال تکمیل نشد؛ با شناسه ' . $trOperationId . ' با پشتیبانی در ارتباط باشید.';
+            ? \Faoxima\Telegram\Support\MessageTemplates::get('wallet_transfer_insufficient_balance')
+            : \Faoxima\Telegram\Support\MessageTemplates::get('wallet_transfer_incomplete_contact_support', ['operation_id' => $trOperationId]);
         Editmessagetext($from_id, $message_id, $trError, null, 'HTML');
         \Faoxima\Core\Database\Db::update("user", "Processing_value", "0", "id", $from_id);
         \Faoxima\Core\Database\Db::update("user", "Processing_value_one", "", "id", $from_id);
@@ -199,11 +197,11 @@ final class FeatureFunctionsHelpers
     \Faoxima\Core\Database\Db::update("user", "Processing_value", "0", "id", $from_id);
     \Faoxima\Core\Database\Db::update("user", "Processing_value_one", "", "id", $from_id);
     \Faoxima\Core\Database\Db::update("user", "Processing_value_tow", "0", "id", $from_id);
-    Editmessagetext($from_id, $message_id, sprintf("✅ انتقال موجودی با موفقیت انجام شد.\n\n💰 مبلغ: %s تومان\n👤 گیرنده: %s\n🧾 شناسه انتقال: <code>%s</code>", number_format($trAmount), $trRecipientId, $trOperationId), null, 'HTML');
+    Editmessagetext($from_id, $message_id, \Faoxima\Telegram\Support\MessageTemplates::get('wallet_transfer_success', ['amount' => number_format($trAmount), 'recipient' => $trRecipientId, 'operation_id' => $trOperationId]), null, 'HTML');
     $trSenderUsername = trim((string)($user['username'] ?? ''));
-    $trSenderLines = $trSenderUsername !== '' ? "نام کاربری: @{$trSenderUsername}\n" : '';
-    $trSenderLines .= "آیدی عددی: <code>{$from_id}</code>";
-    $trNotifyText = sprintf("مبلغ %s تومان به کیف پول شما واریز شد.\n\n<blockquote>%s</blockquote>", number_format($trAmount), $trSenderLines);
+    $trSenderLines = $trSenderUsername !== '' ? \Faoxima\Telegram\Support\MessageTemplates::get('wallet_transfer_sender_username_line', ['username' => $trSenderUsername]) : '';
+    $trSenderLines .= \Faoxima\Telegram\Support\MessageTemplates::get('wallet_transfer_sender_id_line', ['id' => $from_id]);
+    $trNotifyText = \Faoxima\Telegram\Support\MessageTemplates::get('wallet_transfer_received_notice', ['amount' => number_format($trAmount)], ['sender' => $trSenderLines]);
     if (empty($trCharge['replayed'])) sendmessage($trRecipientId, $trNotifyText, null, 'HTML');
     \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
     return true;

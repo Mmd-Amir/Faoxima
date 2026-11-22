@@ -202,7 +202,7 @@ final class ManualReview
                 $cashbackAmount = 0;
             }
             if ($cashbackAmount > 0 && function_exists('sendmessage')) {
-                sendmessage($balanceUser['id'], "🎁 کاربر عزیز مبلغ " . (method_exists(\Faoxima\Core\Support\Formatting::class, 'rxFormatToman') ? \Faoxima\Core\Support\Formatting::rxFormatToman($cashbackAmount) : number_format($cashbackAmount)) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.", null, 'HTML');
+                sendmessage($balanceUser['id'], \Faoxima\Telegram\Support\MessageTemplates::get('notify_cashback_gift', ['amount' => (method_exists(\Faoxima\Core\Support\Formatting::class, 'rxFormatToman') ? \Faoxima\Core\Support\Formatting::rxFormatToman($cashbackAmount) : number_format($cashbackAmount))]), null, 'HTML');
             }
             $balanceUser = \Faoxima\Core\Database\Db::runtimeReady() ? \Faoxima\Core\Database\Db::select('user', '*', 'id', $finalReport['id_user'], 'select', ['cache' => false]) : $balanceUser;
         }

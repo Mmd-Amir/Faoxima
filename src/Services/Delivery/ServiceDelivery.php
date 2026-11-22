@@ -381,10 +381,6 @@ final class ServiceDelivery
         $caption = trim((string)$caption);
         $subLink = trim((string)$sub_link);
         if ($subLink === '' || self::rxSubscriptionLinkButtonEnabled($panel_info)) {
-            if (function_exists('mb_strlen') && mb_strlen($caption, 'UTF-8') > 1024) {
-                $plainCaption = trim(html_entity_decode(strip_tags($caption), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
-                return htmlspecialchars(mb_substr($plainCaption, 0, 1024, 'UTF-8'), ENT_QUOTES, 'UTF-8');
-            }
             return $caption;
         }
         $lineTemplate = \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_purchase_subscription_link_line', '🔗 لینک اتصال: {link}');
@@ -394,15 +390,7 @@ final class ServiceDelivery
         if ($line === '') {
             return $caption;
         }
-        $combined = $caption === '' ? $line : $caption . "\n\n" . $line;
-        if (function_exists('mb_strlen') && mb_strlen($combined, 'UTF-8') > 1024) {
-            $plainCaption = trim(html_entity_decode(strip_tags($caption), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
-            $allowance = max(0, 1022 - mb_strlen($line, 'UTF-8'));
-            $plainCaption = mb_substr($plainCaption, 0, $allowance, 'UTF-8');
-            $safeCaption = htmlspecialchars($plainCaption, ENT_QUOTES, 'UTF-8');
-            $combined = $safeCaption === '' ? $line : $safeCaption . "\n\n" . $line;
-        }
-        return $combined;
+        return $caption === '' ? $line : $caption . "\n\n" . $line;
     }
 
     public static function rxManualsalePublicName($recordName, $ext)
@@ -1376,7 +1364,7 @@ final class ServiceDelivery
                     $rxSetDelivery('file_caption_' . $index, $item['state']);
                 }
                 if ($fileDelivery['keyboard_state'] === 'failed') {
-                    $keyboardResult = sendmessage($user_id, '⚠️ ارسال همه فایل‌های سرویس کامل نشد. برای پیگیری با پشتیبانی تماس بگیرید.', $fileKeyboard, 'HTML');
+                    $keyboardResult = sendmessage($user_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_files_incomplete_contact_support'), $fileKeyboard, 'HTML');
                     $rxSetDelivery('file_keyboard_notice', \Faoxima\Services\Fulfillment\DeliveryState::deliveryResultState($keyboardResult), false);
                 }
                 $rxDiagDone($fileDelivery['delivery_status'], [
@@ -1428,7 +1416,7 @@ final class ServiceDelivery
         $finalKeyboard = $offerKeyboard === null ? $reply_markup : $offerKeyboard;
         $rxServiceCaptionHasTable = is_string($cleanCaption) && preg_match('~<table\b~i', $cleanCaption) === 1;
         $rxSafeMediaCaption = method_exists(\Faoxima\Services\Delivery\ServiceDelivery::class, 'rxPrepareSafeMediaCaption') ? self::rxPrepareSafeMediaCaption($cleanCaption) : $cleanCaption;
-        $rxServiceCaptionNeedsSplit = $rxSafeMediaCaption === null;
+        $rxServiceCaptionNeedsSplit = $rxSafeMediaCaption === null || $rxServiceCaptionHasTable;
         $rxTextRequired = trim((string) $cleanCaption) !== '';
         $rxServiceCaptionDelivered = false;
         $rxQrKeyboardDelivered = false;
@@ -1615,12 +1603,17 @@ final class ServiceDelivery
                     if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
                         \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'selected', [
                             'delivery_mode' => 'qr_plus_rich_text',
-                            'api_method' => 'sendmessage+sendphoto',
+                            'api_method' => 'sendphoto+sendmessage',
+                            'delivery_order' => 'qr_first',
                             'rich_bypass' => false,
                             'rich_bypass_reason' => $rxServiceCaptionHasTable ? 'table_moved_out_of_qr_caption' : 'caption_requires_separate_text',
                             'caption' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($cleanCaption),
                         ], 'info');
                     }
+                    $rxQrDetail = null;
+                    $rxQrDelivered = \Faoxima\Telegram\Support\InfoCards::nm_sendServiceQrFallback($user_id, $sub_link, $image, '', null, $rxQrDetail);
+                    $rxQrState = is_array($rxQrDetail) ? (string) ($rxQrDetail['state'] ?? \Faoxima\Services\Fulfillment\DeliveryState::deliveryResultState($rxQrDelivered)) : \Faoxima\Services\Fulfillment\DeliveryState::deliveryResultState($rxQrDelivered);
+                    $rxSetDelivery('qr', $rxQrState, $rxQrState !== 'skipped');
                     try {
                         [$rxQrTextResult, $rxQrTextState, $rxQrTextChunks] = $rxSendServiceText($finalKeyboard);
                     } catch (Throwable $e) {
@@ -1631,11 +1624,14 @@ final class ServiceDelivery
                     }
                     $rxSetDelivery('text', $rxQrTextState, true);
                     $rxServiceCaptionDelivered = $rxQrTextState === 'confirmed';
-                    $rxQrKeyboard = $rxQrTextState === 'failed' && $rxQrTextChunks === 0 ? $finalKeyboard : null;
-                    $rxQrDetail = null;
-                    $rxQrDelivered = \Faoxima\Telegram\Support\InfoCards::nm_sendServiceQrFallback($user_id, $sub_link, $image, '', $rxQrKeyboard, $rxQrDetail);
-                    $rxQrState = is_array($rxQrDetail) ? (string) ($rxQrDetail['state'] ?? \Faoxima\Services\Fulfillment\DeliveryState::deliveryResultState($rxQrDelivered)) : \Faoxima\Services\Fulfillment\DeliveryState::deliveryResultState($rxQrDelivered);
-                    $rxSetDelivery('qr', $rxQrState, $rxQrState !== 'skipped');
+                    $rxQrKeyboardMessageId = (int) ($rxQrDetail['message_id'] ?? 0);
+                    if ($rxQrTextState === 'failed' && $rxQrTextChunks === 0 && $rxQrState === 'confirmed' && $rxQrKeyboardMessageId > 0 && !rxIsEmptyInlineKeyboard($finalKeyboard)) {
+                        telegram('editMessageReplyMarkup', [
+                            'chat_id' => $user_id,
+                            'message_id' => $rxQrKeyboardMessageId,
+                            'reply_markup' => $finalKeyboard,
+                        ]);
+                    }
                     if ($rxQrState !== 'confirmed' && isset($rxQrDetail['result']) && is_array($rxQrDetail['result'])) {
                         $GLOBALS['rx_rich_diag_last_result'] = $rxQrDetail['result'];
                     }

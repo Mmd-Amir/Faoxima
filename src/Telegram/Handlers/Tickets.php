@@ -48,7 +48,7 @@ final class Tickets
                 $message,
                 $firstName,
                 $host,
-                $text !== '' ? $text : '🎫 ارسال و پیگیری تیکت‌های پشتیبانی فقط از طریق مینی‌اپ امکان‌پذیر است.',
+                $text !== '' ? $text : \Faoxima\Telegram\Support\MessageTemplates::get('ticket_miniapp_only_notice'),
                 '/app/#/tickets',
                 'Editmessagetext',
                 'sendmessage',
@@ -81,10 +81,10 @@ final class Tickets
                 $ticketmenu['inline_keyboard'][] = [['text' => $stt . ' ' . $rowt['name_departman'] . ' | #' . $rowt['Tracking'], 'callback_data' => 'ticketopen_' . $rowt['Tracking']]];
             }
             $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
-            $ticketmenu['inline_keyboard'][] = [['text' => '➕ تیکت جدید', 'callback_data' => 'ticketnew']];
+            $ticketmenu['inline_keyboard'][] = [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('ticket_btn_new'), 'callback_data' => 'ticketnew']];
             $ticketmenu['inline_keyboard'][] = [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'backuser'], 'backuser', $_rx_nav_s)];
             $ticketmenu = json_encode($ticketmenu, JSON_UNESCAPED_UNICODE);
-            $tickethead = "🎫 تیکت‌های پشتیبانی شما\n\nیک تیکت را برای ادامه انتخاب کنید یا تیکت جدید بسازید.";
+            $tickethead = \Faoxima\Telegram\Support\MessageTemplates::get('ticket_list_header');
             if (!empty($datain) && intval($message_id) > 0) {
                 Editmessagetext($from_id, $message_id, $tickethead, $ticketmenu);
             } else {
@@ -252,22 +252,22 @@ final class Tickets
             $lines = '';
             $hasMedia = false;
             foreach ($allmsgs as $mrow) {
-                $who = ($mrow['result'] === 'admin') ? '👨‍💻 پشتیبانی' : '👤 شما';
+                $who = ($mrow['result'] === 'admin') ? \Faoxima\Telegram\Support\MessageTemplates::plain('ticket_who_support') : \Faoxima\Telegram\Support\MessageTemplates::plain('ticket_who_user');
                 if (preg_match('/\[\[(photo|video):[^\]]+\]\]/', (string)$mrow['text'])) $hasMedia = true;
-                $bodyline = trim(preg_replace(['/\[\[(photo|video):[^\]]+\]\]/', '/\[\[subj:[^\]]*\]\]/u'], ['🖼 رسانه', ''], (string)$mrow['text']));
+                $bodyline = trim(preg_replace(['/\[\[(photo|video):[^\]]+\]\]/', '/\[\[subj:[^\]]*\]\]/u'], [\Faoxima\Telegram\Support\MessageTemplates::plain('ticket_media_placeholder'), ''], (string)$mrow['text']));
                 if ($bodyline === '') { $bodyline = '—'; }
                 $lines .= "$who:\n$bodyline\n— — —\n";
             }
             $isclosed = $tkdetail['status'] == 'close';
-            $statelabel = $isclosed ? '🔒 بسته' : '🟢 باز';
-            $tickethead = "🎫 تیکت <code>$idtraking</code>\nدپارتمان : {$tkdetail['name_departman']}\nموضوع : " . ($subject !== '' ? $subject : '—') . "\nوضعیت : $statelabel\n\n$lines";
+            $statelabel = $isclosed ? \Faoxima\Telegram\Support\MessageTemplates::plain('ticket_state_closed') : \Faoxima\Telegram\Support\MessageTemplates::plain('ticket_state_open');
+            $tickethead = \Faoxima\Telegram\Support\MessageTemplates::get('ticket_detail_header', [], ['ticket_id' => $idtraking, 'department' => $tkdetail['name_departman'], 'subject' => ($subject !== '' ? $subject : '—'), 'state' => $statelabel, 'lines' => $lines]);
             $kbrows = [];
             if ($hasMedia) {
-                $kbrows[] = [['text' => '📎 مشاهده رسانه‌ها', 'callback_data' => 'tk_album_' . $idtraking]];
+                $kbrows[] = [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('ticket_btn_media'), 'callback_data' => 'tk_album_' . $idtraking]];
             }
             if (!$isclosed) {
-                $kbrows[] = [['text' => '✍️ ارسال پیام', 'callback_data' => 'ticketmsg_' . $idtraking]];
-                $kbrows[] = [['text' => '🔒 بستن تیکت', 'callback_data' => 'ticketclose_' . $idtraking]];
+                $kbrows[] = [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('ticket_btn_send_message'), 'callback_data' => 'ticketmsg_' . $idtraking]];
+                $kbrows[] = [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('ticket_btn_close'), 'callback_data' => 'ticketclose_' . $idtraking]];
             }
             $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
             $kbrows[] = [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'supporttickets', '_rxcolor' => 'navigation:ticket_back'], 'supporttickets', $_rx_nav_s)];

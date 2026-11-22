@@ -43,7 +43,7 @@ final class CardPaymentConversation
             $stmt->execute([':u' => (string) $from_id, ':t' => $timefivemin]);
             $paymentcount = $stmt->rowCount();
             if ($paymentcount != 0 and !in_array($from_id, $admin_ids)) {
-                sendmessage($from_id, "❗ شما در ۲ دقیقه اخیر رسید ارسال کرده اید لطفا ۲ دقیقه دیگر رسید جدید را ارسال نمایید.", null, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_card_receipt_rate_limited'), null, 'HTML');
                 return;
             }
             $payemntcheck = \Faoxima\Core\Database\Db::select("Payment_report", "*", "id_order", $dataget[1], "select", ['cache' => false]);
@@ -52,11 +52,11 @@ final class CardPaymentConversation
                 return;
             }
             if ($payemntcheck['payment_Status'] == "paid") {
-                sendmessage($from_id, "❗️ تراکنش شما توسط ربات تایید گردیده است.", null, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_already_confirmed'), null, 'HTML');
                 return;
             }
             if ($payemntcheck['payment_Status'] == "expire" || $payemntcheck['payment_Status'] == "cancelled") {
-                sendmessage($from_id, "❗زمان این تراکنش به پایان رسیده و امکان پرداخت این تراکنش وجود ندارد.", null, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_expired_no_receipt'), null, 'HTML');
                 return;
             }
             if (is_callable([\Faoxima\Payments\Receipts\ReceiptOrders::class, 'receiptGate'])) {
@@ -75,7 +75,7 @@ final class CardPaymentConversation
                 }
             }
             deletemessage($from_id, $message_id);
-            sendmessage($from_id, "🖼 تصویر رسید خود را ارسال نمایید", $backuser, 'HTML');
+            sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_card_ask_receipt_image'), $backuser, 'HTML');
             \Faoxima\Telegram\Navigation\Steps::step('cart_to_cart_user', $from_id);
             \Faoxima\Core\Database\Db::update("user", "Processing_value", $dataget[1], "id", $from_id);
             break;
@@ -83,7 +83,7 @@ final class CardPaymentConversation
             if (!isset($update['callback_query'])) { return; }
             $orderId = (string)($user['Processing_value'] ?? '');
             if ($orderId === '' || $orderId === '0') {
-                sendmessage($from_id, "❌ خطای داخلی. مراحل پرداخت را از ابتدا انجام دهید.", $keyboard, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_internal_error_restart'), $keyboard, 'HTML');
                 \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
                 return;
             }
@@ -104,7 +104,7 @@ final class CardPaymentConversation
                 $_cv_check->execute();
                 $_cv_check_res = $_cv_check->get_result();
                 if ($_cv_check_res->num_rows === 0) {
-                    sendmessage($from_id, "❌ کارت انتخاب‌شده معتبر نیست. لطفاً دوباره تلاش کنید.", null, 'HTML');
+                    sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_card_invalid_selection'), null, 'HTML');
                     $_cv_check->close();
                     return;
                 }
@@ -173,7 +173,7 @@ final class CardPaymentConversation
                 }
 
                 if (!$card_info || empty($card_info['cardnumber'])) {
-                    sendmessage($from_id, "❌ کارت بانکی فعالی یافت نشد. با پشتیبانی تماس بگیرید.", $keyboard, 'HTML');
+                    sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_card_none_active_contact_support'), $keyboard, 'HTML');
                     return;
                 }
                 $card_number = $card_info['cardnumber'];
@@ -198,12 +198,12 @@ final class CardPaymentConversation
                 if ($setting['statuscopycart'] == "1" || $_sbv_bot !== null) {
                     $_kb_rows = [[
                         ...($setting['statuscopycart'] == "1" ? [['text' => "کپی کارت اول", 'copy_text' => ["text" => $card_number], '_rxck' => 'card_num']] : []),
-                        ['text' => $_sbv_bot !== null ? $_sbv_bot['copy_label'] : "کپی مبلغ", 'copy_text' => ["text" => (string) $price_copy], '_rxck' => 'card_amount'],
+                        ['text' => $_sbv_bot !== null ? $_sbv_bot['copy_label'] : \Faoxima\Telegram\Support\MessageTemplates::plain('payment_card_btn_copy_amount'), 'copy_text' => ["text" => (string) $price_copy], '_rxck' => 'card_amount'],
                     ]];
                     if ($setting['statuscopycart'] == "1" && $_cmode == 'direct' && !empty($_card2['cardnumber'])) {
                         $_kb_rows[] = [['text' => "کپی کارت دوم", 'copy_text' => ["text" => $_card2['cardnumber']], '_rxck' => 'card_num_2']];
                     }
-                    $_kb_rows[] = [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => $_sbv_bot !== null ? $_sbv_bot['receipt_label'] : "✅ پرداخت کردم | ارسال رسید.", 'callback_data' => "sendresidcart-{$orderId}"], 'pay_sendreceipt', $_prcpt_s)];
+                    $_kb_rows[] = [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => $_sbv_bot !== null ? $_sbv_bot['receipt_label'] : \Faoxima\Telegram\Support\MessageTemplates::plain('payment_card_btn_send_receipt'), 'callback_data' => "sendresidcart-{$orderId}"], 'pay_sendreceipt', $_prcpt_s)];
                     $_sbv_cancel_row = ($_sbv_bot !== null && method_exists(\Faoxima\Payments\Receipts\ReceiptRuntime::class, 'rx_sbv_cancel_row')) ? \Faoxima\Payments\Receipts\ReceiptRuntime::rx_sbv_cancel_row((string) $orderId) : null;
                     if ($_sbv_cancel_row !== null) {
                         $_kb_rows[] = $_sbv_cancel_row;
@@ -212,7 +212,7 @@ final class CardPaymentConversation
                 } else {
                     $sendresidcart = json_encode([
                         'inline_keyboard' => [
-                            [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => $_sbv_bot !== null ? $_sbv_bot['receipt_label'] : "✅ پرداخت کردم | ارسال رسید.", 'callback_data' => "sendresidcart-{$orderId}"], 'pay_sendreceipt', $_prcpt_s)],
+                            [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => $_sbv_bot !== null ? $_sbv_bot['receipt_label'] : \Faoxima\Telegram\Support\MessageTemplates::plain('payment_card_btn_send_receipt'), 'callback_data' => "sendresidcart-{$orderId}"], 'pay_sendreceipt', $_prcpt_s)],
                         ]
                     ]);
                 }
@@ -233,41 +233,41 @@ final class CardPaymentConversation
         case 'card_photo':
             if (!isset($update['message']) && empty($text)) { return; }
             if (!$photo || isset($update['message']['media_group_id'])) {
-                sendmessage($from_id, "❌ لطفاً یک تصویر تکی از کارت خود ارسال کنید.", null, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_card_single_photo_required'), null, 'HTML');
                 return;
             }
             $orderId = (string)($user['Processing_value'] ?? '');
             if ($orderId === '' || $orderId === '0') {
-                sendmessage($from_id, "❌ خطای داخلی. مراحل پرداخت را از ابتدا انجام دهید.", $keyboard, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_internal_error_restart'), $keyboard, 'HTML');
                 \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
                 return;
             }
             $payRecord = \Faoxima\Core\Database\Db::select("Payment_report", "*", "id_order", $orderId);
             if ($payRecord === false || (string)($payRecord['id_user'] ?? '') !== (string)$from_id) {
-                sendmessage($from_id, "❌ رکورد پرداخت یافت نشد. مراحل را از ابتدا انجام دهید.", $keyboard, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_record_not_found_restart'), $keyboard, 'HTML');
                 \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
                 return;
             }
             \Faoxima\Core\Database\Db::update("Payment_report", "card_photo_file_id", $photoid, "id_order", $orderId);
             \Faoxima\Telegram\Navigation\Steps::step('card_last4_step', $from_id);
-            sendmessage($from_id, "✅ عکس کارت دریافت شد.\n\n🔢 لطفاً ۴ رقم آخر شماره کارت خود را وارد کنید:", null, 'HTML');
+            sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_card_ask_last4'), null, 'HTML');
             break;
         case 'card_last_four':
             if (!isset($update['message']) && empty($text)) { return; }
             $_cl4 = trim((string)($text ?? ''));
             if (!preg_match('/^\d{4}$/', $_cl4)) {
-                sendmessage($from_id, "❌ لطفاً دقیقاً ۴ رقم آخر کارت را وارد کنید (مثال: 1234).", null, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_card_last4_invalid'), null, 'HTML');
                 return;
             }
             $orderId = (string)($user['Processing_value'] ?? '');
             if ($orderId === '' || $orderId === '0') {
-                sendmessage($from_id, "❌ خطای داخلی. مراحل پرداخت را از ابتدا انجام دهید.", $keyboard, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_internal_error_restart'), $keyboard, 'HTML');
                 \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
                 return;
             }
             $payRecord = \Faoxima\Core\Database\Db::select("Payment_report", "*", "id_order", $orderId);
             if ($payRecord === false || (string)($payRecord['id_user'] ?? '') !== (string)$from_id) {
-                sendmessage($from_id, "❌ رکورد پرداخت یافت نشد. مراحل را از ابتدا انجام دهید.", $keyboard, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_record_not_found_restart'), $keyboard, 'HTML');
                 \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
                 return;
             }
@@ -317,7 +317,7 @@ final class CardPaymentConversation
             }
 
             if (!$card_info || empty($card_info['cardnumber'])) {
-                sendmessage($from_id, "❌ کارت بانکی فعالی یافت نشد. با پشتیبانی تماس بگیرید.", $keyboard, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_card_none_active_contact_support'), $keyboard, 'HTML');
                 return;
             }
             $card_number = $card_info['cardnumber'];
@@ -342,12 +342,12 @@ final class CardPaymentConversation
             if ($setting['statuscopycart'] == "1" || $_sbv_bot !== null) {
                 $_kb_rows = [[
                     ...($setting['statuscopycart'] == "1" ? [['text' => "کپی شماره کارت", 'copy_text' => ["text" => $card_number], '_rxck' => 'card_num']] : []),
-                    ['text' => $_sbv_bot !== null ? $_sbv_bot['copy_label'] : "کپی مبلغ", 'copy_text' => ["text" => (string) $price_copy], '_rxck' => 'card_amount'],
+                    ['text' => $_sbv_bot !== null ? $_sbv_bot['copy_label'] : \Faoxima\Telegram\Support\MessageTemplates::plain('payment_card_btn_copy_amount'), 'copy_text' => ["text" => (string) $price_copy], '_rxck' => 'card_amount'],
                 ]];
                 if ($setting['statuscopycart'] == "1" && $_cmode == 'direct' && !empty($_card2['cardnumber'])) {
                     $_kb_rows[] = [['text' => "کپی شماره کارت دوم", 'copy_text' => ["text" => $_card2['cardnumber']], '_rxck' => 'card_num_2']];
                 }
-                $_kb_rows[] = [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => $_sbv_bot !== null ? $_sbv_bot['receipt_label'] : "✅ پرداخت کردم | ارسال رسید.", 'callback_data' => "sendresidcart-{$orderId}"], 'pay_sendreceipt', $_prcpt_s)];
+                $_kb_rows[] = [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => $_sbv_bot !== null ? $_sbv_bot['receipt_label'] : \Faoxima\Telegram\Support\MessageTemplates::plain('payment_card_btn_send_receipt'), 'callback_data' => "sendresidcart-{$orderId}"], 'pay_sendreceipt', $_prcpt_s)];
                 $_sbv_cancel_row = ($_sbv_bot !== null && method_exists(\Faoxima\Payments\Receipts\ReceiptRuntime::class, 'rx_sbv_cancel_row')) ? \Faoxima\Payments\Receipts\ReceiptRuntime::rx_sbv_cancel_row((string) $orderId) : null;
                 if ($_sbv_cancel_row !== null) {
                     $_kb_rows[] = $_sbv_cancel_row;
@@ -356,7 +356,7 @@ final class CardPaymentConversation
             } else {
                 $sendresidcart = json_encode([
                     'inline_keyboard' => [
-                        [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => $_sbv_bot !== null ? $_sbv_bot['receipt_label'] : "✅ پرداخت کردم | ارسال رسید.", 'callback_data' => "sendresidcart-{$orderId}"], 'pay_sendreceipt', $_prcpt_s)],
+                        [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => $_sbv_bot !== null ? $_sbv_bot['receipt_label'] : \Faoxima\Telegram\Support\MessageTemplates::plain('payment_card_btn_send_receipt'), 'callback_data' => "sendresidcart-{$orderId}"], 'pay_sendreceipt', $_prcpt_s)],
                     ]
                 ]);
             }

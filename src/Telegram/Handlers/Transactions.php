@@ -25,23 +25,23 @@ final class Transactions
             $_rx_tx_s = (isset($GLOBALS['_rx_tx_styles']) && is_array($GLOBALS['_rx_tx_styles'])) ? $GLOBALS['_rx_tx_styles'] : [];
             $txRows = [
                 [
-                    \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => '🕐 ۲۴ ساعت گذشته', 'callback_data' => 'tx_24h'], 'tx_24h', $_rx_tx_s),
+                    \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_btn_tx_24h'), 'callback_data' => 'tx_24h'], 'tx_24h', $_rx_tx_s),
                 ],
                 [
-                    \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => '📅 ۳ روز گذشته', 'callback_data' => 'tx_3d'], 'tx_3d', $_rx_tx_s),
+                    \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_btn_tx_3d'), 'callback_data' => 'tx_3d'], 'tx_3d', $_rx_tx_s),
                 ],
                 [
-                    \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => '🗓 ۷ روز گذشته', 'callback_data' => 'tx_7d'], 'tx_7d', $_rx_tx_s),
+                    \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_btn_tx_7d'), 'callback_data' => 'tx_7d'], 'tx_7d', $_rx_tx_s),
                 ],
                 [
-                    \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => '📆 ۳۰ روز گذشته', 'callback_data' => 'tx_30d'], 'tx_30d', $_rx_tx_s),
+                    \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_btn_tx_30d'), 'callback_data' => 'tx_30d'], 'tx_30d', $_rx_tx_s),
                 ],
                 [
                     \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => 'account', '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true], 'tx_back', $_rx_tx_s),
                 ],
             ];
             $txKeyboard = json_encode(['inline_keyboard' => $txRows], JSON_UNESCAPED_UNICODE);
-            $txPromptText = "📑 تراکنش‌های من\n\nبازه‌ی زمانی مورد نظر را برای مشاهده‌ی تراکنش‌های کیف پول خود انتخاب کنید:";
+            $txPromptText = \Faoxima\Telegram\Support\MessageTemplates::get('wallet_tx_prompt');
             if ($message_id) {
                 Editmessagetext($from_id, $message_id, $txPromptText, $txKeyboard, 'HTML');
             } else {
@@ -57,27 +57,27 @@ final class Transactions
                 '30d' => 30 * 24 * 60 * 60,
             ][$txRangeMatch[1]];
             $txRangeLabel = [
-                '24h' => '۲۴ ساعت گذشته',
-                '3d'  => '۳ روز گذشته',
-                '7d'  => '۷ روز گذشته',
-                '30d' => '۳۰ روز گذشته',
+                '24h' => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_tx_range_24h'),
+                '3d'  => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_tx_range_3d'),
+                '7d'  => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_tx_range_7d'),
+                '30d' => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_tx_range_30d'),
             ][$txRangeMatch[1]];
             $txCategoryLabels = [
-                'topup_card'           => 'شارژ کارت به کارت',
-                'topup_crypto'         => 'شارژ ارز دیجیتال',
-                'topup_gateway'        => 'شارژ درگاه پرداخت',
-                'admin_credit'         => 'افزایش موجودی توسط ادمین',
-                'admin_debit'          => 'کاهش موجودی توسط ادمین',
-                'purchase'             => 'خرید سرویس',
-                'refund'               => 'بازگشت وجه',
-                'affiliate_commission' => 'پورسانت زیرمجموعه',
-                'gift_code'            => 'کد هدیه',
-                'lottery'              => 'جایزه قرعه‌کشی',
-                'cashback'             => 'هدیه بازگشت وجه',
-                'service_action'       => 'عملیات سرویس',
-                'transfer_out'         => 'انتقال موجودی به کاربر دیگر',
-                'transfer_in'          => 'انتقال موجودی از کاربر دیگر',
-                'referral_gift'        => 'هدیه عضویت زیرمجموعه',
+                'topup_card'           => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_tx_cat_topup_card'),
+                'topup_crypto'         => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_tx_cat_topup_crypto'),
+                'topup_gateway'        => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_tx_cat_topup_gateway'),
+                'admin_credit'         => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_tx_cat_admin_credit'),
+                'admin_debit'          => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_tx_cat_admin_debit'),
+                'purchase'             => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_tx_cat_purchase'),
+                'refund'               => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_tx_cat_refund'),
+                'affiliate_commission' => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_tx_cat_affiliate_commission'),
+                'gift_code'            => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_tx_cat_gift_code'),
+                'lottery'              => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_tx_cat_lottery'),
+                'cashback'             => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_tx_cat_cashback'),
+                'service_action'       => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_tx_cat_service_action'),
+                'transfer_out'         => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_tx_cat_transfer_out'),
+                'transfer_in'          => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_tx_cat_transfer_in'),
+                'referral_gift'        => \Faoxima\Telegram\Support\MessageTemplates::plain('wallet_tx_cat_referral_gift'),
             ];
             $txRangeKey = $txRangeMatch[1];
             $txLimit = 5;
@@ -111,7 +111,7 @@ final class Transactions
             $txRowsData = $txStmt->fetchAll(PDO::FETCH_ASSOC);
 
             if (empty($txRowsData)) {
-                $txText = "📑 تراکنش‌های من ({$txRangeLabel})\n\nدر این بازه‌ی زمانی، تراکنشی یافت نشد.";
+                $txText = \Faoxima\Telegram\Support\MessageTemplates::get('wallet_tx_empty', [], ['range' => $txRangeLabel]);
             } else {
                 $txLines = [];
                 foreach ($txRowsData as $txRow) {
@@ -119,10 +119,10 @@ final class Transactions
                     $txLabel = $txCategoryLabels[$txRow['category']] ?? $txRow['category'];
                     $txAmountFmt = number_format((int)$txRow['amount']);
                     $txDateFmt = jdate('Y/m/d H:i', strtotime($txRow['created_at']));
-                    $txLines[] = "{$txSign} {$txAmountFmt} تومان — {$txLabel}\n🕐 {$txDateFmt}";
+                    $txLines[] = \Faoxima\Telegram\Support\MessageTemplates::get('wallet_tx_line', [], ['sign' => $txSign, 'amount' => $txAmountFmt, 'label' => $txLabel, 'date' => $txDateFmt]);
                 }
-                $txPageInfo = $txTotalPages > 1 ? "\n\n📄 صفحه {$txPage} از {$txTotalPages}" : '';
-                $txText = "📑 تراکنش‌های من ({$txRangeLabel})\n\n" . implode("\n\n", $txLines) . $txPageInfo;
+                $txPageInfo = $txTotalPages > 1 ? \Faoxima\Telegram\Support\MessageTemplates::get('wallet_tx_page_info', ['page' => $txPage, 'total' => $txTotalPages]) : '';
+                $txText = \Faoxima\Telegram\Support\MessageTemplates::get('wallet_tx_list', [], ['range' => $txRangeLabel, 'lines' => implode("\n\n", $txLines), 'page_info' => $txPageInfo]);
             }
 
             $_rx_tx_s = (isset($GLOBALS['_rx_tx_styles']) && is_array($GLOBALS['_rx_tx_styles'])) ? $GLOBALS['_rx_tx_styles'] : [];
@@ -130,10 +130,10 @@ final class Transactions
             if ($txTotalPages > 1) {
                 $txNavRow = [];
                 if ($txPage > 1) {
-                    $txNavRow[] = \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => '◀️ قبلی', 'callback_data' => "tx_{$txRangeKey}_" . ($txPage - 1)], 'tx_prev', $_rx_tx_s);
+                    $txNavRow[] = \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_prev'), 'callback_data' => "tx_{$txRangeKey}_" . ($txPage - 1)], 'tx_prev', $_rx_tx_s);
                 }
                 if ($txPage < $txTotalPages) {
-                    $txNavRow[] = \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => 'بعدی ▶️', 'callback_data' => "tx_{$txRangeKey}_" . ($txPage + 1)], 'tx_next', $_rx_tx_s);
+                    $txNavRow[] = \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_next'), 'callback_data' => "tx_{$txRangeKey}_" . ($txPage + 1)], 'tx_next', $_rx_tx_s);
                 }
                 if (!empty($txNavRow)) {
                     $txKbRows[] = $txNavRow;

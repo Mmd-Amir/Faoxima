@@ -119,7 +119,7 @@ final class CatalogKeyboard
             }
         }
         $list_category['inline_keyboard'][] = [
-            ['text' => "▶️ بازگشت به منوی قبل","callback_data" => $backuser, '_rxsk' => 'category_back'],
+            ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_back_prev_menu'),"callback_data" => $backuser, '_rxsk' => 'category_back'],
         ];
         return json_encode($list_category);
     }
@@ -203,7 +203,7 @@ final class CatalogKeyboard
                         ['text' => $textbotlang['Admin']['month']['unlimited'], 'callback_data' => "{$callback_data}0"]
                     ];
                 }
-        if($statusbtnextend)$monthkeyboard['inline_keyboard'][] = [['text' => "♻️ تمدید پلن فعلی", 'callback_data' => "exntedagei"]];
+        if($statusbtnextend)$monthkeyboard['inline_keyboard'][] = [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_renew_current_plan'), 'callback_data' => "exntedagei"]];
         if ($statuscustomvolume == true)$monthkeyboard['inline_keyboard'][] = [['text' => $textbotlang['users']['customsellvolume']['title'], 'callback_data' => "customsellvolume"]];
         $monthkeyboard['inline_keyboard'][] = [
                     ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => $callback_data_back]

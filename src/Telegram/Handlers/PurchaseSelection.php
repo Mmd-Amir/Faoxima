@@ -87,9 +87,7 @@ final class PurchaseSelection
                     sendmessage($from_id, $textbotlang['Admin']['Product']['nullpProduct'] ?? '❌ محصولی یافت نشد.', null, 'HTML');
                     return;
                 }
-                $textcustom = "📌 حجم درخواستی خود را ارسال کنید.
-🔔قیمت هر گیگ حجم " . \Faoxima\Core\Support\Formatting::rxFormatToman($custompricevalue) . " تومان می باشد.
-🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
+                $textcustom = \Faoxima\Telegram\Support\MessageTemplates::get('service_custom_volume_prompt', ['price' => \Faoxima\Core\Support\Formatting::rxFormatToman($custompricevalue), 'min' => $mainvolume, 'max' => $maxvolume]);
                 sendmessage($from_id, $textcustom, $backuser, 'html');
                 \Faoxima\Telegram\Navigation\Steps::step('gettimecustomvol', $from_id);
                 return;
@@ -97,7 +95,7 @@ final class PurchaseSelection
             if (!\Faoxima\Services\Panels\PanelFeatures::panel_feature_enabled($location, 'categorytime')) {
                 if (\Faoxima\Services\Panels\PanelFeatures::panel_feature_enabled($location, 'categorygeneral') && (!is_callable([\Faoxima\Orders\Catalog\Categories::class, 'nmHasSellableCategories']) || \Faoxima\Orders\Catalog\Categories::nmHasSellableCategories($pdo, $location, $user['agent']))) {
                     $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $location, "select");
-                    Editmessagetext($from_id, $message_id, "📌 دسته بندی خود را انتخاب نمایید!", \Faoxima\Telegram\Keyboard\LegacyFunctionsHelpers::KeyboardCategory($location, $user['agent'], "buybacktow"));
+                    Editmessagetext($from_id, $message_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_select_category'), \Faoxima\Telegram\Keyboard\LegacyFunctionsHelpers::KeyboardCategory($location, $user['agent'], "buybacktow"));
                 } else {
                     $query = "SELECT * FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))";
                     $queryParams = [
@@ -202,7 +200,7 @@ final class PurchaseSelection
                 } else {
                     $back = "location_{$marzban_list_get['code_panel']}";
                 }
-                Editmessagetext($from_id, $message_id, "📌 دسته بندی خود را انتخاب نمایید!", \Faoxima\Telegram\Keyboard\LegacyFunctionsHelpers::KeyboardCategory($marzban_list_get['name_panel'], $user['agent'], $back));
+                Editmessagetext($from_id, $message_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_select_category'), \Faoxima\Telegram\Keyboard\LegacyFunctionsHelpers::KeyboardCategory($marzban_list_get['name_panel'], $user['agent'], $back));
             } else {
                 $query = "SELECT * FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND Service_time = :service_time AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))";
                 $queryParams = [
@@ -237,9 +235,7 @@ final class PurchaseSelection
             $mainvolume = $mainvolume[$user['agent']];
             $maxvolume = json_decode($marzban_list_get['maxvolume'], true);
             $maxvolume = $maxvolume[$user['agent']];
-            $textcustom = "📌 حجم درخواستی خود را ارسال کنید.
-🔔قیمت هر گیگ حجم " . \Faoxima\Core\Support\Formatting::rxFormatToman($custompricevalue) . " تومان می باشد.
-🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
+            $textcustom = \Faoxima\Telegram\Support\MessageTemplates::get('service_custom_volume_prompt', ['price' => \Faoxima\Core\Support\Formatting::rxFormatToman($custompricevalue), 'min' => $mainvolume, 'max' => $maxvolume]);
             sendmessage($from_id, $textcustom, $backuser, 'html');
             deletemessage($from_id, $message_id);
             \Faoxima\Telegram\Navigation\Steps::step('gettimecustomvol', $from_id);
@@ -261,7 +257,7 @@ final class PurchaseSelection
                 return;
             }
             if ((int) $text > (int) $maxvolume || (int) $text < (int) $mainvolume) {
-                $texttime = "❌ حجم نامعتبر است.\n🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد";
+                $texttime = \Faoxima\Telegram\Support\MessageTemplates::get('service_custom_volume_invalid', ['min' => $mainvolume, 'max' => $maxvolume]);
                 sendmessage($from_id, $texttime, $backuser, 'HTML');
                 return;
             }
@@ -290,7 +286,7 @@ final class PurchaseSelection
                 $maxtime = json_decode($marzban_list_get['maxtime'], true);
                 $maxtime = $maxtime[$user['agent']];
                 if (intval($text) > intval($maxtime) || intval($text) < intval($maintime)) {
-                    $texttime = "❌ زمان ارسال شده نامعتبر است . زمان باید بین $maintime روز تا $maxtime روز باشد";
+                    $texttime = \Faoxima\Telegram\Support\MessageTemplates::get('service_custom_duration_invalid', ['min' => $maintime, 'max' => $maxtime]);
                     sendmessage($from_id, $texttime, $backuser, 'HTML');
                     return;
                 }
@@ -329,7 +325,7 @@ final class PurchaseSelection
                 $maxtime = json_decode($marzban_list_get['maxtime'], true);
                 $maxtime = $maxtime[$user['agent']];
                 if (intval($text) > intval($maxtime) || intval($text) < intval($maintime)) {
-                    $texttime = "❌ زمان ارسال شده نامعتبر است . زمان باید بین $maintime روز تا $maxtime روز باشد";
+                    $texttime = \Faoxima\Telegram\Support\MessageTemplates::get('service_custom_duration_invalid', ['min' => $maintime, 'max' => $maxtime]);
                     sendmessage($from_id, $texttime, $backuser, 'HTML');
                     return;
                 }
@@ -386,7 +382,7 @@ final class PurchaseSelection
                 try {
                     $info_product['price_product'] = \Faoxima\Orders\Pricing\CustomDuration::fx_custom_price($marzban_list_get, $user['agent'], $parts[2], $parts[1]);
                 } catch (InvalidArgumentException $e) {
-                    sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'backuser']]]]), 'HTML');
+                    sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_back'), 'callback_data' => 'backuser']]]]), 'HTML');
                     return;
                 }
             } else {
@@ -473,16 +469,16 @@ final class PurchaseSelection
             }
             $previewSymbolicLimitText = \Faoxima\Telegram\Support\Texts::faoxima_symbolic_limit_label($info_product);
             if ($previewSymbolicLimitText !== null) {
-                $textin .= "\n👥 تعداد کاربر: $previewSymbolicLimitText";
+                $textin .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_preview_line_user_count', [], ['count' => $previewSymbolicLimitText]);
             } elseif (($marzban_list_get['type'] ?? '') == 'x-ui_single' && (($marzban_list_get['ip_limit_guard'] ?? '') === 'onipguard')) {
                 $previewIpLimit = intval($info_product['ip_limit'] ?? 0);
-                $previewIpLimitText = $previewIpLimit > 0 ? "{$previewIpLimit} کاربر" : 'نامحدود';
-                $textin .= "\n👥 تعداد کاربر: $previewIpLimitText";
+                $previewIpLimitText = $previewIpLimit > 0 ? \Faoxima\Telegram\Support\MessageTemplates::get('service_info_user_count', ['count' => $previewIpLimit]) : \Faoxima\Telegram\Support\MessageTemplates::plain('service_unlimited');
+                $textin .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_preview_line_user_count', [], ['count' => $previewIpLimitText]);
             }
             if (in_array($marzban_list_get['type'] ?? '', ['pasarguard', 'remnawave', 'x-ui_single'], true)) {
                 $previewHwidLimit = intval($info_product['hwid_limit'] ?? 0);
                 if ($previewHwidLimit > 0) {
-                    $textin .= "\n🔒 محدودیت دستگاه: {$previewHwidLimit} دستگاه";
+                    $textin .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_preview_line_device_limit', ['count' => $previewHwidLimit]);
                 }
             }
             $__discEligibleBuy = \Faoxima\Orders\Discounts\DiscountRules::hasEligible($pdo, 'buy', (string)($info_product['code_product'] ?? ''), (string)($marzban_list_get['code_panel'] ?? ''), (string)($info_product['category'] ?? ''), $user);

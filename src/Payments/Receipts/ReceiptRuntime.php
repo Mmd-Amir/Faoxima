@@ -160,6 +160,11 @@ final class ReceiptRuntime
         return 'شما یک پرداخت ناتمام دارید. برای ایجاد پرداخت جدید، ابتدا پرداخت قبلی را تکمیل یا لغو کنید.';
     }
 
+    public static function rx_sbv_bot_pending_message(): string
+    {
+        return \Faoxima\Telegram\Support\MessageTemplates::get('payment_forapp_pending_exists');
+    }
+
     public static function rx_sbv_public_view(string $orderId, ?array $csp = null): ?array
     {
         global $pdo;
@@ -178,16 +183,14 @@ final class ReceiptRuntime
 
     public static function rx_sbv_payment_block(array $view): string
     {
-        return "\n\n🔐 <b>تأیید خودکار واریز فعال است</b>\n"
-            . "<blockquote>💰 مبلغ سفارش/شارژ: " . self::rx_sbv_money($view['principal_toman']) . " تومان\n"
-            . "🏷 کارمزد شناسایی: " . self::rx_sbv_money($view['fee_toman']) . " تومان\n"
-            . "✅ مبلغ دقیق قابل واریز: <b>" . self::rx_sbv_money($view['payable_toman']) . " تومان</b>\n"
-            . "🔢 معادل ریالی: <code>" . (int) $view['payable_rial'] . "</code> ریال</blockquote>\n"
-            . "⚠️ دقیقاً همین مبلغ را یکجا واریز کنید؛ مبلغ کمتر، بیشتر یا چند واریز جداگانه به‌صورت خودکار تأیید نمی‌شود.\n"
-            . "ℹ️ کارمزد شناسایی جزو شارژ کیف پول یا مبلغ سفارش نیست و بازگردانده نمی‌شود.\n"
-            . "⏳ مهلت پرداخت تا ساعت <b>" . $view['expires_at_clock'] . "</b>\n"
-            . "🤖 پس از واریز، پرداخت به‌صورت خودکار بررسی و تأیید می‌شود.\n"
-            . "📤 اگر تا ساعت " . $view['receipt_after_clock'] . " تأیید نشد، می‌توانید رسید را ارسال کنید.";
+        return "\n\n" . \Faoxima\Telegram\Support\MessageTemplates::get('payment_forapp_auto_verification', [
+            'principal' => self::rx_sbv_money($view['principal_toman']),
+            'fee' => self::rx_sbv_money($view['fee_toman']),
+            'payable' => self::rx_sbv_money($view['payable_toman']),
+            'payable_rial' => (int) $view['payable_rial'],
+            'expires_at' => $view['expires_at_clock'],
+            'receipt_after' => $view['receipt_after_clock'],
+        ]);
     }
 
     public static function rx_sbv_bot_payment_view(string $orderId): ?array
@@ -201,8 +204,8 @@ final class ReceiptRuntime
             'valueprice' => self::rx_sbv_money($view['payable_toman']),
             'price_copy' => (string) $view['payable_rial'],
             'block' => self::rx_sbv_payment_block($view),
-            'receipt_label' => '📤 ارسال رسید (از ساعت ' . $view['receipt_after_clock'] . ')',
-            'copy_label' => 'کپی مبلغ به ریال',
+            'receipt_label' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_forapp_btn_send_receipt', ['receipt_after' => $view['receipt_after_clock']]),
+            'copy_label' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_forapp_btn_copy_amount'),
         ];
     }
 
@@ -820,7 +823,7 @@ final class ReceiptRuntime
 
     public static function rx_sbv_bot_mark_cancelled($chatId, $messageId, string $text): void
     {
-        $kb = json_encode(['inline_keyboard' => [[['text' => '🔙 بازگشت به منوی اصلی', 'callback_data' => 'backuser']]]], JSON_UNESCAPED_UNICODE);
+        $kb = json_encode(['inline_keyboard' => [[['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back_main'), 'callback_data' => 'backuser']]]], JSON_UNESCAPED_UNICODE);
         if ((int) $messageId <= 0) {
             sendmessage($chatId, $text, $kb, 'HTML');
             return;
@@ -840,7 +843,7 @@ final class ReceiptRuntime
     public static function rx_sbv_bot_pending_notice($chatId, $messageId, array $active): void
     {
         $s = \Faoxima\Payments\Receipts\ReceiptOrders::pendingSummary($active);
-        $text = "⚠️ " . self::rx_sbv_pending_message() . "\n\n"
+        $text = "⚠️ " . self::rx_sbv_bot_pending_message() . "\n\n"
             . "<blockquote>🛒 کد پیگیری: <code>" . htmlspecialchars($s['order_id'], ENT_QUOTES, 'UTF-8') . "</code>\n"
             . "💰 مبلغ سفارش/شارژ: " . self::rx_sbv_money($s['principal_toman']) . " تومان\n"
             . "✅ مبلغ دقیق قابل واریز: " . self::rx_sbv_money($s['payable_toman']) . " تومان\n"
@@ -853,7 +856,7 @@ final class ReceiptRuntime
         if ($s['cancellable']) {
             $rows[] = [['text' => '❌ لغو پرداخت قبلی', 'callback_data' => 'sbvcancel_' . $s['order_id'], '_rxsk' => 'pay_cancel']];
         }
-        $rows[] = [['text' => '🔙 بازگشت به منوی اصلی', 'callback_data' => 'backuser']];
+        $rows[] = [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back_main'), 'callback_data' => 'backuser']];
         $kb = json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
         $sent = null;
         if ((int) $messageId > 0 && function_exists('Editmessagetext')) {

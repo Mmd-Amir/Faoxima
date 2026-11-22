@@ -67,9 +67,7 @@ final class AdditionalTime
             $eextraprice = json_decode($marzban_list_get['priceextratime'], true);
             $extratimepricevalue = \Faoxima\Orders\Pricing\ExchangePricing::fxAdjustBaseToman($eextraprice[$user['agent']], $marzban_list_get, 'extra_time');
             \Faoxima\Core\Database\Db::update("user", "Processing_value", $nameloc['id_invoice'], "id", $from_id);
-            $textextra = "📆 تعداد روز اضافه مورد نظر را وارد کنید ( برحسب روز ) :
-
-📌 تعرفه هر روز:  $extratimepricevalue";
+            $textextra = \Faoxima\Telegram\Support\MessageTemplates::get('service_extra_time_ask', ['price' => $extratimepricevalue]);
             $bakinfos = json_encode([
                 'inline_keyboard' => [
                     [
@@ -104,19 +102,13 @@ final class AdditionalTime
             ];
             if ($__discEligibleTime) {
                 $__timeRows[] = [
-                    ['text' => "🎁 ثبت کد تخفیف", 'callback_data' => 'discounttime-' . $priceextratime],
+                    ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_discount_code'), 'callback_data' => 'discounttime-' . $priceextratime],
                 ];
             }
             $keyboardsetting = json_encode(['inline_keyboard' => $__timeRows]);
             $priceextratime = number_format($priceextratime, 0);
             $extrapricevalues = number_format($extrapricevalue, 0);
-            $textextra = "📜 فاکتور خرید زمان اضافه برای شما ایجاد شد.
-
-📌 تعرفه هر روز زمان اضافه : $extratimepricevalue تومان
-📆 تعداد روز اضافه درخواستی : $text روز
-💰 مبلغ فاکتور شما : $priceextratime تومان
-
-✅ جهت پرداخت و اضافه شدن زمان، روی دکمه زیر کلیک کنید";
+            $textextra = \Faoxima\Telegram\Support\MessageTemplates::get('service_extra_time_invoice', ['price' => $extratimepricevalue, 'days' => $text, 'total' => $priceextratime]);
             sendmessage($from_id, $textextra, $keyboardsetting, 'HTML');
             \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
             break;
@@ -170,12 +162,7 @@ final class AdditionalTime
                     ]
                 ]
             ]);
-            $textextra = "🤩 کد تخفیف {$dv['label']} روی فاکتور شما اعمال شد.
-
-💰 مبلغ قبل از تخفیف : {$__basefmt} تومان
-💸 مبلغ قابل پرداخت : {$__disfmt} تومان
-
-✅ جهت پرداخت و اضافه شدن زمان، روی دکمه زیر کلیک کنید";
+            $textextra = \Faoxima\Telegram\Support\MessageTemplates::get('service_extra_time_discount_invoice', ['label' => $dv['label'], 'before' => $__basefmt, 'after' => $__disfmt]);
             sendmessage($from_id, $textextra, $keyboardsetting, 'HTML');
             \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
             break;
@@ -202,7 +189,7 @@ final class AdditionalTime
             if (\Faoxima\Services\Fulfillment\WalletExtensions::blockingOperation(
                 $pdo, (string) $from_id, $nameloc['username'], 'extra_time_user', (string) $nameloc['id_invoice'], $operationId
             ) !== null) {
-                sendmessage($from_id, 'درخواست خرید قبلاً ثبت شده است.', null, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_extra_request_already_registered'), null, 'HTML');
                 return;
             }
             $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
@@ -389,12 +376,7 @@ final class AdditionalTime
                 \Faoxima\Core\Database\Db::update("user", "score", $scorenew, "id", $from_id);
             }
             $volumesformat = number_format($tmieextra);
-            $textextratime = "✅ افزایش زمان برای سرویس شما با موفقیت صورت گرفت
-
-▫️نام سرویس : {$nameloc['username']}
-▫️زمان اضافه : $extratimeday روز
-
-▫️مبلغ افزایش زمان : $volumesformat تومان";
+            $textextratime = \Faoxima\Telegram\Support\MessageTemplates::get('service_extra_time_success', ['username' => $nameloc['username'], 'days' => $extratimeday, 'total' => $volumesformat]);
             sendmessage($from_id, $textextratime, $keyboardextrafnished, 'HTML');
             $volumes = $fxTimeQty ?? $tmieextra / $extratimepricevalue;
             $text_report = "⭕️ یک کاربر زمان اضافه خریده است

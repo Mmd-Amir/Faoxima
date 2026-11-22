@@ -113,7 +113,7 @@ final class OnHoldNotifier
         if ($stmt->rowCount() != 0) {
             return;
         }
-        $text = "سلام! 🌐\r\n\r\nدیدیم که شما هنوز به کانفیگ خود با نام کاربری $username متصل نشده‌اید و بیش از {$setting['on_hold_day']} روز از فعال‌سازی آن گذشته است. اگر در راه‌اندازی یا استفاده از سرویس مشکلی دارید، لطفاً با تیم پشتیبانی ما  از طریق آیدی زیر در ارتباط باشید تا به شما کمک کنیم.\r\nما آماده‌ایم تا هر گونه سوال یا مشکلی را برطرف کنیم! 📞\r\n\r\nاکانت پشتیبانی : @{$setting['id_support']}";
+        $text = \Faoxima\Telegram\Support\MessageTemplates::get('notify_on_hold_reminder', ['username' => $username, 'days' => $setting['on_hold_day'], 'support' => $setting['id_support']]);
         sendmessage($invoice['id_user'], $text, null, 'HTML');
         Db::update("invoice", "Status", "send_on_hold", "username", $username);
     }

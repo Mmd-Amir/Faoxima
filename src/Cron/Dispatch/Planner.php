@@ -51,6 +51,13 @@ final class Planner
 
     public static function runMaintenance(PDO $pdo, int $now, int $hour, array &$runtimeState): void
     {
+        try {
+            \Faoxima\Core\Database\TextbotTemporary::enforceExpiry($pdo, true);
+            if ($hour === 3) {
+                \Faoxima\Core\Database\TextbotTemporary::purge($pdo);
+            }
+        } catch (Throwable $e) {
+        }
         if ($hour < 3) {
             return;
         }

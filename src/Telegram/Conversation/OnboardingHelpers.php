@@ -16,7 +16,7 @@ final class OnboardingHelpers
             $ok = is_array($result) && !empty($result['ok']);
         }
         if (!$ok) {
-            sendmessage($chatId, "❌ نمایش لیست کانفیگ‌ها ناموفق بود. لطفاً دوباره تلاش کنید.", null, 'html');
+            sendmessage($chatId, \Faoxima\Telegram\Support\MessageTemplates::get('service_config_list_failed'), null, 'html');
         }
         return $ok;
     }

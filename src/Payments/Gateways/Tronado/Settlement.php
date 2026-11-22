@@ -198,7 +198,7 @@ final class Settlement
                 . "📝 دلیل: " . \Faoxima\Payments\Settlement\GatewayFlows::paymentV2Escape($reason)
             );
             if (function_exists('sendmessage')) {
-                sendmessage($report['id_user'], "⏳ پرداخت شما در ترونادو ثبت شده اما برای تأیید نهایی به بررسی مدیریت ارجاع شد. لطفاً با پشتیبانی در ارتباط باشید.\n\n🛒 کد فاکتور: <code>" . \Faoxima\Payments\Settlement\GatewayFlows::paymentV2Escape($orderId) . "</code>", null, 'HTML');
+                sendmessage($report['id_user'], \Faoxima\Telegram\Support\MessageTemplates::get('payment_tronado_manual_review', [], ['order_id' => \Faoxima\Payments\Settlement\GatewayFlows::paymentV2Escape($orderId)]), null, 'HTML');
             }
         }
         return ['state' => 'held', 'claimed' => $claimed];

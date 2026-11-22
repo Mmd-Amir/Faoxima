@@ -152,7 +152,7 @@ final class ServiceExtensions
 <blockquote>دلیل خطا : {$extra_volume['msg']}</blockquote>";
             sendmessage($nameloc['id_user'], \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_errors_extra_volume_purchase_error', "❌خطایی در خرید حجم اضافه سرویس رخ داده با پشتیبانی در ارتباط باشید"), null, 'HTML');
             if ($__refundVx === 'refunded') {
-                sendmessage($nameloc['id_user'], "💎  کاربر عزیز بدلیل انجام نشدن خرید حجم اضافه مبلغ " . \Faoxima\Core\Support\Formatting::rxFormatToman($Payment_report['price']) . " تومان به کیف پول شما اضافه گردید.", null, 'HTML');
+                sendmessage($nameloc['id_user'], \Faoxima\Telegram\Support\MessageTemplates::get('service_extra_traffic_failed_refunded', ['amount' => \Faoxima\Core\Support\Formatting::rxFormatToman($Payment_report['price'])]), null, 'HTML');
             }
             if (strlen($setting['Channel_Report']) > 0) {
                 telegram('sendmessage', [
@@ -315,7 +315,7 @@ final class ServiceExtensions
                 return \Faoxima\Payments\Fulfillment\Settlement::fail($pdo, $order_id, $rxToken, 'extra_time_failed', $__refundEt);
             }
             if ($__refundEt === 'refunded') {
-                sendmessage($Payment_report['id_user'], "💎  کاربر عزیز بدلیل انجام نشدن خرید زمان اضافه مبلغ " . \Faoxima\Core\Support\Formatting::rxFormatToman($Payment_report['price']) . " تومان به کیف پول شما اضافه گردید.", null, 'HTML');
+                sendmessage($Payment_report['id_user'], \Faoxima\Telegram\Support\MessageTemplates::get('service_extra_time_failed_refunded', ['amount' => \Faoxima\Core\Support\Formatting::rxFormatToman($Payment_report['price'])]), null, 'HTML');
             }
             $extra_time['msg'] = \Faoxima\Services\Panels\PanelMessages::rx_panel_error_text($extra_time['msg'] ?? null, $extra_time['detail'] ?? null);
             $textreports = "خطای خرید حجم اضافه

@@ -41,7 +41,7 @@ final class Rialit
                 $rxRialitLockStatement = $pdo->prepare('SELECT GET_LOCK(?, 5)');
                 $rxRialitLockStatement->execute([$rxRialitInitLock]);
                 if ((int) $rxRialitLockStatement->fetchColumn() !== 1) {
-                    sendmessage($from_id, '⏳ درخواست پرداخت شما در حال پردازش است؛ کمی بعد دوباره تلاش کنید.', null, 'HTML');
+                    sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_rialit_processing'), null, 'HTML');
                     return;
                 }
                 register_shutdown_function(static function () use ($pdo, $rxRialitInitLock): void {
@@ -75,7 +75,7 @@ final class Rialit
                     return;
                 }
                 if ($rxRialitPending === null && !\Faoxima\Payments\Gateways\Rialit\Client::enabled($pdo)) {
-                    sendmessage($from_id, '❌ درگاه ریالیت در حال حاضر غیرفعال است.', $keyboard, 'HTML');
+                    sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_rialit_gateway_disabled'), $keyboard, 'HTML');
                     return;
                 }
                 deletemessage($from_id, $message_id);
@@ -137,16 +137,7 @@ final class Rialit
                     ]
                 ]);
                 $pricetoman = number_format($rxRialitAmount, 0);
-                $textnowpayments = "✅ تراکنش شما ایجاد شد
-
-🛒 کد پیگیری:  <code>$randomString</code>
-💲 مبلغ تراکنش به تومان  : <code>$pricetoman</code>
-
-💢 لطفا به این نکات قبل از پرداخت توجه کنید 👇
-
-🔹 لینک پرداخت تا ۳۰ دقیقه باز است. اگر پس از پایان این مهلت، پرداخت هنوز در انتظار باشد، نتیجه از سمت ریالیت بررسی و در صورت تأیید به‌صورت خودکار اعمال می‌شود.
-
-✅ در صورت مشکل میتوانید با پشتیبانی در ارتباط باشید";
+                $textnowpayments = \Faoxima\Telegram\Support\MessageTemplates::get('payment_invoice_created_rialit', ['tracking_code' => $randomString, 'amount' => $pricetoman]);
                 $gethelp = \Faoxima\Core\Database\Db::select("PaySetting", "ValuePay", "NamePay", "helprialit", "select")['ValuePay'];
                 if ($gethelp != 2) {
                     $data = json_decode($gethelp, true);

@@ -534,6 +534,13 @@ final class Db
             return \Faoxima\Core\Database\SelectCache::rx_select_failure_result($type);
         }
 
+        if ($table === 'textbot') {
+            try {
+                TextbotTemporary::enforceExpiry($pdo);
+            } catch (\Throwable $e) {
+            }
+        }
+
         $useCache = true;
         if (is_array($options) && array_key_exists('cache', $options)) {
             $useCache = (bool) $options['cache'];

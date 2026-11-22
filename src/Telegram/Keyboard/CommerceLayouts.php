@@ -6,8 +6,8 @@ final class CommerceLayouts
 {
     public static function purchase($backLabel, array $styles, callable $style): array
     {
-        $pay = ['text' => '💰 پرداخت و دریافت سرویس', 'callback_data' => 'confirmandgetservice'];
-        $discount = ['text' => '🎁 ثبت کد تخفیف', 'callback_data' => 'aptdc'];
+        $pay = ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_pay_and_get'), 'callback_data' => 'confirmandgetservice'];
+        $discount = ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_discount_code'), 'callback_data' => 'aptdc'];
         $back = ['text' => $backLabel, 'callback_data' => 'backuser', '_rxcolor' => 'navigation:confirm_back'];
 
         return [

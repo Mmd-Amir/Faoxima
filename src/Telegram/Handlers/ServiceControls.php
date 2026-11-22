@@ -38,7 +38,7 @@ final class ServiceControls
                 return;
             }
             $rwBack = json_encode(['inline_keyboard' => [[['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "product_{$rwInv['id_invoice']}"]]]]);
-            sendmessage($from_id, "📊 مصرف ۳۰ روز اخیر به‌تفکیک سرور:\n\n" . $rwBw['text'], $rwBack, 'HTML');
+            sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_usage_30d_report', [], ['usage' => (string) $rwBw['text']]), $rwBack, 'HTML');
             return;
         case 'remna_squad':
             $rwId = $rwm[1];
@@ -55,7 +55,7 @@ final class ServiceControls
             }
             $rwSet = method_exists(\Faoxima\Services\Panels\Drivers\Remnawave::class, 'remnawave_set_squads') ? \Faoxima\Services\Panels\Drivers\Remnawave::remnawave_set_squads($rwInv['Service_location'], $rwInv['username'], [$rwSquad]) : ['status' => 'Unsuccessful'];
             $rwBack = json_encode(['inline_keyboard' => [[['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "product_{$rwInv['id_invoice']}"]]]]);
-            sendmessage($from_id, ($rwSet['status'] ?? '') === 'successful' ? "✅ سرور با موفقیت تغییر کرد." : "❌ تغییر سرور ناموفق بود.", $rwBack, 'HTML');
+            sendmessage($from_id, ($rwSet['status'] ?? '') === 'successful' ? \Faoxima\Telegram\Support\MessageTemplates::get('service_server_change_success') : \Faoxima\Telegram\Support\MessageTemplates::get('service_server_change_failed'), $rwBack, 'HTML');
             return;
         case 'remna_picker':
             $rwId = $rwm[1];
@@ -84,7 +84,7 @@ final class ServiceControls
                 $rwKb['inline_keyboard'][] = [['text' => "🌍 " . (string)($sq['name'] ?? $sq['uuid']), 'callback_data' => "remnasetsquad_{$rwInv['id_invoice']}_{$sq['uuid']}"]];
             }
             $rwKb['inline_keyboard'][] = [['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "product_{$rwInv['id_invoice']}"]];
-            Editmessagetext($from_id, $message_id, "🌍 یک سرور (Squad) انتخاب کنید:", json_encode($rwKb));
+            Editmessagetext($from_id, $message_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_select_squad'), json_encode($rwKb));
             return;
         case 'service_status':
             $rxChangeStatusInvoice = \Faoxima\Core\Database\Db::select("invoice", "*", "id_invoice", $dataget[1], "select");
@@ -113,13 +113,13 @@ final class ServiceControls
             $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
             $changeStatusPanel = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
             if ($DataUserOut['status'] == "on_hold" || ($DataUserOut['status'] === 'active' && !$ManagePanel->HasLiveConnectionHistory(is_array($changeStatusPanel) ? $changeStatusPanel : null, $DataUserOut))) {
-                sendmessage($from_id, "ابتدا به کانفیگ متصل شوید و سپس مجدداً تلاش کنید.", null, 'html');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_connect_first'), null, 'html');
                 return;
             }
             if ($DataUserOut['status'] == "Unsuccessful") {
                 $offlinePanel = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
                 $offlineKeyboard = json_encode(['inline_keyboard' => [
-                    [['text' => '♻️ تمدید سرویس', 'callback_data' => 'extend_' . $nameloc['id_invoice']], ['text' => '🛒 خرید سرویس جدید', 'callback_data' => 'buy_service']],
+                    [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_renew'), 'callback_data' => 'extend_' . $nameloc['id_invoice']], ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_buy_new'), 'callback_data' => 'buy_service']],
                     [['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => 'backorder']]
                 ]]);
                 sendmessage($from_id, $datatextbot['dyn_errors_panel_connection_error'] ?? "❌ سامانه استعلام سرویس مورد نظر درحال حاضر در دسترس نیست.", $offlineKeyboard, 'html');
@@ -129,28 +129,26 @@ final class ServiceControls
                 $confirmdisableaccount = json_encode([
                     'inline_keyboard' => [
                         [
-                            ['text' => '✅ تایید و غیرفعال کانفیگ', 'callback_data' => "confirmaccountdisable_" . $id_invoice],
+                            ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_confirm_disable'), 'callback_data' => "confirmaccountdisable_" . $id_invoice],
                         ],
                         [
                             ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "product_" . $nameloc['id_invoice']],
                         ]
                     ]
                 ]);
-                Editmessagetext($from_id, $message_id, "📌 با تایید گزینه زیر کانفیگ شما خاموش و دیگر امکان اتصال به کانفیگ وجود ندارد.
-⚠️ در صورتی که میخواهید مجدد کانفیگ فعال شود باید از بخش مدیریت سرویس دکمه <u>💡 روشن کردن اکانت</u> را کلیک کنید", $confirmdisableaccount);
+                Editmessagetext($from_id, $message_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_disable_confirm'), $confirmdisableaccount);
             } else {
                 $confirmdisableaccount = json_encode([
                     'inline_keyboard' => [
                         [
-                            ['text' => '✅ تایید و فعال کانفیگ', 'callback_data' => "confirmaccountdisable_" . $id_invoice],
+                            ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_confirm_enable'), 'callback_data' => "confirmaccountdisable_" . $id_invoice],
                         ],
                         [
                             ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "product_" . $nameloc['id_invoice']],
                         ]
                     ]
                 ]);
-                Editmessagetext($from_id, $message_id, "📌 با تایید گزینه زیر کانفیگ شما روشن خواهد شد. و می توانید به کانفیگ خود متصل شوید
-⚠️ در صورتی که میخواهید مجدد کانفیگ غیرفعال شود باید از بخش مدیریت سرویس دکمه <u>❌ خاموش کردن اکانت</u>را کلیک کنید", $confirmdisableaccount);
+                Editmessagetext($from_id, $message_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_enable_confirm'), $confirmdisableaccount);
             }
             break;
         case 'disable_service':
@@ -175,7 +173,7 @@ final class ServiceControls
             ]);
             $currentStatusData = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
             if (is_array($currentStatusData) && $currentStatusData['status'] === 'active' && !$ManagePanel->HasLiveConnectionHistory(is_array($marzban_list_get) ? $marzban_list_get : null, $currentStatusData)) {
-                Editmessagetext($from_id, $message_id, "ابتدا به کانفیگ متصل شوید و سپس مجدداً تلاش کنید.", $bakinfos);
+                Editmessagetext($from_id, $message_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_connect_first'), $bakinfos);
                 return;
             }
             $dataoutput = $ManagePanel->Change_status($nameloc['username'], $nameloc['Service_location']);

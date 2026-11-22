@@ -59,7 +59,7 @@ final class ConfirmBulkPurchase
                 try {
                     $info_product['price_product'] = \Faoxima\Orders\Pricing\CustomDuration::fx_custom_price($marzban_list_get, $user['agent'], $parts[2], $parts[1]);
                 } catch (InvalidArgumentException $e) {
-                    sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'backuser']]]]), 'HTML');
+                    sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_back'), 'callback_data' => 'backuser']]]]), 'HTML');
                     return;
                 }
                 $info_product['data_limit_reset'] = "no_reset";
@@ -101,7 +101,7 @@ final class ConfirmBulkPurchase
                     return;
                 }
             }
-            Editmessagetext($from_id, $message_id, $text_inline, null);
+            rxRemoveMessageKeyboard($from_id, $message_id);
             $username_ac = $user['Processing_value_tow'];
             $date = time();
             if (intval($user['pricediscount']) != 0) {
@@ -200,7 +200,7 @@ final class ConfirmBulkPurchase
                         ? \Faoxima\Services\Fulfillment\Inventory::nmStockReserveForProduct($pdo, $marzban_list_get, $info_product, $from_id, $randomString, 'national_direct_buy')
                         : false;
                     if (!$stock) {
-                        sendmessage($from_id, "❌ وضعیت نت ملی فعال است اما موجودی انبار برای این محصول تمام شده است. خرید انجام نشد و مبلغی از کیف پول کسر نشد.", $keyboard, 'HTML');
+                        sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_bulk_stock_empty_not_charged'), $keyboard, 'HTML');
                         \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
                         return;
                     }
@@ -269,7 +269,7 @@ final class ConfirmBulkPurchase
                     if (is_callable([\Faoxima\Payments\Fulfillment\Settlement::class, 'alertAdmin'])) {
                         \Faoxima\Payments\Fulfillment\Settlement::alertAdmin('jovad:' . $randomString, 'نتیجه ساخت این اشتراک از خرید انبوه نامشخص است؛ شناسه نگاشت و تسویه بررسی شود.', ['username' => $username_acc, 'panel' => $marzban_list_get['name_panel'], 'invoice' => $randomString]);
                     }
-                    sendmessage($from_id, '⏳ نتیجه ساخت این مورد از خرید انبوه نامشخص است و برای پشتیبانی ثبت شد. هزینه این مورد کسر نشد؛ تا تعیین نتیجه دوباره خرید نکنید.', $keyboard, 'HTML');
+                    sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_bulk_provision_result_unknown'), $keyboard, 'HTML');
                     \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
                     return;
                 }

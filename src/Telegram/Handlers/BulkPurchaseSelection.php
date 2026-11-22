@@ -123,9 +123,7 @@ final class BulkPurchaseSelection
             $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
             $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
             $custompricevalue = \Faoxima\Orders\Pricing\ExchangePricing::fxAdjustBaseToman($eextraprice[$user['agent']], $marzban_list_get, 'custom_volume');
-            $textcustom = "🔋 لطفا مقدار حجم سرویس مورد نظر را وارد کنید ( برحسب گیگابایت ) :
-📌 تعرفه هر گیگ :  " . \Faoxima\Core\Support\Formatting::rxFormatToman($custompricevalue) . "
-🔔 حداقل حجم 1 گیگابایت و حداکثر 1000 گیگابایت می باشد.";
+            $textcustom = \Faoxima\Telegram\Support\MessageTemplates::get('service_custom_volume_prompt_bulk', ['price' => \Faoxima\Core\Support\Formatting::rxFormatToman($custompricevalue)]);
             sendmessage($from_id, $textcustom, $backuser, 'html');
             deletemessage($from_id, $message_id);
             \Faoxima\Telegram\Navigation\Steps::step('gettimecustomvolom', $from_id);
@@ -144,7 +142,7 @@ final class BulkPurchaseSelection
             $maxtime = json_decode($marzban_list_get['maxtime'], true);
             $maxtime = $maxtime[$user['agent']];
             if ($text > intval($maxvolume) || $text < intval($mainvolume)) {
-                $texttime = "❌ حجم نامعتبر است.\n🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد";
+                $texttime = \Faoxima\Telegram\Support\MessageTemplates::get('service_custom_volume_invalid', ['min' => $mainvolume, 'max' => $maxvolume]);
                 sendmessage($from_id, $texttime, $backuser, 'HTML');
                 return;
             }
@@ -174,7 +172,7 @@ final class BulkPurchaseSelection
                 $maxtime = json_decode($marzban_list_get['maxtime'], true);
                 $maxtime = $maxtime[$user['agent']];
                 if (intval($text) > intval($maxtime) || intval($text) < intval($maintime)) {
-                    $texttime = "❌ زمان ارسال شده نامعتبر است . زمان باید بین $maintime روز تا $maxtime روز باشد";
+                    $texttime = \Faoxima\Telegram\Support\MessageTemplates::get('service_custom_duration_invalid', ['min' => $maintime, 'max' => $maxtime]);
                     sendmessage($from_id, $texttime, $backuser, 'HTML');
                     return;
                 }
@@ -206,7 +204,7 @@ final class BulkPurchaseSelection
                 $maxtime = json_decode($marzban_list_get['maxtime'], true);
                 $maxtime = $maxtime[$user['agent']];
                 if (intval($text) > $maxtime || intval($text) < $maintime) {
-                    $texttime = "❌ زمان ارسال شده نامعتبر است . زمان باید بین $maintime روز تا $maxtime روز باشد";
+                    $texttime = \Faoxima\Telegram\Support\MessageTemplates::get('service_custom_duration_invalid', ['min' => $maintime, 'max' => $maxtime]);
                     sendmessage($from_id, $texttime, $backuser, 'HTML');
                     return;
                 }
@@ -253,7 +251,7 @@ final class BulkPurchaseSelection
                 try {
                     $info_product['price_product'] = \Faoxima\Orders\Pricing\CustomDuration::fx_custom_price($marzban_list_get, $user['agent'], $parts[2], $parts[1]);
                 } catch (InvalidArgumentException $e) {
-                    sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'backuser']]]]), 'HTML');
+                    sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_back'), 'callback_data' => 'backuser']]]]), 'HTML');
                     return;
                 }
             } else {
@@ -293,17 +291,7 @@ final class BulkPurchaseSelection
             \Faoxima\Orders\Pricing\ExchangePricing::fxQuoteStore($from_id, \Faoxima\Orders\Pricing\ExchangePricing::fxQuoteContextKey('bulk', (string) $loc . '|' . (string) $user['Processing_value_four']), $info_product['price_product'], $marzban_list_get, $fxBulkKinds);
             $price_product_format = number_format($info_product['price_product']);
             $userbalancepish = number_format($user['Balance']);
-            $textin = "
-📇 پیش فاکتور شما:
-👤 نام کاربری: <code>" . \Faoxima\Services\Panels\Drivers\Guard::guardDisplayUsername($username_ac, $marzban_list_get) . "</code>
-🔐 نام سرویس: {$info_product['name_product']}
-📆 مدت اعتبار: {$info_product['Service_time']} روز
-💶 قیمت: $price_product_format  تومان
-👥 حجم اکانت: {$info_product['Volume_constraint']} گیگ
-💵 موجودی کیف پول شما : $userbalancepish
-⭕️تعداد کانفیگ : {$user['Processing_value_four']}
-
-💰 سفارش شما آماده پرداخت است.  ";
+            $textin = \Faoxima\Telegram\Support\MessageTemplates::get('service_bulk_invoice_preview', ['username' => \Faoxima\Services\Panels\Drivers\Guard::guardDisplayUsername($username_ac, $marzban_list_get), 'product' => $info_product['name_product'], 'days' => $info_product['Service_time'], 'price' => $price_product_format, 'volume' => $info_product['Volume_constraint'], 'balance' => $userbalancepish, 'count' => $user['Processing_value_four']]);
             if (($parts[0] ?? '') === 'customvolume') {
                 $textin .= \Faoxima\Orders\Pricing\CustomDuration::fx_custom_price_text($marzban_list_get, $user['agent'], $parts[2], $parts[1], $info_product['price_product']);
             }

@@ -54,7 +54,7 @@ final class RechargeStart
                     }
                     $rwRows[] = $rwRow;
                 }
-                $rwRows[] = [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => "✍️ رقم دلخواه", 'callback_data' => "rw_custom"], 'rw_custom', $_rx_acc_s)];
+                $rwRows[] = [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_custom_amount'), 'callback_data' => "rw_custom"], 'rw_custom', $_rx_acc_s)];
                 $rwRows[] = [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "account", '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true], 'backinfo', $_rx_acc_s)];
                 $rwKeyboard = json_encode(['inline_keyboard' => $rwRows], JSON_UNESCAPED_UNICODE);
                 Editmessagetext($from_id, $message_id, $datatextbot['dyn_wallet_select_amount'] ?? "💰 مبلغ مورد نظر را برای شارژ کیف پول انتخاب کنید:", $rwKeyboard, 'HTML');

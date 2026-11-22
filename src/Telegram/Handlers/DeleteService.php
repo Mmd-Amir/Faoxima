@@ -97,7 +97,7 @@ final class DeleteService
             $confirmremove = json_encode([
                 'inline_keyboard' => [
                     [
-                        ['text' => "✅  درخواست حذف سرویس را دارم", 'callback_data' => "confirmremoveservices-$id_invoice"],
+                        ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_request_delete_confirm'), 'callback_data' => "confirmremoveservices-$id_invoice"],
                     ],
                 ]
             ]);

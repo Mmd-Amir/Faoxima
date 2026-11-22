@@ -82,11 +82,7 @@ final class ChangeLocation
             if ($userlimitlastfree < 0)
                 $userlimitlastfree = 0;
             $Pricechange = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "code_panel", $dataget[1], "select")['priceChangeloc'];
-            $textchange = "📍 با  تایید کردن انتقال موقعیت سرویس شما در این موقعیت حذف و به موقعیت جدید منتقل خواهد شد.
-💰 هزینه انتقال " . \Faoxima\Core\Support\Formatting::rxFormatToman($Pricechange) . " تومان می باشد
-📌 محدودیت باقی مانده شما : $userlimitlast عدد (تعداد محدودیت رایگان باقی مانده :‌$userlimitlastfree عدد)
-
-✅ برای تایید انتقال روی دکمه زیر کلیک کنید";
+            $textchange = \Faoxima\Telegram\Support\MessageTemplates::get('service_location_change_confirm', ['price' => \Faoxima\Core\Support\Formatting::rxFormatToman($Pricechange), 'limit_left' => $userlimitlast, 'free_left' => $userlimitlastfree]);
             $keyboardextend = json_encode([
                 'inline_keyboard' => [
                     [
@@ -285,15 +281,7 @@ final class ChangeLocation
             }
             $limitnew = $user['limitchangeloc'] + 1;
             \Faoxima\Core\Database\Db::update("user", "limitchangeloc", $limitnew, "id", $from_id);
-            $textchangeloc = "✅ کانفیگ شما باموفقیت به سرور ({$marzban_list_get_new['name_panel']}) انتقال یافت.
-
-🖥 نام سرویس : {$nameloc['username']}
-💠 حجم سرویس : $RemainingVolume
-⏳ زمان انقضا :  $expirationDate | $day
-
-🔗 لینک اشتراک شما:
-
-<code>$output_config_link</code>";
+            $textchangeloc = \Faoxima\Telegram\Support\MessageTemplates::get('service_location_change_success', ['panel' => $marzban_list_get_new['name_panel'], 'username' => $nameloc['username'], 'volume' => $RemainingVolume, 'expire' => $expirationDate, 'days_left' => $day], ['link' => $output_config_link]);
             if (intval($Pricechange) != 0) {
                 $__allowNegPc = ($user['agent'] === 'n2') ? (int)($user['maxbuyagent'] ?? 0) : 0;
                 $__chargePc = is_callable([\Faoxima\Wallet\Balance\Balances::class, 'charge']) ? \Faoxima\Wallet\Balance\Balances::charge($pdo, $from_id, $Pricechange, $__allowNegPc) : ['ok' => false];

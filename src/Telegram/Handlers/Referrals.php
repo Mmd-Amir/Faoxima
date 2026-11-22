@@ -66,8 +66,8 @@ final class Referrals
             $keyboard_share = json_encode([
                 'inline_keyboard' => [
                     [
-                        ['text' => "🎁 هدیه عضویت", 'callback_data' => "get_gift_start", '_rxcolor' => 'affiliate:gift', '_rxsk' => 'affiliatesbtn', '_rxkeep' => true],
-                        ['text' => "🔗 اشتراک لینک", 'url' => "https://t.me/share/url?url=https://t.me/$usernamebot?start=$from_id", '_rxcolor' => 'affiliate:share', '_rxsk' => 'affiliatesbtn', '_rxkeep' => true],
+                        ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('referral_btn_gift'), 'callback_data' => "get_gift_start", '_rxcolor' => 'affiliate:gift', '_rxsk' => 'affiliatesbtn', '_rxkeep' => true],
+                        ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('referral_btn_share_link'), 'url' => "https://t.me/share/url?url=https://t.me/$usernamebot?start=$from_id", '_rxcolor' => 'affiliate:share', '_rxsk' => 'affiliatesbtn', '_rxkeep' => true],
                     ],
                 ]
             ]);

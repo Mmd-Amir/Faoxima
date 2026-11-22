@@ -78,7 +78,7 @@ final class ExternalRenewal
                 }
             }
             if (!is_array($marzban_list_get)) {
-                sendmessage($from_id, "❌ خطایی رخ داده است مراحل را از اول طی کنید", null, 'html');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_restart_error'), null, 'html');
                 return;
             }
             $location = $marzban_list_get['name_panel'];
@@ -387,19 +387,9 @@ final class ExternalRenewal
             $balanceformatsell = number_format(\Faoxima\Core\Database\Db::select("user", "Balance", "id", $from_id, "select")['Balance'], 0);
             if (!empty($extend['queued'])) {
                 $rxQueuedSuccessTpl = (string) ($extend['reservation']['confirmation'] ?? \Faoxima\Services\Renewal\RenewalText::rxRenewalText('reservation_confirmed'));
-                $textextend = "$rxQueuedSuccessTpl
-
-▫️نام سرویس : $usernamePanelExtends
-▫️نام محصول : {$prodcut['name_product']}
-▫️مبلغ تمدید {$prodcut['price_product']} تومان
-";
+                $textextend = \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_queued_summary', ['service' => $usernamePanelExtends, 'product' => $prodcut['name_product'], 'price' => $prodcut['price_product']], ['confirmation' => $rxQueuedSuccessTpl]);
             } else {
-                $textextend = "✅ تمدید برای سرویس شما با موفقیت صورت گرفت
-
-▫️نام سرویس : $usernamePanelExtends
-▫️نام محصول : {$prodcut['name_product']}
-▫️مبلغ تمدید {$prodcut['price_product']} تومان
-";
+                $textextend = \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_success', ['service' => $usernamePanelExtends, 'product' => $prodcut['name_product'], 'price' => $prodcut['price_product']]);
                 $textextend = \Faoxima\Services\Renewal\RenewalText::rxRenewalDecorateSuccess($textextend, $extend, (string) $usernamePanelExtends, (string) ($marzban_list_get['name_panel'] ?? ''));
             }
             sendmessage($from_id, $textextend, $keyboard, 'HTML');

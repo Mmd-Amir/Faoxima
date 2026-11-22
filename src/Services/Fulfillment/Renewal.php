@@ -45,7 +45,7 @@ final class Renewal
         $data_order = $stmt->fetch(PDO::FETCH_ASSOC);
         $service_other = $data_order;
         if ($service_other == false) {
-            sendmessage($Balance_id['id'], '❌ خطایی در هنگام تمدید رخ داده با پشتیبانی در ارتباط باشید', $keyboard, 'HTML');
+            sendmessage($Balance_id['id'], \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_error_contact_support'), $keyboard, 'HTML');
             return \Faoxima\Payments\Fulfillment\Settlement::abort($pdo, $order_id, $rxToken, 'renewal_service_other_not_found', true);
         }
         $service_other = json_decode($service_other['value'], true);
@@ -77,9 +77,9 @@ final class Renewal
         if (!is_array($prodcut)) {
             $__refundPr = \Faoxima\Payments\Settlement\Refunds::paymentOnce($pdo, $Payment_report['id_order'], $Balance_id['id'], $Payment_report['price'], 'بازگشت وجه - محصول تمدید در دسترس نیست', (string)($nameloc['id_invoice'] ?? ''));
             if ($__refundPr === 'refunded') {
-                sendmessage($Balance_id['id'], "❌ محصول این تمدید دیگر در دسترس نیست؛ مبلغ پرداختی به کیف پول شما بازگردانده شد.", $keyboard, 'HTML');
+                sendmessage($Balance_id['id'], \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_product_unavailable_refunded'), $keyboard, 'HTML');
             } elseif ($__refundPr === 'failed') {
-                sendmessage($Balance_id['id'], "❌ محصول این تمدید دیگر در دسترس نیست و بازگشت وجه با خطا مواجه شد؛ لطفاً با پشتیبانی در ارتباط باشید.", $keyboard, 'HTML');
+                sendmessage($Balance_id['id'], \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_product_unavailable_refund_failed'), $keyboard, 'HTML');
             }
             return \Faoxima\Payments\Fulfillment\Settlement::fail($pdo, $order_id, $rxToken, 'renewal_product_unavailable', $__refundPr);
         }
@@ -102,9 +102,9 @@ final class Renewal
                 if (is_array($stockNew) && is_callable([\Faoxima\Services\Fulfillment\Inventory::class, 'nmStockReleaseReservation'])) \Faoxima\Services\Fulfillment\Inventory::nmStockReleaseReservation($pdo, $stockNew);
                 $__refundSt = \Faoxima\Payments\Settlement\Refunds::paymentOnce($pdo, $Payment_report['id_order'], $Balance_id['id'], $Payment_report['price'], 'بازگشت وجه - موجودی انبار تمام شده', (string)($nameloc['id_invoice'] ?? ''));
                 if ($__refundSt === 'refunded') {
-                    sendmessage($Balance_id['id'], "❌ موجودی انبار برای این محصول تمام شده است؛ مبلغ پرداختی به کیف پول شما بازگردانده شد.", $keyboard, 'HTML');
+                    sendmessage($Balance_id['id'], \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_stock_empty_refunded'), $keyboard, 'HTML');
                 } elseif ($__refundSt === 'failed') {
-                    sendmessage($Balance_id['id'], "❌ موجودی انبار برای این محصول تمام شده است و بازگشت وجه با خطا مواجه شد؛ لطفاً با پشتیبانی در ارتباط باشید.", $keyboard, 'HTML');
+                    sendmessage($Balance_id['id'], \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_stock_empty_refund_failed'), $keyboard, 'HTML');
                 }
                 return \Faoxima\Payments\Fulfillment\Settlement::fail($pdo, $order_id, $rxToken, 'national_stock_empty', $__refundSt);
             }
@@ -251,9 +251,9 @@ final class Renewal
             }
             if ($__refundEx === 'refunded') {
                 sendmessage($Balance_id['id'], $textbotlang['users']['sell']['ErrorConfig'], $keyboard, 'HTML');
-                sendmessage($Balance_id['id'], "💎  کاربر عزیز بدلیل تمدید نشدن سرویس مبلغ " . \Faoxima\Core\Support\Formatting::rxFormatToman($Payment_report['price']) . " تومان به کیف پول شما اضافه گردید.", $keyboard, 'HTML');
+                sendmessage($Balance_id['id'], \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_failed_refunded', ['amount' => \Faoxima\Core\Support\Formatting::rxFormatToman($Payment_report['price'])]), $keyboard, 'HTML');
             } else {
-                sendmessage($Balance_id['id'], "❌ تمدید سرویس با خطا مواجه شد و بازگشت وجه نیز انجام نشد؛ لطفاً با پشتیبانی در ارتباط باشید.", $keyboard, 'HTML');
+                sendmessage($Balance_id['id'], \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_failed_refund_failed'), $keyboard, 'HTML');
             }
             $rxTopupExtendMsg = \Faoxima\Services\Renewal\RenewalText::rxRenewalFailureText($extend, \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_errors_renewal_support_error', "❌خطایی در تمدید سرویس رخ داده با پشتیبانی در ارتباط باشید"));
             if (($extend['code'] ?? '') === 'manual_stock_empty') {
@@ -348,26 +348,15 @@ final class Renewal
         if ($renewCashbackEligible && intval($valurcashbackextend) != 0) {
             $result = (int) floor(($prodcut['price_product'] * $valurcashbackextend) / 100);
             if (\Faoxima\Cashback\Credits::creditOnce($pdo, $Payment_report['id_order'] ?? '', $Balance_id['id'], $result, 'chashbackextend', 'هدیه بازگشت وجه تمدید سرویس') === 'credited') {
-                sendmessage($Balance_id['id'], "تبریک 🎉
-📌 به عنوان هدیه تمدید مبلغ " . \Faoxima\Core\Support\Formatting::rxFormatToman($result) . " تومان حساب شما شارژ گردید", null, 'HTML');
+                sendmessage($Balance_id['id'], \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_cashback_gift', ['amount' => \Faoxima\Core\Support\Formatting::rxFormatToman($result)]), null, 'HTML');
             }
         }
         $priceproductformat = number_format($prodcut['price_product']);
         if (!empty($extend['queued'])) {
             $rxQueuedSuccessTpl = (string) ($extend['reservation']['confirmation'] ?? \Faoxima\Services\Renewal\RenewalText::rxRenewalText('reservation_confirmed'));
-            $textextend = "$rxQueuedSuccessTpl
-
-▫️نام سرویس : $usernamepanel
-▫️نام محصول : {$prodcut['name_product']}
-▫️مبلغ تمدید $priceproductformat تومان
-";
+            $textextend = \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_queued_summary', ['service' => $usernamepanel, 'product' => $prodcut['name_product'], 'price' => $priceproductformat], ['confirmation' => $rxQueuedSuccessTpl]);
         } else {
-            $textextend = "✅ تمدید برای سرویس شما با موفقیت صورت گرفت
-
-▫️نام سرویس : $usernamepanel
-▫️نام محصول : {$prodcut['name_product']}
-▫️مبلغ تمدید $priceproductformat تومان
-";
+            $textextend = \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_success', ['service' => $usernamepanel, 'product' => $prodcut['name_product'], 'price' => $priceproductformat]);
             if (is_array($rxBeforeState ?? null) && is_array($rxAfterState ?? null)) {
                 $textextend .= "\n" . \Faoxima\Services\Renewal\RenewalText::rxRenewalResultText($rxBeforeState, $rxAfterState);
             } elseif (($rxOutcomeText = \Faoxima\Services\Renewal\RenewalText::rxRenewalOutcomeText($extend)) !== '') {

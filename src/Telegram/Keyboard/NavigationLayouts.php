@@ -6,12 +6,12 @@ final class NavigationLayouts
 {
     public static function onboarding($backLabel, array $styles, callable $style): array
     {
-        $rules = $style(['text' => '✅ قوانین را می پذیرم', 'callback_data' => 'acceptrule'], 'rules_accept', $styles);
+        $rules = $style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_accept_rules'), 'callback_data' => 'acceptrule'], 'rules_accept', $styles);
         return [
             json_encode(['inline_keyboard' => [[$rules]]]),
             json_encode([
                 'keyboard' => [
-                    [$style(['text' => '☎️ ارسال شماره تلفن', 'request_contact' => true], 'contact_phone', $styles)],
+                    [$style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_send_phone'), 'request_contact' => true], 'contact_phone', $styles)],
                     [$style(['text' => $backLabel, 'callback_data' => 'contact_back'], 'contact_back', $styles)],
                 ],
                 'resize_keyboard' => true,

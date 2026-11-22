@@ -97,7 +97,7 @@ final class PurchaseDiscount
                 try {
                     $info_product['price_product'] = \Faoxima\Orders\Pricing\CustomDuration::fx_custom_price($marzban_list_get, $user['agent'], $parts[2], $parts[1]);
                 } catch (InvalidArgumentException $e) {
-                    sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'backuser']]]]), 'HTML');
+                    sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_back'), 'callback_data' => 'backuser']]]]), 'HTML');
                     return;
                 }
             } else {
@@ -144,21 +144,11 @@ final class PurchaseDiscount
             $rxFmtInfoProductmain = \Faoxima\Core\Support\Formatting::rxFormatToman($info_productmain);
             $rxFmtInfoProductPriceDiscounted = \Faoxima\Core\Support\Formatting::rxFormatToman($info_product['price_product']);
             $rxFmtUserBalanceInvoicePreview = \Faoxima\Core\Support\Formatting::rxFormatToman($user['Balance']);
-            $textin = "
-📇 پیش فاکتور شما:
-👤 نام کاربری: <code>{$user['Processing_value_tow']}</code>
-🔐 نام سرویس: {$info_product['name_product']}
-📆 مدت اعتبار: {$info_product['Service_time']} روز
-💶 قیمت اصلی : <del>{$rxFmtInfoProductmain} تومان</del>
-💶 قیمت با تخفیف: {$rxFmtInfoProductPriceDiscounted}  تومان
-👥 حجم اکانت: {$info_product['Volume_constraint']} گیگ
-💵 موجودی کیف پول شما : {$rxFmtUserBalanceInvoicePreview}
-
-        💰 سفارش شما آماده پرداخت است.  ";
+            $textin = \Faoxima\Telegram\Support\MessageTemplates::get('service_discount_invoice_preview', ['username' => $user['Processing_value_tow'], 'product' => $info_product['name_product'], 'days' => $info_product['Service_time'], 'price_main' => $rxFmtInfoProductmain, 'price_discounted' => $rxFmtInfoProductPriceDiscounted, 'volume' => $info_product['Volume_constraint'], 'balance' => $rxFmtUserBalanceInvoicePreview]);
             $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
             $paymentDiscount = json_encode([
                 'inline_keyboard' => [
-                    [['text' => "💰 پرداخت و دریافت سرویس", 'callback_data' => "confirmandgetserviceDiscount"]],
+                    [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_pay_and_get'), 'callback_data' => "confirmandgetserviceDiscount"]],
                     [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser"], 'backuser', $_rx_nav_s)]
                 ]
             ]);

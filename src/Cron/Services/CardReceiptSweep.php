@@ -293,7 +293,7 @@ final class CardReceiptSweep
         if ($eligible && $percent != "0") {
             $amount = intval(($payment['price'] * $percent) / 100);
             if (Credits::creditOnce($this->pdo, $payment['id_order'], $user['id'], $amount, 'chashbackcart', 'هدیه بازگشت وجه کارت به کارت (تایید خودکار)') === 'credited') {
-                $text = "🎁 کاربر عزیز مبلغ " . Formatting::rxFormatToman($amount) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.";
+                $text = \Faoxima\Telegram\Support\MessageTemplates::get('notify_cashback_gift', ['amount' => Formatting::rxFormatToman($amount)]);
                 sendmessage($user['id'], $text, null, 'HTML');
             }
         }

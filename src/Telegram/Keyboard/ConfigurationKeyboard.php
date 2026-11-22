@@ -130,7 +130,7 @@ final class ConfigurationKeyboard
             $protocolExact = $rxCfgExactStyle($cfgHash, 'protocol');
             if ($protocolExact !== null) { $protocolButton['style'] = $protocolExact; }
 
-            $downloadBtn = ['text' => "دریافت کانفیگ", 'callback_data' => "configget_{$id_invoice}_$i", '_rxsk' => 'cfg_download_one', '_rxcolor' => 'config_cell:download'];
+            $downloadBtn = ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('config_btn_download'), 'callback_data' => "configget_{$id_invoice}_$i", '_rxsk' => 'cfg_download_one', '_rxcolor' => 'config_cell:download'];
             $downloadExact = $rxCfgExactStyle($cfgHash, 'download');
             if ($downloadExact !== null) { $downloadBtn['style'] = $downloadExact; }
 
@@ -204,9 +204,9 @@ final class ConfigurationKeyboard
 
         $keyboard_config = ['inline_keyboard' => []];
         $keyboard_config['inline_keyboard'][] = [
-            ['text' => "⚙️ کانفیگ", 'callback_data' => "none", '_rxsk' => 'cfg_header_action', '_rxcolor' => 'config_header:cfg_header_action'],
-            ['text' => "🔌 پروتکل", 'callback_data' => "none", '_rxsk' => 'cfg_header_protocol', '_rxcolor' => 'config_header:cfg_header_protocol'],
-            ['text' => "✏️نام کانفیگ", 'callback_data' => "none", '_rxsk' => 'cfg_header_name', '_rxcolor' => 'config_header:cfg_header_name'],
+            ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('config_btn_header_action'), 'callback_data' => "none", '_rxsk' => 'cfg_header_action', '_rxcolor' => 'config_header:cfg_header_action'],
+            ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('config_btn_header_protocol'), 'callback_data' => "none", '_rxsk' => 'cfg_header_protocol', '_rxcolor' => 'config_header:cfg_header_protocol'],
+            ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('config_btn_header_name'), 'callback_data' => "none", '_rxsk' => 'cfg_header_name', '_rxcolor' => 'config_header:cfg_header_name'],
             ];
         foreach ($pageRows as $row) {
             $keyboard_config['inline_keyboard'][] = $row;
@@ -215,16 +215,16 @@ final class ConfigurationKeyboard
         if ($totalPages > 1) {
             $navRow = [];
             if ($page > 0) {
-                $navRow[] = ['text' => "◀️ قبلی", 'callback_data' => "configpage_{$id_invoice}_" . ($page - 1), '_rxsk' => 'cfg_page_prev'];
+                $navRow[] = ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_prev'), 'callback_data' => "configpage_{$id_invoice}_" . ($page - 1), '_rxsk' => 'cfg_page_prev'];
             }
             $navRow[] = ['text' => sprintf('%d/%d', $page + 1, $totalPages), 'callback_data' => "none", '_rxsk' => 'cfg_page_indicator'];
             if ($page < $totalPages - 1) {
-                $navRow[] = ['text' => "بعدی ▶️", 'callback_data' => "configpage_{$id_invoice}_" . ($page + 1), '_rxsk' => 'cfg_page_next'];
+                $navRow[] = ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_next'), 'callback_data' => "configpage_{$id_invoice}_" . ($page + 1), '_rxsk' => 'cfg_page_next'];
             }
             $keyboard_config['inline_keyboard'][] = $navRow;
         }
 
-        $keyboard_config['inline_keyboard'][] = [['text' => "⚙️ دریافت همه کانفیگ ها", 'callback_data' => "configget_$id_invoice"."_1520", '_rxsk' => 'cfg_download_all']];
+        $keyboard_config['inline_keyboard'][] = [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('config_btn_download_all'), 'callback_data' => "configget_$id_invoice"."_1520", '_rxsk' => 'cfg_download_all']];
         if($back_active){
         $keyboard_config['inline_keyboard'][] = [['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "product_$id_invoice", '_rxsk' => 'cfg_back_service']];
         }

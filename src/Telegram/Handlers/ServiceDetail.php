@@ -63,7 +63,7 @@ final class ServiceDetail
                 $nameloc_qv = $stmtQv->fetch(PDO::FETCH_ASSOC);
                 if (!is_array($nameloc_qv)) {
                     if (isset($callback_query_id)) {
-                        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => '❌ سرویس پیدا نشد', 'show_alert' => true]);
+                        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id, 'text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_not_found_alert'), 'show_alert' => true]);
                     }
                     return;
                 }
@@ -86,7 +86,7 @@ final class ServiceDetail
                     $note_qv = isset($nameloc_qv['note']) && $nameloc_qv['note'] !== '' ? ' | ' . $nameloc_qv['note'] : '';
                     $caption_qv = '✨ <b>' . htmlspecialchars((string)$nameloc_qv['username'], ENT_QUOTES, 'UTF-8') . '</b>'
                                 . htmlspecialchars($note_qv, ENT_QUOTES, 'UTF-8');
-                    $__qvRow = [['text' => '🔧 مدیریت سرویس', 'callback_data' => 'product_' . $nameloc_qv['id_invoice']]];
+                    $__qvRow = [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_manage'), 'callback_data' => 'product_' . $nameloc_qv['id_invoice']]];
                     if (!(method_exists(\Faoxima\Telegram\Support\InfoCardRenderer::class, 'isQrDisabled') && \Faoxima\Telegram\Support\InfoCardRenderer::isQrDisabled())) {
                         $__qvRow[] = ['text' => \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_purchase_qr_code_btn', '📷 دریافت QR Code'), 'callback_data' => 'infocard_qr_' . $nameloc_qv['id_invoice']];
                     }
@@ -143,7 +143,7 @@ final class ServiceDetail
                 $stmt->execute();
                 telegram('answerCallbackQuery', array(
                     'callback_query_id' => $callback_query_id,
-                    'text' => "♻️ اطلاعات بروز شد",
+                    'text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_info_refreshed_alert'),
                     'show_alert' => false,
                     'cache_time' => 0,
                 ));
@@ -190,7 +190,7 @@ final class ServiceDetail
                 }
                 $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
                 $backuser = [
-                    \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'backuser'], 'backuser', $_rx_nav_s)
+                    \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back_main'), 'callback_data' => 'backuser'], 'backuser', $_rx_nav_s)
                 ];
                 if ($setting['NotUser'] == "onnotuser") {
                     $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['page']['notusernameme'], 'callback_data' => 'notusernameme']];
@@ -397,12 +397,12 @@ final class ServiceDetail
                 $manualRows = [];
                 if ($manualHasConfig) {
                     $manualRows[] = [
-                        ['text' => "🔐 دریافت کانفیگ", 'callback_data' => 'config_' . $nameloc['id_invoice']],
+                        ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_get_config'), 'callback_data' => 'config_' . $nameloc['id_invoice']],
                     ];
                 }
                 if ($manualHasSub) {
                     $manualRows[] = [
-                        ['text' => "🔗 دریافت لینک اشتراک", 'callback_data' => 'subscriptionurl_' . $nameloc['id_invoice']],
+                        ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_get_sub_link'), 'callback_data' => 'subscriptionurl_' . $nameloc['id_invoice']],
                     ];
                 }
                 if ($manualStatusExtend) {
@@ -479,7 +479,7 @@ $nameconfig";
                             ['text' => $textbotlang['users']['Extra_volume']['sellextra'], 'callback_data' => 'Extra_volume_' . $username],
                         ],
                         [
-                            ['text' => "❌ حذف سرویس", 'callback_data' => 'removeauto-' . $username],
+                            ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_delete'), 'callback_data' => 'removeauto-' . $username],
                             ['text' => $textbotlang['users']['Extra_time']['title'], 'callback_data' => 'Extra_time_' . $username],
                         ],
                         [
@@ -496,13 +496,13 @@ $nameconfig";
             } else {
                 $marzbancount = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "status", "active", "count");
                 if ($DataUserOut['status'] == "active") {
-                    $namestatus = '❌ خاموش کردن اکانت';
+                    $namestatus = \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_account_off');
                 } else {
-                    $namestatus = '💡 روشن کردن اکانت';
+                    $namestatus = \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_account_on');
                 }
                 $keyboarddate = array(
                     'updateinfo' => array(
-                        'text' => "♻️ بروزرسانی اطلاعات",
+                        'text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_refresh_info'),
                         'callback_data' => "updateproduct_"
                     ),
                     'linksub' => array(
@@ -526,7 +526,7 @@ $nameconfig";
                         'callback_data' => "removeserviceuser_"
                     ),
                     'changenameconfig' => array(
-                        'text' => '📝 تغییر یادداشت',
+                        'text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_edit_note'),
                         'callback_data' => "changenote_"
                     ),
                     'Extra_volume' => array(
@@ -550,7 +550,7 @@ $nameconfig";
                         'callback_data' => "changeloc_"
                     ),
                     'ekhtelal' => array(
-                        'text' => "⚠️ ارسال گزارش اختلال",
+                        'text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_report_issue'),
                         'callback_data' => "disorder-"
                     )
                 );
@@ -584,10 +584,10 @@ $nameconfig";
                         unset($keyboarddate['config']);
                     }
                     if (($marzban['remna_usage_btn'] ?? 'on') === "on") {
-                        $keyboarddate['remna_usage'] = ['text' => '📊 مصرف به‌تفکیک سرور', 'callback_data' => 'remnausage_'];
+                        $keyboarddate['remna_usage'] = ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_usage_by_server'), 'callback_data' => 'remnausage_'];
                     }
                     if (($marzban['remna_server_picker'] ?? 'off') === "on") {
-                        $keyboarddate['remna_picker'] = ['text' => '🌍 انتخاب سرور', 'callback_data' => 'remnapicker_'];
+                        $keyboarddate['remna_picker'] = ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_choose_server'), 'callback_data' => 'remnapicker_'];
                     }
                 }
                 if ($marzban['status_extend'] == "off_extend") {
@@ -637,7 +637,7 @@ $nameconfig";
                         $_rx_svc_btn['style'] = $_rx_svc_styles[$_rx_svc_key];
                     }
                     $tempArray[] = $_rx_svc_btn;
-                    if (count($tempArray) == 2 or $keyboardtext['text'] == "♻️ بروزرسانی اطلاعات") {
+                    if (count($tempArray) == 2 or $keyboardtext['text'] == \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_refresh_info')) {
                         $keyboardsetting['inline_keyboard'][] = $tempArray;
                         $tempArray = [];
                     }
@@ -653,18 +653,16 @@ $nameconfig";
                 $keyboardsetting = json_encode($keyboardsetting);
                 $subLastUserAgent = trim((string)($DataUserOut['sub_last_user_agent'] ?? ''));
                 $subClientLine = $subLastUserAgent !== '' && strcasecmp($subLastUserAgent, 'Faoxima-Mini/1.0') !== 0
-                    ? "\n#️⃣ کلاینت متصل شده :<code>{$subLastUserAgent}</code>"
+                    ? \Faoxima\Telegram\Support\MessageTemplates::get('service_info_client_line', ['client' => $subLastUserAgent])
                     : '';
                 if ($DataUserOut['sub_updated_at'] !== null) {
-                    $textconnect = "
-📶 اخرین زمان اتصال  : $lastonline
-🔄 اخرین زمان آپدیت لینک اشتراک  : $lastupdate{$subClientLine}";
+                    $textconnect = \Faoxima\Telegram\Support\MessageTemplates::get('service_info_connect_sub', [], ['last_online' => $lastonline, 'last_update' => $lastupdate, 'client_line' => $subClientLine]);
                 } elseif ($marzban['type'] == "WGDashboard") {
                     $textconnect = "";
                 } else {
-                    $textconnect = "📶 اخرین زمان اتصال شما : $lastonline";
+                    $textconnect = \Faoxima\Telegram\Support\MessageTemplates::get('service_info_connect_simple', [], ['last_online' => $lastonline]);
                 }
-                $rwChangelinkHint = (($marzban['type'] ?? '') != "remnawave") ? "💡 برای قطع دسترسی دیگران کافیست روی گزینه \"تغییر لینک\" کلیک کنید." : "";
+                $rwChangelinkHint = (($marzban['type'] ?? '') != "remnawave") ? \Faoxima\Telegram\Support\MessageTemplates::get('service_info_changelink_hint') : "";
                 $textinfo_tpl = $datatextbot['text_service_detail'] ?? "🗂 نام سرویس : {product}
 📊وضعیت سرویس : {status}
 🌍 موقعیت سرویس :{location}
@@ -695,26 +693,26 @@ $nameconfig";
                 }
             }
             if (($marzban['type'] ?? '') == "remnawave") {
-                $rwLight = !empty($DataUserOut['is_online']) ? '🟢 آنلاین' : '🔴 آفلاین';
-                $textinfo .= "\n📶 وضعیت اتصال: $rwLight";
+                $rwLight = !empty($DataUserOut['is_online']) ? \Faoxima\Telegram\Support\MessageTemplates::plain('service_info_online') : \Faoxima\Telegram\Support\MessageTemplates::plain('service_info_offline');
+                $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_line_connection', [], ['status' => $rwLight]);
                 if (!empty($DataUserOut['node_name'])) {
-                    $textinfo .= "\n🌍 سرور فعال: " . $DataUserOut['node_name'];
+                    $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_line_active_server', [], ['server' => $DataUserOut['node_name']]);
                 }
             }
             $symbolicLimitLabel = \Faoxima\Telegram\Support\Texts::faoxima_symbolic_limit_label($nameloc);
             if ($symbolicLimitLabel !== null) {
-                $textinfo .= "\n👥 تعداد کاربر مجاز: $symbolicLimitLabel";
+                $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_line_user_limit', [], ['limit' => $symbolicLimitLabel]);
             } elseif (($marzban['type'] ?? '') == "x-ui_single") {
                 $xuiIpGuardActive = (($marzban['ip_limit_guard'] ?? '') === 'onipguard');
                 if ($xuiIpGuardActive) {
                     $xuiIpLimitConfigured = intval($nameloc['ip_limit'] ?? 0);
-                    $xuiIpLimitText = $xuiIpLimitConfigured > 0 ? "{$xuiIpLimitConfigured} کاربر" : 'نامحدود';
-                    $textinfo .= "\n👥 تعداد کاربر مجاز: $xuiIpLimitText";
+                    $xuiIpLimitText = $xuiIpLimitConfigured > 0 ? \Faoxima\Telegram\Support\MessageTemplates::get('service_info_user_count', ['count' => $xuiIpLimitConfigured]) : \Faoxima\Telegram\Support\MessageTemplates::plain('service_unlimited');
+                    $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_line_user_limit', [], ['limit' => $xuiIpLimitText]);
                 }
                 if (method_exists(\Faoxima\Services\Panels\Drivers\XuiSingle::class, 'xui_panel_uses_token') && \Faoxima\Services\Panels\Drivers\XuiSingle::xui_panel_uses_token($marzban)) {
                     $xuiOnlineCheck = \Faoxima\Services\Panels\Drivers\XuiSingle::xui_client_is_online($marzban, $DataUserOut['username'] ?? '');
                     if (!empty($xuiOnlineCheck['status'])) {
-                        $textinfo .= "\n📶 وضعیت اتصال: " . (!empty($xuiOnlineCheck['online']) ? '🟢 آنلاین' : '⚪ آفلاین');
+                        $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_line_connection', [], ['status' => (!empty($xuiOnlineCheck['online']) ? \Faoxima\Telegram\Support\MessageTemplates::plain('service_info_online') : \Faoxima\Telegram\Support\MessageTemplates::plain('service_info_offline_gray'))]);
                     }
                     if ($xuiIpGuardActive) {
                         $xuiIpSummary = \Faoxima\Services\Panels\Drivers\XuiSingle::xui_client_ip_summary($marzban, $DataUserOut['username'] ?? '');
@@ -722,14 +720,14 @@ $nameconfig";
                             $xuiIpSummary = \Faoxima\Telegram\Support\Texts::faoxima_cap_ip_summary($xuiIpSummary, $xuiIpLimitConfigured);
                         }
                         if (!empty($xuiIpSummary['status'])) {
-                            $textinfo .= "\n🌐 تعداد IP مشاهده‌شده: " . intval($xuiIpSummary['count']);
+                            $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_line_ip_count', ['count' => intval($xuiIpSummary['count'])]);
                             if (!empty($xuiIpSummary['raw'])) {
                                 foreach (array_slice($xuiIpSummary['raw'], 0, 5) as $xuiRawIp) {
-                                    $textinfo .= "\n📍 IP متصل: " . htmlspecialchars($xuiRawIp, ENT_QUOTES, 'UTF-8');
+                                    $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_line_connected_ip', ['ip' => $xuiRawIp]);
                                 }
                             }
                         } else {
-                            $textinfo .= "\n🌐 اطلاعات IP متصل در حال حاضر در دسترس نیست.";
+                            $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_ip_unavailable');
                         }
                     }
                     $xuiHwidLimitConfigured = intval($nameloc['hwid_limit'] ?? 0);
@@ -737,25 +735,25 @@ $nameconfig";
                         $xuiHwidResponse = \Faoxima\Services\Panels\Drivers\XuiSingle::xui_client_hwid_devices($marzban, $DataUserOut['username'] ?? '');
                         if (!empty($xuiHwidResponse['status'])) {
                             $xuiHwidList = is_array($xuiHwidResponse['devices'] ?? null) ? $xuiHwidResponse['devices'] : [];
-                            $textinfo .= "\n👥 دستگاه‌های متصل: " . count($xuiHwidList) . " از {$xuiHwidLimitConfigured} دستگاه";
+                            $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_line_devices', ['count' => count($xuiHwidList), 'limit' => $xuiHwidLimitConfigured]);
                             foreach (array_slice($xuiHwidList, 0, 5) as $xuiHwidEntry) {
                                 $xuiDeviceOs = (string) ($xuiHwidEntry['deviceOs'] ?? '');
                                 $xuiDeviceModel = (string) ($xuiHwidEntry['deviceModel'] ?? '');
-                                $xuiDeviceLabel = $xuiDeviceOs !== '' ? ($xuiDeviceModel !== '' ? "{$xuiDeviceOs} ({$xuiDeviceModel})" : $xuiDeviceOs) : 'نامشخص';
+                                $xuiDeviceLabel = $xuiDeviceOs !== '' ? ($xuiDeviceModel !== '' ? "{$xuiDeviceOs} ({$xuiDeviceModel})" : $xuiDeviceOs) : \Faoxima\Telegram\Support\MessageTemplates::plain('service_info_device_unknown');
                                 $xuiLastSeenRaw = intval($xuiHwidEntry['lastSeen'] ?? 0);
                                 $xuiLastSeenText = '';
                                 if ($xuiLastSeenRaw > 0) {
                                     try {
                                         $xuiLastSeenDt = new DateTime('@' . intval($xuiLastSeenRaw / 1000));
                                         $xuiLastSeenDt->setTimezone(new DateTimeZone('Asia/Tehran'));
-                                        $xuiLastSeenText = ' — آخرین اتصال: ' . jdate('Y/m/d H:i:s', $xuiLastSeenDt->getTimestamp());
+                                        $xuiLastSeenText = \Faoxima\Telegram\Support\MessageTemplates::get('service_info_device_last_seen', ['time' => jdate('Y/m/d H:i:s', $xuiLastSeenDt->getTimestamp())]);
                                     } catch (Throwable $e) {
                                     }
                                 }
-                                $textinfo .= "\n📱 دستگاه: {$xuiDeviceLabel}{$xuiLastSeenText}";
+                                $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_line_device', [], ['device' => $xuiDeviceLabel, 'last_seen' => $xuiLastSeenText]);
                             }
                         } else {
-                            $textinfo .= "\n👥 دستگاه‌های متصل: 0 از {$xuiHwidLimitConfigured} دستگاه";
+                            $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_line_devices', ['count' => 0, 'limit' => $xuiHwidLimitConfigured]);
                         }
                     }
                 }
@@ -763,8 +761,8 @@ $nameconfig";
                 $rebeccaIpGuardActive = (($marzban['ip_limit_guard'] ?? '') === 'onipguard');
                 if ($rebeccaIpGuardActive) {
                     $rebeccaIpLimitConfigured = intval($nameloc['ip_limit'] ?? 0);
-                    $rebeccaIpLimitText = $rebeccaIpLimitConfigured > 0 ? "{$rebeccaIpLimitConfigured} کاربر" : 'نامحدود';
-                    $textinfo .= "\n👥 تعداد کاربر مجاز: $rebeccaIpLimitText";
+                    $rebeccaIpLimitText = $rebeccaIpLimitConfigured > 0 ? \Faoxima\Telegram\Support\MessageTemplates::get('service_info_user_count', ['count' => $rebeccaIpLimitConfigured]) : \Faoxima\Telegram\Support\MessageTemplates::plain('service_unlimited');
+                    $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_line_user_limit', [], ['limit' => $rebeccaIpLimitText]);
                     $rebeccaInsightsAllowed = !method_exists(\Faoxima\Services\Panels\Drivers\Rebecca::class, 'rebeccaAccessInsightsPermissionStatus')
                         || (\Faoxima\Services\Panels\Drivers\Rebecca::rebeccaAccessInsightsPermissionStatus($marzban['name_panel'])['status'] ?? false) === true;
                     if ($rebeccaInsightsAllowed && method_exists(\Faoxima\Services\Panels\Drivers\Rebecca::class, 'rebeccaClientIpSummary')) {
@@ -773,14 +771,14 @@ $nameconfig";
                             $rebeccaIpSummary = \Faoxima\Telegram\Support\Texts::faoxima_cap_ip_summary($rebeccaIpSummary, $rebeccaIpLimitConfigured);
                         }
                         if (!empty($rebeccaIpSummary['status'])) {
-                            $textinfo .= "\n🌐 تعداد IP مشاهده‌شده: " . intval($rebeccaIpSummary['count']);
+                            $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_line_ip_count', ['count' => intval($rebeccaIpSummary['count'])]);
                             if (!empty($rebeccaIpSummary['raw'])) {
                                 foreach (array_slice($rebeccaIpSummary['raw'], 0, 5) as $rebeccaRawIp) {
-                                    $textinfo .= "\n📍 IP متصل: " . htmlspecialchars($rebeccaRawIp, ENT_QUOTES, 'UTF-8');
+                                    $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_line_connected_ip', ['ip' => $rebeccaRawIp]);
                                 }
                             }
                         } else {
-                            $textinfo .= "\n🌐 اطلاعات IP متصل در حال حاضر در دسترس نیست.";
+                            $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_ip_unavailable');
                         }
                     }
                 }
@@ -791,25 +789,25 @@ $nameconfig";
                     if (empty($pasarguardHwidResponse['error']) && !empty($pasarguardHwidResponse['body'])) {
                         $pasarguardHwidData = json_decode($pasarguardHwidResponse['body'], true);
                         $pasarguardHwidList = is_array($pasarguardHwidData['hwids'] ?? null) ? $pasarguardHwidData['hwids'] : [];
-                        $textinfo .= "\n👥 دستگاه‌های متصل: " . count($pasarguardHwidList) . " از {$pasarguardHwidLimitConfigured} دستگاه";
+                        $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_line_devices', ['count' => count($pasarguardHwidList), 'limit' => $pasarguardHwidLimitConfigured]);
                         foreach (array_slice($pasarguardHwidList, 0, 5) as $pasarguardHwidEntry) {
                             $pasarguardDeviceOs = (string) ($pasarguardHwidEntry['device_os'] ?? '');
                             $pasarguardDeviceModel = (string) ($pasarguardHwidEntry['device_model'] ?? '');
-                            $pasarguardDeviceLabel = $pasarguardDeviceOs !== '' ? ($pasarguardDeviceModel !== '' ? "{$pasarguardDeviceOs} ({$pasarguardDeviceModel})" : $pasarguardDeviceOs) : 'نامشخص';
+                            $pasarguardDeviceLabel = $pasarguardDeviceOs !== '' ? ($pasarguardDeviceModel !== '' ? "{$pasarguardDeviceOs} ({$pasarguardDeviceModel})" : $pasarguardDeviceOs) : \Faoxima\Telegram\Support\MessageTemplates::plain('service_info_device_unknown');
                             $pasarguardLastUsedRaw = (string) ($pasarguardHwidEntry['last_used_at'] ?? '');
                             $pasarguardLastSeenText = '';
                             if ($pasarguardLastUsedRaw !== '') {
                                 try {
                                     $pasarguardLastSeenDt = new DateTime($pasarguardLastUsedRaw, new DateTimeZone('UTC'));
                                     $pasarguardLastSeenDt->setTimezone(new DateTimeZone('Asia/Tehran'));
-                                    $pasarguardLastSeenText = ' — آخرین اتصال: ' . jdate('Y/m/d H:i:s', $pasarguardLastSeenDt->getTimestamp());
+                                    $pasarguardLastSeenText = \Faoxima\Telegram\Support\MessageTemplates::get('service_info_device_last_seen', ['time' => jdate('Y/m/d H:i:s', $pasarguardLastSeenDt->getTimestamp())]);
                                 } catch (Throwable $e) {
                                 }
                             }
-                            $textinfo .= "\n📱 دستگاه: {$pasarguardDeviceLabel}{$pasarguardLastSeenText}";
+                            $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_line_device', [], ['device' => $pasarguardDeviceLabel, 'last_seen' => $pasarguardLastSeenText]);
                         }
                     } else {
-                        $textinfo .= "\n👥 دستگاه‌های متصل: 0 از {$pasarguardHwidLimitConfigured} دستگاه";
+                        $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_line_devices', ['count' => 0, 'limit' => $pasarguardHwidLimitConfigured]);
                     }
                 }
             } elseif (($marzban['type'] ?? '') == "remnawave") {
@@ -818,25 +816,25 @@ $nameconfig";
                     $remnaHwidResponse = \Faoxima\Services\Panels\Drivers\Remnawave::remnawave_get_user_hwid_devices($marzban['name_panel'], $DataUserOut['username'] ?? $nameloc['username']);
                     if (($remnaHwidResponse['status'] ?? '') === 'successful') {
                         $remnaHwidList = is_array($remnaHwidResponse['devices'] ?? null) ? $remnaHwidResponse['devices'] : [];
-                        $textinfo .= "\n👥 دستگاه‌های متصل: " . count($remnaHwidList) . " از {$remnaHwidLimitConfigured} دستگاه";
+                        $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_line_devices', ['count' => count($remnaHwidList), 'limit' => $remnaHwidLimitConfigured]);
                         foreach (array_slice($remnaHwidList, 0, 5) as $remnaHwidEntry) {
                             $remnaDevicePlatform = (string) ($remnaHwidEntry['platform'] ?? '');
                             $remnaDeviceModel = (string) ($remnaHwidEntry['deviceModel'] ?? '');
-                            $remnaDeviceLabel = $remnaDevicePlatform !== '' ? ($remnaDeviceModel !== '' ? "{$remnaDevicePlatform} ({$remnaDeviceModel})" : $remnaDevicePlatform) : 'نامشخص';
+                            $remnaDeviceLabel = $remnaDevicePlatform !== '' ? ($remnaDeviceModel !== '' ? "{$remnaDevicePlatform} ({$remnaDeviceModel})" : $remnaDevicePlatform) : \Faoxima\Telegram\Support\MessageTemplates::plain('service_info_device_unknown');
                             $remnaLastUsedRaw = (string) ($remnaHwidEntry['updatedAt'] ?? '');
                             $remnaLastSeenText = '';
                             if ($remnaLastUsedRaw !== '') {
                                 try {
                                     $remnaLastSeenDt = new DateTime($remnaLastUsedRaw, new DateTimeZone('UTC'));
                                     $remnaLastSeenDt->setTimezone(new DateTimeZone('Asia/Tehran'));
-                                    $remnaLastSeenText = ' — آخرین اتصال: ' . jdate('Y/m/d H:i:s', $remnaLastSeenDt->getTimestamp());
+                                    $remnaLastSeenText = \Faoxima\Telegram\Support\MessageTemplates::get('service_info_device_last_seen', ['time' => jdate('Y/m/d H:i:s', $remnaLastSeenDt->getTimestamp())]);
                                 } catch (Throwable $e) {
                                 }
                             }
-                            $textinfo .= "\n📱 دستگاه: {$remnaDeviceLabel}{$remnaLastSeenText}";
+                            $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_line_device', [], ['device' => $remnaDeviceLabel, 'last_seen' => $remnaLastSeenText]);
                         }
                     } else {
-                        $textinfo .= "\n👥 دستگاه‌های متصل: 0 از {$remnaHwidLimitConfigured} دستگاه";
+                        $textinfo .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_info_line_devices', ['count' => 0, 'limit' => $remnaHwidLimitConfigured]);
                     }
                 }
             }

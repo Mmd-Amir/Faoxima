@@ -83,9 +83,7 @@ final class UserOnboarding
             }
         }
         if (intval($user['verify']) == 0 && !$isAdmin && $setting['verifystart'] == "onverify" && !\Faoxima\Telegram\Support\Replies::rx_auth_skip_user($user)) {
-            $textverify = "⚠️ حساب شما احراز هویت نشده است پیام  شما  به ادمین ارسال شده
-    در صورت پیگیری  سریع تر می توانید به آیدی زیر پیام دهید
-    @{$setting['id_support']}";
+            $textverify = \Faoxima\Telegram\Support\MessageTemplates::get('onboarding_verify_pending', ['support' => $setting['id_support']]);
             sendmessage($from_id, $textverify, null, 'html');
             return null;
         }
@@ -122,14 +120,14 @@ final class UserOnboarding
             $rxMiniAppUrl = $rxMiniAppHost !== '' ? 'https://' . $rxMiniAppHost . '/app/' : '';
             if ($rxMiniAppUrl === '' || filter_var($rxMiniAppUrl, FILTER_VALIDATE_URL) === false
                 || (string)parse_url($rxMiniAppUrl, PHP_URL_HOST) === '') {
-                sendmessage($from_id, 'آدرس مینی‌اپ تنظیم نشده است. لطفاً با پشتیبانی تماس بگیرید.', null, 'html');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('onboarding_miniapp_not_configured'), null, 'html');
                 return null;
             }
             $rxMiniAppKeyboard = json_encode(['inline_keyboard' => [[[
                 'text' => $rxMiniAppLabel,
                 'web_app' => ['url' => $rxMiniAppUrl],
             ]]]], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            sendmessage($from_id, 'برای ورود به مینی‌اپ، دکمهٔ زیر را بزنید.', $rxMiniAppKeyboard, 'html');
+            sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('onboarding_miniapp_open_hint'), $rxMiniAppKeyboard, 'html');
             return null;
         }
 
@@ -182,7 +180,7 @@ final class UserOnboarding
             if (!empty($callback_query_id) && function_exists('telegram')) {
                 @telegram('answerCallbackQuery', [
                     'callback_query_id' => $callback_query_id,
-                    'text' => '✅ این پرداخت قبلاً تأیید شده است.',
+                    'text' => \Faoxima\Telegram\Support\MessageTemplates::plain('onboarding_payment_already_confirmed_alert'),
                     'show_alert' => false,
                     'cache_time' => 0,
                 ]);
@@ -228,7 +226,7 @@ final class UserOnboarding
                         @apcu_store($rxChannelCacheKey, $channels, 30);
                     }
                 }
-                $rxChannelCheckFailedText = "⚠️ بررسی عضویت شما در کانال در حال حاضر با خطا مواجه شد؛ لطفاً چند لحظه دیگر دوباره تلاش کنید.";
+                $rxChannelCheckFailedText = \Faoxima\Telegram\Support\MessageTemplates::plain('onboarding_channel_check_failed_alert');
                 if ($isConfirmChannel && count($channels) == 0 && !empty($rxChannelCheckFailed)) {
                     telegram('answerCallbackQuery', [
                         'callback_query_id' => $callback_query_id,

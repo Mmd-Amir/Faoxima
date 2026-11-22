@@ -93,28 +93,7 @@ final class NowPayments
                 ]);
                 $price_format = number_format($user['Processing_value'], 0);
                 $USD = number_format($usd);
-                $textnowpayments = "
-<b>💲 جهت افزایش اعتبار کیف پول خود از طریق ارز دیجیتال روی دکمه پرداخت در انتهای پیام کلیک کنید</b>
-
-⚠️ توجه:  زمان پرداخت 30 دقیقه می باشد پس از 30 دقیقه تراکنش لغو خواهد شد
-
-🌐 برخی از سایت های داخلی جهت خرید ارز دیجیتال 👇
-🔸 nikpardakht.com
-🔹 webpurse.org
-🔸 bitpin.ir
-🔹 sarmayex.com
-🔸 ok-ex.io
-🔹 nobitex.ir
-🔸 bitbarg.com
-🔹 cafearz.com
-🔸 pay98.app
-🔢 شماره فاکتور : $randomString
-💰 مبلغ فاکتور : $price_format تومان
-📊 قیمت دلار: $USD تومان تا این لحظه
-
-<blockquote>⚠️ پس از پرداخت، در صورتی که مبلغ تراکنش به‌درستی واریز شده باشد، موجودی شما حداکثر تا ۱۵ دقیقه آینده به‌صورت خودکار شارژ خواهد شد.</blockquote>
-
-جهت پرداخت از دکمه زیر استفاده👇🏻";
+                $textnowpayments = \Faoxima\Telegram\Support\MessageTemplates::get('payment_invoice_created_nowpayments', ['order_id' => $randomString, 'price' => $price_format, 'usd_rate' => $USD]);
                 $gethelp = \Faoxima\Core\Database\Db::select("PaySetting", "ValuePay", "NamePay", "helpnowpayment", "select")['ValuePay'];
                 if ($gethelp != 2) {
                     $data = json_decode($gethelp, true);

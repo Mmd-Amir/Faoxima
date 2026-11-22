@@ -227,9 +227,9 @@ final class QueuedRenewals
                     }
                     return telegram('sendmessage', [
                         'chat_id' => (string) $row['id_user'],
-                        'text' => '✅ اشتراک شما فعال شد. کد پیگیری: <code>' . self::esc($invoice) . '</code>',
+                        'text' => \Faoxima\Telegram\Support\MessageTemplates::get('notify_renewal_activated', [], ['invoice' => self::esc($invoice)]),
                         'reply_markup' => json_encode(['inline_keyboard' => [[
-                            ['text' => 'مشاهده اشتراک', 'callback_data' => 'product_' . $invoice],
+                            ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('notify_btn_view_service'), 'callback_data' => 'product_' . $invoice],
                         ]]], JSON_UNESCAPED_UNICODE),
                         'parse_mode' => 'HTML', '_rx_no_network_retry' => true,
                     ], $row['bottype'] ?? null);

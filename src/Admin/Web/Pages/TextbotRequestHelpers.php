@@ -5,7 +5,7 @@ namespace Faoxima\Admin\Web\Pages;
 final class TextbotRequestHelpers
 {
     public static function faoxima_text_categories(): array {
-    return [
+    $faoximaCategories = [
         'custom_pricing' => ['title' => 'متن قیمت‌گذاری هر گیگ', 'icon' => 'coins', 'keys' => ['text_custom_price_summary']],
         'sys'  => ['title' => 'سیستم و شروع',        'icon' => 'gear', 'keys' => ['text_start', 'text_roll', 'miniapp_suggest_1', 'text_miniapp_button', 'text_account_info']],
         'srv'  => ['title' => 'سرویس‌ها',              'icon' => 'server', 'keys' => ['text_Purchased_services', 'text_usertest', 'crontest', 'textafterpay', 'dyn_purchase_subscription_link_line', 'textaftertext', 'textmanual', 'textselectlocation', 'text_extend', 'text_wgdashboard', 'text_service_detail', 'dyn_renewconfirm_queued_success', 'dyn_renewal_success_same_link']],
@@ -24,6 +24,7 @@ final class TextbotRequestHelpers
         'jsontext_users' => ['title' => 'متن‌های کاربر (text.json)', 'icon' => 'comment-dots', 'keys' => []],
         'jsontext_admin' => ['title' => 'متن‌های ادمین (text.json)', 'icon' => 'user-shield', 'keys' => []],
     ];
+    return $faoximaCategories + \Faoxima\Telegram\Support\MessageTemplates::categories();
 }
 
     public static function faoxima_jsontext_prefix_map(): array {

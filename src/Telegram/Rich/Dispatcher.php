@@ -7,6 +7,47 @@ use Throwable;
 
 final class Dispatcher
 {
+    private static array $replacedTargets = [];
+
+    public static function rx_richUi_noteReplacement($chatId, int $oldId, int $newId): void
+    {
+        if ($oldId <= 0) {
+            return;
+        }
+        if (count(self::$replacedTargets) >= 256) {
+            array_shift(self::$replacedTargets);
+        }
+        self::$replacedTargets[(string) $chatId . ':' . $oldId] = $newId > 0 ? $newId : 0;
+    }
+
+    public static function rx_richUi_resolveTarget($chatId, int $messageId): array
+    {
+        $current = $messageId;
+        for ($hops = 0; $hops < 16 && $current > 0; $hops++) {
+            $key = (string) $chatId . ':' . $current;
+            if (!array_key_exists($key, self::$replacedTargets)) {
+                return ['id' => $current, 'deleted' => false, 'redirected' => $current !== $messageId];
+            }
+            $next = self::$replacedTargets[$key];
+            if ($next <= 0) {
+                return ['id' => $current, 'deleted' => true, 'redirected' => $current !== $messageId];
+            }
+            $current = $next;
+        }
+        return ['id' => $current, 'deleted' => false, 'redirected' => $current !== $messageId];
+    }
+
+    public static function rx_richUi_deleteWasConfirmed($result): bool
+    {
+        if (!is_array($result)) {
+            return false;
+        }
+        if (!empty($result['ok'])) {
+            return true;
+        }
+        return (int) ($result['error_code'] ?? 0) === 400 && stripos((string) ($result['description'] ?? ''), 'message to delete not found') !== false;
+    }
+
     public static function rx_richUi_chatIsUserUi($chatId): bool
     {
         $chatId = trim((string) $chatId);
@@ -830,8 +871,12 @@ final class Dispatcher
         $result = $toLegacy ? self::rx_richUi_sendPlainFallback('sendmessage', $send, $token) : telegram('sendmessage', $send, $token);
         $replacementCreated = is_array($result) && !empty($result['ok']);
         $deleteResult = null;
+        $replacementMessageId = $replacementCreated ? (int) ($result['result']['message_id'] ?? 0) : 0;
         if ($replacementCreated) {
             $deleteResult = telegram('deletemessage', ['chat_id' => $datas['chat_id'], 'message_id' => $messageId], $token);
+            if (self::rx_richUi_deleteWasConfirmed($deleteResult)) {
+                self::rx_richUi_noteReplacement($datas['chat_id'], $messageId, $replacementMessageId);
+            }
         }
         \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_MESSAGE_TARGET', 'replacement', $replacementCreated ? 'completed' : 'failed', [
             'original_operation' => 'editmessagetext',
@@ -842,6 +887,10 @@ final class Dispatcher
             'chat_hash' => substr(hash('sha256', (string) ($datas['chat_id'] ?? '')), 0, 12),
             'target_message_id' => $messageId,
             'previous_message_id' => $messageId,
+            'original_message_id' => $messageId,
+            'replacement_message_id' => $replacementMessageId > 0 ? $replacementMessageId : null,
+            'replacement_status' => $replacementCreated ? 'created' : 'not_created',
+            'deletion_status' => $deleteResult === null ? 'not_requested' : (self::rx_richUi_deleteWasConfirmed($deleteResult) ? 'confirmed' : 'failed'),
             'resulting_message_id' => is_array($result) ? (int) ($result['result']['message_id'] ?? 0) : null,
             'replacement_created' => $replacementCreated,
             'deletion_requested' => $replacementCreated,

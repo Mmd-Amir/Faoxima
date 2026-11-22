@@ -15,7 +15,7 @@ final class PurchaseButton
         $keyboard_buy = json_encode([
                 'inline_keyboard' => [
                     [
-                        ['text' => "🛍خرید اشتراک", 'callback_data' => 'buy'],
+                        ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_buy_subscription'), 'callback_data' => 'buy'],
                     ],
                 ]
             ]);

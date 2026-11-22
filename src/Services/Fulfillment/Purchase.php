@@ -539,9 +539,9 @@ final class Purchase
             }
             $__refundNs = \Faoxima\Payments\Settlement\Refunds::paymentOnce($pdo, $order_id, $Balance_id['id'], $Payment_report['price'], 'بازگشت وجه - موجودی انبار ملی تمام شده', (string)$get_invoice['id_invoice']);
             if ($__refundNs === 'refunded') {
-                sendmessage($Balance_id['id'], "❌ وضعیت نت ملی فعال است اما موجودی انبار برای این محصول تمام شده است. مبلغ پرداختی به کیف پول برگشت خورد.", $keyboard, 'HTML');
+                sendmessage($Balance_id['id'], \Faoxima\Telegram\Support\MessageTemplates::get('service_purchase_stock_empty_refunded'), $keyboard, 'HTML');
             } elseif ($__refundNs === 'failed') {
-                sendmessage($Balance_id['id'], "❌ موجودی انبار برای این محصول تمام شده است. بازگشت وجه با خطا مواجه شد؛ لطفاً با پشتیبانی در ارتباط باشید.", $keyboard, 'HTML');
+                sendmessage($Balance_id['id'], \Faoxima\Telegram\Support\MessageTemplates::get('service_purchase_stock_empty_refund_failed'), $keyboard, 'HTML');
             }
             return \Faoxima\Payments\Fulfillment\Settlement::fail($pdo, $order_id, $rxToken, 'national_stock_empty', $__refundNs);
         }
@@ -647,9 +647,9 @@ final class Purchase
                 : "❌ متاسفانه ساخت سرویس با خطا مواجه شد. مبلغ پرداختی به کیف پول شما برگشت داده شد.";
             if ($__refundCu === 'refunded') {
                 sendmessage($Balance_id['id'], $__uiErr, $keyboard, 'HTML');
-                sendmessage($Balance_id['id'], "💎  کاربر عزیز بدلیل ساخته نشدن سرویس مبلغ " . \Faoxima\Core\Support\Formatting::rxFormatToman($Payment_report['price']) . " تومان به کیف پول شما اضافه گردید.", $keyboard, 'HTML');
+                sendmessage($Balance_id['id'], \Faoxima\Telegram\Support\MessageTemplates::get('service_purchase_failed_refunded', ['amount' => \Faoxima\Core\Support\Formatting::rxFormatToman($Payment_report['price'])]), $keyboard, 'HTML');
             } else {
-                sendmessage($Balance_id['id'], "❌ ساخت سرویس با خطا مواجه شد و بازگشت وجه نیز انجام نشد؛ لطفاً با پشتیبانی در ارتباط باشید.", $keyboard, 'HTML');
+                sendmessage($Balance_id['id'], \Faoxima\Telegram\Support\MessageTemplates::get('service_purchase_failed_refund_failed'), $keyboard, 'HTML');
             }
             $texterros = "
 ⭕️ خطا در ساخت کانفیگ

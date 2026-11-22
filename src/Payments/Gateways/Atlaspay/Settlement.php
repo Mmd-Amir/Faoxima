@@ -198,7 +198,7 @@ final class Settlement
         return $report;
         }
 
-    public static function cancel($runtimePdo, $runtimeSetting, $orderId, $userId)
+    public static function cancel($runtimePdo, $runtimeSetting, $orderId, $userId, $telegram = false)
     {
         $report = \Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::fetchReport($runtimePdo, $orderId);
         if ($report === null || (string) $report['id_user'] !== (string) $userId) {
@@ -206,7 +206,7 @@ final class Settlement
         }
         $state = \Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::buildState($report);
         if (!$state['can_cancel']) {
-            return ['ok' => false, 'message' => \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomCancelBlockedMessage($state)];
+            return ['ok' => false, 'message' => \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomCancelBlockedMessage($state, $telegram)];
         }
         $remoteId = trim((string) ($report['atlaspay_order_id'] ?? ''));
         $poll = self::pollOrder($runtimePdo, $runtimeSetting, $report, true, false);
@@ -219,7 +219,7 @@ final class Settlement
         }
         $state = \Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::buildState($report);
         if (!$state['can_cancel']) {
-            return ['ok' => false, 'message' => \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomCancelBlockedMessage($state)];
+            return ['ok' => false, 'message' => \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomCancelBlockedMessage($state, $telegram)];
         }
         $response = \Faoxima\Payments\Gateways\Atlaspay\Client::cancelOrder($remoteId);
         $accepted = is_array($response)

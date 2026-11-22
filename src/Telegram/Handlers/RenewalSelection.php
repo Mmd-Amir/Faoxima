@@ -69,7 +69,7 @@ final class RenewalSelection
             $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
             if ($DataUserOut['status'] == "Unsuccessful") {
                 $offlineKeyboard = json_encode(['inline_keyboard' => [
-                    [['text' => '🛒 خرید سرویس جدید', 'callback_data' => 'buy_service']],
+                    [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_buy_new'), 'callback_data' => 'buy_service']],
                     [['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => 'backorder']]
                 ]]);
                 sendmessage($from_id, $datatextbot['dyn_errors_panel_connection_error'] ?? "❌ سامانه استعلام سرویس مورد نظر درحال حاضر در دسترس نیست.", $offlineKeyboard, 'html');
@@ -93,18 +93,14 @@ final class RenewalSelection
             $product = $stmt->rowCount();
             \Faoxima\Telegram\Conversation\ConversationData::savedata("clear", "id_invoice", $nameloc['id_invoice']);
             if ($product == 0) {
-                $textcustom = "📌 حجم درخواستی خود را ارسال کنید.
-🔔قیمت هر گیگ حجم " . \Faoxima\Core\Support\Formatting::rxFormatToman($custompricevalue) . " تومان می باشد.
-🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
+                $textcustom = \Faoxima\Telegram\Support\MessageTemplates::get('service_custom_volume_prompt', ['price' => \Faoxima\Core\Support\Formatting::rxFormatToman($custompricevalue), 'min' => $mainvolume, 'max' => $maxvolume]);
                 sendmessage($from_id, $textcustom, $backuser, 'html');
                 deletemessage($from_id, $message_id);
                 \Faoxima\Telegram\Navigation\Steps::step('gettimecustomvolomforextend', $from_id);
                 return;
             }
             if ($nameloc['name_product'] == "🛍 حجم دلخواه" || $nameloc['name_product'] == "⚙️ سرویس دلخواه") {
-                $textcustom = "📌 حجم درخواستی خود را ارسال کنید.
-🔔قیمت هر گیگ حجم " . \Faoxima\Core\Support\Formatting::rxFormatToman($custompricevalue) . " تومان می باشد.
-🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
+                $textcustom = \Faoxima\Telegram\Support\MessageTemplates::get('service_custom_volume_prompt', ['price' => \Faoxima\Core\Support\Formatting::rxFormatToman($custompricevalue), 'min' => $mainvolume, 'max' => $maxvolume]);
                 sendmessage($from_id, $textcustom, $backuser, 'html');
                 deletemessage($from_id, $message_id);
                 \Faoxima\Telegram\Navigation\Steps::step('gettimecustomvolomforextend', $from_id);
@@ -140,10 +136,10 @@ final class RenewalSelection
                     ];
                 }
                 $productextend['inline_keyboard'][] = [
-                    ['text' => "♻️ تمدید پلن فعلی", 'callback_data' => "exntedagei"]
+                    ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_renew_current_plan'), 'callback_data' => "exntedagei"]
                 ];
                 $productextend['inline_keyboard'][] = [
-                    ['text' => "🏠 بازگشت به اطلاعات سرویس", 'callback_data' => "product_" . $nameloc['id_invoice']]
+                    ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_back_to_info'), 'callback_data' => "product_" . $nameloc['id_invoice']]
                 ];
 
                 $json_list_product_lists = json_encode($productextend);
@@ -173,18 +169,16 @@ final class RenewalSelection
                 return;
             }
             if ($text > intval($maxvolume) || $text < intval($mainvolume)) {
-                $texttime = "❌ حجم نامعتبر است.\n🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد";
+                $texttime = \Faoxima\Telegram\Support\MessageTemplates::get('service_custom_volume_invalid', ['min' => $mainvolume, 'max' => $maxvolume]);
                 sendmessage($from_id, $texttime, $backuser, 'HTML');
                 return;
             }
             $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
             $customtimevalueprice = \Faoxima\Orders\Pricing\ExchangePricing::fxAdjustBaseToman($eextraprice[$user['agent']], $marzban_list_get, 'custom_time');
             \Faoxima\Telegram\Conversation\ConversationData::savedata("save", "volume", $text);
-            $textcustom = "⌛️ زمان سرویس خود را انتخاب نمایید
-📌 تعرفه هر روز  : " . \Faoxima\Core\Support\Formatting::rxFormatToman($customtimevalueprice) . "  تومان
-⚠️ حداقل زمان $maintime روز  و حداکثر $maxtime روز  می توانید تهیه کنید";
+            $textcustom = \Faoxima\Telegram\Support\MessageTemplates::get('service_custom_duration_prompt', ['price' => \Faoxima\Core\Support\Formatting::rxFormatToman($customtimevalueprice), 'min' => $maintime, 'max' => $maxtime]);
             if (\Faoxima\Orders\Pricing\CustomDuration::fx_duration_config($marzban_list_get, $user['agent'])['enabled']) {
-                sendmessage($from_id, 'مدت سرویس را انتخاب کنید:', \Faoxima\Orders\Pricing\CustomDuration::fx_duration_keyboard($marzban_list_get, $user['agent']), 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_select_duration'), \Faoxima\Orders\Pricing\CustomDuration::fx_duration_keyboard($marzban_list_get, $user['agent']), 'HTML');
             } else {
                 sendmessage($from_id, $textcustom, $backuser, 'html');
             }
@@ -222,11 +216,11 @@ final class RenewalSelection
             }
             if ($nameloc['name_product'] == "🛍 حجم دلخواه" || $nameloc['name_product'] == "⚙️ سرویس دلخواه") {
                 $productextend['inline_keyboard'][] = [
-                    ['text' => "📍 انتخاب سرویس فعلی", 'callback_data' => "serviceextendselect_pre"]
+                    ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_pick_current'), 'callback_data' => "serviceextendselect_pre"]
                 ];
             }
             $productextend['inline_keyboard'][] = [
-                ['text' => "🏠 بازگشت به اطلاعات سرویس", 'callback_data' => "product_" . $nameloc['id_invoice']]
+                ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_back_to_info'), 'callback_data' => "product_" . $nameloc['id_invoice']]
             ];
 
             $json_list_product_lists = json_encode($productextend);
@@ -249,7 +243,7 @@ final class RenewalSelection
                 $maxtime = json_decode($marzban_list_get['maxtime'], true);
                 $maxtime = $maxtime[$user['agent']];
                 if (intval($text) > intval($maxtime) || intval($text) < intval($maintime)) {
-                    $texttime = "❌ زمان ارسال شده نامعتبر است . زمان باید بین $maintime روز تا $maxtime روز باشد";
+                    $texttime = \Faoxima\Telegram\Support\MessageTemplates::get('service_custom_duration_invalid', ['min' => $maintime, 'max' => $maxtime]);
                     sendmessage($from_id, $texttime, $backuser, 'HTML');
                     return;
                 }
@@ -289,7 +283,7 @@ final class RenewalSelection
                 try {
                     $product['price_product'] = \Faoxima\Orders\Pricing\CustomDuration::fx_custom_price($marzban_list_get, $user['agent'], intval($userdate['volume']), $text);
                 } catch (InvalidArgumentException $e) {
-                    sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'backuser']]]]), 'HTML');
+                    sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_back'), 'callback_data' => 'backuser']]]]), 'HTML');
                     return;
                 }
                 $product['Service_time'] = $text;
@@ -352,15 +346,7 @@ final class RenewalSelection
                     ]
                 ]);
             }
-            $textextend = "📜 فاکتور تمدید شما برای نام کاربری {$nameloc['username']} ایجاد شد.
-
-🛍 نام محصول :{$product['name_product']}
-💸 مبلغ تمدید : $pricelastextend تومان
-⏱ مدت زمان تمدید :{$product['Service_time']} روز
-🔋 حجم تمدید :$volumeextend
-✍️ توضیحات : {$product['note']}
-💸 موجودی کیف پول : " . \Faoxima\Core\Support\Formatting::rxFormatToman($user['Balance']) . "
-" . ($rxRenewPreview['text'] !== '' ? "\n" . $rxRenewPreview['text'] . "\n\n" : '') . (empty($rxRenewPreview['blocked']) ? "✅ برای تایید و تمدید سرویس روی دکمه زیر کلیک کنید" : '');
+            $textextend = \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_invoice_preview', ['username' => $nameloc['username'], 'product' => $product['name_product'], 'price' => $pricelastextend, 'days' => $product['Service_time'], 'volume' => $volumeextend, 'note' => $product['note'], 'balance' => \Faoxima\Core\Support\Formatting::rxFormatToman($user['Balance'])]) . "\n" . ($rxRenewPreview['text'] !== '' ? "\n" . $rxRenewPreview['text'] . "\n\n" : '') . (empty($rxRenewPreview['blocked']) ? \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_confirm_hint') : '');
             if ($product['code_product'] === 'customvolume') {
                 $textextend .= \Faoxima\Orders\Pricing\CustomDuration::fx_custom_price_text($marzban_list_get, $user['agent'], $product['Volume_constraint'], $product['Service_time'], str_replace(',', '', $pricelastextend));
             }
@@ -419,7 +405,7 @@ final class RenewalSelection
                 try {
                     $info_product['price_product'] = \Faoxima\Orders\Pricing\CustomDuration::fx_custom_price($marzban_list_get, $user['agent'], $userdate['data_limit'], $userdate['time']);
                 } catch (InvalidArgumentException $e) {
-                    sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'backuser']]]]), 'HTML');
+                    sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_back'), 'callback_data' => 'backuser']]]]), 'HTML');
                     return;
                 }
                 $info_product['Service_time'] = $userdate['time'];
@@ -462,15 +448,7 @@ final class RenewalSelection
             $info_product['price_product'] = \Faoxima\Orders\Pricing\ExchangePricing::fxFinalizeAmount($info_product['price_product'], $marzban_list_get, $fxRenewKinds);
             $rxFmtExtendInfoProductPrice = \Faoxima\Core\Support\Formatting::rxFormatToman($info_product['price_product']);
             $rxFmtExtendUserBalance = \Faoxima\Core\Support\Formatting::rxFormatToman($user['Balance']);
-            $textextend = "📜 فاکتور تمدید شما برای نام کاربری {$nameloc['username']} ایجاد شد.
-
-🛍 نام محصول :{$info_product['name_product']}
-💸 مبلغ تمدید :{$rxFmtExtendInfoProductPrice}
-⏱ مدت زمان تمدید :{$info_product['Service_time']} روز
-🔋 حجم تمدید :{$info_product['Volume_constraint']} گیگ
-✍️ توضیحات : {$info_product['note']}
-💸 موجودی کیف پول : {$rxFmtExtendUserBalance}
-" . ($rxRenewPreview['text'] !== '' ? "\n" . $rxRenewPreview['text'] . "\n" : '') . (empty($rxRenewPreview['blocked']) ? "\n✅ برای تایید و تمدید سرویس روی دکمه زیر کلیک کنید" : '');
+            $textextend = \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_invoice_preview_alt', ['username' => $nameloc['username'], 'product' => $info_product['name_product'], 'price' => $rxFmtExtendInfoProductPrice, 'days' => $info_product['Service_time'], 'volume' => $info_product['Volume_constraint'], 'note' => $info_product['note'], 'balance' => $rxFmtExtendUserBalance]) . "\n" . ($rxRenewPreview['text'] !== '' ? "\n" . $rxRenewPreview['text'] . "\n" : '') . (empty($rxRenewPreview['blocked']) ? "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_confirm_hint') : '');
             $keyboardextend = json_encode([
                 'inline_keyboard' => [
                     [

@@ -232,7 +232,7 @@ final class Approval
             'reason' => $reason,
         ]);
         if (function_exists('sendmessage')) {
-            sendmessage($report['id_user'], "💎 کاربر عزیز، پرداخت کارت‌به‌کارت شما با کد پیگیری <code>" . htmlspecialchars($orderId, ENT_QUOTES, 'UTF-8') . "</code> بررسی شد و کل مبلغ دریافتی یعنی " . \Faoxima\Payments\Receipts\ReceiptRuntime::rx_sbv_money($credit) . " تومان به کیف پول شما اضافه گردید.\nℹ️ این یک تصمیم دستی ادمین است و کارمزد شناسایی از مبلغ واریز کسر نشده است.", null, 'HTML');
+            sendmessage($report['id_user'], \Faoxima\Telegram\Support\MessageTemplates::get('payment_card_manual_credited_full', ['order_id' => $orderId, 'amount' => \Faoxima\Payments\Receipts\ReceiptRuntime::rx_sbv_money($credit)]), null, 'HTML');
         }
         $text = "✅ پرداخت با بررسی به‌صورت شارژ کیف پول تسویه شد.\n\n"
             . "<blockquote>کد پیگیری : <code>" . htmlspecialchars($orderId, ENT_QUOTES, 'UTF-8') . "</code></blockquote>\n"

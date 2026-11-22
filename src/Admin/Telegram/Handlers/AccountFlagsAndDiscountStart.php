@@ -176,7 +176,7 @@ $iduser  در ربات  رفع مسدود گردید
             $ManagePanel->RemoveUser($info_product['Service_location'], $info_product['username']);
             \Faoxima\Core\Database\Db::update('invoice', 'status', 'removebyadmin', 'id_invoice', $username);
             \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($from_id, $textbotlang['Admin']['ManageUser']['RemovedService'], $keyboardadmin, 'HTML');
-            Editmessagetext($from_id, $message_id, $text_inline, json_encode(['inline_keyboard' => []]));
+            rxRemoveMessageKeyboard($from_id, $message_id);
             \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
             break;
         case 9:
@@ -202,7 +202,7 @@ $iduser  در ربات  رفع مسدود گردید
             $textadd = "💎 کاربر عزیز مبلغ " . \Faoxima\Core\Support\Formatting::rxFormatToman($info_product['price_product']) . " تومان به موجودی کیف پول تان اضافه گردید.";
             sendmessage($info_product['id_user'], $textadd, null, 'HTML');
             \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($from_id, $textbotlang['Admin']['ManageUser']['RemovedService'], $keyboardadmin, 'HTML');
-            Editmessagetext($from_id, $message_id, $text_inline, json_encode(['inline_keyboard' => []]));
+            rxRemoveMessageKeyboard($from_id, $message_id);
             \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
             break;
         case 10:

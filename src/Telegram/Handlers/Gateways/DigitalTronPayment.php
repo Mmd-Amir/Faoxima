@@ -34,12 +34,12 @@ final class DigitalTronPayment
                 $result = \Faoxima\Payments\Crypto\ManualCrypto::crypto_create_invoice($from_id, $amountIrt, $cur, $invoiceMeta);
                 if (empty($result['ok'])) {
                     $errMap = [
-                        'currency-not-supported' => 'این ارز فعال نیست.',
-                        'wallet-not-configured'  => 'آدرس کیف پول این ارز توسط ادمین تنظیم نشده است.',
-                        'below-min'              => 'مبلغ کمتر از حداقل مجاز است.',
-                        'above-max'              => 'مبلغ بیشتر از حداکثر مجاز است.',
-                        'rate-unavailable'       => 'دریافت نرخ لحظه‌ای ممکن نبود؛ لطفاً دقایقی دیگر تلاش کنید.',
-                        'db-write-failed'        => 'خطای داخلی در ثبت فاکتور.',
+                        'currency-not-supported' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_crypto_create_error_currency'),
+                        'wallet-not-configured'  => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_crypto_create_error_wallet'),
+                        'below-min'              => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_crypto_create_error_below_min'),
+                        'above-max'              => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_crypto_create_error_above_max'),
+                        'rate-unavailable'       => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_crypto_create_error_rate'),
+                        'db-write-failed'        => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_crypto_create_error_db'),
                     ];
                     $reason = $result['error'] ?? 'unknown';
                     $faMsg = $errMap[$reason] ?? $reason;
@@ -54,54 +54,34 @@ final class DigitalTronPayment
                 }
                 $expireMin = max(1, (int) round(($result['expires_at'] - time()) / 60));
                 if ($isManualCur) {
-                    $explorerHint = '<i>(این شبکه به‌صورت خودکار بررسی نمی‌شود؛ هش تراکنش پس از ارسال توسط ادمین بررسی خواهد شد)</i>';
+                    $explorerHint = \Faoxima\Telegram\Support\MessageTemplates::get('payment_crypto_hint_manual_network');
                 } else {
                     $explorerHint = ($cur === 'TRX' || $cur === 'USDT_TRC20')
-                        ? '<i>(لینک‌های Tronscan قابل قبول است)</i>'
-                        : '<i>(لینک‌های Tonviewer / Tonscan قابل قبول است)</i>';
+                        ? \Faoxima\Telegram\Support\MessageTemplates::get('payment_crypto_hint_tronscan')
+                        : \Faoxima\Telegram\Support\MessageTemplates::get('payment_crypto_hint_tonviewer');
                 }
-                $walletEsc = htmlspecialchars((string) $result['wallet']);
                 $walletMemo = trim((string) ($result['wallet_memo'] ?? ''));
                 $isTonNetwork = in_array($cur, ['TON', 'USDT_TON'], true);
 
                 $finalAmountIrt = (int) ($result['final_amount_irt'] ?? $amountIrt);
-                $priceBlock = "💸 مبلغ قابل پرداخت: " . number_format($finalAmountIrt) . " تومان\n";
-
-                $amountNotice = "❗️ <b>دقیقاً همین مقدار</b> را ارسال کنید. تفاوت در ارقام باعث می‌شود ربات تراکنش شما را شناسایی نکند.";
 
                 $memoBlock = "";
                 if ($isTonNetwork && $walletMemo !== '') {
-                    $memoEsc = htmlspecialchars($walletMemo);
-                    $memoBlock = "🏷 <b>ممو (Memo / Comment) — اجباری:</b>\n<code>{$memoEsc}</code>\n"
-                               . "⚠️ <b>بدون ممو، تراکنش شما به فاکتور وصل نمی‌شود.</b>\n\n";
+                    $memoBlock = \Faoxima\Telegram\Support\MessageTemplates::get('payment_crypto_memo_block', ['memo' => $walletMemo]);
                 }
 
-                if ($isManualCur) {
-                    $invoiceMsg = "🛠 <b>فاکتور پرداخت کریپتو (بررسی دستی)</b>\n\n"
-                         . "🛒 کد فاکتور: <code>{$result['order_id']}</code>\n"
-                         . "💎 ارز: <b>{$cur}</b>  •  🌐 شبکه: <b>{$result['network']}</b>\n"
-                         . $priceBlock . "\n"
-                         . "🪙 <b>مبلغ دقیقی که باید ارسال کنید:</b>\n<code>{$amountStr}</code>\n"
-                         . "(معادل " . number_format($finalAmountIrt) . " تومان)\n\n"
-                         . "📥 <b>آدرس کیف پول مقصد:</b>\n<blockquote>{$walletEsc}</blockquote>\n\n"
-                         . $memoBlock
-                         . $amountNotice . "\n"
-                         . "⏰ مدت اعتبار: حدود {$expireMin} دقیقه.\n\n"
-                         . "⚠️ <b>این شبکه به‌صورت خودکار بررسی نمی‌شود.</b> بعد از پرداخت، روی دکمه «✅ پرداخت کردم» بزنید، "
-                         . "هش/لینک تراکنش را ارسال کنید و سپس <b>عکس رسید تراکنش را نیز ارسال کنید</b> — بدون عکس رسید، درخواست شما برای ادمین ثبت نمی‌شود.\n{$explorerHint}";
-                } else {
-                    $invoiceMsg = "💎 <b>فاکتور پرداخت کریپتو</b>\n\n"
-                         . "🛒 کد فاکتور: <code>{$result['order_id']}</code>\n"
-                         . "💎 ارز: <b>{$cur}</b>  •  🌐 شبکه: <b>{$result['network']}</b>\n"
-                         . $priceBlock . "\n"
-                         . "🪙 <b>مبلغ دقیقی که باید ارسال کنید:</b>\n<code>{$amountStr}</code>\n"
-                         . "(معادل " . number_format($finalAmountIrt) . " تومان)\n\n"
-                         . "📥 <b>آدرس کیف پول مقصد:</b>\n<blockquote>{$walletEsc}</blockquote>\n\n"
-                         . $memoBlock
-                         . $amountNotice . "\n"
-                         . "⏰ مدت اعتبار: حدود {$expireMin} دقیقه.\n\n"
-                         . "بعد از پرداخت، روی دکمه «✅ پرداخت کردم» بزنید و هش/لینک تراکنش را ارسال کنید.\n{$explorerHint}";
-                }
+                $invoiceMsg = \Faoxima\Telegram\Support\MessageTemplates::get($isManualCur ? 'payment_crypto_invoice_manual' : 'payment_crypto_invoice_auto', [
+                    'order_id' => $result['order_id'],
+                    'currency' => $cur,
+                    'network' => $result['network'],
+                    'amount_irt' => number_format($finalAmountIrt),
+                    'amount' => $amountStr,
+                    'wallet' => (string) $result['wallet'],
+                    'expire_min' => $expireMin,
+                ], [
+                    'memo_block' => $memoBlock,
+                    'explorer_hint' => $explorerHint,
+                ]);
 
                 $styleWallet = method_exists(\Faoxima\Payments\Crypto\ManualCrypto::class, 'crypto_invoice_button_style') ? \Faoxima\Payments\Crypto\ManualCrypto::crypto_invoice_button_style('copy_wallet')  : null;
                 $styleAmount = method_exists(\Faoxima\Payments\Crypto\ManualCrypto::class, 'crypto_invoice_button_style') ? \Faoxima\Payments\Crypto\ManualCrypto::crypto_invoice_button_style('copy_amount')  : null;
@@ -109,25 +89,25 @@ final class DigitalTronPayment
                 $stylePaid   = method_exists(\Faoxima\Payments\Crypto\ManualCrypto::class, 'crypto_invoice_button_style') ? \Faoxima\Payments\Crypto\ManualCrypto::crypto_invoice_button_style('paid_submit')  : null;
                 $styleBack   = method_exists(\Faoxima\Payments\Crypto\ManualCrypto::class, 'crypto_invoice_button_style') ? \Faoxima\Payments\Crypto\ManualCrypto::crypto_invoice_button_style('invoice_back') : null;
 
-                $btnCopyWallet = ['text' => '🔗 کپی آدرس ولت', 'copy_text' => ['text' => (string) $result['wallet']], '_rxcolor' => 'crypto_order:' . $result['order_id'] . ':copy_wallet'];
+                $btnCopyWallet = ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_crypto_copy_wallet'), 'copy_text' => ['text' => (string) $result['wallet']], '_rxcolor' => 'crypto_order:' . $result['order_id'] . ':copy_wallet'];
                 if ($styleWallet) $btnCopyWallet['style'] = $styleWallet;
 
-                $btnCopyAmount = ['text' => '🪙 کپی مقدار', 'copy_text' => ['text' => $amountStr], '_rxcolor' => 'crypto_order:' . $result['order_id'] . ':copy_amount'];
+                $btnCopyAmount = ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_crypto_copy_amount'), 'copy_text' => ['text' => $amountStr], '_rxcolor' => 'crypto_order:' . $result['order_id'] . ':copy_amount'];
                 if ($styleAmount) $btnCopyAmount['style'] = $styleAmount;
 
-                $btnPaid = ['text' => '✅ پرداخت کردم | ارسال هش (TXID) 🧾', 'callback_data' => 'digitaltron_submit_' . $result['order_id']];
+                $btnPaid = ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_crypto_paid_submit'), 'callback_data' => 'digitaltron_submit_' . $result['order_id']];
                 if ($stylePaid) $btnPaid['style'] = $stylePaid;
 
                 $invoiceKbRows = [
                     [$btnCopyWallet, $btnCopyAmount],
                 ];
                 if ($isTonNetwork && $walletMemo !== '') {
-                    $btnCopyMemo = ['text' => '🏷 کپی ممو', 'copy_text' => ['text' => $walletMemo], '_rxcolor' => 'crypto_order:' . $result['order_id'] . ':copy_memo'];
+                    $btnCopyMemo = ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_crypto_copy_memo'), 'copy_text' => ['text' => $walletMemo], '_rxcolor' => 'crypto_order:' . $result['order_id'] . ':copy_memo'];
                     if ($styleMemo) $btnCopyMemo['style'] = $styleMemo;
                     $invoiceKbRows[] = [$btnCopyMemo];
                 }
                 $invoiceKbRows[] = [$btnPaid];
-                $btnInvoiceBack = ['text' => '🔙 بازگشت (لغو فاکتور)', 'callback_data' => 'crypto_cancel_' . $result['order_id']];
+                $btnInvoiceBack = ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_crypto_invoice_back'), 'callback_data' => 'crypto_cancel_' . $result['order_id']];
                 if ($styleBack) $btnInvoiceBack['style'] = $styleBack;
                 $invoiceKbRows[] = [$btnInvoiceBack];
                 $invoiceKb = json_encode(['inline_keyboard' => $invoiceKbRows], JSON_UNESCAPED_UNICODE);
@@ -155,13 +135,17 @@ final class DigitalTronPayment
                             @file_put_contents($fancyQrPath, $built->getString());
                             $made = @\Faoxima\Telegram\Support\QrAndKeys::addBackgroundImage($fancyQrPath, $built, 'images.jpeg');
                             if ($made && is_file($fancyQrPath) && function_exists('telegram')) {
-                                $resp = @telegram('sendphoto', [
+                                $cryptoQrDelivery = null;
+                                $resp = rxSendMediaWithCaption('sendphoto', [
                                     'chat_id'      => (string) $from_id,
                                     'photo'        => new \CURLFile($fancyQrPath),
                                     'caption'      => $invoiceMsg,
                                     'parse_mode'   => 'HTML',
                                     'reply_markup' => $invoiceKb,
-                                ]);
+                                ], null, $cryptoQrDelivery);
+                                if (is_array($cryptoQrDelivery) && !empty($cryptoQrDelivery['caption_rich_text']) && is_array($cryptoQrDelivery['text_message_result'] ?? null) && !empty($cryptoQrDelivery['text_message_result']['ok'])) {
+                                    $resp = $cryptoQrDelivery['text_message_result'];
+                                }
                                 $fancyState = is_callable([\Faoxima\Services\Fulfillment\DeliveryState::class, 'deliveryResultState']) ? \Faoxima\Services\Fulfillment\DeliveryState::deliveryResultState($resp) : (!empty($resp['ok']) ? 'confirmed' : 'unknown');
                                 $fancyOk = $fancyState === 'confirmed' || $fancyState === 'unknown';
                             }

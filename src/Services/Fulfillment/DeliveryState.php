@@ -258,7 +258,13 @@ final class DeliveryState
         $failed = [];
         $unknown = [];
         $flat = [];
-        foreach (['text', 'qr', 'card', 'files'] as $name) {
+        $names = ['text', 'qr', 'card', 'files'];
+        foreach (array_keys($components) as $extraName) {
+            if (is_string($extraName) && $extraName !== '' && is_array($components[$extraName]) && !in_array($extraName, $names, true)) {
+                $names[] = $extraName;
+            }
+        }
+        foreach ($names as $name) {
             $component = isset($components[$name]) && is_array($components[$name]) ? $components[$name] : ['required' => false, 'state' => 'not_attempted'];
             $state = (string) ($component['state'] ?? 'not_attempted');
             $isRequired = !empty($component['required']);

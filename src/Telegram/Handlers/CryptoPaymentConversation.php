@@ -47,15 +47,15 @@ final class CryptoPaymentConversation
         case 'crypto_start':
             $payemntcheck = \Faoxima\Core\Database\Db::select("Payment_report", "*", "id_order", $dataget[1], "select");
             if ($payemntcheck['payment_Status'] == "paid") {
-                sendmessage($from_id, "❗️ تراکنش شما توسط ربات تایید گردیده است.", null, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_already_confirmed'), null, 'HTML');
                 return;
             }
             if ($payemntcheck['payment_Status'] == "expire") {
-                sendmessage($from_id, "❗زمان این تراکنش به پایان رسیده و امکان پرداخت این تراکنش وجود ندارد.", null, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_expired_no_receipt'), null, 'HTML');
                 return;
             }
             deletemessage($from_id, $message_id);
-            sendmessage($from_id, "📌 تصویر واریزی خود یا لینک تراکنش ترون را ارسال نمایید.", $backuser, 'HTML');
+            sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_crypto_ask_hash_or_image'), $backuser, 'HTML');
             \Faoxima\Telegram\Navigation\Steps::step('getresidcurrency', $from_id);
             \Faoxima\Core\Database\Db::update("user", "Processing_value", $dataget[1], "id", $from_id);
             break;
@@ -70,7 +70,7 @@ final class CryptoPaymentConversation
                 }
                 sendmessage(
                     $from_id,
-                    "🏠 از حالت ارسال هش خارج شدید. هر زمان خواستید می‌توانید روی دکمه «📨 ارسال هش تراکنش» در فاکتور خودتان کلیک کنید.",
+                    \Faoxima\Telegram\Support\MessageTemplates::get('payment_crypto_hash_input_exited'),
                     $keyboard,
                     'HTML'
                 );
@@ -91,35 +91,35 @@ final class CryptoPaymentConversation
 
 
                 if ($trimmed !== '') {
-                    sendmessage($from_id, "🏠 از حالت ارسال هش خارج شدید. اکنون می‌توانید از منو استفاده کنید.", $keyboard, 'HTML');
+                    sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_crypto_hash_mode_exited'), $keyboard, 'HTML');
                 }
                 return;
             }
             $orderId = (string) ($user['Processing_value_four'] ?? '');
             if ($orderId === '' || $orderId === '0') {
-                sendmessage($from_id, "❌ خطای داخلی، لطفاً مجدداً از منوی پرداخت اقدام کنید.", $keyboard, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_crypto_internal_error_retry'), $keyboard, 'HTML');
                 \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
                 return;
             }
             if (!method_exists(\Faoxima\Payments\Crypto\ManualCrypto::class, 'crypto_attach_hash')) {
-                sendmessage($from_id, "❌ ماژول هش‌چکر بارگذاری نشده است.", $keyboard, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_crypto_hashchecker_unavailable'), $keyboard, 'HTML');
                 \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
                 return;
             }
             if (!method_exists(\Faoxima\Payments\Crypto\ManualCrypto::class, 'crypto_extract_hash') || \Faoxima\Payments\Crypto\ManualCrypto::crypto_extract_hash($text) === null) {
-                sendmessage($from_id, "❌ هش معتبر در پیام شما پیدا نشد. لطفاً هش تراکنش (Hash / TxID) یا لینک آن را ارسال کنید — نه آدرس کیف‌پول.", null, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_crypto_hash_not_found'), null, 'HTML');
                 return;
             }
             $r = \Faoxima\Payments\Crypto\ManualCrypto::crypto_attach_hash($orderId, (string) $text);
             if (empty($r['ok'])) {
                 $faMap = [
-                    'invalid-hash'      => 'هش وارد شده معتبر نیست.',
-                    'hash-already-used' => 'این هش قبلاً برای فاکتور دیگری ثبت شده است.',
-                    'order-not-pending' => 'این فاکتور در وضعیت قابل پرداخت نیست.',
-                    'no-db'             => 'خطای داخلی در پایگاه داده.',
-                    'db-update-failed'  => 'خطای داخلی در ذخیره‌سازی.',
+                    'invalid-hash'      => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_crypto_hash_error_invalid'),
+                    'hash-already-used' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_crypto_hash_error_already_used'),
+                    'order-not-pending' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_crypto_hash_error_order_not_pending'),
+                    'no-db'             => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_crypto_hash_error_no_db'),
+                    'db-update-failed'  => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_crypto_hash_error_db_update'),
                 ];
-                $msg = $faMap[$r['error'] ?? ''] ?? ($r['error'] ?? 'خطای ناشناخته');
+                $msg = $faMap[$r['error'] ?? ''] ?? ($r['error'] ?? \Faoxima\Telegram\Support\MessageTemplates::plain('payment_crypto_hash_error_unknown'));
                 sendmessage($from_id, "❌ {$msg}", null, 'HTML');
                 return;
             }
@@ -133,10 +133,7 @@ final class CryptoPaymentConversation
                 \Faoxima\Telegram\Navigation\Steps::step('digitaltron_receipt_photo', $from_id);
                 sendmessage(
                     $from_id,
-                    "✅ هش تراکنش شما ثبت شد.\n\n"
-                    . "⚠️ این شبکه به‌صورت خودکار بررسی نمی‌شود. برای ثبت درخواست بررسی توسط ادمین، حالا <b>عکس رسید تراکنش</b> را ارسال کنید (اجباری).\n\n"
-                    . "🛒 کد فاکتور: <code>{$orderId}</code>\n"
-                    . "🔗 هش ثبت‌شده: <code>" . htmlspecialchars($r['hash']) . "</code>",
+                    \Faoxima\Telegram\Support\MessageTemplates::get('payment_crypto_hash_saved_need_receipt', ['order_id' => $orderId, 'hash' => $r['hash']]),
                     null,
                     'HTML'
                 );
@@ -145,13 +142,7 @@ final class CryptoPaymentConversation
                 \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
                 sendmessage(
                     $from_id,
-                    "✅ هش تراکنش شما ثبت شد.\n\n"
-                    . "ربات هر <b>۱ دقیقه</b> یک بار به‌صورت خودکار شبکه را بررسی می‌کند:\n\n"
-                    . "✅ اگر همه چیز درست باشد → معمولاً <b>۱ تا ۲ دقیقه</b> طول می‌کشد و موجودی شارژ می‌شود.\n"
-                    . "❌ اگر مبلغ یا آدرس مقصد اشتباه باشد → <b>در همان دقیقه‌ی اول</b> پیام رد دریافت می‌کنید.\n"
-                    . "⏰ اگر هش روی شبکه پیدا نشود → پس از <b>۳۰ دقیقه</b> فاکتور لغو می‌شود.\n\n"
-                    . "🛒 کد فاکتور: <code>{$orderId}</code>\n"
-                    . "🔗 هش ثبت‌شده: <code>" . htmlspecialchars($r['hash']) . "</code>",
+                    \Faoxima\Telegram\Support\MessageTemplates::get('payment_crypto_hash_saved_auto_check', ['order_id' => $orderId, 'hash' => $r['hash']]),
                     $keyboard,
                     'HTML'
                 );
@@ -162,21 +153,21 @@ final class CryptoPaymentConversation
             if (isset($datain) && $datain === "cancel_hash_input") {
                 \Faoxima\Core\Database\Db::update("user", "Processing_value_four", "0", "id", $from_id);
                 \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
-                sendmessage($from_id, "🏠 از حالت ارسال رسید خارج شدید.", $keyboard, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_crypto_receipt_mode_exited'), $keyboard, 'HTML');
                 return;
             }
             if (empty($photoid)) {
                 $cancelKb = json_encode([
                     'inline_keyboard' => [
-                        [['text' => '❌ انصراف', 'callback_data' => 'cancel_hash_input']],
+                        [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_cancel'), 'callback_data' => 'cancel_hash_input']],
                     ],
                 ], JSON_UNESCAPED_UNICODE);
-                sendmessage($from_id, "❌ عکس دریافت نشد. لطفاً <b>عکس رسید تراکنش</b> را ارسال کنید (اجباری — فاکتور بدون عکس رسید برای ادمین ثبت نمی‌شود).", $cancelKb, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_crypto_receipt_photo_required'), $cancelKb, 'HTML');
                 return;
             }
             $orderId = (string) ($user['Processing_value_four'] ?? '');
             if ($orderId === '' || $orderId === '0') {
-                sendmessage($from_id, "❌ خطای داخلی، لطفاً مجدداً از منوی پرداخت اقدام کنید.", $keyboard, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_crypto_internal_error_retry'), $keyboard, 'HTML');
                 \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
                 return;
             }
@@ -194,9 +185,7 @@ final class CryptoPaymentConversation
             $receiptHash = (string) ($receiptRow['crypto_tx_hash'] ?? '');
             sendmessage(
                 $from_id,
-                "✅ عکس رسید ثبت شد.\n\n"
-                . "درخواست شما برای ادمین ارسال شد. نتیجه از طریق همین چت اعلام خواهد شد.\n\n"
-                . "🛒 کد فاکتور: <code>{$orderId}</code>",
+                \Faoxima\Telegram\Support\MessageTemplates::get('payment_crypto_receipt_saved', ['order_id' => $orderId]),
                 $keyboard,
                 'HTML'
             );
@@ -321,7 +310,7 @@ final class CryptoPaymentConversation
                             ['text' => $textbotlang['users']['Balance']['blockedfake'], 'callback_data' => "blockuserfake_{$PaymentReport['id_user']}"],
                         ],
                         [
-                            ['text' => "⚙️ اطلاعات کانفیگ", 'callback_data' => "manageinvoice_{$nameloc['id_invoice']}"],
+                            ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_config_info'), 'callback_data' => "manageinvoice_{$nameloc['id_invoice']}"],
                         ]
                     ]
                 ]);

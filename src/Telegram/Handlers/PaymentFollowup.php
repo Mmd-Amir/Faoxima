@@ -44,15 +44,15 @@ final class PaymentFollowup
             $rialitOrder = $rialitActionMatch[2];
             $rialitReport = \Faoxima\Payments\Gateways\Rialit\PaymentOrders::fetchReport($pdo, $rialitOrder);
             if ($rialitReport === null || (string) $rialitReport['id_user'] !== (string) $from_id) {
-                \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, '❌ این فاکتور پیدا نشد.', true);
+                \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, \Faoxima\Telegram\Support\MessageTemplates::plain('payment_invoice_not_found_alert'), true);
                 return;
             }
             if ($rialitActionMatch[1] === 'cancel') {
                 $rialitCancelKeyboard = json_encode(['inline_keyboard' => [
-                    [rx_payment_button('rialit', 'cancel_confirm_approve', ['text' => '🚫 تأیید انصراف', 'callback_data' => 'rl_abandon_' . $rialitOrder])],
-                    [rx_payment_button('rialit', 'cancel_confirm_back', ['text' => '🔙 بازگشت', 'callback_data' => 'rl_view_' . $rialitOrder])],
+                    [rx_payment_button('rialit', 'cancel_confirm_approve', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_rialit_confirm_abandon'), 'callback_data' => 'rl_abandon_' . $rialitOrder])],
+                    [rx_payment_button('rialit', 'cancel_confirm_back', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back'), 'callback_data' => 'rl_view_' . $rialitOrder])],
                 ]], JSON_UNESCAPED_UNICODE);
-                Editmessagetext($from_id, $message_id, 'از این پرداخت انصراف می‌دهید؟ پس از انصراف می‌توانید پرداخت جدید بسازید. این کار لینک قبلی ریالیت را باطل نمی‌کند؛ اگر پرداخت قبلی بعداً تأیید شود، مبلغ سفارش به کیف پول اضافه می‌شود و سفارش قبلی اجرا نمی‌شود.', $rialitCancelKeyboard, 'HTML');
+                Editmessagetext($from_id, $message_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_rialit_cancel_confirm'), $rialitCancelKeyboard, 'HTML');
             } elseif ($rialitActionMatch[1] === 'abandon') {
                 $rialitCancelled = \Faoxima\Payments\Gateways\Rialit\PaymentOrders::cancelLocally($pdo, $rialitOrder, $from_id);
                 if (empty($rialitCancelled['ok'])) {
@@ -60,13 +60,13 @@ final class PaymentFollowup
                     return;
                 }
                 $rialitRetryKeyboard = json_encode(['inline_keyboard' => [
-                    [rx_payment_button('rialit', 'retry', ['text' => '💳 انتخاب روش پرداخت جدید', 'callback_data' => 'rl_retry_' . $rialitOrder])],
-                    [rx_payment_button('rialit', 'back_account', ['text' => '🔙 حساب کاربری', 'callback_data' => 'account', '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true])],
+                    [rx_payment_button('rialit', 'retry', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_rialit_retry'), 'callback_data' => 'rl_retry_' . $rialitOrder])],
+                    [rx_payment_button('rialit', 'back_account', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back_account'), 'callback_data' => 'account', '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true])],
                 ]], JSON_UNESCAPED_UNICODE);
                 Editmessagetext($from_id, $message_id, (string) $rialitCancelled['message'], $rialitRetryKeyboard, 'HTML');
             } else {
                 if ((int) ($rialitReport['rialit_abandoned_at'] ?? 0) <= 0) {
-                    \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, 'ابتدا از پرداخت قبلی انصراف دهید.', true);
+                    \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, \Faoxima\Telegram\Support\MessageTemplates::plain('payment_rialit_cancel_first_alert'), true);
                     return;
                 }
                 $rialitInvoiceParts = explode('|', (string) ($rialitReport['id_invoice'] ?? ''), 2);
@@ -83,14 +83,14 @@ final class PaymentFollowup
                     \Faoxima\Core\Database\Db::update('user', $rialitRetryKey, $rialitRetryValue, 'id', $from_id);
                 }
                 \Faoxima\Telegram\Navigation\Steps::step('get_step_payment', $from_id);
-                sendmessage($from_id, '💳 روش پرداخت جدید را انتخاب کنید:', $step_payment, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_rialit_choose_new_method'), $step_payment, 'HTML');
             }
             \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id);
             break;
         case 'rialit_view':
             $rialitReport = \Faoxima\Payments\Gateways\Rialit\PaymentOrders::fetchReport($pdo, $rialitViewMatch[1]);
             if ($rialitReport === null || (string) $rialitReport['id_user'] !== (string) $from_id) {
-                \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, '❌ این فاکتور پیدا نشد.', true);
+                \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, \Faoxima\Telegram\Support\MessageTemplates::plain('payment_invoice_not_found_alert'), true);
                 return;
             }
             $rialitReport = \Faoxima\Payments\Gateways\Rialit\BotRuntime::rialitPollThrottled($rialitViewMatch[1], $from_id) ?? $rialitReport;
@@ -103,7 +103,7 @@ final class PaymentFollowup
             $apcOrder = $apcMatch[2];
             $apcReport = \Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::fetchReport($pdo, $apcOrder);
             if ($apcReport === null || (string) $apcReport['id_user'] !== (string) $from_id) {
-                \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomBotAnswer($callback_query_id, '❌ این فاکتور پیدا نشد.', true);
+                \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomBotAnswer($callback_query_id, \Faoxima\Telegram\Support\MessageTemplates::plain('payment_invoice_not_found_alert'), true);
                 return;
             }
             if ($apcAction == 'view') {
@@ -114,26 +114,26 @@ final class PaymentFollowup
             } elseif ($apcAction == 'chk') {
                 \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomPollThrottled($apcOrder, $from_id);
                 \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomBotRefreshOriginal($from_id, $apcOrder, $message_id);
-                \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomBotAnswer($callback_query_id, '🔄 وضعیت به‌روزرسانی شد');
+                \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomBotAnswer($callback_query_id, \Faoxima\Telegram\Support\MessageTemplates::plain('payment_status_refreshed_alert'));
             } elseif ($apcAction == 'can') {
                 $apcCancelState = \Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::buildState($apcReport);
                 if (!$apcCancelState['can_cancel']) {
-                    \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomBotAnswer($callback_query_id, \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomCancelBlockedMessage($apcCancelState), true);
+                    \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomBotAnswer($callback_query_id, \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomCancelBlockedMessage($apcCancelState, true), true);
                     return;
                 }
                 $apcConfirmView = \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomBotCancelConfirmView($apcOrder, 'apc_view_' . $apcOrder);
                 Editmessagetext($from_id, $message_id, $apcConfirmView['text'], $apcConfirmView['keyboard'], 'HTML');
                 \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomBotAnswer($callback_query_id);
             } else {
-                $apcResult = \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomCancel($apcOrder, $from_id);
+                $apcResult = \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomCancel($apcOrder, $from_id, true);
                 if (empty($apcResult['ok'])) {
-                    \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomBotAnswer($callback_query_id, (string) ($apcResult['message'] ?? 'لغو فاکتور انجام نشد.'), true);
+                    \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomBotAnswer($callback_query_id, (string) ($apcResult['message'] ?? \Faoxima\Telegram\Support\MessageTemplates::plain('payment_cancel_failed_alert')), true);
                     \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomBotRender($from_id, $message_id, $apcOrder);
                     return;
                 }
                 \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomBotRender($from_id, $message_id, $apcOrder);
                 \Faoxima\Payments\Settlement\PendingInvoices::updatePaymentMessageId(['ok' => true, 'result' => ['message_id' => $message_id]], $apcOrder);
-                \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomBotAnswer($callback_query_id, '✅ تراکنش لغو شد');
+                \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomBotAnswer($callback_query_id, \Faoxima\Telegram\Support\MessageTemplates::plain('payment_transaction_canceled_alert'));
             }
             break;
         case 'tonpay_action':
@@ -141,7 +141,7 @@ final class PaymentFollowup
             $tpcOrder = $tpcMatch[2];
             $tpcReport = \Faoxima\Payments\Gateways\Tonpay\PaymentOrders::fetchReport($pdo, $tpcOrder);
             if ($tpcReport === null || (string) $tpcReport['id_user'] !== (string) $from_id) {
-                \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, '❌ این فاکتور پیدا نشد.', true);
+                \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, \Faoxima\Telegram\Support\MessageTemplates::plain('payment_invoice_not_found_alert'), true);
                 return;
             }
             if (in_array($user['step'], ['tpc_receipt', 'tpc_refund'], true)) {
@@ -153,23 +153,23 @@ final class PaymentFollowup
                 \Faoxima\Payments\Settlement\PendingInvoices::updatePaymentMessageId(['ok' => true, 'result' => ['message_id' => $message_id]], $tpcOrder);
                 \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id);
             } elseif ($tpcAction == 'cny') {
-                $tpcResult = \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomCancel($tpcOrder, $from_id);
+                $tpcResult = \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomCancel($tpcOrder, $from_id, true);
                 if (empty($tpcResult['ok'])) {
-                    \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, (string) ($tpcResult['message'] ?? 'لغو فاکتور انجام نشد.'), true);
+                    \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, (string) ($tpcResult['message'] ?? \Faoxima\Telegram\Support\MessageTemplates::plain('payment_cancel_failed_alert')), true);
                     \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotRender($from_id, $message_id, $tpcOrder);
                     return;
                 }
                 \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotRender($from_id, $message_id, $tpcOrder);
                 \Faoxima\Payments\Settlement\PendingInvoices::updatePaymentMessageId(['ok' => true, 'result' => ['message_id' => $message_id]], $tpcOrder);
-                \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, '✅ تراکنش لغو شد');
+                \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, \Faoxima\Telegram\Support\MessageTemplates::plain('payment_transaction_canceled_alert'));
             } elseif ($tpcAction == 'chk') {
                 \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomPollThrottled($tpcOrder, $from_id);
                 \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotRefreshOriginal($from_id, $tpcOrder, $message_id);
-                \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, '🔄 وضعیت به‌روزرسانی شد');
+                \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, \Faoxima\Telegram\Support\MessageTemplates::plain('payment_status_refreshed_alert'));
             } elseif ($tpcAction == 'rfd') {
                 $tpcRefundState = \Faoxima\Payments\Gateways\Tonpay\PaymentOrders::buildState($tpcReport);
                 if (!$tpcRefundState['can_refund']) {
-                    \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, 'ثبت کارت عودت برای این فاکتور مجاز نیست.', true);
+                    \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, \Faoxima\Telegram\Support\MessageTemplates::plain('payment_tonpay_refund_not_allowed_alert'), true);
                     return;
                 }
                 \Faoxima\Telegram\Navigation\Steps::step('tpc_refund', $from_id);
@@ -180,15 +180,15 @@ final class PaymentFollowup
             } elseif ($tpcAction == 'chg') {
                 $tpcResult = \Faoxima\Payments\Gateways\Tonpay\Settlement::changeCard($pdo, $tpcOrder, $from_id);
                 if (empty($tpcResult['ok'])) {
-                    \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, (string) ($tpcResult['message'] ?? 'تعویض کارت انجام نشد.'), true);
+                    \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, (string) ($tpcResult['message'] ?? \Faoxima\Telegram\Support\MessageTemplates::plain('payment_tonpay_change_card_failed_alert')), true);
                     return;
                 }
                 \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotRender($from_id, $message_id, $tpcOrder, $tpcResult['report']);
-                \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, '✅ کارت تعویض شد');
+                \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, \Faoxima\Telegram\Support\MessageTemplates::plain('payment_tonpay_card_changed_alert'));
             } elseif ($tpcAction == 'can') {
                 $tpcCancelState = \Faoxima\Payments\Gateways\Tonpay\PaymentOrders::buildState($tpcReport);
                 if (!$tpcCancelState['can_cancel']) {
-                    \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomCancelBlockedMessage($tpcCancelState), true);
+                    \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomCancelBlockedMessage($tpcCancelState, true), true);
                     return;
                 }
                 $tpcConfirmView = \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotCancelConfirmView($tpcOrder, 'tpc_view_' . $tpcOrder);
@@ -204,15 +204,15 @@ final class PaymentFollowup
                 \Faoxima\Telegram\Navigation\Steps::step('tpc_receipt', $from_id);
                 \Faoxima\Core\Database\Db::update("user", "Processing_value", $tpcOrder, "id", $from_id);
                 \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id);
-                sendmessage($from_id, \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomReceiptPromptText(), json_encode(['inline_keyboard' => [[rx_payment_button('tonpay', 'receipt_back', ['text' => '🔙 بازگشت به وضعیت پرداخت', 'callback_data' => 'tpc_chk_' . $tpcOrder])]]], JSON_UNESCAPED_UNICODE), 'HTML');
+                sendmessage($from_id, \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomReceiptPromptText(), json_encode(['inline_keyboard' => [[rx_payment_button('tonpay', 'receipt_back', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back_to_status'), 'callback_data' => 'tpc_chk_' . $tpcOrder])]]], JSON_UNESCAPED_UNICODE), 'HTML');
             }
             break;
         case 'tonpay_receipt':
             $tpcOrder = (string) $user['Processing_value'];
-            $tpcBackKb = json_encode(['inline_keyboard' => [[rx_payment_button('tonpay', 'receipt_back', ['text' => '🔙 بازگشت به وضعیت پرداخت', 'callback_data' => 'tpc_chk_' . $tpcOrder])]]], JSON_UNESCAPED_UNICODE);
+            $tpcBackKb = json_encode(['inline_keyboard' => [[rx_payment_button('tonpay', 'receipt_back', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back_to_status'), 'callback_data' => 'tpc_chk_' . $tpcOrder])]]], JSON_UNESCAPED_UNICODE);
             $tpcResult = \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotHandleReceiptUpload($from_id, $tpcOrder, $update['message']);
             if (empty($tpcResult['ok'])) {
-                sendmessage($from_id, '❌ ' . ($tpcResult['message'] ?? 'ارسال رسید ناموفق بود.'), $tpcBackKb, 'HTML');
+                sendmessage($from_id, '❌ ' . ($tpcResult['message'] ?? \Faoxima\Telegram\Support\MessageTemplates::plain('payment_tonpay_receipt_submit_failed_default')), $tpcBackKb, 'HTML');
                 return;
             }
             \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
@@ -226,16 +226,16 @@ final class PaymentFollowup
             $tpcRefundCard = preg_replace('/[\s\-]/', '', (string) ($tpcRefundLines[0] ?? ''));
             $tpcRefundHolder = trim((string) ($tpcRefundLines[1] ?? ''));
             if (count($tpcRefundLines) < 2 || !preg_match('/^\d{16}$/', $tpcRefundCard) || $tpcRefundHolder === '') {
-                sendmessage($from_id, "❌ شماره کارت و نام صاحب کارت را در دو خط معتبر ارسال کنید.\n\n" . $tpcRefundView['text'], $tpcRefundView['keyboard'], 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_refund_invalid_format') . "\n\n" . $tpcRefundView['text'], $tpcRefundView['keyboard'], 'HTML');
                 return;
             }
             $tpcResult = \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomSubmitRefund($tpcOrder, $from_id, $tpcRefundCard, $tpcRefundHolder);
             if (empty($tpcResult['ok'])) {
-                sendmessage($from_id, '❌ ' . ($tpcResult['message'] ?? 'ثبت کارت عودت ناموفق بود.'), $tpcRefundView['keyboard'], 'HTML');
+                sendmessage($from_id, '❌ ' . ($tpcResult['message'] ?? \Faoxima\Telegram\Support\MessageTemplates::plain('payment_tonpay_refund_submit_failed_default')), $tpcRefundView['keyboard'], 'HTML');
                 return;
             }
             \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
-            sendmessage($from_id, '✅ ' . ($tpcResult['message'] ?? 'کارت عودت ثبت شد.'), null, 'HTML');
+            sendmessage($from_id, '✅ ' . ($tpcResult['message'] ?? \Faoxima\Telegram\Support\MessageTemplates::plain('payment_tonpay_refund_registered_default')), null, 'HTML');
             \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotRefreshOriginal($from_id, $tpcOrder, 0);
             break;
         case 'checkout_wallet':

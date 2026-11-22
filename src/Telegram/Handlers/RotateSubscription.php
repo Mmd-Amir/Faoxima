@@ -76,7 +76,7 @@ final class RotateSubscription
             $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
             $DataUserOut = $ManagePanel->Revoke_sub($nameloc['Service_location'], $nameloc['username']);
             if ($DataUserOut['status'] == "Unsuccessful") {
-                sendmessage($from_id, '❌ خطایی در تغییر لینک رخ داده است.', null, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_link_change_failed'), null, 'HTML');
                 return;
             }
             $textconfig = "✅ کانفیگ شما با موفقیت بروزرسانی گردید.";

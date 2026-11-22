@@ -147,7 +147,7 @@ final class ServiceDelivery
             if ($DataUserOut['status'] == "Unsuccessful") {
                 $offlinePanel = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
                 $offlineKeyboard = json_encode(['inline_keyboard' => [
-                    [['text' => '♻️ تمدید سرویس', 'callback_data' => 'extend_' . $nameloc['id_invoice']], ['text' => '🛒 خرید سرویس جدید', 'callback_data' => 'buy_service']],
+                    [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_renew'), 'callback_data' => 'extend_' . $nameloc['id_invoice']], ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_buy_new'), 'callback_data' => 'buy_service']],
                     [['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => 'backorder']]
                 ]]);
                 sendmessage($from_id, $datatextbot['dyn_errors_panel_connection_error'] ?? "❌ سامانه استعلام سرویس مورد نظر درحال حاضر در دسترس نیست.", $offlineKeyboard, 'html');

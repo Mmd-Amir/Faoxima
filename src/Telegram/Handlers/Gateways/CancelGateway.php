@@ -36,7 +36,7 @@ final class CancelGateway
                 $rxPgwKb = json_encode([
                     'inline_keyboard' => [
                         [rx_payment_button($rxPgwGatewayKey, 'retry', ['text' => "🔄 دریافت فاکتور جدید {$rxPgwLabel}", 'callback_data' => $rxPgwGatewayKey])],
-                        [rx_payment_button($rxPgwGatewayKey, 'back_main', ['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'backuser'])],
+                        [rx_payment_button($rxPgwGatewayKey, 'back_main', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back_main'), 'callback_data' => 'backuser'])],
                     ],
                 ], JSON_UNESCAPED_UNICODE);
                 Editmessagetext($from_id, $message_id, $rxPgwText, $rxPgwKb, 'HTML');

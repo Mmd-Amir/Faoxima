@@ -35,7 +35,7 @@ final class SubmitCrypto
                 \Faoxima\Telegram\Navigation\Steps::step('digitaltron_hash_input', $from_id);
                 $cancelKb = json_encode([
                     'inline_keyboard' => [
-                        [['text' => '❌ انصراف', 'callback_data' => 'cancel_hash_input']],
+                        [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_cancel'), 'callback_data' => 'cancel_hash_input']],
                     ],
                 ], JSON_UNESCAPED_UNICODE);
                 sendmessage(

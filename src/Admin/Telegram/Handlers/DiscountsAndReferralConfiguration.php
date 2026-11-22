@@ -57,7 +57,7 @@ final class DiscountsAndReferralConfiguration
         switch ($adminAction) {
         case 1:
             $discountbuytype = $dataget[1];
-            Editmessagetext($from_id, $message_id, $text_inline, json_encode(['inline_keyboard' => []]));
+            rxRemoveMessageKeyboard($from_id, $message_id);
             \Faoxima\Telegram\Conversation\ConversationData::savedata("save", "typediscount", $discountbuytype);
             \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($from_id, "📌محدودیت استفاده برای یک کاربر را ارسال نمایید.", $backadmin, 'HTML');
             \Faoxima\Telegram\Navigation\Steps::step('getuseuser', $from_id);

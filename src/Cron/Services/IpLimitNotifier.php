@@ -112,9 +112,7 @@ final class IpLimitNotifier
         $added = array_values(array_diff($current, $previous));
 
         if (!empty($previous) && !empty($dropped) && !empty($added)) {
-            $text = "⚠️ چون یک دستگاه/IP جدید به کانفیگ شما وصل شد، اتصال قبلی از IP <code>" . implode(', ', $dropped) . "</code> قطع شد.\n"
-                . "این IP بعد از مدتی خودکار آزاد می‌شود.\n"
-                . "اگر این تغییر از سمت شما نبوده، کانفیگ خود را با کسی به اشتراک نگذارید.";
+            $text = \Faoxima\Telegram\Support\MessageTemplates::get('notify_ip_dropped', [], ['ips' => implode(', ', $dropped)]);
             sendmessage($invoice['id_user'], $text, null, 'HTML');
         }
 

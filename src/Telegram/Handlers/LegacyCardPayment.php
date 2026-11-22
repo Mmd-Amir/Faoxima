@@ -151,7 +151,7 @@ final class LegacyCardPayment
                             ['text' => $textbotlang['users']['Balance']['blockedfake'], 'callback_data' => "blockuserfake_{$PaymentReport['id_user']}"],
                         ],
                         [
-                            ['text' => "⚙️ اطلاعات کانفیگ", 'callback_data' => "manageinvoice_{$nameloc['id_invoice']}"],
+                            ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_config_info'), 'callback_data' => "manageinvoice_{$nameloc['id_invoice']}"],
                         ]
                     ]
                 ]);

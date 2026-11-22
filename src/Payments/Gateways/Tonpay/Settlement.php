@@ -524,7 +524,7 @@ final class Settlement
         }
         }
 
-    public static function cancel($runtimePdo, $runtimeSetting, $orderId, $userId)
+    public static function cancel($runtimePdo, $runtimeSetting, $orderId, $userId, $telegram = false)
     {
         $report = \Faoxima\Payments\Gateways\Tonpay\PaymentOrders::fetchReport($runtimePdo, $orderId);
         if ($report === null || (string) $report['id_user'] !== (string) $userId) {
@@ -543,7 +543,7 @@ final class Settlement
         $localCanceledNeedsCheck = $state['phase'] === 'canceled'
             && in_array($state['remote_status'], ['pending', ''], true);
         if (!$state['can_cancel'] && !$localCanceledNeedsCheck) {
-            return ['ok' => false, 'message' => \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomCancelBlockedMessage($state)];
+            return ['ok' => false, 'message' => \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomCancelBlockedMessage($state, $telegram)];
         }
         $poll = self::pollOrder($runtimePdo, $runtimeSetting, $report, true);
         if (in_array($poll['state'], ['error', 'rate_limited', 'local_rate_limited'], true)) {
@@ -565,7 +565,7 @@ final class Settlement
         $localCanceledNeedsCheck = $state['phase'] === 'canceled'
             && in_array($state['remote_status'], ['pending', ''], true);
         if (!$state['can_cancel'] && !$localCanceledNeedsCheck) {
-            return ['ok' => false, 'message' => \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomCancelBlockedMessage($state)];
+            return ['ok' => false, 'message' => \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomCancelBlockedMessage($state, $telegram)];
         }
         $invoiceId = trim((string) ($report['tonpay_invoice_id'] ?? ''));
         if ($invoiceId === '') {
@@ -618,7 +618,7 @@ final class Settlement
             $message = $error['error'] !== '' ? $error['error'] : 'لغو فاکتور توسط تون‌پی تأیید نشد؛ وضعیت را دوباره بررسی کنید.';
             return ['ok' => false, 'message' => $message];
         }
-        return ['ok' => false, 'message' => \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomCancelBlockedMessage($updatedState)];
+        return ['ok' => false, 'message' => \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomCancelBlockedMessage($updatedState, $telegram)];
         }
 
     public static function submitRefund($runtimePdo, $runtimeSetting, $orderId, $userId, $cardNumber, $cardHolder)

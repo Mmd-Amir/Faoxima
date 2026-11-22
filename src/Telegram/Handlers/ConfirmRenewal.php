@@ -49,7 +49,7 @@ final class ConfirmRenewal
     ) {
         switch ($telegramRoute) {
         case 'renewal_confirm':
-            Editmessagetext($from_id, $message_id, $text_inline, json_encode(['inline_keyboard' => []]));
+            rxRemoveMessageKeyboard($from_id, $message_id);
             $partsdic = explode("_", $user['Processing_value_four']);
             $userdata = json_decode($user['Processing_value'], true);
             $id_invoice = $userdata['id_invoice'];
@@ -62,7 +62,7 @@ final class ConfirmRenewal
             if (\Faoxima\Services\Fulfillment\WalletExtensions::blockingOperation(
                 $pdo, (string) $from_id, $nameloc['username'], 'wallet_renewal', (string) $id_invoice, $walletRef
             ) !== null) {
-                sendmessage($from_id, 'درخواست تمدید قبلاً ثبت شده است.', null, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_already_registered'), null, 'HTML');
                 return;
             }
             $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
@@ -81,7 +81,7 @@ final class ConfirmRenewal
                 try {
                     $prodcut['price_product'] = \Faoxima\Orders\Pricing\CustomDuration::fx_custom_price($marzban_list_get, $user['agent'], $userdata['data_limit'], $userdata['time']);
                 } catch (InvalidArgumentException $e) {
-                    sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'backuser']]]]), 'HTML');
+                    sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_back'), 'callback_data' => 'backuser']]]]), 'HTML');
                     return;
                 }
                 $prodcut['Service_time'] = $userdata['time'];
@@ -256,13 +256,13 @@ final class ConfirmRenewal
             );
             if (empty($funding['ok'])) {
                 $textRenewalError = !empty($funding['blocking_operation'])
-                    ? 'درخواست تمدید قبلاً ثبت شده است.'
+                    ? \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_already_registered')
                     : ($datatextbot['dyn_errors_concurrency_insufficient_stock'] ?? '❌ موجودی کافی نیست.');
                 sendmessage($from_id, $textRenewalError, null, 'HTML');
                 return;
             }
             if (!\Faoxima\Services\Renewal\WalletRenewal::claim($pdo, $funding)) {
-                sendmessage($from_id, 'وضعیت ثبت تمدید در حال بررسی است.', null, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_registration_pending'), null, 'HTML');
                 return;
             }
             $rxExtendOptions = [
@@ -284,7 +284,7 @@ final class ConfirmRenewal
             $outcome = \Faoxima\Services\Renewal\ProviderRenewal::walletRenewalOutcome($extend);
             $resultSaved = \Faoxima\Services\Renewal\WalletRenewal::result($pdo, $funding, $outcome, empty($extend['queued']));
             if (!$resultSaved) {
-                sendmessage($from_id, 'وضعیت ثبت تمدید در حال بررسی است.', null, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_registration_pending'), null, 'HTML');
                 return;
             }
             $rxExtendPending = $outcome === 'pending';
@@ -383,19 +383,9 @@ final class ConfirmRenewal
             $rxFmtProdcutPriceExtend = \Faoxima\Core\Support\Formatting::rxFormatToman($prodcut['price_product']);
             if (!empty($extend['queued'])) {
                 $rxQueuedSuccessTpl = (string) ($extend['reservation']['confirmation'] ?? \Faoxima\Services\Renewal\RenewalText::rxRenewalText('reservation_confirmed'));
-                $textextend = "$rxQueuedSuccessTpl
-
-▫️نام سرویس : {$nameloc['username']}
-▫️نام محصول : {$prodcut['name_product']}
-▫️مبلغ تمدید $priceproductformat تومان
-";
+                $textextend = \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_queued_summary', ['service' => $nameloc['username'], 'product' => $prodcut['name_product'], 'price' => $priceproductformat], ['confirmation' => $rxQueuedSuccessTpl]);
             } else {
-                $textextend = "✅ تمدید برای سرویس شما با موفقیت صورت گرفت
-
-▫️نام سرویس : {$nameloc['username']}
-▫️نام محصول : {$prodcut['name_product']}
-▫️مبلغ تمدید $priceproductformat تومان
-";
+                $textextend = \Faoxima\Telegram\Support\MessageTemplates::get('service_renewal_success', ['service' => $nameloc['username'], 'product' => $prodcut['name_product'], 'price' => $priceproductformat]);
                 $textextend = \Faoxima\Services\Renewal\RenewalText::rxRenewalDecorateSuccess($textextend, $extend, (string) $nameloc['username'], (string) ($marzban_list_get['name_panel'] ?? ''));
             }
             if ($fxRenewCustom) {

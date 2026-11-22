@@ -63,9 +63,7 @@ final class AdditionalTraffic
             $eextraprice = json_decode($marzban_list_get['priceextravolume'], true);
             $extrapricevalue = \Faoxima\Orders\Pricing\ExchangePricing::fxAdjustBaseToman($eextraprice[$user['agent']], $marzban_list_get, 'extra_volume');
             \Faoxima\Core\Database\Db::update("user", "Processing_value", $nameloc['id_invoice'], "id", $from_id);
-            $textextra = " ⭕️ مقدار حجمی که میخواهید خریداری کنید را ارسال کنید.
-❌ مبلغ را به انگلیسی ارسال نمایید.
-        ⚠️ هر گیگ  حجم اضافه " . \Faoxima\Core\Support\Formatting::rxFormatToman($extrapricevalue) . " تومان  است.";
+            $textextra = \Faoxima\Telegram\Support\MessageTemplates::get('service_extra_traffic_ask', ['price' => \Faoxima\Core\Support\Formatting::rxFormatToman($extrapricevalue)]);
             $bakinfos = json_encode([
                 'inline_keyboard' => [
                     [
@@ -102,19 +100,13 @@ final class AdditionalTraffic
             ];
             if ($__discEligibleVolume) {
                 $__volumeRows[] = [
-                    ['text' => "🎁 ثبت کد تخفیف", 'callback_data' => 'discountvolume-' . $priceextra],
+                    ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_discount_code'), 'callback_data' => 'discountvolume-' . $priceextra],
                 ];
             }
             $keyboardsetting = json_encode(['inline_keyboard' => $__volumeRows]);
             $priceextra = number_format($priceextra, 0);
             $extrapricevalues = number_format($extrapricevalue, 0);
-            $textextra = "📜 فاکتور خرید حجم اضافه برای شما ایجاد شد.
-
-📌 تعرفه هر گیگابایت حجم اضافه : $extrapricevalues تومان
-🔋 حجم اضافه درخواستی : $text گیگابایت
-💰 مبلغ فاکتور شما : $priceextra تومان
-
-✅ جهت پرداخت و اضافه شدن حجم، روی دکمه زیر کلیک کنید";
+            $textextra = \Faoxima\Telegram\Support\MessageTemplates::get('service_extra_traffic_invoice', ['price' => $extrapricevalues, 'amount' => $text, 'total' => $priceextra]);
             sendmessage($from_id, $textextra, $keyboardsetting, 'HTML');
             \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
             break;
@@ -168,12 +160,7 @@ final class AdditionalTraffic
                     ]
                 ]
             ]);
-            $textextra = "🤩 کد تخفیف {$dv['label']} روی فاکتور شما اعمال شد.
-
-💰 مبلغ قبل از تخفیف : {$__basefmt} تومان
-💸 مبلغ قابل پرداخت : {$__disfmt} تومان
-
-✅ جهت پرداخت و اضافه شدن حجم، روی دکمه زیر کلیک کنید";
+            $textextra = \Faoxima\Telegram\Support\MessageTemplates::get('service_extra_traffic_discount_invoice', ['label' => $dv['label'], 'before' => $__basefmt, 'after' => $__disfmt]);
             sendmessage($from_id, $textextra, $keyboardsetting, 'HTML');
             \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
             break;
@@ -199,7 +186,7 @@ final class AdditionalTraffic
             if (\Faoxima\Services\Fulfillment\WalletExtensions::blockingOperation(
                 $pdo, (string) $from_id, $nameloc['username'], 'extra_user', (string) $nameloc['id_invoice'], $operationId
             ) !== null) {
-                sendmessage($from_id, 'درخواست خرید قبلاً ثبت شده است.', null, 'HTML');
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_extra_request_already_registered'), null, 'HTML');
                 return;
             }
             $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
@@ -379,12 +366,7 @@ final class AdditionalTraffic
             }
             $volumesformat = number_format($volumepricelast, 0);
             $volumes = $fxExtraQty ?? $volume / $extrapricevalue;
-            $textvolume = "✅ افزایش حجم برای سرویس شما با موفقیت صورت گرفت
-
-▫️نام سرویس  : {$nameloc['username']}
-▫️حجم اضافه : $volumes گیگ
-
-▫️مبلغ افزایش حجم : $volumesformat تومان";
+            $textvolume = \Faoxima\Telegram\Support\MessageTemplates::get('service_extra_traffic_success', ['username' => $nameloc['username'], 'amount' => $volumes, 'total' => $volumesformat]);
             sendmessage($from_id, $textvolume, $keyboardextrafnished, 'HTML');
             $text_report = "⭕️ یک کاربر حجم اضافه خریده است
 

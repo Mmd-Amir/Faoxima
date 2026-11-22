@@ -51,7 +51,7 @@ final class WalletTransfer
         case 'transfer_cancel':
             \Faoxima\Core\Database\Db::update("user", "Processing_value", "0", "id", $from_id);
             \Faoxima\Core\Database\Db::update("user", "Processing_value_one", "", "id", $from_id);
-            Editmessagetext($from_id, $message_id, "❌ انتقال موجودی لغو شد.", null, 'HTML');
+            Editmessagetext($from_id, $message_id, \Faoxima\Telegram\Support\MessageTemplates::get('wallet_transfer_canceled'), null, 'HTML');
             \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
             break;
         case 'transfer_confirm':

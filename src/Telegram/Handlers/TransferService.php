@@ -71,7 +71,7 @@ final class TransferService
             $confirmtransfer = json_encode([
                 'inline_keyboard' => [
                     [
-                        ['text' => "✅ تایید انتقال سرویس", 'callback_data' => "confrimtransfers_{$user['Processing_value_tow']}"],
+                        ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_confirm_transfer'), 'callback_data' => "confrimtransfers_{$user['Processing_value_tow']}"],
                     ],
                 ]
             ]);
@@ -103,7 +103,7 @@ final class TransferService
                 ]
             ]);
             Editmessagetext($from_id, $message_id, $textbotlang['Admin']['transfor']['confirmed'], $bakinfos);
-            $texttransfer = "✅ کاربر گرامی  سرویس با نام کاربری {$nameloc['username']} از طرف کاربر با شناسه کاربری $from_id  به حساب کاربری شما منتقل گردید.";
+            $texttransfer = \Faoxima\Telegram\Support\MessageTemplates::get('service_transfer_received_notice', ['username' => $nameloc['username'], 'from_id' => $from_id]);
             sendmessage($user['Processing_value_one'], $texttransfer, $keyboard, 'HTML');
             $stmt = $connect->prepare("INSERT IGNORE INTO service_other (id_user, username,value,type,time,price) VALUES (?, ?, ?, ?,?,?)");
             $value = $user['Processing_value_one'];

@@ -35,7 +35,7 @@ final class ReceiptAudit
                 return 0;
             }
             if (function_exists('sendmessage')) {
-                sendmessage($user['id'], "🎁 کاربر عزیز مبلغ " . (method_exists(\Faoxima\Core\Support\Formatting::class, 'rxFormatToman') ? \Faoxima\Core\Support\Formatting::rxFormatToman($amount) : number_format($amount)) . " تومان به عنوان هدیه واریز به حساب شما واریز گردید.", null, 'HTML');
+                sendmessage($user['id'], \Faoxima\Telegram\Support\MessageTemplates::get('notify_cashback_gift', ['amount' => (method_exists(\Faoxima\Core\Support\Formatting::class, 'rxFormatToman') ? \Faoxima\Core\Support\Formatting::rxFormatToman($amount) : number_format($amount))]), null, 'HTML');
             }
             return $amount;
         } catch (Throwable $e) {

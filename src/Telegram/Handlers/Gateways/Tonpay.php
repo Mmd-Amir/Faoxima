@@ -161,16 +161,7 @@ final class Tonpay
                     ]
                 ]);
                 $pricetoman = number_format($user['Processing_value'], 0);
-                $textnowpayments = "✅ تراکنش شما ایجاد شد
-
-🛒 کد پیگیری:  <code>$randomString</code>
-💲 مبلغ تراکنش به تومان  : <code>$pricetoman</code>
-
-💢 لطفا به این نکات قبل از پرداخت توجه کنید 👇
-
-🔹 تراکنش تا ۲۴ ساعت اعتبار و پس از آن در صورت پرداخت تایید نخواهد شد .
-
-✅ در صورت مشکل میتوانید با پشتیبانی در ارتباط باشید";
+                $textnowpayments = \Faoxima\Telegram\Support\MessageTemplates::get('payment_invoice_created_tonpay', ['tracking_code' => $randomString, 'amount' => $pricetoman]);
                 $gethelp = \Faoxima\Core\Database\Db::select("PaySetting", "ValuePay", "NamePay", "helptonpay", "select")['ValuePay'];
                 if ($gethelp != 2) {
                     $data = json_decode($gethelp, true);

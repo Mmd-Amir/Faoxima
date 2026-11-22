@@ -135,11 +135,13 @@ final class InfoCards
                 'parse_mode' => 'HTML',
                 'reply_markup' => $replyMarkup,
             ], null, $mediaDelivery);
-            $state = $mediaDelivery['media_state'];
+            $mediaDelivery = is_array($mediaDelivery) ? $mediaDelivery : [];
+            $state = (string) ($mediaDelivery['media_state'] ?? rxMediaResultState($result));
             $deliveryDetail = [
                 'state' => $state,
-                'reason' => !$mediaDelivery['caption_valid'] ? 'caption_unsafe' : ('telegram_' . $state),
+                'reason' => !($mediaDelivery['caption_valid'] ?? true) ? 'caption_unsafe' : ('telegram_' . $state),
                 'result' => method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_result') ? \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($result) : null,
+                'message_id' => is_array($result) ? (int) ($result['result']['message_id'] ?? 0) : 0,
             ] + $mediaDelivery;
             @unlink($urlimage);
             return $state === 'confirmed';
@@ -202,7 +204,7 @@ final class InfoCards
             $note = isset($row['note']) && $row['note'] !== '' ? ' | ' . $row['note'] : '';
             $caption = '✨ <b>' . htmlspecialchars((string)$row['username'], ENT_QUOTES, 'UTF-8') . '</b>'
                 . htmlspecialchars($note, ENT_QUOTES, 'UTF-8');
-            $__kbButtons = [['text' => '🔧 مدیریت سرویس', 'callback_data' => 'product_' . $row['id_invoice']]];
+            $__kbButtons = [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_manage'), 'callback_data' => 'product_' . $row['id_invoice']]];
             if (!method_exists(\Faoxima\Telegram\Support\InfoCardRenderer::class, 'isQrDisabled') || !\Faoxima\Telegram\Support\InfoCardRenderer::isQrDisabled()) {
                 $__kbButtons[] = ['text' => \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_purchase_qr_code_btn', '📷 دریافت QR Code'), 'callback_data' => 'infocard_qr_' . $row['id_invoice']];
             }

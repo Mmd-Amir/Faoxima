@@ -55,7 +55,7 @@ final class StockPresentation
             if ($vol !== '' || $days !== '') $label .= " ({$volLabel} / {$days} روز)";
             $rows[] = [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => $label, 'callback_data' => 'nmstocksel_' . $token . '_' . $invoiceId, '_rxcolor' => 'stock_product:' . $product['id']], 'nmstock_actions', $styles)];
         }
-        $rows[] = [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => '🏠 بازگشت به لیست سرویس ها', 'callback_data' => 'backorder'], 'backorder', $styles)];
+        $rows[] = [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_stock_back_to_list'), 'callback_data' => 'backorder'], 'backorder', $styles)];
         return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
@@ -282,7 +282,7 @@ final class StockPresentation
 💰 مبلغ: {$price} تومان
 ⏳ مدت: {$product['Service_time']} روز
 🗜 حجم: {$product['Volume_constraint']} گیگ";
-            $kbd=json_encode(['inline_keyboard'=>[[['text'=>'✅ تایید تمدید','callback_data'=>'nmstockok_'.$token.'_'.$iid]],[['text'=>'🏠 بازگشت به لیست سرویس ها','callback_data'=>'backorder']]]],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+            $kbd=json_encode(['inline_keyboard'=>[[['text'=>'✅ تایید تمدید','callback_data'=>'nmstockok_'.$token.'_'.$iid]],[['text'=>\Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_stock_back_to_list'),'callback_data'=>'backorder']]]],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
             if(!empty($messageId)&&function_exists('Editmessagetext')) Editmessagetext($chatId,$messageId,$txt,$kbd,'HTML'); else sendmessage($chatId,$txt,$kbd,'HTML');
             return true;
         }
@@ -406,36 +406,36 @@ final class StockPresentation
             $hasConfig = ($cfg !== '' && $cfg !== $sub);
             $row1 = [];
             if ((string)($panel['status_extend'] ?? 'on_extend') !== 'off_extend') {
-                $row1[] = \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => '🔄 تمدید سرویس', 'callback_data' => 'nmstockextend_' . $invoiceId], 'nmstock_actions', $styles);
+                $row1[] = \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_stock_extend'), 'callback_data' => 'nmstockextend_' . $invoiceId], 'nmstock_actions', $styles);
             }
             if (!method_exists(\Faoxima\Services\Panels\PanelFeatures::class, 'panel_feature_enabled') || \Faoxima\Services\Panels\PanelFeatures::panel_feature_enabled($panel, 'refund')) {
-                $row1[] = \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => '💎 بازگشت وجه', 'callback_data' => 'nmstockrefund_' . $invoiceId], 'nmstock_actions', $styles);
+                $row1[] = \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_stock_refund'), 'callback_data' => 'nmstockrefund_' . $invoiceId], 'nmstock_actions', $styles);
             }
             if ($row1) $buttons[] = $row1;
             $row2 = [];
             if ((!method_exists(\Faoxima\Services\Panels\PanelFeatures::class, 'panel_feature_enabled') || \Faoxima\Services\Panels\PanelFeatures::panel_feature_enabled($panel, 'configbtn')) && $hasConfig) {
-                $row2[] = \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => '📥 دریافت کانفیگ', 'callback_data' => 'nmstockcfg_' . $invoiceId], 'nmstock_actions', $styles);
+                $row2[] = \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_stock_get_config'), 'callback_data' => 'nmstockcfg_' . $invoiceId], 'nmstock_actions', $styles);
             }
             if ($hasLink) {
-                $row2[] = \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => '🔗 لینک اشتراک', 'callback_data' => 'nmstocksub_' . $invoiceId], 'nmstock_actions', $styles);
+                $row2[] = \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_stock_sub_link'), 'callback_data' => 'nmstocksub_' . $invoiceId], 'nmstock_actions', $styles);
             }
             if ($row2) $buttons[] = $row2;
         } elseif ($invoiceId !== '') {
             $buttons[] = [
-                \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => '🔄 تمدید سرویس', 'callback_data' => 'nmstockextend_' . $invoiceId], 'nmstock_actions', $styles),
-                \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => '💎 بازگشت وجه', 'callback_data' => 'nmstockrefund_' . $invoiceId], 'nmstock_actions', $styles),
+                \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_stock_extend'), 'callback_data' => 'nmstockextend_' . $invoiceId], 'nmstock_actions', $styles),
+                \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_stock_refund'), 'callback_data' => 'nmstockrefund_' . $invoiceId], 'nmstock_actions', $styles),
             ];
             $buttons[] = [
-                \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => '📥 دریافت کانفیگ', 'callback_data' => 'nmstockcfg_' . $invoiceId], 'nmstock_actions', $styles),
-                \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => '🔗 لینک اشتراک', 'callback_data' => 'nmstocksub_' . $invoiceId], 'nmstock_actions', $styles),
+                \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_stock_get_config'), 'callback_data' => 'nmstockcfg_' . $invoiceId], 'nmstock_actions', $styles),
+                \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_stock_sub_link'), 'callback_data' => 'nmstocksub_' . $invoiceId], 'nmstock_actions', $styles),
             ];
         } else {
-            $buttons[] = [['text' => '📥 دریافت کانفیگ', 'callback_data' => 'none', '_rxcolor' => 'service_template:stock_config']];
+            $buttons[] = [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_stock_get_config'), 'callback_data' => 'none', '_rxcolor' => 'service_template:stock_config']];
             $link = trim((string)$subLink) !== '' ? trim((string)$subLink) : trim((string)$content);
-            if (preg_match('/^https?:\/\//i', $link)) $buttons[] = [['text' => '🔗 لینک اشتراک', 'url' => $link, '_rxcolor' => 'service_template:stock_subscription']];
-            else $buttons[] = [['text' => '🔗 لینک اشتراک', 'callback_data' => 'none', '_rxcolor' => 'service_template:stock_subscription']];
+            if (preg_match('/^https?:\/\//i', $link)) $buttons[] = [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_stock_sub_link'), 'url' => $link, '_rxcolor' => 'service_template:stock_subscription']];
+            else $buttons[] = [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_stock_sub_link'), 'callback_data' => 'none', '_rxcolor' => 'service_template:stock_subscription']];
         }
-        $buttons[] = [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => '🏠 بازگشت به لیست سرویس ها', 'callback_data' => 'backorder'], 'backorder', $styles)];
+        $buttons[] = [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_stock_back_to_list'), 'callback_data' => 'backorder'], 'backorder', $styles)];
         return json_encode(['inline_keyboard' => $buttons], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 

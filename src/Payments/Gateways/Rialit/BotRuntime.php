@@ -39,33 +39,33 @@ final class BotRuntime
         $orderId = (string) $report['id_order'];
         $localStatus = strtolower((string) ($report['payment_Status'] ?? ''));
         $remoteStatus = (string) ($report['rialit_status'] ?? '');
-        $status = '⏳ در انتظار نتیجه';
+        $status = \Faoxima\Telegram\Support\MessageTemplates::get('payment_rialit_status_waiting');
         if ((int) ($report['rialit_abandoned_at'] ?? 0) > 0 && $localStatus !== 'paid') {
-            $status = '🚫 از این پرداخت انصراف داده‌اید. اگر بعداً تأیید شود، مبلغ سفارش به کیف پول اضافه می‌شود.';
+            $status = \Faoxima\Telegram\Support\MessageTemplates::get('payment_rialit_status_abandoned');
         } elseif ($localStatus === 'paid') {
-            $status = !empty($report['direct_payment_done']) ? '✅ پرداخت و سفارش تکمیل شد' : '⏳ پرداخت تأیید شد؛ در حال تکمیل سفارش';
+            $status = !empty($report['direct_payment_done']) ? \Faoxima\Telegram\Support\MessageTemplates::get('payment_rialit_status_completed') : \Faoxima\Telegram\Support\MessageTemplates::get('payment_rialit_status_paid_finalizing');
         } elseif ($remoteStatus === 'expired' || $remoteStatus === 'cancelled') {
-            $status = $remoteStatus === 'expired' ? '⌛ پرداخت منقضی شده است' : '❌ پرداخت در ریالیت لغو شده است';
+            $status = $remoteStatus === 'expired' ? \Faoxima\Telegram\Support\MessageTemplates::get('payment_rialit_status_expired') : \Faoxima\Telegram\Support\MessageTemplates::get('payment_rialit_status_canceled');
         } elseif (empty($report['rialit_token'])) {
-            $status = '⏳ در حال بازیابی لینک پرداخت';
+            $status = \Faoxima\Telegram\Support\MessageTemplates::get('payment_rialit_status_recovering_link');
         } elseif (!\Faoxima\Payments\Gateways\Rialit\PaymentOrders::linkAvailable($report)) {
-            $status = '⏳ مهلت ورود به پرداخت تمام شده؛ در انتظار نتیجه';
+            $status = \Faoxima\Telegram\Support\MessageTemplates::get('payment_rialit_status_link_expired');
         }
         $text = '<b>' . $escape(\Faoxima\Payments\Gateways\Rialit\Client::displayName()) . "</b>\n\n" . $status
-            . "\n🛒 کد پیگیری: <code>" . $escape($orderId) . '</code>'
-            . "\n💰 مبلغ سفارش: <b>" . number_format((int) $report['price']) . '</b> تومان';
+            . "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('payment_rialit_line_tracking', ['order_id' => $orderId])
+            . "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('payment_rialit_line_amount', ['amount' => number_format((int) $report['price'])]);
         if ((int) ($report['rialit_payer_fee'] ?? 0) > 0) {
-            $text .= "\n💳 مبلغ پرداختی با کارمزد: <b>" . number_format((int) $report['rialit_payer_amount']) . '</b> تومان';
+            $text .= "\n" . \Faoxima\Telegram\Support\MessageTemplates::get('payment_rialit_line_payer_amount', ['amount' => number_format((int) $report['rialit_payer_amount'])]);
         }
         $rows = [];
         if (\Faoxima\Payments\Gateways\Rialit\PaymentOrders::linkAvailable($report)) {
-            $rows[] = [rx_payment_button('rialit', 'continue_link', ['text' => '💳 ادامه پرداخت', 'url' => \Faoxima\Payments\Gateways\Rialit\Client::paymentUrl($report['rialit_token'])])];
+            $rows[] = [rx_payment_button('rialit', 'continue_link', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_rialit_continue'), 'url' => \Faoxima\Payments\Gateways\Rialit\Client::paymentUrl($report['rialit_token'])])];
         }
-        $rows[] = [rx_payment_button('rialit', 'check_status', ['text' => '🔄 بررسی وضعیت', 'callback_data' => 'rl_view_' . $orderId])];
+        $rows[] = [rx_payment_button('rialit', 'check_status', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_rialit_check_status'), 'callback_data' => 'rl_view_' . $orderId])];
         if ((int) ($report['rialit_abandoned_at'] ?? 0) === 0 && in_array($localStatus, ['unpaid','pending','waiting','expire','cancelled'], true) && $remoteStatus !== 'paid') {
-            $rows[] = [rx_payment_button('rialit', 'cancel_transaction', ['text' => '🚫 انصراف و پرداخت جدید', 'callback_data' => 'rl_cancel_' . $orderId])];
+            $rows[] = [rx_payment_button('rialit', 'cancel_transaction', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_rialit_cancel_new'), 'callback_data' => 'rl_cancel_' . $orderId])];
         }
-        $rows[] = [rx_payment_button('rialit', 'pending_list', ['text' => '🔙 تراکنش‌های در انتظار', 'callback_data' => 'tpc_list'])];
+        $rows[] = [rx_payment_button('rialit', 'pending_list', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_rialit_pending_list'), 'callback_data' => 'tpc_list'])];
         return ['text' => $text, 'keyboard' => json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE)];
     }
 
@@ -87,13 +87,13 @@ final class BotRuntime
             if (!empty($rows) && ($rows[count($rows) - 1][0]['callback_data'] ?? '') === 'account') {
                 array_pop($rows);
             }
-            $text = str_replace('در حال حاضر تراکنش پرداخت نیمه‌تمامی ندارید.', '', (string) ($view['text'] ?? ''));
+            $text = str_replace(\Faoxima\Telegram\Support\MessageTemplates::get('payment_pending_list_empty_note'), '', (string) ($view['text'] ?? ''));
             foreach ($reports as $report) {
                 $paymentView = self::rialitBotPaymentView($report);
                 $text .= "\n\n" . $paymentView['text'];
-                $rows[] = [rx_payment_button('rialit', 'list_view', ['text' => '💚 پیگیری ریالیت · ' . (string) $report['id_order'], 'callback_data' => 'rl_view_' . (string) $report['id_order']])];
+                $rows[] = [rx_payment_button('rialit', 'list_view', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_rialit_follow', ['order_id' => (string) $report['id_order']]), 'callback_data' => 'rl_view_' . (string) $report['id_order']])];
             }
-            $rows[] = [rx_payment_button('rialit', 'back_account', ['text' => '🔙 بازگشت', 'callback_data' => 'account'])];
+            $rows[] = [rx_payment_button('rialit', 'back_account', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back'), 'callback_data' => 'account'])];
             return ['text' => $text, 'keyboard' => json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE)];
         } catch (Throwable $e) {
             \Faoxima\Payments\Gateways\Rialit\Client::logEvent('RIALIT_BOT_LIST_FAILED', $e->getMessage());

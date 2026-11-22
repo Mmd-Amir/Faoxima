@@ -47,7 +47,7 @@ final class MiniAppPending
                 $mpText .= "📌 وضعیت: در انتظار بررسی ادمین\n\n";
             }
             $_rx_acc_s = (isset($_rx_acc_styles) && is_array($_rx_acc_styles)) ? $_rx_acc_styles : [];
-            $mpKb = json_encode(['inline_keyboard' => [[\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => '🔙 بازگشت', 'callback_data' => 'account', '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true], 'backinfo', $_rx_acc_s)]]], JSON_UNESCAPED_UNICODE);
+            $mpKb = json_encode(['inline_keyboard' => [[\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back'), 'callback_data' => 'account', '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true], 'backinfo', $_rx_acc_s)]]], JSON_UNESCAPED_UNICODE);
             Editmessagetext($from_id, $message_id, $mpText, $mpKb);
             break;
         case 'faq':

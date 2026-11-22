@@ -159,22 +159,12 @@ final class Atlaspay
                     'inline_keyboard' => $atlaspayPaymentButtons
                 ]);
                 $pricetoman = number_format($totalAmountToman, 0);
-                $textnowpayments = "✅ تراکنش شما ایجاد شد
-
-🛒 کد پیگیری:  <code>" . ($trackingCode !== '' ? $trackingCode : $randomString) . "</code>
-💲 مبلغ تراکنش به تومان  : <code>$pricetoman</code>
-
-💢 لطفا به این نکات قبل از پرداخت توجه کنید 👇
-
-🔹 تراکنش تا ۲۰ دقیقه اعتبار و پس از آن در صورت پرداخت تایید نخواهد شد .";
-                if ($receiptUrl !== '') {
-                    $textnowpayments .= "
-
-" . \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayBotReceiptInstructions();
-                }
-                $textnowpayments .= "
-
-✅ در صورت مشکل میتوانید با پشتیبانی در ارتباط باشید";
+                $textnowpayments = \Faoxima\Telegram\Support\MessageTemplates::get('payment_invoice_created_atlaspay', [
+                    'tracking_code' => ($trackingCode !== '' ? $trackingCode : $randomString),
+                    'amount' => $pricetoman,
+                ], [
+                    'receipt_block' => $receiptUrl !== '' ? "\n\n" . \Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayBotReceiptInstructions() : '',
+                ]);
                 $gethelp = \Faoxima\Core\Database\Db::select("PaySetting", "ValuePay", "NamePay", "helpatlaspay", "select")['ValuePay'];
                 if ($gethelp != 2) {
                     $data = json_decode($gethelp, true);

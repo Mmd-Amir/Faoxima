@@ -43,7 +43,7 @@ final class CancelCrypto
                 if (!empty($message_id) && function_exists('deletemessage')) {
                     @deletemessage((string) $from_id, (int) $message_id);
                 }
-                sendmessage((string) $from_id, "✅ فاکتور لغو شد.", $keyboard, 'HTML');
+                sendmessage((string) $from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_invoice_canceled'), $keyboard, 'HTML');
 
         return true;
     }

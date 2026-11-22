@@ -6,7 +6,7 @@ use PDO;
 
 /**
  * Handler stage. Inherited by value: $pdo.
- * Inherited or exported by reference: $action, $addedKey, $categories, $cur, $d, $delKey, $edgeRejectedKeys, $flash, $g, $items, $key, $orderedGrouped, $payload, $query, $r, $richRejectedKeys, $richStates, $richTemplateErrors, $row, $rows, $savedNum, $tonpayTemplateFlash, $value, $values, $visibleRows.
+ * Inherited or exported by reference: $action, $addedKey, $categories, $cur, $d, $delKey, $edgeRejectedKeys, $flash, $g, $items, $key, $orderedGrouped, $payload, $query, $r, $richRejectedKeys, $richStates, $richTemplateErrors, $row, $rows, $savedNum, $tempStatus, $tonpayTemplateFlash, $value, $values, $visibleRows.
  * Returns true to continue the request pipeline, anything else stops it.
  */
 final class TextbotRequest
@@ -35,12 +35,14 @@ final class TextbotRequest
         &$rows,
         &$savedNum,
         &$tonpayTemplateFlash,
+        &$tempStatus,
         &$value,
         &$values,
         &$visibleRows
     ) {
         $textDefaults = ['text_custom_price_summary' => \Faoxima\Orders\Pricing\CustomDuration::fx_custom_price_text_default()];
         $textDefaults += array_intersect_key(\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayTemplateDefaults(), array_flip(['dyn_atlaspay_bot_receipt_button', 'dyn_atlaspay_bot_receipt_instructions']));
+        $textDefaults += \Faoxima\Telegram\Support\MessageTemplates::defaults();
 
         $query = $pdo->prepare("SELECT * FROM admin WHERE username=:username");
         $query->bindValue(":username", $_SESSION["user"] ?? '', PDO::PARAM_STR);
@@ -52,6 +54,13 @@ final class TextbotRequest
         }
 
         \Faoxima\Admin\Web\Support\Csrf::fx_csrf_guard();
+
+        $adminName = (string) ($adminRow['username'] ?? $_SESSION['user']);
+        \Faoxima\Core\Database\TextbotTemporary::ensureSchema($pdo);
+        \Faoxima\Core\Database\TextbotTemporary::enforceExpiry($pdo, true);
+        if (\Faoxima\Admin\Web\Pages\TextbotTemporaryRequest::isTemporaryRequest()) {
+            \Faoxima\Admin\Web\Pages\TextbotTemporaryRequest::handle($pdo, $adminName, $textDefaults);
+        }
 
 
 
@@ -70,126 +79,57 @@ final class TextbotRequest
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $action = $_POST['_action'] ?? '';
 
+            if (in_array($action, ['add', 'delete'], true) && \Faoxima\Core\Database\TextbotTemporary::activeSession($pdo) !== null) {
+                $flash['err'] = 'تا پایان یا ثبت نشست ذخیره موقت، افزودن و حذف کلید امکان‌پذیر نیست.';
+                $action = '';
+            }
+
             if ($action === 'save') {
-                $rawPayload = $_POST['_text_payload'] ?? null;
-                $payload = is_string($rawPayload) ? json_decode($rawPayload, true) : null;
-                $validPayload = is_array($payload) && ($payload['version'] ?? null) === 1
-                    && isset($payload['t'], $payload['rich']) && is_array($payload['t']) && is_array($payload['rich']);
-                if ($validPayload) {
-                    $validPayload = count($payload['t']) === count($payload['rich']);
-                    foreach ($payload['t'] as $key => $value) {
-                        if (!array_key_exists($key, $payload['rich'])) {
-                            $validPayload = false;
-                            break;
-                        }
-                    }
-                }
-                if ($validPayload) {
-                    foreach ([$payload['t'], $payload['rich']] as $values) {
-                        foreach ($values as $value) {
-                            if (!is_string($value)) {
-                                $validPayload = false;
-                                break 2;
-                            }
-                        }
-                    }
-                }
-                if (!$validPayload) {
+                $payload = \Faoxima\Admin\Web\Support\TextbotSavePlanner::parsePayload($_POST['_text_payload'] ?? null);
+                if ($payload === null) {
                     $_SESSION['textbot_save_error'] = 'داده‌های فرم کامل یا معتبر نیستند؛ تغییری ذخیره نشد. صفحه را تازه کنید و دوباره ذخیره کنید.';
                     header('Location: textbot.php');
                     exit;
                 }
-                $newValues = $payload['t'];
-
-
-                $cur = [];
-                $r = $pdo->query("SELECT id_text, text FROM textbot");
-                if ($r) {
-                    foreach ($r->fetchAll(PDO::FETCH_ASSOC) as $row) {
-                        $cur[(string)$row['id_text']] = (string)$row['text'];
-                    }
+                $activeSession = \Faoxima\Core\Database\TextbotTemporary::activeSession($pdo);
+                if ($activeSession !== null && (string) $activeSession['admin'] !== $adminName) {
+                    $_SESSION['textbot_save_error'] = 'یک نشست ذخیره موقت متعلق به مدیر دیگری فعال است؛ تا پایان آن امکان ذخیره وجود ندارد.';
+                    header('Location: textbot.php');
+                    exit;
                 }
-
-                $cur += $textDefaults;
+                $cur = \Faoxima\Admin\Web\Support\TextbotSavePlanner::currentRows($pdo, $textDefaults);
+                $plan = \Faoxima\Admin\Web\Support\TextbotSavePlanner::plan($payload, $cur, $pdo);
+                $edgeRejected = $plan['edgeRejected'];
+                $tonpayTemplateErrors = $plan['tonpayErrors'];
+                $richRejected = $plan['richRejected'];
+                $richErrors = $plan['richErrors'];
+                foreach ($plan['conflicts'] as $conflictKey) {
+                    $richRejected[] = $conflictKey;
+                    $richErrors[$conflictKey] = 'این متن پس از بارگذاری صفحه توسط مدیر دیگری تغییر کرده است؛ صفحه را تازه کنید.';
+                }
                 $updated = 0;
-                $edgeRejected = [];
-                $tonpayTemplateErrors = [];
-                $richPrepared = [];
-                $richDropped = [];
-                $richRejected = [];
-                $richBlocked = [];
-                $richErrors = [];
-                $richPost = $payload['rich'];
-                foreach ($richPost as $rKey => $rRaw) {
-                    $rKey = (string)$rKey;
-                    if (!isset($cur[$rKey])) continue;
-                    $rText = array_key_exists($rKey, $newValues) ? (string)$newValues[$rKey] : (string)$cur[$rKey];
-                    $rCompanion = \Faoxima\Admin\Web\Support\TextbotEdge::fx_textbot_rich_prefix() . $rKey;
-                    $rIssue = null;
-                    $rState = \Faoxima\Admin\Web\Support\TextbotEdge::fx_textbot_rich_state_for_save($rRaw, $rText, $rIssue);
-                    if ($rState === null) {
-                        if ($rIssue !== null) {
-                            $richRejected[] = $rKey;
-                            $richBlocked[$rKey] = true;
-                            $richErrors[$rKey] = $rIssue;
-                            continue;
-                        }
-                        if (isset($cur[$rCompanion])) {
-                            $richDropped[$rCompanion] = true;
-                        }
-                        continue;
+                if ($activeSession !== null) {
+                    $sessionRev = isset($_POST['_temp_rev']) && ctype_digit((string) $_POST['_temp_rev']) ? (int) $_POST['_temp_rev'] : -1;
+                    $sessionRef = isset($_POST['_temp_session']) && ctype_digit((string) $_POST['_temp_session']) ? (int) $_POST['_temp_session'] : 0;
+                    $committed = \Faoxima\Core\Database\TextbotTemporary::commit($pdo, $adminName, $sessionRef, $sessionRev, \Faoxima\Admin\Web\Support\TextbotSavePlanner::rowsOf($plan['units']));
+                    if (empty($committed['ok'])) {
+                        $_SESSION['textbot_save_error'] = (string) ($committed['message'] ?? 'ثبت دائمی انجام نشد.');
+                        header('Location: textbot.php');
+                        exit;
                     }
-                    $newValues[$rKey] = (string)$rState['html'];
-                    $richPrepared[$rKey] = $rState;
-                }
-                foreach ($newValues as $key => $val) {
-                    $key = (string)$key;
-                    $val = (string)$val;
-                    if (isset($richBlocked[$key])) continue;
-                    $rCompanion = \Faoxima\Admin\Web\Support\TextbotEdge::fx_textbot_rich_prefix() . $key;
-                    $hasRichChange = (isset($richPrepared[$key]) && ($cur[$rCompanion] ?? '') !== \Faoxima\Admin\Web\Support\TextbotEdge::fx_textbot_rich_state_encode($richPrepared[$key])) || isset($richDropped[$rCompanion]);
-                    if (isset($cur[$key]) && $cur[$key] === $val && !$hasRichChange) {
-                        continue;
+                    $updated = count($plan['units']);
+                } else {
+                    $applied = \Faoxima\Admin\Web\Support\TextbotSavePlanner::applyDirect($pdo, $plan['units']);
+                    $updated = $applied['updated'];
+                    foreach ($applied['errors'] as $failedKey => $failedMessage) {
+                        $richErrors[$failedKey] = $failedMessage;
+                        $richRejected[] = $failedKey;
                     }
-                    $tonpayTemplateIssue = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayTemplateValidate($key, $val);
-                    if ($tonpayTemplateIssue !== '') {
-                        $tonpayTemplateErrors[$key] = $tonpayTemplateIssue;
-                        continue;
+                    if ($applied['detail'] !== '') {
+                        $_SESSION['textbot_save_error'] = $applied['detail'];
                     }
-                    if (\Faoxima\Admin\Web\Support\TextbotEdge::fx_textbot_edge_violation($key, $val) !== '') {
-                        $edgeRejected[] = $key;
-                        continue;
-                    }
-                    try {
-                        if ($hasRichChange) {
-                            $pdo->beginTransaction();
-                        }
-                        $upd = $pdo->prepare("INSERT INTO textbot (id_text, text) VALUES (:k, :v) ON DUPLICATE KEY UPDATE text = :v2");
-                        $upd->execute([':k' => $key, ':v' => $val, ':v2' => $val]);
-                        if (isset($richPrepared[$key])) {
-                            $rJson = \Faoxima\Admin\Web\Support\TextbotEdge::fx_textbot_rich_state_encode($richPrepared[$key]);
-                            $upd->execute([':k' => $rCompanion, ':v' => $rJson, ':v2' => $rJson]);
-                        } elseif (isset($richDropped[$rCompanion])) {
-                            $pdo->prepare("DELETE FROM textbot WHERE id_text = :k")->execute([':k' => $rCompanion]);
-                        }
-                        if ($hasRichChange) {
-                            $pdo->commit();
-                        }
-                        $updated++;
-                    } catch (\Throwable $e) {
-                        if ($hasRichChange && $pdo->inTransaction()) {
-                            $pdo->rollBack();
-                        }
-                        $richErrors[$key] = 'ذخیرهٔ متن انجام نشد؛ نسخهٔ قبلی حفظ شد.';
-                        $richRejected[] = $key;
-                        $flash['err'] = $e->getMessage();
-                        error_log('[panel/textbot] update failed for ' . $key . ': ' . $e->getMessage());
-                    }
-                }
-                if ($updated > 0) {
-                    \Faoxima\Core\Database\SelectCache::faoxima_bust_bot_selectcache('textbot');
-                    if (method_exists(\Faoxima\Core\Database\SelectCache::class, 'clearSelectCache')) {
-                        \Faoxima\Core\Database\SelectCache::clearSelectCache('textbot');
+                    if ($updated > 0) {
+                        \Faoxima\Core\Database\TextbotTemporary::bustCaches();
                     }
                 }
                 $redirect = 'textbot.php?saved=' . $updated;
@@ -271,6 +211,13 @@ final class TextbotRequest
         }
 
 
+        $presentIds = array_column($rows, 'id_text');
+        foreach (\Faoxima\Core\Database\TextbotTemporary::deletedSnapshots($pdo) as $deletedId => $deletedText) {
+            if (!in_array((string) $deletedId, $presentIds, true)) {
+                $rows[] = ['id_text' => (string) $deletedId, 'text' => $deletedText];
+            }
+        }
+
         foreach ($textDefaults as $defaultKey => $defaultText) {
             if (!in_array($defaultKey, array_column($rows, 'id_text'), true)) {
                 $rows[] = ['id_text' => $defaultKey, 'text' => $defaultText];
@@ -296,7 +243,7 @@ final class TextbotRequest
         }
 
         $categories = \Faoxima\Admin\Web\Pages\TextbotRequestHelpers::faoxima_text_categories();
-        $tabOrder = ['sys', 'srv', 'help', 'fin', 'custom_pricing', 'ref', 'err_general', 'err_purchase', 'tickets', 'wallet_ext', 'tonpay', 'ref_ext', 'misc', 'cron', 'jsontext_users', 'jsontext_admin', 'other'];
+        $tabOrder = ['sys', 'srv', 'help', 'fin', 'custom_pricing', 'ref', 'err_general', 'err_purchase', 'tickets', 'wallet_ext', 'tonpay', 'msg_pay_card', 'msg_pay_crypto', 'msg_pay_forapp', 'msg_pay_gateways', 'msg_pay_refund', 'msg_service_buy', 'msg_service_renew', 'msg_service_manage', 'ref_ext', 'misc', 'cron', 'jsontext_users', 'jsontext_admin', 'other'];
         $orderedGrouped = [];
         foreach ($tabOrder as $g) {
             if (isset($grouped[$g])) { $orderedGrouped[$g] = $grouped[$g]; unset($grouped[$g]); }
@@ -307,6 +254,7 @@ final class TextbotRequest
 
 
 
+        $tempStatus = \Faoxima\Core\Database\TextbotTemporary::status($pdo, $adminName);
         $savedNum = isset($_GET['saved']) ? (int)$_GET['saved'] : -1;
         $addedKey = isset($_GET['added']) ? (string)$_GET['added'] : '';
         $delKey   = isset($_GET['deleted']) ? (string)$_GET['deleted'] : '';

@@ -22,8 +22,39 @@ final class Markup
         if ($type === 'buttons' || $type === 'button') {
             return '';
         }
-        $skip = ['type' => 1, 'url' => 1, 'callback_data' => 1, 'style' => 1, 'align' => 1, 'name' => 1, 'id' => 1, 'is_rtl' => 1, 'language' => 1];
+        $skip = [
+            'type' => 1, 'url' => 1, 'callback_data' => 1, 'style' => 1, 'align' => 1, 'valign' => 1, 'name' => 1, 'id' => 1, 'is_rtl' => 1, 'language' => 1,
+            'custom_emoji_id' => 1, 'date_time_format' => 1, 'unix_time' => 1, 'file_id' => 1, 'file_unique_id' => 1, 'mime_type' => 1, 'size' => 1,
+            'is_header' => 1, 'colspan' => 1, 'rowspan' => 1, 'is_bordered' => 1, 'is_striped' => 1, 'is_compact' => 1,
+        ];
         $isList = $node === [] || array_keys($node) === range(0, count($node) - 1);
+        if ($type === 'table' && isset($node['cells']) && is_array($node['cells'])) {
+            $lines = [];
+            if (isset($node['caption'])) {
+                $caption = trim(self::rx_richUi_extractText($node['caption']));
+                if ($caption !== '') {
+                    $lines[] = $caption;
+                }
+            }
+            foreach ($node['cells'] as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                $cells = [];
+                foreach ($row as $cell) {
+                    $cellText = trim((string) preg_replace('/[\x{200E}\x{200F}\x{2066}-\x{2069}]/u', '', self::rx_richUi_extractText(is_array($cell) && array_key_exists('text', $cell) ? $cell['text'] : $cell)));
+                    $cellText = trim((string) preg_replace('/\s+/u', ' ', $cellText));
+                    if ($cellText !== '') {
+                        $cells[] = $cellText;
+                    }
+                }
+                if ($cells) {
+                    $lines[] = implode(' ', $cells);
+                }
+            }
+            return implode("
+", $lines);
+        }
         $parts = [];
         foreach ($node as $key => $value) {
             if (!$isList && isset($skip[$key])) {
@@ -716,6 +747,21 @@ final class Markup
         return $blocks;
     }
 
+    public static function rx_richUi_mediaBlocks(array $media): ?array
+    {
+        $types = ['photo', 'video', 'animation', 'document'];
+        $blocks = [];
+        foreach ($media as $item) {
+            $source = is_array($item) ? ($item['media'] ?? null) : null;
+            $type = is_array($source) ? (string) ($source['type'] ?? '') : '';
+            if (!in_array($type, $types, true) || !is_string($source['media'] ?? null) || $source['media'] === '') {
+                return null;
+            }
+            $blocks[] = ['type' => $type, $type => $source];
+        }
+        return $blocks ?: null;
+    }
+
     public static function rx_richUi_buildMessage(string $textHtml, string $buttonsHtml, array $media = [], $rtlOverride = null): array
     {
         $hasTable = (bool) preg_match('~<table\b~i', $textHtml);
@@ -732,6 +778,18 @@ final class Markup
         $rtl = $rtlOverride === null ? self::rx_richUi_isRtl(strip_tags($textHtml)) : (bool) $rtlOverride;
         $html = $textHtml;
         $blocks = !$media && preg_match('~<table\b~i', $html) ? self::rx_richUi_structuredHtml($html . $buttonsHtml) : null;
+        $mediaInline = false;
+        if ($blocks === null && $media && preg_match('~<table\b~i', $html)) {
+            $mediaBlocks = self::rx_richUi_mediaBlocks($media);
+            if ($mediaBlocks !== null) {
+                $withoutMediaTags = (string) preg_replace('~<figure\b[^>]*>.*?</figure>|<video\b[^>]*>.*?</video>|<tg-document\b[^>]*>.*?</tg-document>~is', '', $html);
+                $textBlocks = self::rx_richUi_structuredHtml($withoutMediaTags . $buttonsHtml);
+                if ($textBlocks) {
+                    $blocks = array_merge($mediaBlocks, $textBlocks);
+                    $mediaInline = true;
+                }
+            }
+        }
         $message = ['is_rtl' => $rtl];
         if ($blocks) {
             $physicalBlocks = self::rx_richUi_physicalTableLayout($blocks, $rtl);
@@ -740,9 +798,10 @@ final class Markup
                 $message['is_rtl'] = false;
             } else {
                 $message['html'] = $html . $buttonsHtml;
+                $mediaInline = false;
             }
         } else $message['html'] = $html . $buttonsHtml;
-        if ($media) {
+        if ($media && !$mediaInline) {
             $message['media'] = $media;
         }
         if ($hasTable) {

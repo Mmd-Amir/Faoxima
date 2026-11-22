@@ -64,12 +64,12 @@ final class Wallet
             $first_name = htmlspecialchars($first_name);
             $Balanceuser = number_format($user['Balance'], 0);
             if ($user['number'] == "none") {
-                $numberphone = "🔴 ارسال نشده است 🔴";
+                $numberphone = \Faoxima\Telegram\Support\MessageTemplates::get('account_phone_missing');
             } else {
                 $numberphone = $user['number'];
             }
             if ($user['number'] == "confrim number by admin") {
-                $numberphone = "✅ تایید شده توسط ادمین";
+                $numberphone = \Faoxima\Telegram\Support\MessageTemplates::get('account_phone_admin_confirmed');
             } else {
                 $numberphone = $numberphone;
             }
@@ -84,22 +84,19 @@ final class Wallet
             ]);
             $countpayment = $stmt->rowCount();
             $groupuser = [
-                'f' => "عادی",
-                'n' => "نماینده",
-                'n2' => "نمایندگی پیشرفته",
+                'f' => \Faoxima\Telegram\Support\MessageTemplates::plain('account_group_normal'),
+                'n' => \Faoxima\Telegram\Support\MessageTemplates::plain('account_group_agent'),
+                'n2' => \Faoxima\Telegram\Support\MessageTemplates::plain('account_group_agent_advanced'),
             ][$user['agent']];
             $userjoin = jdate('Y/m/d H:i:s', $user['register']);
             if (intval($setting['scorestatus']) == 1) {
-                $textscore = "🥅 امتیاز حساب کاربری شما : {$user['score']}";
+                $textscore = \Faoxima\Telegram\Support\MessageTemplates::get('account_score_line', ['score' => $user['score']]);
             } else {
                 $textscore = "";
             }
             $textinvite = "";
             if ($setting['verifybucodeuser'] == "onverify" and $setting['verifystart'] == "onverify") {
-                $textscore = "
-
-🔗 لینک ریفرال جهت احراز زیر مجموعه :
-https://t.me/$usernamebot?start={$user['codeInvitation']}";
+                $textscore = \Faoxima\Telegram\Support\MessageTemplates::get('account_referral_verify_line', ['bot' => $usernamebot, 'code' => $user['codeInvitation']]);
             }
             $text_account_tpl = $datatextbot['text_account_info'] ?? "
 🗂 اطلاعات حساب کاربری شما :

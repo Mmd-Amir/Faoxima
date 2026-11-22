@@ -92,12 +92,52 @@ final class SectionMedia
                     ], 'warning');
                 }
             }
+            $rxBannerNeedsRich = strtolower((string) $parse_mode) === 'html'
+                && preg_match('/^[A-Za-z0-9_\-]{20,}$/', $fileId) === 1
+                && method_exists(\Faoxima\Telegram\Rich\Markup::class, 'rx_richUi_requiresRich')
+                && \Faoxima\Telegram\Rich\Markup::rx_richUi_requiresRich((string) $text);
+            if ($rxBannerNeedsRich) {
+                $rxRichPhotoResult = telegram('sendphoto', [
+                    'chat_id' => $chat_id,
+                    'photo' => $fileId,
+                    'caption' => (string) $text,
+                    'reply_markup' => $keyboard,
+                    'parse_mode' => $parse_mode,
+                ]);
+                $rxRichPhotoState = is_callable([\Faoxima\Services\Fulfillment\DeliveryState::class, 'deliveryResultState']) ? \Faoxima\Services\Fulfillment\DeliveryState::deliveryResultState($rxRichPhotoResult) : (!empty($rxRichPhotoResult['ok']) ? 'confirmed' : 'failed');
+                if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
+                    \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'banner_delivery', $rxRichPhotoState, [
+                        'delivery_mode' => 'rich_photo_banner_native_keyboard',
+                        'section' => (string) $section,
+                        'result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($rxRichPhotoResult),
+                        'table_present' => !empty($rxDiagText['html_table']),
+                    ], $rxRichPhotoState === 'confirmed' ? 'info' : 'warning');
+                }
+                if ($rxRichPhotoState === 'confirmed' || $rxRichPhotoState === 'unknown') {
+                    if ($rxRichPhotoState === 'confirmed') {
+                        \Faoxima\Telegram\Presentation\Decor::rx_decor_record($chat_id, $rxRichPhotoResult, 'screen', $section);
+                    }
+                    if ($rxDiagOwn) {
+                        $GLOBALS['rx_rich_diag_last_result'] = $rxRichPhotoResult;
+                        \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_finish($rxRichPhotoState === 'confirmed' ? 'completed' : 'unknown', ['_function' => 'rx_send_banner_message', '_source_file' => 'src/Telegram/Media/SectionMedia.php']);
+                    }
+                    return $rxRichPhotoResult;
+                }
+            }
             $rxBannerPhotoCaption = method_exists(\Faoxima\Services\Delivery\ServiceDelivery::class, 'rxPrepareSafeMediaCaption') ? \Faoxima\Services\Delivery\ServiceDelivery::rxPrepareSafeMediaCaption((string) $text) : (string) $text;
+            if ($rxBannerPhotoCaption === null && method_exists(\Faoxima\Telegram\Rich\Markup::class, 'rx_richUi_plainText')) {
+                $rxBannerPlain = trim((string) \Faoxima\Telegram\Rich\Markup::rx_richUi_plainText((string) $text, $parse_mode, true));
+                if ($rxBannerPlain !== '' && mb_strlen($rxBannerPlain, 'UTF-8') <= 1024) {
+                    $rxBannerPhotoCaption = htmlspecialchars($rxBannerPlain, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                    $text = $rxBannerPhotoCaption;
+                }
+            }
             if ($rxBannerPhotoCaption !== null) {
                 $photoPayload = [
                     'chat_id' => $chat_id,
                     'photo' => $fileId,
                     'caption' => $rxBannerPhotoCaption,
+                    '_rx_rich_split' => false,
                     'reply_markup' => $keyboard,
                     'parse_mode' => $parse_mode,
                 ];
@@ -551,6 +591,7 @@ final class SectionMedia
                     'chat_id' => $chat_id,
                     'photo' => $fileId,
                     'caption' => (string) $text,
+                    '_rx_rich_split' => false,
                     'reply_markup' => $keyboard,
                     'parse_mode' => 'HTML',
                 ], null, $buyDelivery);

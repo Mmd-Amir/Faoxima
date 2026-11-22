@@ -36,7 +36,7 @@ final class PaymentDelivery
             if ($rxLateCredit !== 'credited') {
                 return \Faoxima\Payments\Fulfillment\Settlement::abort($pdo, $order_id, $rxToken, 'rialit_cancelled_credit_failed', true);
             }
-            sendmessage($Payment_report['id_user'], '💚 پرداخت قبلی ریالیت شما پس از انصراف تأیید شد. مبلغ ' . number_format((int) $Payment_report['price']) . ' تومان به کیف پول اضافه شد؛ سفارش قبلی اجرا نشد.', null, 'HTML');
+            sendmessage($Payment_report['id_user'], \Faoxima\Telegram\Support\MessageTemplates::get('payment_rialit_late_approved_wallet', ['amount' => number_format((int) $Payment_report['price'])]), null, 'HTML');
             return \Faoxima\Payments\Fulfillment\Claims::result('completed', 'wallet_credit', ['resolved' => 'wallet_credit']);
         }
         $receipt = $telegram->receipt($Payment_report);
@@ -57,7 +57,7 @@ final class PaymentDelivery
             return \Faoxima\Payments\Fulfillment\Settlement::abort($pdo, $order_id, $rxToken, 'checkout_gate_error:' . $rxGateCode, true);
         }
         if ($rxGateAction === 'resolved_credit') {
-            sendmessage($Balance_id['id'], "پرداخت شما تأیید شد، اما موجودی کیف پول برای تکمیل خرید کافی نبود. مبلغ پرداختی شما، معادل " . \Faoxima\Core\Support\Formatting::rxFormatToman($rxGate['credited']) . " تومان، به کیف پولتان اضافه شد. لطفاً دوباره خرید کنید.", $keyboard, 'HTML');
+            sendmessage($Balance_id['id'], \Faoxima\Telegram\Support\MessageTemplates::get('payment_wallet_insufficient_credited', ['amount' => \Faoxima\Core\Support\Formatting::rxFormatToman($rxGate['credited'])]), $keyboard, 'HTML');
             return \Faoxima\Payments\Fulfillment\Claims::result('completed', 'wallet_credit', ['resolved' => 'wallet_credit']);
         }
         if ($rxGateAction === 'deny') {
@@ -69,9 +69,9 @@ final class PaymentDelivery
             }
             $__refundCk = \Faoxima\Orders\Checkout\Settlement::refundUnsecured($pdo, $Payment_report, 'بازگشت وجه - سفارش دیگر قابل تکمیل نیست (' . $rxGateCode . ')');
             if ($__refundCk === 'refunded') {
-                sendmessage($Balance_id['id'], "❌ این سفارش دیگر قابل تکمیل نیست (لغو یا قبلاً تسویه شده است). مبلغ پرداختی شما به کیف پول بازگردانده شد.", $keyboard, 'HTML');
+                sendmessage($Balance_id['id'], \Faoxima\Telegram\Support\MessageTemplates::get('payment_order_unfulfillable_refunded'), $keyboard, 'HTML');
             } elseif ($__refundCk === 'failed') {
-                sendmessage($Balance_id['id'], "❌ این سفارش دیگر قابل تکمیل نیست و بازگشت وجه با خطا مواجه شد؛ لطفاً با پشتیبانی در ارتباط باشید.", $keyboard, 'HTML');
+                sendmessage($Balance_id['id'], \Faoxima\Telegram\Support\MessageTemplates::get('payment_order_unfulfillable_refund_failed'), $keyboard, 'HTML');
             }
             return \Faoxima\Payments\Fulfillment\Settlement::fail($pdo, $order_id, $rxToken, 'checkout_denied:' . $rxGateCode, $__refundCk);
         }

@@ -53,9 +53,7 @@ final class ServiceDispute
                 sendmessage($from_id, $textbotlang['users']['stateus']['error'], null, 'html');
                 return;
             }
-            $textdisorder = "❓ علت اختلال خود را بنویسید
-
-🔹 قبل از اینکه گزارشی ارسال بکنید آموزش های اتصال را مشاهده کنید. ( /help )";
+            $textdisorder = \Faoxima\Telegram\Support\MessageTemplates::get('service_dispute_ask_reason');
             $keyboarddisorder = json_encode([
                 'inline_keyboard' => [
                     [
@@ -74,13 +72,11 @@ final class ServiceDispute
                 sendmessage($from_id, $textbotlang['users']['stateus']['error'], null, 'html');
                 return;
             }
-            $textdisorder = "❓ آیا از ارسال گزارش اختلال اطمینان دارید
-
-🔹 قبل از اینکه گزارشی ارسال بکنید آموزش های اتصال را مشاهده کنید. ( /help )";
+            $textdisorder = \Faoxima\Telegram\Support\MessageTemplates::get('service_dispute_confirm');
             $keyboarddisorder = json_encode([
                 'inline_keyboard' => [
                     [
-                        ['text' => "✅ ارسال گزارش اختلال", 'callback_data' => "confirmdisorders-" . $user['Processing_value']],
+                        ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_send_dispute_confirm'), 'callback_data' => "confirmdisorders-" . $user['Processing_value']],
                     ],
                     [
                         ['text' => $textbotlang['users']['stateus']['backinfo'], 'callback_data' => "product_" . $user['Processing_value']],

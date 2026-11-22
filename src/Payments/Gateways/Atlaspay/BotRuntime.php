@@ -76,6 +76,16 @@ final class BotRuntime
         return '🚫 پرداخت فقط از طریق کارت‌به‌کارت مجاز است. از واریز با شماره شبا، پایا، ساتنا یا سایر روش‌های انتقال بانکی خودداری کنید.';
     }
 
+    public static function atlaspayCustomBotAmountWarning($copyLabel)
+    {
+        return \Faoxima\Telegram\Support\MessageTemplates::get('payment_atlaspay_amount_warning', ['copy_button_name' => $copyLabel]);
+    }
+
+    public static function atlaspayCustomBotCardOnlyWarning()
+    {
+        return \Faoxima\Telegram\Support\MessageTemplates::get('payment_atlaspay_card_only_warning');
+    }
+
     public static function atlaspayCustomFormatClock($seconds)
     {
         $seconds = max(0, (int) $seconds);
@@ -98,38 +108,53 @@ final class BotRuntime
     {
         $e = [\Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::class, 'escape'];
         $lines = ['💠 ' . $e(\Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::gatewayTitle()), ''];
-        $lines[] = '💰 مبلغ شارژ / خرید: ' . number_format($state['request_amount']) . ' تومان';
-        $lines[] = '💳 مبلغ قابل پرداخت: ' . number_format($state['payable_rial']) . ' ریال';
+        $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_atlaspay_line_amount', ['amount' => number_format($state['request_amount'])]);
+        $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_atlaspay_line_payable', ['payable_rial' => number_format($state['payable_rial'])]);
         $lines[] = '';
         if ($state['phase'] === 'awaiting_payment') {
-            $lines[] = $e(sprintf(self::atlaspayCustomAmountWarningTemplate(), 'کپی مبلغ پرداخت'));
+            $lines[] = self::atlaspayCustomBotAmountWarning('کپی مبلغ پرداخت');
             $lines[] = '';
-            $lines[] = $e(self::atlaspayCustomCardOnlyWarning());
+            $lines[] = self::atlaspayCustomBotCardOnlyWarning();
             $lines[] = '';
             if ($state['card_complete']) {
-                $lines[] = '🏦 شماره کارت: <code>' . $e(preg_replace('/\D/', '', $state['card_number'])) . '</code>';
-                $lines[] = '👤 به نام: ' . $e($state['card_name'] !== '' ? $state['card_name'] : '—');
-                $lines[] = '🏦 بانک: ' . $e($state['bank_name'] !== '' ? $state['bank_name'] : '—');
+                $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_atlaspay_line_card_number', ['card_number' => preg_replace('/\D/', '', $state['card_number'])]);
+                $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_atlaspay_line_card_holder', ['card_holder' => $state['card_name'] !== '' ? $state['card_name'] : '—']);
+                $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_atlaspay_line_bank', ['bank_name' => $state['bank_name'] !== '' ? $state['bank_name'] : '—']);
             } else {
-                $lines[] = $state['payment_url'] !== ''
-                    ? '⚠️ شماره کارت به‌صورت کامل دریافت نشد؛ برای مشاهده اطلاعات کارت و پرداخت، از دکمه «مشاهده اطلاعات پرداخت» استفاده کنید.'
-                    : '⚠️ شماره کارت به‌صورت کامل دریافت نشد؛ برای دریافت اطلاعات پرداخت با پشتیبانی فروشگاه در ارتباط باشید.';
+                $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get($state['payment_url'] !== '' ? 'payment_atlaspay_card_incomplete_with_link' : 'payment_atlaspay_card_incomplete_no_link');
             }
             $lines[] = '';
         }
-        $lines[] = '🧾 شناسه پیگیری: <code>' . $e($state['tracking_code']) . '</code>';
+        $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_atlaspay_line_tracking', ['tracking_code' => $state['tracking_code']]);
         $lines[] = '';
         $reason = $state['phase'] === 'rejected' ? $e($state['reason']) : '';
-        $lines[] = $e(\Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::phaseDetail($state['phase'], '')) . ($reason !== '' ? "\n" . $reason : '');
+        $lines[] = self::atlaspayBotPhaseDetail($state['phase'], '') . ($reason !== '' ? "\n" . $reason : '');
         if ($state['phase'] === 'awaiting_payment') {
             if ($state['receipt_url'] !== '') {
                 $lines[] = '';
                 $lines[] = self::atlaspayBotReceiptInstructions();
             }
             $lines[] = '';
-            $lines[] = '⏱ زمان باقی‌مانده تا پایان مهلت پرداخت: <b>' . self::atlaspayCustomFormatClock($state['remaining']) . '</b>';
+            $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_atlaspay_line_remaining_time', ['remaining' => self::atlaspayCustomFormatClock($state['remaining'])]);
         }
         return implode("\n", $lines);
+    }
+
+    public static function atlaspayBotPhaseLabel($phase)
+    {
+        $known = ['awaiting_payment', 'deadline_check', 'under_review', 'underpaid_review', 'underpaid_remainder', 'confirming', 'manual_review', 'paid', 'rejected', 'expired', 'canceled'];
+        return in_array($phase, $known, true) ? \Faoxima\Telegram\Support\MessageTemplates::plain('payment_atlaspay_phase_label_' . $phase) : '';
+    }
+
+    public static function atlaspayBotPhaseDetail($phase, $reason = '')
+    {
+        $known = ['awaiting_payment', 'deadline_check', 'under_review', 'underpaid_review', 'underpaid_remainder', 'confirming', 'manual_review', 'paid', 'rejected', 'expired', 'canceled'];
+        if (!in_array($phase, $known, true)) {
+            return '';
+        }
+        $reason = (string) $reason;
+        $raw = $phase === 'rejected' ? ['reason_line' => $reason !== '' ? "\n" . \Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::escape($reason) : ''] : [];
+        return \Faoxima\Telegram\Support\MessageTemplates::get('payment_atlaspay_phase_detail_' . $phase, [], $raw);
     }
 
     public static function atlaspayCustomSupportUrl()
@@ -146,12 +171,12 @@ final class BotRuntime
 
     public static function atlaspayCustomFollowUpKeyboard(array $state)
     {
-        $rows = [[rx_payment_button('atlaspay', 'view_details', ['text' => '🔍 مشاهده جزئیات و وضعیت', 'callback_data' => 'apc_view_' . $state['order_id']])]];
+        $rows = [[rx_payment_button('atlaspay', 'view_details', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_view_details'), 'callback_data' => 'apc_view_' . $state['order_id']])]];
         $supportUrl = self::atlaspayCustomSupportUrl();
         if ($supportUrl !== '') {
-            $rows[] = [rx_payment_button('atlaspay', 'support', ['text' => '📞 پشتیبانی', 'url' => $supportUrl])];
+            $rows[] = [rx_payment_button('atlaspay', 'support', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_support'), 'url' => $supportUrl])];
         }
-        $rows[] = [rx_payment_button('atlaspay', 'pending_list', ['text' => '⏳ تراکنش‌های در انتظار', 'callback_data' => 'tpc_list'])];
+        $rows[] = [rx_payment_button('atlaspay', 'pending_list', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_pending_list'), 'callback_data' => 'tpc_list'])];
         return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
     }
 
@@ -161,18 +186,18 @@ final class BotRuntime
         $rows = [];
         if ($state['phase'] === 'awaiting_payment') {
             if (!$state['card_complete'] && $state['payment_url'] !== '') {
-                $rows[] = [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => '💳 مشاهده اطلاعات پرداخت', 'url' => $state['payment_url']], 'pay_link', 'atlaspay')];
+                $rows[] = [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_view_payment_info'), 'url' => $state['payment_url']], 'pay_link', 'atlaspay')];
             }
             $copyRow = [];
             if ($state['card_complete']) {
-                $copyRow[] = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => '📋 کپی شماره کارت', 'copy_text' => ['text' => preg_replace('/\D/', '', $state['card_number'])], '_rxck' => 'card_num'], 'copy_card', 'atlaspay');
+                $copyRow[] = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_copy_card'), 'copy_text' => ['text' => preg_replace('/\D/', '', $state['card_number'])], '_rxck' => 'card_num'], 'copy_card', 'atlaspay');
             }
-            $copyRow[] = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => '📋 کپی مبلغ پرداخت', 'copy_text' => ['text' => (string) $state['payable_rial']], '_rxck' => 'card_amount'], 'copy_amount', 'atlaspay');
+            $copyRow[] = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_copy_amount'), 'copy_text' => ['text' => (string) $state['payable_rial']], '_rxck' => 'card_amount'], 'copy_amount', 'atlaspay');
             $rows[] = $copyRow;
         }
         $actionRow = [];
         if (!$state['terminal'] && $state['phase'] !== 'confirming') {
-            $actionRow[] = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => '🔄 بررسی وضعیت پرداخت', 'callback_data' => 'apc_chk_' . $orderId], 'check_status', 'atlaspay');
+            $actionRow[] = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_check_status'), 'callback_data' => 'apc_chk_' . $orderId], 'check_status', 'atlaspay');
         }
         if ($state['receipt_url'] !== '') {
             $actionRow[] = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => self::atlaspayBotReceiptButtonText(), 'url' => $state['receipt_url']], 'send_receipt', 'atlaspay');
@@ -181,18 +206,18 @@ final class BotRuntime
             $rows[] = $actionRow;
         }
         if ($state['can_cancel']) {
-            $rows[] = [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => '❌ لغو تراکنش', 'callback_data' => 'apc_can_' . $orderId], 'cancel_transaction', 'atlaspay')];
+            $rows[] = [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_cancel_transaction'), 'callback_data' => 'apc_can_' . $orderId], 'cancel_transaction', 'atlaspay')];
         }
-        $rows[] = [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => '🔙 بازگشت به منوی اصلی', 'callback_data' => 'backuser'], 'back_main', 'atlaspay')];
+        $rows[] = [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back_main'), 'callback_data' => 'backuser'], 'back_main', 'atlaspay')];
         return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
     }
 
     public static function atlaspayCustomBotCancelConfirmView($orderId, $backData)
     {
-        $text = "آیا از لغو این تراکنش اطمینان دارید؟\n\n⚠️ لغو فاکتور به‌معنی بازگشت وجه واریزشده نیست. اطلس‌پی فقط تا زمانی که هیچ پرداخت یا رسیدی برای این سفارش ثبت نشده باشد اجازه لغو می‌دهد.";
+        $text = \Faoxima\Telegram\Support\MessageTemplates::get('payment_atlaspay_cancel_confirm');
         $keyboard = json_encode(['inline_keyboard' => [
-            [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => '✅ بله، لغو تراکنش', 'callback_data' => 'apc_cny_' . $orderId], 'cancel_confirm_approve', 'atlaspay')],
-            [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => '🔙 بازگشت', 'callback_data' => $backData], 'cancel_confirm_back', 'atlaspay')],
+            [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_cancel_confirm_yes'), 'callback_data' => 'apc_cny_' . $orderId], 'cancel_confirm_approve', 'atlaspay')],
+            [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back'), 'callback_data' => $backData], 'cancel_confirm_back', 'atlaspay')],
         ]], JSON_UNESCAPED_UNICODE);
         return ['text' => $text, 'keyboard' => $keyboard];
     }
@@ -264,8 +289,8 @@ final class BotRuntime
             $state['phase_label'] = self::atlaspayCustomPhaseLabel($phaseOverride);
         }
         $reason = $state['phase'] === 'rejected' ? $state['reason'] : '';
-        $text = \Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::escape(\Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::phaseDetail($state['phase'], $reason))
-            . "\n\n🧾 شناسه پیگیری: <code>" . \Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::escape($state['tracking_code']) . '</code>';
+        $text = self::atlaspayBotPhaseDetail($state['phase'], $reason)
+            . "\n\n" . \Faoxima\Telegram\Support\MessageTemplates::get('payment_atlaspay_line_tracking', ['tracking_code' => $state['tracking_code']]);
         sendmessage($fresh['id_user'], $text, self::atlaspayCustomFollowUpKeyboard($state), 'HTML');
     }
 
@@ -308,21 +333,21 @@ final class BotRuntime
         return \Faoxima\Payments\Gateways\Atlaspay\Settlement::pollThrottled($pdo, $setting, $orderId, $userId);
     }
 
-    public static function atlaspayCustomCancelBlockedMessage(array $state)
+    public static function atlaspayCustomCancelBlockedMessage(array $state, $telegram = false)
     {
         if (in_array($state['phase'], ['paid', 'confirming', 'manual_review'], true)) {
-            return 'پرداخت شما در اطلس‌پی تأیید شده است و فاکتور قابل لغو نیست.';
+            return $telegram ? \Faoxima\Telegram\Support\MessageTemplates::get('payment_atlaspay_cancel_blocked_paid') : 'پرداخت شما در اطلس‌پی تأیید شده است و فاکتور قابل لغو نیست.';
         }
         if (in_array($state['phase'], ['under_review', 'underpaid_review', 'underpaid_remainder'], true)) {
-            return 'برای این سفارش پرداخت یا رسید ثبت شده و اطلس‌پی اجازه لغو نمی‌دهد.';
+            return $telegram ? \Faoxima\Telegram\Support\MessageTemplates::get('payment_atlaspay_cancel_blocked_review') : 'برای این سفارش پرداخت یا رسید ثبت شده و اطلس‌پی اجازه لغو نمی‌دهد.';
         }
-        return 'این فاکتور دیگر قابل لغو نیست.';
+        return $telegram ? \Faoxima\Telegram\Support\MessageTemplates::get('payment_atlaspay_cancel_blocked_generic') : 'این فاکتور دیگر قابل لغو نیست.';
     }
 
-    public static function atlaspayCustomCancel($orderId, $userId)
+    public static function atlaspayCustomCancel($orderId, $userId, $telegram = false)
     {
         global $pdo, $setting;
-        return \Faoxima\Payments\Gateways\Atlaspay\Settlement::cancel($pdo, $setting, $orderId, $userId);
+        return \Faoxima\Payments\Gateways\Atlaspay\Settlement::cancel($pdo, $setting, $orderId, $userId, $telegram);
     }
 
     public static function atlaspayCustomPurgeProtected($orderId)
@@ -343,23 +368,23 @@ final class BotRuntime
         $rows = [];
         foreach (self::atlaspayCustomUserPending($userId) as $report) {
             $state = \Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::buildState($report);
-            $lines[] = '🧾 شناسه پیگیری: <code>' . \Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::escape($state['tracking_code']) . '</code>';
-            $lines[] = '🏷 درگاه: ' . \Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::escape(\Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::gatewayTitle());
-            $lines[] = '🛍 نوع تراکنش: ' . \Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::escape($state['purchase_kind']);
-            $lines[] = '💰 مبلغ: <b>' . number_format($state['request_amount']) . '</b> تومان';
-            $lines[] = '📌 وضعیت: ' . \Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::escape($state['phase_label']);
-            $lines[] = '📅 تاریخ ایجاد: ' . \Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::escape(self::atlaspayCustomFormatDateTime($state['created_at']));
+            $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_atlaspay_line_tracking', ['tracking_code' => $state['tracking_code']]);
+            $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_pending_line_gateway', ['gateway' => \Faoxima\Payments\Gateways\Atlaspay\PaymentOrders::gatewayTitle()]);
+            $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_pending_line_kind', ['kind' => $state['purchase_kind']]);
+            $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_pending_line_amount', ['amount' => number_format($state['request_amount'])]);
+            $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_pending_line_status', ['status' => self::atlaspayBotPhaseLabel($state['phase'])]);
+            $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_pending_line_created', ['created_at' => self::atlaspayCustomFormatDateTime($state['created_at'])]);
             if ($state['phase'] === 'awaiting_payment') {
-                $lines[] = '⏱ زمان باقی‌مانده تا پایان مهلت پرداخت: <b>' . self::atlaspayCustomFormatClock($state['remaining']) . '</b>';
+                $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_atlaspay_line_remaining_time', ['remaining' => self::atlaspayCustomFormatClock($state['remaining'])]);
             }
             $lines[] = '';
-            $buttons = [rx_payment_button('atlaspay', 'list_view', ['text' => '🔍 مشاهده جزئیات و وضعیت', 'callback_data' => 'apc_view_' . $state['order_id']])];
+            $buttons = [rx_payment_button('atlaspay', 'list_view', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_view_details'), 'callback_data' => 'apc_view_' . $state['order_id']])];
             if ($state['receipt_url'] !== '') {
                 $buttons[] = rx_payment_button('atlaspay', 'list_receipt', ['text' => self::atlaspayBotReceiptButtonText(), 'url' => $state['receipt_url']]);
             }
             $rows[] = $buttons;
             if ($state['can_cancel']) {
-                $rows[] = [rx_payment_button('atlaspay', 'list_cancel', ['text' => '❌ لغو تراکنش', 'callback_data' => 'apc_can_' . $state['order_id']])];
+                $rows[] = [rx_payment_button('atlaspay', 'list_cancel', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_cancel_transaction'), 'callback_data' => 'apc_can_' . $state['order_id']])];
             }
         }
         return ['lines' => $lines, 'rows' => $rows];
@@ -373,11 +398,11 @@ final class BotRuntime
         }
         $keyboard = json_decode((string) $view['keyboard'], true);
         $rows = is_array($keyboard) && isset($keyboard['inline_keyboard']) ? $keyboard['inline_keyboard'] : [];
-        $back = empty($rows) ? [rx_payment_button('pending', 'back_account', ['text' => '🔙 بازگشت', 'callback_data' => 'account'])] : array_pop($rows);
+        $back = empty($rows) ? [rx_payment_button('pending', 'back_account', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back'), 'callback_data' => 'account'])] : array_pop($rows);
         if (method_exists(\Faoxima\Payments\Gateways\Tonpay\BotRuntime::class, 'tonpayCustomUserPending') && !empty(\Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomUserPending($userId, 1))) {
             $text = rtrim((string) $view['text']) . "\n\n" . implode("\n", $entries['lines']);
         } else {
-            $text = "⏳ <b>تراکنش‌های در انتظار</b>\n\n" . implode("\n", $entries['lines']);
+            $text = \Faoxima\Telegram\Support\MessageTemplates::get('payment_pending_list_title') . "\n\n" . implode("\n", $entries['lines']);
         }
         foreach ($entries['rows'] as $row) {
             $rows[] = $row;

@@ -134,9 +134,7 @@ final class PurchaseStart
                             sendmessage($from_id, $textbotlang['Admin']['Product']['nullpProduct'] ?? '❌ محصولی یافت نشد.', null, 'HTML');
                             return;
                         }
-                        $textcustom = "📌 حجم درخواستی خود را ارسال کنید.
-🔔قیمت هر گیگ حجم " . \Faoxima\Core\Support\Formatting::rxFormatToman($custompricevalue) . " تومان می باشد.
-🔔 حداقل حجم $mainvolume گیگابایت و حداکثر $maxvolume گیگابایت می باشد.";
+                        $textcustom = \Faoxima\Telegram\Support\MessageTemplates::get('service_custom_volume_prompt', ['price' => \Faoxima\Core\Support\Formatting::rxFormatToman($custompricevalue), 'min' => $mainvolume, 'max' => $maxvolume]);
                         sendmessage($from_id, $textcustom, $backuser, 'html');
                         \Faoxima\Telegram\Navigation\Steps::step('gettimecustomvol', $from_id);
                         return;
@@ -149,9 +147,9 @@ final class PurchaseStart
                             $backuser = "backuser";
                         }
                         if ($datain == "buy") {
-                            Editmessagetext($from_id, $message_id, "📌 دسته بندی خود را انتخاب نمایید!", \Faoxima\Telegram\Keyboard\LegacyFunctionsHelpers::KeyboardCategory($location, $user['agent'], $backuser));
+                            Editmessagetext($from_id, $message_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_select_category'), \Faoxima\Telegram\Keyboard\LegacyFunctionsHelpers::KeyboardCategory($location, $user['agent'], $backuser));
                         } else {
-                            sendmessage($from_id, "📌 دسته بندی خود را انتخاب نمایید!", \Faoxima\Telegram\Keyboard\LegacyFunctionsHelpers::KeyboardCategory($location, $user['agent'], $backuser), 'HTML');
+                            sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_select_category'), \Faoxima\Telegram\Keyboard\LegacyFunctionsHelpers::KeyboardCategory($location, $user['agent'], $backuser), 'HTML');
                         }
                     } else {
                         $query = "SELECT * FROM product WHERE (FIND_IN_SET(:location, Location) > 0 OR Location = '/all') AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))";

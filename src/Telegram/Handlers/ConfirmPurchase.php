@@ -59,8 +59,8 @@ final class ConfirmPurchase
                 \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
                 return;
             }
-            Editmessagetext($from_id, $message_id, $text_inline, json_encode(['inline_keyboard' => []]));
-        
+            rxRemoveMessageKeyboard($from_id, $message_id);
+
             $parts = explode("_", $user['Processing_value_one']);
         
             $partsdic = explode("_", $user['Processing_value_four']);
@@ -103,7 +103,7 @@ final class ConfirmPurchase
                 try {
                     $info_product['price_product'] = \Faoxima\Orders\Pricing\CustomDuration::fx_custom_price($marzban_list_get, $user['agent'], $parts[2], $parts[1]);
                 } catch (InvalidArgumentException $e) {
-                    sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => 'بازگشت', 'callback_data' => 'backuser']]]]), 'HTML');
+                    sendmessage($from_id, $e->getMessage(), json_encode(['inline_keyboard' => [[['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('common_btn_back'), 'callback_data' => 'backuser']]]]), 'HTML');
                     return;
                 }
                 $info_product['data_limit_reset'] = "no_reset";
@@ -159,7 +159,7 @@ final class ConfirmPurchase
                     \Faoxima\Orders\Pricing\ExchangePricing::fxQuoteStore($from_id, $fxBuyDiscountKey, $fxNewDiscounted, $marzban_list_get, $fxBuyKinds);
                     $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
                     sendmessage($from_id, \Faoxima\Orders\Pricing\ExchangePricing::fxPriceChangedText($fxNewDiscounted) . (($parts[0] ?? '') === 'customvolume' ? \Faoxima\Orders\Pricing\CustomDuration::fx_custom_price_text($marzban_list_get, $user['agent'], $parts[2], $parts[1], $fxNewDiscounted) : ''), json_encode(['inline_keyboard' => [
-                        [['text' => "💰 پرداخت و دریافت سرویس", 'callback_data' => "confirmandgetserviceDiscount"]],
+                        [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_pay_and_get'), 'callback_data' => "confirmandgetserviceDiscount"]],
                         [\Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => $textbotlang['users']['backbtn'], 'callback_data' => "backuser"], 'backuser', $_rx_nav_s)],
                     ]]), 'HTML');
                     return;
@@ -278,7 +278,7 @@ final class ConfirmPurchase
                     return;
                 }
             }
-            Editmessagetext($from_id, $message_id, "♻️ در حال ساختن سرویس شما...", null);
+            $rxProgress = rxBeginProgressMessage($from_id, $message_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_provisioning_progress'));
             $SellDiscountlimit = false;
             if ($datain == "confirmandgetserviceDiscount") {
                 $SellDiscountlimit = \Faoxima\Core\Database\Db::select("DiscountSell", "*", "codeDiscount", $partsdic[0], "select");
@@ -344,11 +344,12 @@ final class ConfirmPurchase
                         error_log('Wallet purchase read-back needs review: ' . $fund['existing_invoice']);
                     }
                 }
+                rxEndProgressMessage($from_id, $rxProgress);
                 sendmessage($from_id, $textbotlang['users']['sell']['ErrorConfig'], $keyboard, 'HTML');
                 \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
                 return;
             }
-            $purchaseAmount = (float) (int) $priceproduct;
+            $purchaseAmount =(float) (int) $priceproduct;
             if ($stockPurchase) {
                 $stock = \Faoxima\Services\Fulfillment\Purchase::settleWalletStock(
                     $pdo, (string) $from_id, (string) $randomString, $marzban_list_get, $info_product, 'national_buy'
@@ -363,6 +364,7 @@ final class ConfirmPurchase
                     if (method_exists(\Faoxima\Services\Fulfillment\StockPresentation::class, 'nmStockNotifyExtend')) {
                         \Faoxima\Services\Fulfillment\StockPresentation::nmStockNotifyExtend($from_id, $user, $invoice, $info_product, $marzban_list_get, 'stock', (string) $username_ac, $purchaseAmount, 'buy');
                     }
+                    rxEndProgressMessage($from_id, $rxProgress);
                     sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'HTML');
                     \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
                     return;
@@ -371,7 +373,8 @@ final class ConfirmPurchase
                     $pdo, (string) $from_id, (string) $randomString,
                     $purchaseAmount, $discountCode, 'بازگشت وجه به دلیل خطای انبار'
                 );
-                sendmessage($from_id, "❌ وضعیت نت ملی فعال است اما موجودی انبار برای این محصول تمام شده است. لطفاً محصول دیگری انتخاب کنید یا با پشتیبانی ارتباط بگیرید.", $keyboard, 'HTML');
+                rxEndProgressMessage($from_id, $rxProgress);
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_stock_empty_choose_another'), $keyboard, 'HTML');
                 \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
                 return;
             }
@@ -388,7 +391,8 @@ final class ConfirmPurchase
                     $reviewKey = ($marzban_list_get['type'] ?? '') === 'jovadpanel' ? 'jovad:' : 'wallet_purchase:';
                     \Faoxima\Payments\Fulfillment\Settlement::alertAdmin($reviewKey . $randomString, 'نتیجه ساخت اشتراک کیف پول نامشخص است؛ پیش از ساخت مجدد، سرویس و تسویه بررسی شود.', ['username' => $username_ac, 'panel' => $marzban_list_get['name_panel'], 'invoice' => $randomString]);
                 }
-                sendmessage($from_id, '⏳ نتیجه ساخت اشتراک هنوز مشخص نیست و برای پشتیبانی ثبت شد. تا تعیین نتیجه دوباره خرید نکنید.', $keyboard, 'HTML');
+                rxEndProgressMessage($from_id, $rxProgress);
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_provision_result_unknown'), $keyboard, 'HTML');
                 \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
                 return;
             }
@@ -398,6 +402,7 @@ final class ConfirmPurchase
                     $purchaseAmount, $discountCode, 'بازگشت وجه به دلیل خطای ساخت سرویس'
                 );
                 $dataoutput['msg'] = \Faoxima\Services\Panels\PanelMessages::rx_panel_error_text($dataoutput['msg'] ?? null, $dataoutput['detail'] ?? null);
+                rxEndProgressMessage($from_id, $rxProgress);
                 sendmessage($from_id, $textbotlang['users']['sell']['ErrorConfig'], $keyboard, 'HTML');
                 $texterros = "⭕️ خطای ساخت اشتراک
 <blockquote>✍️ دلیل خطا :
@@ -419,6 +424,7 @@ final class ConfirmPurchase
             $username_ac = \Faoxima\Services\Panels\PanelMessages::rx_adopt_created_username($dataoutput, $username_ac, $randomString);
             \Faoxima\Services\Panels\PanelMessages::rx_notify_username_renamed($from_id, $dataoutput, $marzban_list_get);
             if (!\Faoxima\Services\Fulfillment\Purchase::finishWalletInvoice($pdo, (string) $from_id, (string) $randomString, 'active')) {
+                rxEndProgressMessage($from_id, $rxProgress);
                 sendmessage($from_id, $textbotlang['users']['sell']['ErrorConfig'], $keyboard, 'HTML');
                 \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
                 return;
@@ -516,6 +522,7 @@ final class ConfirmPurchase
                     return !empty($deliveryResult['ok']) && empty($files['failed']) && empty($files['unknown']);
                 }
             );
+            rxEndProgressMessage($from_id, $rxProgress);
             sendmessage($from_id, $textbotlang['users']['selectoption'], $keyboard, 'HTML');
             if ($marzban_list_get['MethodUsername'] == "متن دلخواه + عدد ترتیبی" || $marzban_list_get['MethodUsername'] == "نام کاربری + عدد به ترتیب" || $marzban_list_get['MethodUsername'] == "آیدی عددی+عدد ترتیبی" || $marzban_list_get['MethodUsername'] == "متن دلخواه نماینده + عدد ترتیبی") {
                 $value = intval($user['number_username']) + 1;

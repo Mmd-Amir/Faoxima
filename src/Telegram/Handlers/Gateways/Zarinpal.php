@@ -80,17 +80,7 @@ final class Zarinpal
                     ]
                 ]);
                 $price_format = number_format($user['Processing_value'], 0);
-                $textnowpayments = "
-✅ فاکتور پرداخت ایجاد شد.
-
-🔢 شماره فاکتور : $randomString
-💰 مبلغ فاکتور : $price_format تومان
-
-❌ این تراکنش به مدت ۳۰ دقیقه اعتبار دارد پس از آن امکان پرداخت این تراکنش امکان ندارد.
-
-📌لطفاً پس از پرداخت و موفق بودن تراکنش ، کمی صبر کنید تا پیام پرداخت موفق در سایت ما دریافت کنید. در غیراینصورت اکانت شما شارژ نخواهد شد.
-
-جهت پرداخت از دکمه زیر استفاده کنید👇🏻";
+                $textnowpayments = \Faoxima\Telegram\Support\MessageTemplates::get('payment_invoice_created_zarinpal', ['order_id' => $randomString, 'price' => $price_format]);
                 $gethelp = \Faoxima\Core\Database\Db::select("PaySetting", "ValuePay", "NamePay", "helpzarinpal", "select")['ValuePay'];
                 if ($gethelp != 2) {
                     $data = json_decode($gethelp, true);

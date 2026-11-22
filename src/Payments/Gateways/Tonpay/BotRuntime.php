@@ -58,7 +58,7 @@ final class BotRuntime
             return;
         }
         $state = \Faoxima\Payments\Gateways\Tonpay\PaymentOrders::buildState($report);
-        $text = self::tonpayCustomStatusText($state, true) . "\n\n🧾 شناسه فاکتور: <code>" . htmlspecialchars($state['invoice_id'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</code>';
+        $text = self::tonpayCustomStatusText($state, true) . "\n\n" . \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_line_invoice_notice', ['invoice_id' => $state['invoice_id']]);
         sendmessage($report['id_user'], $text, self::tonpayCustomFollowUpKeyboard($state), 'HTML');
     }
 
@@ -84,14 +84,17 @@ final class BotRuntime
         return \Faoxima\Payments\Gateways\Tonpay\Settlement::submitReceipt($pdo, $setting, $orderId, $userId, $filePath);
     }
 
-    public static function tonpayCustomCancel($orderId, $userId)
+    public static function tonpayCustomCancel($orderId, $userId, $telegram = false)
     {
         global $pdo, $setting;
-        return \Faoxima\Payments\Gateways\Tonpay\Settlement::cancel($pdo, $setting, $orderId, $userId);
+        return \Faoxima\Payments\Gateways\Tonpay\Settlement::cancel($pdo, $setting, $orderId, $userId, $telegram);
     }
 
-    public static function tonpayCustomCancelBlockedMessage(array $state)
+    public static function tonpayCustomCancelBlockedMessage(array $state, $telegram = false)
     {
+        if ($telegram) {
+            return \Faoxima\Telegram\Support\MessageTemplates::get(self::tonpayBotCancelBlockedKey($state));
+        }
         if (in_array($state['phase'], ['paid', 'confirming'], true)) {
             return 'پرداخت شما در تون‌پی تأیید شده است و فاکتور قابل لغو نیست.';
         }
@@ -114,6 +117,38 @@ final class BotRuntime
             return 'تنها فاکتورهای در انتظار پرداخت در تون‌پی قابل لغو هستند.';
         }
         return 'این فاکتور دیگر قابل لغو نیست.';
+    }
+
+    public static function tonpayBotCancelBlockedKey(array $state)
+    {
+        if (in_array($state['phase'], ['paid', 'confirming'], true)) {
+            return 'payment_tonpay_cancel_blocked_paid';
+        }
+        if ($state['phase'] === 'action_required_less') {
+            return 'payment_tonpay_cancel_blocked_remainder';
+        }
+        if ($state['phase'] === 'action_required_more') {
+            return 'payment_tonpay_cancel_blocked_refund_card';
+        }
+        if ($state['phase'] === 'processing' || $state['phase'] === 'receipt_submitted') {
+            return 'payment_tonpay_cancel_blocked_processing';
+        }
+        if ($state['phase'] === 'receipt_rejected' || $state['phase'] === 'rejected') {
+            return 'payment_tonpay_cancel_blocked_rejected';
+        }
+        if ($state['phase'] === 'unknown') {
+            return 'payment_tonpay_cancel_blocked_unknown';
+        }
+        if ($state['remote_status'] !== 'pending') {
+            return 'payment_tonpay_cancel_blocked_not_pending';
+        }
+        return 'payment_tonpay_cancel_blocked_generic';
+    }
+
+    public static function tonpayBotPhaseLabel($phase)
+    {
+        $known = ['awaiting_payment', 'receipt_available', 'action_required_less', 'action_required_more', 'local_timeout', 'cancel_pending', 'unknown', 'receipt_submitted', 'receipt_rejected', 'review_timeout', 'confirming', 'paid', 'rejected', 'canceled', 'expired'];
+        return in_array($phase, $known, true) ? \Faoxima\Telegram\Support\MessageTemplates::plain('payment_tonpay_phase_label_' . $phase) : '';
     }
 
     public static function tonpayCustomSubmitRefund($orderId, $userId, $cardNumber, $cardHolder)
@@ -197,18 +232,18 @@ final class BotRuntime
         $templateKey = $less ? 'dyn_tonpay_remaining_tpl' : ($open ? 'dyn_tonpay_invoice_tpl' : 'dyn_tonpay_progress_tpl');
         $lines = [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayTemplateRender($templateKey, $values, true, ['amount_warning'])];
         if ($open && !$state['card_complete']) {
-            $lines[] = '⚠️ شماره کارت به‌صورت کامل دریافت نشد؛ لطفاً با پشتیبانی تماس بگیرید.';
+            $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_card_incomplete');
         }
         if ($less && !$state['remaining_card_complete']) {
-            $lines[] = '⚠️ شماره کارت مبلغ باقی‌مانده به‌صورت کامل دریافت نشد؛ لطفاً با پشتیبانی تماس بگیرید.';
+            $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_remaining_card_incomplete');
         }
         if ($state['phase'] === 'action_required_more' && !empty($state['refund_card_submitted'])) {
-            $lines[] = '✅ کارت مقصد عودت مبلغ مازاد قبلاً ثبت شده است و مبلغ پس از بررسی تون‌پی واریز می‌شود.';
+            $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_refund_card_registered');
         }
         if ($less) {
             $lines[] = self::tonpayCustomPaymentWarnings(true, 'کپی مبلغ مابقی');
             if ($state['remaining_receipt_received']) {
-                $lines[] = '✅ رسید مبلغ باقی‌مانده قبلاً ارسال شده است و در انتظار بررسی تون‌پی است.';
+                $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_remaining_receipt_received');
             }
         }
         $lines[] = '';
@@ -236,12 +271,12 @@ final class BotRuntime
 
     public static function tonpayCustomFollowUpKeyboard(array $state)
     {
-        $rows = [[rx_payment_button('tonpay', 'view_details', ['text' => '🔍 مشاهده جزئیات و وضعیت', 'callback_data' => 'tpc_view_' . $state['order_id']])]];
+        $rows = [[rx_payment_button('tonpay', 'view_details', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_view_details'), 'callback_data' => 'tpc_view_' . $state['order_id']])]];
         $supportUrl = self::tonpayCustomSupportUrl();
         if ($supportUrl !== '') {
-            $rows[] = [rx_payment_button('tonpay', 'support', ['text' => '📞 پشتیبانی', 'url' => $supportUrl])];
+            $rows[] = [rx_payment_button('tonpay', 'support', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_support'), 'url' => $supportUrl])];
         }
-        $rows[] = [rx_payment_button('tonpay', 'pending_list', ['text' => '⏳ تراکنش‌های در انتظار', 'callback_data' => 'tpc_list'])];
+        $rows[] = [rx_payment_button('tonpay', 'pending_list', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_pending_list'), 'callback_data' => 'tpc_list'])];
         return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
     }
 
@@ -254,41 +289,41 @@ final class BotRuntime
         if ($open) {
             $copyRow = [];
             if ($state['card_complete']) {
-                $copyRow[] = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => '📋 کپی شماره کارت', 'copy_text' => ['text' => preg_replace('/[\s\-]/', '', $state['card_number'])], '_rxck' => 'card_num'], 'copy_card');
+                $copyRow[] = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_copy_card'), 'copy_text' => ['text' => preg_replace('/[\s\-]/', '', $state['card_number'])], '_rxck' => 'card_num'], 'copy_card');
             }
-            $copyRow[] = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => '📋 کپی مبلغ پرداخت', 'copy_text' => ['text' => (string) $state['payable_rial']], '_rxck' => 'card_amount'], 'copy_amount');
+            $copyRow[] = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_copy_amount'), 'copy_text' => ['text' => (string) $state['payable_rial']], '_rxck' => 'card_amount'], 'copy_amount');
             $rows[] = $copyRow;
         } elseif ($less) {
             $copyRow = [];
             if ($state['remaining_card_complete']) {
-                $copyRow[] = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => '📋 کپی کارت مابقی', 'copy_text' => ['text' => preg_replace('/[\s\-]/', '', $state['remaining_card_number'])], '_rxck' => 'remaining_card_num'], 'copy_card');
+                $copyRow[] = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_copy_remaining_card'), 'copy_text' => ['text' => preg_replace('/[\s\-]/', '', $state['remaining_card_number'])], '_rxck' => 'remaining_card_num'], 'copy_card');
             }
-            $copyRow[] = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => '📋 کپی مبلغ مابقی', 'copy_text' => ['text' => (string) $state['remaining_payable_rial']], '_rxck' => 'remaining_card_amount'], 'copy_amount');
+            $copyRow[] = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_copy_remaining_amount'), 'copy_text' => ['text' => (string) $state['remaining_payable_rial']], '_rxck' => 'remaining_card_amount'], 'copy_amount');
             $rows[] = $copyRow;
         }
         if ($open && !$state['change_card_exhausted'] && $state['show_change_card'] !== 0) {
             $changeLabel = $state['change_card_wait'] > 0
-                ? '🔁 تعویض کارت (' . $state['change_card_wait'] . ' ثانیه)'
-                : '🔁 تعویض کارت';
+                ? \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_change_card_wait', ['seconds' => $state['change_card_wait']])
+                : \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_change_card');
             $rows[] = [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => $changeLabel, 'callback_data' => 'tpc_chg_' . $orderId], 'change_card')];
         }
         if ($state['can_refund']) {
-            $rows[] = [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => '💳 ثبت کارت عودت مبلغ مازاد', 'callback_data' => 'tpc_rfd_' . $orderId], 'refund_card')];
+            $rows[] = [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_refund_card'), 'callback_data' => 'tpc_rfd_' . $orderId], 'refund_card')];
         }
         $actionRow = [];
         if (!$state['terminal'] && $state['phase'] !== 'confirming') {
-            $actionRow[] = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => '🔄 بررسی وضعیت پرداخت', 'callback_data' => 'tpc_chk_' . $orderId], 'check_status');
+            $actionRow[] = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_check_status'), 'callback_data' => 'tpc_chk_' . $orderId], 'check_status');
         }
         if ($state['can_submit_receipt']) {
-            $actionRow[] = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => $less ? '📤 ارسال رسید مابقی' : '📤 ارسال رسید پرداخت', 'callback_data' => 'tpc_rcp_' . $orderId], 'send_receipt');
+            $actionRow[] = \Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => $less ? \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_send_receipt_remaining') : \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_send_receipt_payment'), 'callback_data' => 'tpc_rcp_' . $orderId], 'send_receipt');
         }
         if (!empty($actionRow)) {
             $rows[] = $actionRow;
         }
         if ($state['can_cancel']) {
-            $rows[] = [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => '❌ لغو تراکنش', 'callback_data' => 'tpc_can_' . $orderId], 'cancel_transaction')];
+            $rows[] = [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_cancel_transaction'), 'callback_data' => 'tpc_can_' . $orderId], 'cancel_transaction')];
         }
-        $rows[] = [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => '🔙 بازگشت به منوی اصلی', 'callback_data' => 'backuser'], 'back_main')];
+        $rows[] = [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back_main'), 'callback_data' => 'backuser'], 'back_main')];
         return json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE);
     }
 
@@ -300,75 +335,72 @@ final class BotRuntime
 
     public static function tonpayCustomBotListView($userId)
     {
-        $e = static function ($value) {
-            return htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        };
         $reports = self::tonpayCustomUserPending($userId);
         $rows = [];
         if (empty($reports)) {
-            $text = "⏳ <b>تراکنش‌های در انتظار</b>\n\nدر حال حاضر تراکنش پرداخت نیمه‌تمامی ندارید.";
+            $text = \Faoxima\Telegram\Support\MessageTemplates::get('payment_pending_list_title') . "\n\n" . \Faoxima\Telegram\Support\MessageTemplates::get('payment_pending_list_empty_note');
         } else {
-            $lines = ["⏳ <b>تراکنش‌های در انتظار</b>", ''];
+            $lines = [\Faoxima\Telegram\Support\MessageTemplates::get('payment_pending_list_title'), ''];
             foreach ($reports as $index => $report) {
                 $state = \Faoxima\Payments\Gateways\Tonpay\PaymentOrders::buildState($report);
                 $createdAt = (int) $state['created_at'];
-                $lines[] = '🧾 شناسه فاکتور: <code>' . $e($state['invoice_id']) . '</code>';
-                $lines[] = '🛍 نوع تراکنش: ' . $e($state['purchase_kind']);
-                $lines[] = '💰 مبلغ: <b>' . number_format($state['request_amount']) . '</b> تومان';
+                $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_pending_line_invoice', ['invoice_id' => $state['invoice_id']]);
+                $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_pending_line_kind', ['kind' => $state['purchase_kind']]);
+                $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_pending_line_amount', ['amount' => number_format($state['request_amount'])]);
                 if ($state['phase'] === 'action_required_less') {
-                    $lines[] = '💸 مبلغ باقی‌مانده: <b>' . number_format($state['remaining_amount']) . '</b> تومان';
+                    $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_line_remaining_amount', ['amount' => number_format($state['remaining_amount'])]);
                     if ($state['remaining_card_number'] !== '') {
-                        $lines[] = '💳 کارت مقصد مابقی: <code>' . $e($state['remaining_card_number']) . '</code>';
+                        $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_line_remaining_card', ['card_number' => $state['remaining_card_number']]);
                     }
                     if ($state['remaining_card_holder'] !== '') {
-                        $lines[] = '👤 به نام: ' . $e($state['remaining_card_holder']);
+                        $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_pending_line_card_holder', ['card_holder' => $state['remaining_card_holder']]);
                     }
-                    $lines[] = '🧾 رسید مابقی: ' . ($state['remaining_receipt_received'] ? 'ارسال شده' : 'ارسال نشده');
+                    $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_line_remaining_receipt', [], ['state' => \Faoxima\Telegram\Support\MessageTemplates::get($state['remaining_receipt_received'] ? 'payment_tonpay_state_receipt_sent' : 'payment_tonpay_state_receipt_not_sent')]);
                 } elseif ($state['phase'] === 'action_required_more') {
-                    $lines[] = '💸 مبلغ مازاد قابل عودت: <b>' . number_format($state['refund_amount']) . '</b> تومان';
-                    $lines[] = '💳 وضعیت کارت عودت: ' . ($state['refund_card_submitted'] ? 'ثبت شده و در انتظار واریز' : 'ثبت نشده');
+                    $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_line_refund_amount', ['amount' => number_format($state['refund_amount'])]);
+                    $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_line_refund_card', [], ['state' => \Faoxima\Telegram\Support\MessageTemplates::get($state['refund_card_submitted'] ? 'payment_tonpay_state_refund_card_submitted' : 'payment_tonpay_state_refund_card_missing')]);
                 }
-                $lines[] = '📌 وضعیت: ' . $e($state['phase_label']);
-                $lines[] = '📅 تاریخ ایجاد: ' . $e(self::tonpayCustomFormatDateTime($createdAt));
+                $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_pending_line_status', ['status' => self::tonpayBotPhaseLabel($state['phase'])]);
+                $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_pending_line_created', ['created_at' => self::tonpayCustomFormatDateTime($createdAt)]);
                 if (in_array($state['phase'], ['receipt_submitted', 'receipt_rejected'], true) && $state['review_deadline_at'] > 0) {
-                    $lines[] = '⏱ زمان باقی‌مانده بررسی: <b>' . self::tonpayCustomFormatClock($state['review_remaining']) . '</b>';
+                    $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_line_review_remaining', ['remaining' => self::tonpayCustomFormatClock($state['review_remaining'])]);
                 } elseif ($state['phase'] === 'awaiting_payment') {
-                    $lines[] = '⏱ زمان باقی‌مانده تا امکان ارسال رسید: <b>' . self::tonpayCustomFormatClock($state['receipt_wait_remaining']) . '</b>';
+                    $lines[] = \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_line_receipt_wait', ['remaining' => self::tonpayCustomFormatClock($state['receipt_wait_remaining'])]);
                 }
                 $lines[] = '';
-                $buttons = [rx_payment_button('tonpay', 'list_view', ['text' => '🔍 مشاهده جزئیات و وضعیت', 'callback_data' => 'tpc_view_' . $state['order_id']])];
+                $buttons = [rx_payment_button('tonpay', 'list_view', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_view_details'), 'callback_data' => 'tpc_view_' . $state['order_id']])];
                 if ($state['can_submit_receipt']) {
-                    $buttons[] = rx_payment_button('tonpay', 'list_receipt', ['text' => $state['phase'] === 'action_required_less' ? '📤 ارسال رسید مابقی' : '📤 ارسال رسید پرداخت', 'callback_data' => 'tpc_rcp_' . $state['order_id']]);
+                    $buttons[] = rx_payment_button('tonpay', 'list_receipt', ['text' => $state['phase'] === 'action_required_less' ? \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_send_receipt_remaining') : \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_send_receipt_payment'), 'callback_data' => 'tpc_rcp_' . $state['order_id']]);
                 }
                 if ($state['can_refund']) {
-                    $buttons[] = rx_payment_button('tonpay', 'list_refund', ['text' => '💳 ثبت کارت عودت', 'callback_data' => 'tpc_rfd_' . $state['order_id']]);
+                    $buttons[] = rx_payment_button('tonpay', 'list_refund', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_refund_card_short'), 'callback_data' => 'tpc_rfd_' . $state['order_id']]);
                 }
                 if ($state['can_cancel']) {
-                    $buttons[] = rx_payment_button('tonpay', 'list_cancel', ['text' => '❌ لغو تراکنش', 'callback_data' => 'tpc_can_' . $state['order_id']]);
+                    $buttons[] = rx_payment_button('tonpay', 'list_cancel', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_cancel_transaction'), 'callback_data' => 'tpc_can_' . $state['order_id']]);
                 }
                 $rows[] = $buttons;
             }
             $text = implode("\n", $lines);
         }
-        $rows[] = [rx_payment_button('tonpay', 'back_account', ['text' => '🔙 بازگشت', 'callback_data' => 'account'])];
+        $rows[] = [rx_payment_button('tonpay', 'back_account', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back'), 'callback_data' => 'account'])];
         return ['text' => $text, 'keyboard' => json_encode(['inline_keyboard' => $rows], JSON_UNESCAPED_UNICODE)];
     }
 
     public static function tonpayCustomBotCancelConfirmView($orderId, $backData)
     {
-        $text = "آیا از لغو این تراکنش اطمینان دارید؟\n\n⚠️ لغو فاکتور به‌معنای بازگشت وجه واریزشده نیست. اگر مبلغ را واریز کرده‌اید و تون‌پی آن را تأیید کند، پرداخت شما همچنان ثبت خواهد شد.";
+        $text = \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_cancel_confirm');
         $keyboard = json_encode(['inline_keyboard' => [
-            [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => '✅ بله، لغو تراکنش', 'callback_data' => 'tpc_cny_' . $orderId], 'cancel_confirm_approve')],
-            [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => '🔙 بازگشت', 'callback_data' => $backData], 'cancel_confirm_back')],
+            [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_cancel_confirm_yes'), 'callback_data' => 'tpc_cny_' . $orderId], 'cancel_confirm_approve')],
+            [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back'), 'callback_data' => $backData], 'cancel_confirm_back')],
         ]], JSON_UNESCAPED_UNICODE);
         return ['text' => $text, 'keyboard' => $keyboard];
     }
 
     public static function tonpayCustomBotRefundPromptView($orderId, $backData)
     {
-        $text = "💳 ثبت کارت عودت مبلغ مازاد\n\nشماره کارت ۱۶ رقمی و نام صاحب کارت را در دو خط ارسال کنید:\n<code>6037991234567890</code>\n<code>نام و نام خانوادگی</code>\n\n⚠️ مبلغ مازاد پس از بررسی تون‌پی به این کارت واریز می‌شود و ثبت کارت به‌تنهایی به‌معنی واریز فوری نیست.";
+        $text = \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_refund_prompt');
         $keyboard = json_encode(['inline_keyboard' => [
-            [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => '🔙 بازگشت', 'callback_data' => $backData], 'cancel_confirm_back')],
+            [\Faoxima\Payments\Gateways\Tonpay\Templates::tonpayStyledButton(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back'), 'callback_data' => $backData], 'cancel_confirm_back')],
         ]], JSON_UNESCAPED_UNICODE);
         return ['text' => $text, 'keyboard' => $keyboard];
     }
@@ -437,29 +469,29 @@ final class BotRuntime
             $token = is_array($row) ? (string) ($row['token_bot'] ?? '') : '';
         }
         if ($token === '' || !is_string($fileId) || $fileId === '') {
-            $error = 'دریافت فایل از تلگرام ممکن نیست.';
+            $error = \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_receipt_download_unavailable');
             return null;
         }
         $meta = telegram('getFile', ['file_id' => $fileId]);
         $filePath = is_array($meta) ? (string) ($meta['result']['file_path'] ?? '') : '';
         $fileSize = is_array($meta) ? (int) ($meta['result']['file_size'] ?? 0) : 0;
         if ($filePath === '') {
-            $error = 'فایل در تلگرام پیدا نشد.';
+            $error = \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_receipt_file_not_found');
             return null;
         }
         if ($fileSize > TONPAY_CUSTOM_RECEIPT_MAX_BYTES) {
-            $error = 'حجم رسید نباید بیشتر از ۱۰ مگابایت باشد.';
+            $error = \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_receipt_file_too_large');
             return null;
         }
         $tmp = tempnam(sys_get_temp_dir(), 'tpcr_');
         if ($tmp === false) {
-            $error = 'ذخیره موقت فایل ممکن نیست.';
+            $error = \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_receipt_temp_failed');
             return null;
         }
         $handle = fopen($tmp, 'wb');
         if ($handle === false) {
             @unlink($tmp);
-            $error = 'ذخیره موقت فایل ممکن نیست.';
+            $error = \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_receipt_temp_failed');
             return null;
         }
         $curl = curl_init('https://api.telegram.org/file/bot' . $token . '/' . $filePath);
@@ -475,7 +507,7 @@ final class BotRuntime
         fclose($handle);
         if ($ok === false || (int) @filesize($tmp) <= 0) {
             @unlink($tmp);
-            $error = 'دریافت فایل از تلگرام ناموفق بود.';
+            $error = \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_receipt_download_failed');
             return null;
         }
         return $tmp;
@@ -490,14 +522,14 @@ final class BotRuntime
         } elseif (!empty($message['document']['file_id'])) {
             $mime = strtolower((string) ($message['document']['mime_type'] ?? ''));
             if (strpos($mime, 'image/') !== 0) {
-                return ['ok' => false, 'message' => 'فقط تصویر رسید پذیرفته می‌شود. لطفاً عکس رسید را ارسال کنید.'];
+                return ['ok' => false, 'message' => \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_receipt_image_only')];
             }
             $fileId = (string) $message['document']['file_id'];
         } elseif (!empty($message['animation']['file_id'])) {
             $fileId = (string) $message['animation']['file_id'];
         }
         if ($fileId === '') {
-            return ['ok' => false, 'message' => 'لطفاً رسید را به‌صورت عکس ارسال کنید.'];
+            return ['ok' => false, 'message' => \Faoxima\Telegram\Support\MessageTemplates::get('payment_tonpay_receipt_photo_required')];
         }
         $error = '';
         $tmp = self::tonpayCustomBotDownloadFile($fileId, $error);

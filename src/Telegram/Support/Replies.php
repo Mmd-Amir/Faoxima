@@ -156,10 +156,6 @@ final class Replies
         }
 
         if ($isCallback) {
-            if (!empty($message_id) && !$alreadyHandled && function_exists('deletemessage')) {
-                try { @deletemessage($chatId, $message_id); } catch (Throwable $e) {}
-                $GLOBALS['rx_admin_instant_deleted'] = $message_id;
-            }
             if (!empty($callback_query_id) && function_exists('telegram')) {
                 try {
                     telegram('answerCallbackQuery', [
@@ -168,7 +164,13 @@ final class Replies
                     ]);
                 } catch (Throwable $e) {}
             }
-            return sendmessage($chatId, $text, $keyboard, $parseMode);
+            $rxReplacementResult = sendmessage($chatId, $text, $keyboard, $parseMode);
+            if (!empty($message_id) && !$alreadyHandled && function_exists('deletemessage')
+                && is_array($rxReplacementResult) && !empty($rxReplacementResult['ok'])) {
+                try { @deletemessage($chatId, $message_id); } catch (Throwable $e) {}
+                $GLOBALS['rx_admin_instant_deleted'] = $message_id;
+            }
+            return $rxReplacementResult;
         }
 
         return sendmessage($chatId, $text, $keyboard, $parseMode);

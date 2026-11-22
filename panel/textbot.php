@@ -46,6 +46,7 @@ if (\Faoxima\Admin\Web\Pages\TextbotRequest::handle(
         rows: $rows,
         savedNum: $savedNum,
         tonpayTemplateFlash: $tonpayTemplateFlash,
+        tempStatus: $tempStatus,
         value: $value,
         values: $values,
         visibleRows: $visibleRows
@@ -63,6 +64,7 @@ unset($adminWebPage);
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>متن‌های ربات | پنل فاکسیما</title>
     <link rel="stylesheet" href="css/theme.css?v=toman75">
+    <link rel="stylesheet" href="css/textbot_savemode.css?v=sm4">
     <script src="js/theme.js?v=dark62" defer>
 
 </script>
@@ -1014,6 +1016,12 @@ unset($adminWebPage);
                                         <span class="text-key__hint">برای تعیین جای خلاصهٔ قیمت، متغیر زیر را در متن یا جدول قرار دهید:</span>
                                         <span class="text-key__hint" dir="ltr">{custom_price_summary}</span>
                                     <?php endif; ?>
+                                    <?php if (\Faoxima\Telegram\Support\MessageTemplates::has($k)): ?>
+                                        <span class="text-key__hint"><?php echo htmlspecialchars(\Faoxima\Telegram\Support\MessageTemplates::label($k), ENT_QUOTES, 'UTF-8'); ?></span>
+                                        <?php $rxMsgVars = array_keys(\Faoxima\Telegram\Support\MessageTemplates::variables($k)); if ($rxMsgVars): ?>
+                                            <span class="text-key__hint" dir="ltr"><?php echo htmlspecialchars(implode(", ", array_map(static function ($n) { return "{" . $n . "}"; }, $rxMsgVars)), ENT_QUOTES, 'UTF-8'); ?></span>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
                                     <?php if ($k === 'text_start'): ?>
                                         <span class="text-key__hint" dir="ltr"><?php echo '{name}, {first_name}, {last_name}, {username}, {shanase}, {referral_code}, {phone}, {register_date}, {balance}, {order_count}, {payment_count}, {affiliate_count}, {group}, {date_now}, {time_now}, {time}, {version}'; ?></span>
                                     <?php endif; ?>
@@ -1028,14 +1036,17 @@ unset($adminWebPage);
                                         class="text-edit-source"
                                         data-key="<?php echo htmlspecialchars($k, ENT_QUOTES); ?>"
                                         data-orig="<?php echo htmlspecialchars($v, ENT_QUOTES, 'UTF-8'); ?>"
+                                        data-ver="<?php echo htmlspecialchars(\Faoxima\Admin\Web\Support\TextbotSavePlanner::versionToken($v, isset($richStates[$k]) ? (string)$richStates[$k] : null), ENT_QUOTES, 'UTF-8'); ?>"
                                         data-rich-allowed="<?php echo $richEligibility['allowed'] ? '1' : '0'; ?>"
                                         data-rich-tables="<?php echo $richEligibility['tables'] ? '1' : '0'; ?>"
                                         data-rich-kind="<?php echo htmlspecialchars($richEligibility['kind'], ENT_QUOTES, 'UTF-8'); ?>"
                                         data-rich-reason="<?php echo htmlspecialchars($richEligibility['reason'], ENT_QUOTES, 'UTF-8'); ?>"
-                                        rows="1" readonly autocomplete="off" onfocus="openTextEditor(this.dataset.key)" onclick="openTextEditor(this.dataset.key)"><?php echo htmlspecialchars($v, ENT_QUOTES, 'UTF-8'); ?></textarea>
+                                        data-vars="<?php echo htmlspecialchars(json_encode(\Faoxima\Telegram\Support\MessageTemplates::variables($k), JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT), ENT_QUOTES, 'UTF-8'); ?>"
+                                        rows="1" readonly autocomplete="off" onfocus="openTextEditor(this.dataset.key)" onclick="openTextEditor(this.dataset.key)">
+<?php echo htmlspecialchars($v, ENT_QUOTES, 'UTF-8'); ?></textarea>
                                 <input type="hidden" id="rich-<?php echo htmlspecialchars($k, ENT_QUOTES); ?>" data-rich-key="<?php echo htmlspecialchars($k, ENT_QUOTES); ?>" data-orig="<?php echo htmlspecialchars($richJson, ENT_QUOTES, 'UTF-8'); ?>" value="<?php echo htmlspecialchars($richJson, ENT_QUOTES, 'UTF-8'); ?>">
                                 <div style="display:flex; flex-direction:column; gap:6px;">
-                                    <button type="button" class="btn btn-sm btn-soft-danger"
+                                    <button type="button" class="btn btn-sm btn-soft-danger text-row__delete" aria-pressed="false"
                                             onclick='deleteKey(<?php echo json_encode($k, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_QUOT); ?>)'
                                             title="حذف این کلید">
                                         <?php echo \Faoxima\Admin\Web\Support\Icons::icon('trash', 'svg-icon'); ?>
@@ -1046,14 +1057,121 @@ unset($adminWebPage);
                     </div>
                 <?php $rxFirstPanel = false; endforeach; ?>
 
-                <div class="save-bar">
-                    <span id="changeCount" style="align-self:center; color:var(--text-muted); font-size:13px; margin-inline-end:auto;">۰ تغییر در انتظار ذخیره</span>
-                    <button type="submit" class="btn btn-primary" id="textSaveBtn">
-                        <?php echo \Faoxima\Admin\Web\Support\Icons::icon('check', 'svg-icon svg-sm'); ?>
-                        <span>ذخیره تغییرات</span>
+                <input type="hidden" name="_temp_session" id="tempSessionField" value="">
+                <input type="hidden" name="_temp_rev" id="tempRevField" value="">
+
+                <div class="fx-sm" id="saveMode" data-mode="perm" data-state="idle" data-open="0">
+                    <div class="fx-sm__session" id="smSession" hidden>
+                        <div class="fx-sm__ring" aria-hidden="true">
+                            <svg viewBox="0 0 52 52"><circle class="trk" cx="26" cy="26" r="22"/><circle class="val" id="smRing" cx="26" cy="26" r="22" stroke-dasharray="138.23" stroke-dashoffset="0"/></svg>
+                            <span class="fx-sm__ring-core" id="smRemainShort">۰۰:۰۰</span>
+                        </div>
+                        <div class="fx-sm__sinfo">
+                            <div class="fx-sm__stitle">
+                                <span class="fx-pill" id="smPill" data-state="active">نسخهٔ موقت فعال</span>
+                                <span class="fx-sm__owner" id="smOwner"></span>
+                            </div>
+                            <div class="fx-sm__smeta">
+                                <span>زمان باقی‌مانده: <b id="smRemain">—</b></span>
+                                <span>پایان: <b id="smExpireAt">—</b></span>
+                                <span>نسخه: <b id="smRev">—</b></span>
+                                <span id="smKeysWrap">متن موقت: <b id="smKeys">۰</b></span>
+                            </div>
+                        </div>
+                        <div class="fx-sm__bar" aria-hidden="true"><i id="smBar"></i></div>
+                    </div>
+
+                    <div class="fx-sm__notice" id="smNotice" role="status" aria-live="polite" data-tone="info" hidden>
+                        <span id="smNoticeText"></span>
+                        <button type="button" class="fx-link" id="smNoticeAction" hidden>بارگذاری مجدد</button>
+                        <button type="button" class="fx-x" id="smNoticeClose" aria-label="بستن اعلان">&times;</button>
+                    </div>
+
+                    <div class="fx-sm__head">
+                        <div class="fx-sm__lead">
+                            <span id="changeCount" class="fx-sm__count">۰ تغییر در انتظار ذخیره</span>
+                            <span class="fx-sm__hint" id="smHint"></span>
+                        </div>
+                        <div class="fx-seg" role="radiogroup" aria-label="حالت ذخیره" id="smSeg">
+                            <button type="button" class="fx-seg__opt" role="radio" aria-checked="false" data-sm-mode="temp" tabindex="-1">
+                                <svg class="fx-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                                <span class="fx-seg__txt">ذخیرهٔ موقت</span>
+                            </button>
+                            <button type="button" class="fx-seg__opt is-on" role="radio" aria-checked="true" data-sm-mode="perm" tabindex="0">
+                                <svg class="fx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/><path d="m9 12 2 2 4-4"/></svg>
+                                <span class="fx-seg__txt">ذخیرهٔ دائمی</span>
+                            </button>
+                        </div>
+                        <button type="submit" class="btn btn-primary fx-sm__primary" id="textSaveBtn">
+                            <svg class="fx-ico fx-ico-main" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>
+                            <i class="fx-spin" aria-hidden="true"></i>
+                            <span class="fx-sm__ptxt" id="smPrimaryText">ذخیرهٔ دائمی</span>
+                        </button>
+                    </div>
+
+                    <div class="fx-sm__more" id="smMore" hidden>
+                        <div class="fx-sm__row">
+                            <div class="fx-sm__tools">
+                                <div class="fx-dur" id="smDur">
+                                    <button type="button" class="fx-dur__btn" id="smDurBtn" aria-haspopup="listbox" aria-expanded="false">
+                                        <svg class="fx-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                                        <span class="fx-dur__lbl">مدت:</span>
+                                        <span class="fx-dur__val" id="smDurVal">۱۰ دقیقه</span>
+                                        <svg class="fx-ico fx-dur__chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                                    </button>
+                                    <div class="fx-dur__list" id="smDurList" role="listbox" aria-label="مدت ذخیرهٔ موقت" hidden></div>
+                                </div>
+                                <label class="fx-dur__custom" id="smCustomWrap" hidden>
+                                    <input type="number" id="smCustom" min="1" max="4320" step="1" inputmode="numeric" value="10" aria-label="مدت دلخواه بر حسب دقیقه">
+                                    <span>دقیقه</span>
+                                </label>
+                                <div class="fx-pair" id="smHistory" role="group" aria-label="واگرد و انجام دوباره نسخه‌های موقت" hidden>
+                                    <button type="button" class="fx-btn" id="smUndo" title="واگرد آخرین ذخیرهٔ موقت">
+                                        <svg class="fx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>
+                                        <span>واگرد</span>
+                                    </button>
+                                    <button type="button" class="fx-btn" id="smRedo" title="انجام دوبارهٔ ذخیرهٔ موقت">
+                                        <svg class="fx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg>
+                                        <span>انجام دوباره</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="fx-sm__acts" id="smActs" hidden>
+                                <button type="button" class="fx-btn fx-btn--ghost-danger" id="smRestore" title="غیرفعال‌کردن نسخهٔ موقت و بازگشت به نسخهٔ دائمی">
+                                    <svg class="fx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 8v4l3 2"/></svg>
+                                    <span>بازگردانی نسخهٔ دائمی</span>
+                                </button>
+                                <button type="button" class="fx-btn fx-btn--accent" id="smCommit" title="ثبت نسخهٔ موقت فعلی به‌صورت دائمی">
+                                    <svg class="fx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/><path d="m9 12 2 2 4-4"/></svg>
+                                    <span>ثبت دائمی</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="button" class="fx-sm__toggle" id="smToggle" aria-expanded="false" aria-controls="smMore">
+                        <span id="smToggleLabel">تنظیمات ذخیره</span>
+                        <svg class="fx-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
                     </button>
                 </div>
             </form>
+
+            <div class="modal-overlay fx-dialog" id="smDialog" role="dialog" aria-modal="true" aria-labelledby="smDialogTitle" data-tone="accent">
+                <div class="modal-box">
+                    <div class="fx-dialog__body">
+                        <h3 class="fx-dialog__title" id="smDialogTitleWrap">
+                            <span class="fx-dialog__icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg></span>
+                            <span id="smDialogTitle"></span>
+                        </h3>
+                        <p class="fx-dialog__text" id="smDialogText"></p>
+                    </div>
+                    <div class="modal-foot">
+                        <button type="button" class="btn btn-outline" id="smDialogCancel">انصراف</button>
+                        <button type="button" class="btn btn-primary" id="smDialogOk">تأیید</button>
+                    </div>
+                </div>
+            </div>
+            <div class="fx-toast-host" id="smToasts" aria-live="polite" aria-atomic="false"></div>
 
         </div>
     </section>
@@ -1112,6 +1230,7 @@ unset($adminWebPage);
             </button>
         </div>
         <div class="form-group">
+            <div class="edit-vars" id="editVars" hidden></div>
             <textarea id="editTextArea" class="form-control" rows="10"></textarea>
             <div class="edit-edge-error" id="editEdgeError" hidden><?php echo htmlspecialchars(\Faoxima\Admin\Web\Support\TextbotEdge::fx_textbot_edge_error_message(), ENT_QUOTES, 'UTF-8'); ?></div>
         </div>
@@ -1189,9 +1308,28 @@ function openModal(id) { var m = document.getElementById(id); if (m) m.classList
 function closeModal(id) { if (id === 'modal-rich-text') { richCloseTypeMenu(false); if (richRowDragCancel) richRowDragCancel(); } var m = document.getElementById(id); if (m) m.classList.remove('active'); }
 
 function deleteKey(k) {
-    if (!confirm('کلید «' + k + '» و متن آن حذف شود؟')) return;
-    document.getElementById('deleteKey').value = k;
-    document.getElementById('deleteForm').submit();
+    var area = document.getElementById('ta-' + k);
+    var row = area ? area.closest('.text-row') : null;
+    if (!row || row.classList.contains('is-temp-deleted')) return;
+    var pending = !row.classList.contains('is-pending-delete');
+    row.classList.toggle('is-pending-delete', pending);
+    var button = row.querySelector('.text-row__delete');
+    if (button) {
+        button.classList.toggle('is-active', pending);
+        button.setAttribute('aria-pressed', pending ? 'true' : 'false');
+        button.title = pending ? 'لغو حذف این کلید' : 'حذف این کلید';
+    }
+    var holder = row.querySelector('.text-key');
+    var badge = row.querySelector('.fx-del-badge');
+    if (pending && holder && !badge) {
+        badge = document.createElement('span');
+        badge.className = 'fx-del-badge';
+        badge.textContent = 'حذف می‌شود';
+        holder.appendChild(badge);
+    } else if (!pending && badge) {
+        badge.parentNode.removeChild(badge);
+    }
+    if (area) area.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 var TEXT_EDGE = <?php echo \Faoxima\Admin\Web\Support\TextbotEdge::fx_textbot_edge_js_config(); ?>;
@@ -1234,15 +1372,51 @@ function updateRichEntryState(src) {
     note.hidden = !!allowed;
     note.textContent = allowed ? '' : ('ویرایش پرمیوم غیرفعال است: ' + reason);
 }
+function renderEditVars(src) {
+    var host = document.getElementById('editVars');
+    if (!host) return;
+    var vars = {};
+    try { vars = JSON.parse(src.getAttribute('data-vars') || '{}') || {}; } catch (e) { vars = {}; }
+    var names = Object.keys(vars);
+    host.textContent = '';
+    host.hidden = names.length === 0;
+    if (!names.length) return;
+    var title = document.createElement('span');
+    title.className = 'edit-vars__title';
+    title.textContent = 'متغیرهای قابل استفاده (برای درج کلیک کنید):';
+    host.appendChild(title);
+    names.forEach(function (name) {
+        var chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'edit-vars__chip';
+        chip.dir = 'ltr';
+        chip.textContent = '{' + name + '}';
+        chip.title = String(vars[name] || '');
+        chip.addEventListener('click', function () {
+            var area = document.getElementById('editTextArea');
+            var token = '{' + name + '}';
+            var start = typeof area.selectionStart === 'number' ? area.selectionStart : area.value.length;
+            var end = typeof area.selectionEnd === 'number' ? area.selectionEnd : start;
+            area.value = area.value.slice(0, start) + token + area.value.slice(end);
+            area.focus();
+            area.selectionStart = area.selectionEnd = start + token.length;
+            area.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        host.appendChild(chip);
+    });
+}
+
 function openTextEditor(key) {
     var modal = document.getElementById('modal-edit-text');
     if (textEditorCurrentKey === key && modal && modal.classList.contains('active')) return;
     var src = document.getElementById('ta-' + key);
     if (!src) return;
+    if (src.closest('.is-pending-delete, .is-temp-deleted')) return;
     textEditorCurrentKey = key;
     document.getElementById('editTextKeyLabel').textContent = key;
     document.getElementById('editTextArea').value = src.value;
     updateRichEntryState(src);
+    renderEditVars(src);
     refreshEditorEdge();
     openModal('modal-edit-text');
     document.getElementById('editTextArea').focus();
@@ -3613,6 +3787,7 @@ function richApplyInline(command) {
         var blocking = 0;
         areas.forEach(function (t) {
             if (!textEdgeIsRouting(t.dataset.key)) return;
+            if (t.closest('.is-pending-delete, .is-temp-deleted')) { t.classList.remove('edge-invalid'); return; }
             var bad = textEdgeInvalid(t.value);
             t.classList.toggle('edge-invalid', bad);
             var err = document.getElementById('edge-err-' + t.dataset.key);
@@ -3623,8 +3798,9 @@ function richApplyInline(command) {
         return blocking;
     }
     function updateCount() {
-        var n = 0;
+        var n = document.querySelectorAll('.text-row.is-pending-delete').length;
         areas.forEach(function(t){
+            if (!t.isConnected || t.closest('.is-pending-delete, .is-temp-deleted')) { t.classList.remove('changed'); return; }
             var companion = document.getElementById('rich-' + t.dataset.key);
             var richChanged = companion && companion.value !== companion.dataset.orig;
             if (t.value !== t.dataset.orig || richChanged) { t.classList.add('changed'); n++; }
@@ -3642,6 +3818,39 @@ function richApplyInline(command) {
         autogrow(t);
         t.addEventListener('input', function () { autogrow(t); updateCount(); });
     });
+    window.fxTextRefreshState = function () {
+        areas.forEach(autogrow);
+        updateCount();
+    };
+
+    function buildPayload() {
+        var payload = { version: 1, t: Object.create(null), rich: Object.create(null), o: Object.create(null), d: [] };
+        var count = 0;
+        areas.forEach(function (t) {
+            var key = t.dataset.key;
+            var companion = document.getElementById('rich-' + key);
+            if (!t.isConnected || t.closest('.is-temp-deleted')) return;
+            if (t.closest('.is-pending-delete')) {
+                payload.d.push(key);
+                payload.o[key] = { v: t.dataset.ver || '' };
+                count++;
+                return;
+            }
+            var richChanged = companion && companion.value !== companion.dataset.orig;
+            if (t.value === t.dataset.orig && !richChanged) return;
+            payload.t[key] = t.value;
+            payload.rich[key] = companion ? companion.value : '';
+            payload.o[key] = { v: t.dataset.ver || '' };
+            count++;
+        });
+        return { payload: payload, count: count };
+    }
+    window.fxBuildTextPayload = function () {
+        var built = buildPayload();
+        return built.count > 0 ? built.payload : null;
+    };
+    window.fxTextEdgeBlocking = refreshEdge;
+    window.fxTextChangedCount = function () { return buildPayload().count; };
 
     var textForm = document.getElementById('textForm');
     if (textForm) {
@@ -3652,16 +3861,7 @@ function richApplyInline(command) {
                 return;
             }
             try {
-                var payload = { version: 1, t: Object.create(null), rich: Object.create(null) };
-                areas.forEach(function (t) {
-                    var key = t.dataset.key;
-                    var companion = document.getElementById('rich-' + key);
-                    var richChanged = companion && companion.value !== companion.dataset.orig;
-                    if (t.value === t.dataset.orig && !richChanged) return;
-                    payload.t[key] = t.value;
-                    payload.rich[key] = companion ? companion.value : '';
-                });
-                document.getElementById('textSavePayload').value = JSON.stringify(payload);
+                document.getElementById('textSavePayload').value = JSON.stringify(buildPayload().payload);
             } catch (error) {
                 ev.preventDefault();
                 alert('آماده‌سازی اطلاعات برای ذخیره انجام نشد؛ دوباره تلاش کنید.');
@@ -3770,5 +3970,7 @@ function richApplyInline(command) {
     });
 })();
 </script>
+<script>window.FX_TEXTBOT_TEMP = <?php echo json_encode($tempStatus, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE); ?>;</script>
+<script src="js/textbot_savemode.js?v=sm3" defer></script>
 </body>
 </html>
