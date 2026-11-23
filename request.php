@@ -102,12 +102,17 @@ class CurlRequest {
     private $authToken = null;
     private $api_key = null;
     private $cookie = null;
+    private $redactUrl = false;
     public function __construct($url) {
         $this->url = $url;
     }
 
     public function setTimeout($seconds) {
         $this->timeout = $seconds;
+    }
+
+    public function redactUrl(): void {
+        $this->redactUrl = true;
     }
 
     public function setHeaders(array $headers) {
@@ -140,6 +145,7 @@ class CurlRequest {
     }
 
     private function execute($method, $data = null) {
+        $logUrl = $this->redactUrl ? (parse_url($this->url, PHP_URL_HOST) ?: '[panel]') : $this->url;
         if (!$this->timeout) {
             $this->timeout = faoxima_panel_timeout();
         }
@@ -194,7 +200,7 @@ class CurlRequest {
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlErrno = curl_errno($ch);
         if ($curlErrno) {
-            $lastError = curl_error($ch);
+            $lastError = $this->redactUrl ? 'cURL error ' . $curlErrno : curl_error($ch);
             curl_close($ch);
             $isTimeout = stripos($lastError, 'timed out') !== false || stripos($lastError, 'Operation timed out') !== false || $curlErrno === CURLE_OPERATION_TIMEDOUT;
             if ($attempt < $maxAttempts && $isTimeout) {
@@ -205,7 +211,7 @@ class CurlRequest {
             $dedupKey = 'curlerr|' . ($host ?: $this->url) . ':' . ($port ?: '') . '|' . $lastError;
             faoxima_dedup_error_log(
                 $dedupKey,
-                sprintf('CurlRequest error calling %s: %s (HTTP code: %s)', $this->url, $lastError, var_export($httpCode, true))
+                sprintf('CurlRequest error calling %s: %s (HTTP code: %s)', $logUrl, $lastError, var_export($httpCode, true))
             );
             return [
                 'status' => $httpCode,
@@ -225,7 +231,7 @@ class CurlRequest {
             $dedupKey = 'curlhttp|' . ($host ?: $this->url) . ':' . ($port ?: '') . '|' . $httpCode;
             faoxima_dedup_error_log(
                 $dedupKey,
-                sprintf('CurlRequest call to %s returned HTTP code %s', $this->url, var_export($httpCode, true))
+                sprintf('CurlRequest call to %s returned HTTP code %s', $logUrl, var_export($httpCode, true))
             );
         }
 

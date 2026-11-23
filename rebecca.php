@@ -47,13 +47,16 @@ function getRebeccaPanelConfig($namePanel)
     ];
 }
 
-function rebeccaApiRequest(array $panelConfig, string $method, string $endpoint, $payload = null, bool $asJson = true)
+function rebeccaApiRequest(array $panelConfig, string $method, string $endpoint, $payload = null, bool $asJson = true, bool $redactUrl = false)
 {
     $panel = $panelConfig['panel'];
     $apiKey = $panelConfig['api_key'];
     $baseUrl = rebeccaGetBaseUrl($panel['url_panel'] ?? null);
     $url = rtrim($baseUrl, '/') . $endpoint;
     $request = new CurlRequest($url);
+    if ($redactUrl) {
+        $request->redactUrl();
+    }
     $headers = [
         'accept: application/json',
         'Authorization: Bearer ' . $apiKey,
@@ -344,6 +347,38 @@ function rebeccaGetUser($namePanel, string $username)
     $encodedUsername = urlencode($username);
     $response = rebeccaApiRequest($config, 'GET', "/api/user/{$encodedUsername}");
     return rebeccaDecodeResponse($response, true);
+}
+
+function rebeccaListUsers(string $namePanel, array $usernames = [], ?string $search = null, bool $links = false): iterable
+{
+    $config = getRebeccaPanelConfig($namePanel);
+    if (!$config['status'] || ($usernames === [] && $search === null)) {
+        return;
+    }
+    $limit = $search === null ? count($usernames) : 50;
+    $params = ['limit=' . $limit, 'links=' . ($links ? 'true' : 'false')];
+    if ($search !== null) {
+        $params[] = 'search=' . rawurlencode($search);
+        $params[] = 'match_whole_word=true';
+    }
+    foreach ($usernames as $username) {
+        $params[] = 'username=' . rawurlencode($username);
+    }
+    $endpoint = '/api/users?' . implode('&', $params);
+    $offset = 0;
+    do {
+        $response = rebeccaDecodeResponse(rebeccaApiRequest($config, 'GET', $endpoint . '&offset=' . $offset, redactUrl: true), true);
+        $users = $response['data']['users'] ?? [];
+        if (!is_array($users) || $users === []) {
+            return;
+        }
+        foreach ($users as $user) {
+            if (is_array($user)) {
+                yield $user;
+            }
+        }
+        $offset += count($users);
+    } while ($search !== null && $offset < (int) ($response['data']['total'] ?? 0));
 }
 
 function rebeccaGetOnHoldUsers($namePanel)

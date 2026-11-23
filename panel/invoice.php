@@ -24,9 +24,38 @@ if (!isset($_SESSION["user"]) || !$result) {
     return;
 }
 
+if (($result['rule'] ?? '') !== 'administrator') {
+    http_response_code(403);
+    exit('این بخش برای مدیر اصلی در دسترس است.');
+}
 fx_csrf_guard();
+require_once __DIR__ . '/../rebecca.php';
 
-$invQ = trim((string)($_GET['q'] ?? ''));
+if (($_POST['action'] ?? '') === 'service_lookup') {
+    $term = is_string($_POST['q'] ?? null) ? trim($_POST['q']) : '';
+    $redirectParams = array_intersect_key($_POST, array_flip(['status', 'dpreset', 'ddays', 'dfrom', 'dto', 'min_price', 'max_price', 'product', 'pmatch', 'location']));
+    if ($term !== '' && strlen($term) <= ServiceSearch::MAX_QUERY_LENGTH) {
+        if (ServiceSearch::isPrivate($term)) {
+            $lookup = bin2hex(random_bytes(16));
+            $lookups = array_filter($_SESSION['invoice_service_lookups'] ?? [], static fn($saved) => $saved['until'] >= time());
+            $lookups[$lookup] = ['query' => $term, 'until' => time() + 900];
+            $_SESSION['invoice_service_lookups'] = array_slice($lookups, -8, null, true);
+            $redirectParams['lookup'] = $lookup;
+        } else {
+            $redirectParams['q'] = $term;
+        }
+    }
+    header('Location: invoice.php?' . http_build_query($redirectParams), true, 303);
+    exit;
+}
+
+$lookup = is_string($_GET['lookup'] ?? null) ? $_GET['lookup'] : '';
+$privateQuery = $_SESSION['invoice_service_lookups'][$lookup] ?? [];
+$invQ = is_string($_GET['q'] ?? null) ? trim($_GET['q']) : '';
+if ($lookup !== '') {
+    $invQ = ($privateQuery['until'] ?? 0) >= time() ? $privateQuery['query'] : '';
+}
+$invSearchParams = $lookup !== '' ? ['lookup' => $lookup] : ['q' => $invQ !== '' ? $invQ : null];
 $df = fx_date_filter_resolve();
 $invStatusOptions = [
     'unpaid'        => 'در انتظار پرداخت',
@@ -70,12 +99,12 @@ foreach (['dpreset', 'ddays', 'dfrom', 'dto'] as $invDk) {
 $whereSql = '1=1';
 $whereParams = [];
 if ($invQ !== '') {
-    $invLike = '%' . $invQ . '%';
-    $whereSql .= ' AND (id_invoice LIKE :l1 OR id_user LIKE :l2 OR username LIKE :l3 OR name_product LIKE :l4)';
-    $whereParams[':l1'] = $invLike;
-    $whereParams[':l2'] = $invLike;
-    $whereParams[':l3'] = $invLike;
-    $whereParams[':l4'] = $invLike;
+    [$condition, $whereParams] = ServiceSearch::condition($pdo, $invQ, $whereSql, $whereParams, ['id_invoice', 'id_user', 'username', 'name_product']);
+    $whereSql .= " AND $condition";
+}
+if ($lookup !== '' && $invQ === '') {
+    $whereSql .= ' AND 0 = 1';
+    $invDeleteBlocked = true;
 }
 if ($df['active']) {
     $whereSql .= ' AND time_sell BETWEEN :dfrom AND :dto';
@@ -100,13 +129,13 @@ $invStatusActive = $invStatus !== '' && isset($invStatusOptions[$invStatus]);
 if ($invStatus !== '' && !$invStatusActive) $invDeleteBlocked = true;
 $invFilterActive = $invQ !== '' || $df['active'] || $invStatusActive || $invAf['active'] || $invProduct !== '' || $invLocation !== '';
 $invDateKeep = fx_filter_delete_date_params('', $df['active']);
-$invFilterParams = array_merge(['q' => $invQ !== '' ? $invQ : null, 'status' => $invStatusActive ? $invStatus : null], $invDateKeep, $invExtraKeep);
+$invFilterParams = array_merge($invSearchParams, ['status' => $invStatusActive ? $invStatus : null], $invDateKeep, $invExtraKeep);
 $invExtraCriteria = array_filter([
     'مبلغ' => $invAf['label'],
     'محصول' => $invProduct !== '' ? ($invPmatch === 'exact' ? $invProduct . ' (تطابق دقیق)' : $invProduct) : '',
     'لوکیشن' => $invLocation,
 ], function ($v) { return $v !== ''; });
-$invFilterCriteria = array_merge(fx_filter_delete_criteria($invStatusActive ? $invStatusOptions[$invStatus] : '', $df, $invQ), $invExtraCriteria);
+$invFilterCriteria = array_merge(fx_filter_delete_criteria($invStatusActive ? $invStatusOptions[$invStatus] : '', $df, $lookup !== '' ? 'شناسهٔ حساب یا لینک اشتراک' : $invQ), $invExtraCriteria);
 $invDeleteNote = ($invTestScope ? 'حذف فقط به رکوردهای فاکتور «سرویس تست» مطابق فیلتر محدود است. ' : '')
     . 'این عملیات فقط رکوردهای سفارش (تاریخچه فاکتور) را از پایگاه داده ربات حذف می‌کند و هیچ اکانت یا کانفیگی از پنل خارجی حذف نمی‌شود.';
 if (fx_filter_delete_requested()) {
@@ -137,7 +166,7 @@ foreach ($whereParams as $k => $v) $query->bindValue($k, $v, is_int($v) ? PDO::P
 $query->bindValue(':perPage', $pg['perPage'], PDO::PARAM_INT);
 $query->bindValue(':offset', $pg['offset'], PDO::PARAM_INT);
 $query->execute();
-$listinvoice = $query->fetchAll();
+$listinvoice = ServiceSearch::addPanelIds($pdo, $query->fetchAll(PDO::FETCH_ASSOC));
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
@@ -172,9 +201,9 @@ $listinvoice = $query->fetchAll();
 
             <?php echo fx_filter_delete_flash_html(); ?>
 
-            <?php echo fx_search_ui('invoice.php', $invQ, array_merge(['status' => $invStatus !== '' ? $invStatus : null], $invDateKeep, $invExtraKeep), 'جستجو در شناسه سفارش، آیدی کاربر، نام کانفیگ یا محصول…'); ?>
+            <?php echo fx_search_ui('invoice.php', $invQ, array_merge(['status' => $invStatus !== '' ? $invStatus : null, 'lookup' => $lookup], $invDateKeep, $invExtraKeep), 'نام کاربری، شناسهٔ حساب، UUID یا لینک اشتراک', 'q', true); ?>
 
-            <?php echo fx_status_filter_ui('invoice.php', $invStatusOptions, $invStatus, array_merge(['q' => $invQ !== '' ? $invQ : null], $invDateKeep, $invExtraKeep)); ?>
+            <?php echo fx_status_filter_ui('invoice.php', $invStatusOptions, $invStatus, array_merge($invSearchParams, $invDateKeep, $invExtraKeep)); ?>
 
             <?php if ($invDeleteBlocked): ?>
                 <div class="alert" style="background:var(--color-warning-soft); border:1px solid var(--color-warning); color:var(--color-warning); padding:12px 16px; border-radius:10px; margin-bottom:18px;">برخی مقادیر فیلتر نامعتبر هستند و نادیده گرفته شدند؛ برای جلوگیری از حذف ناخواسته، «حذف همه نتایج فیلترشده» غیرفعال است.</div>
@@ -182,7 +211,7 @@ $listinvoice = $query->fetchAll();
 
             <?php $fxFd = fx_filter_delete_parts('invoice.php', $invFilterParams, ($invFilterActive && !$invDeleteBlocked) ? (int)$pg['total'] : 0, $invFilterCriteria, '', $invDeleteNote); ?>
             <?php $fxFdExtra = $fxFd['button'] !== '' ? '<div class="fx-date-filter__active">' . htmlspecialchars($invDeleteNote, ENT_QUOTES, 'UTF-8') . '</div>' : ''; ?>
-            <?php echo fx_date_filter_ui('invoice.php', '', array_merge(['q' => $invQ !== '' ? $invQ : null, 'status' => $invStatus !== '' ? $invStatus : null], $invExtraKeep), '', $fxFd['button'], $fxFd['form'] . $fxFdExtra); ?>
+            <?php echo fx_date_filter_ui('invoice.php', '', array_merge($invSearchParams, ['status' => $invStatus !== '' ? $invStatus : null], $invExtraKeep), '', $fxFd['button'], $fxFd['form'] . $fxFdExtra); ?>
 
             <div class="card">
 <?php $invBulkAction = fx_qs(array_merge($invFilterParams, ['p' => (isset($_GET['p']) && is_string($_GET['p']) && ctype_digit($_GET['p'])) ? $_GET['p'] : null])); ?>
@@ -234,7 +263,10 @@ $listinvoice = $query->fetchAll();
                                     </a>
                                 </td>
                                 <td data-label="نام کانفیگ" style="direction:ltr; text-align:right;">
-                                    <?php echo htmlspecialchars($list['username'], ENT_QUOTES, 'UTF-8'); ?>
+                                    <?php echo htmlspecialchars((string) $list['username'], ENT_QUOTES, 'UTF-8'); ?>
+                                    <?php if (!empty($list['panel_user_id'])): ?>
+                                        <span dir="rtl"> · شناسهٔ حساب <bdi dir="ltr"><?= htmlspecialchars($list['panel_user_id'], ENT_QUOTES, 'UTF-8') ?></bdi></span>
+                                    <?php endif; ?>
                                 </td>
                                 <td data-label="لوکیشن"><?php echo htmlspecialchars($list['Service_location'], ENT_QUOTES, 'UTF-8'); ?></td>
                                 <td data-label="محصول" data-summary="1"><?php echo htmlspecialchars($list['name_product'], ENT_QUOTES, 'UTF-8'); ?></td>
@@ -246,7 +278,7 @@ $listinvoice = $query->fetchAll();
                         </tbody>
                     </table>
                     <?php
-                    $invKeep = array_merge(['q' => $invQ !== '' ? $invQ : null], $invExtraKeep);
+                    $invKeep = array_merge($invSearchParams, $invExtraKeep);
                     foreach (['dpreset', 'ddays', 'dfrom', 'dto', 'status'] as $dk) {
                         if (isset($_GET[$dk]) && $_GET[$dk] !== '') $invKeep[$dk] = $_GET[$dk];
                     }

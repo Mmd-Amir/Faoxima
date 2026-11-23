@@ -14,6 +14,7 @@ if (is_readable($composerAutoload)) {
     unset($composerAutoload);
 }
 require_once APP_ROOT_PATH . '/config.php';
+require_once APP_ROOT_PATH . '/lib/ServiceSearch.php';
 require_once __DIR__ . '/redis_client.php';
 
 ini_set('error_log', APP_ROOT_PATH . '/error_log');

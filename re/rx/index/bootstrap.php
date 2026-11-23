@@ -1200,7 +1200,7 @@ if ($text == "version") {
     ];
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = '$from_id' AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold' OR status = 'disabled' OR status = 'disablebyadmin') ORDER BY time_sell DESC LIMIT $start_index, $items_per_page");
     $stmt->execute();
-    $serviceRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $serviceRows = ServiceSearch::addPanelIds($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC));
     $rxLabelDup = rxServiceListUserDuplicateKeys($from_id, ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin'], $setting['statusnamecustom'] == 'onnamecustom');
     if ($setting['statusnamecustom'] == 'onnamecustom') {
         foreach ($serviceRows as $row) {
@@ -1264,7 +1264,7 @@ if ($text == "version") {
     ];
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = '$from_id' AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold' OR status = 'disabled' OR status = 'disablebyadmin') ORDER BY time_sell DESC LIMIT $start_index, $items_per_page");
     $stmt->execute();
-    $serviceRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $serviceRows = ServiceSearch::addPanelIds($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC));
     $rxLabelDup = rxServiceListUserDuplicateKeys($from_id, ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin'], $setting['statusnamecustom'] == 'onnamecustom');
     if ($setting['statusnamecustom'] == 'onnamecustom') {
         foreach ($serviceRows as $row) {
@@ -1328,7 +1328,7 @@ if ($text == "version") {
     ];
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = '$from_id' AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold' OR status = 'disabled' OR status = 'disablebyadmin') ORDER BY time_sell DESC LIMIT $previous_page, $items_per_page");
     $stmt->execute();
-    $serviceRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $serviceRows = ServiceSearch::addPanelIds($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC));
     $rxLabelDup = rxServiceListUserDuplicateKeys($from_id, ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin'], $setting['statusnamecustom'] == 'onnamecustom');
     if ($setting['statusnamecustom'] == 'onnamecustom') {
         foreach ($serviceRows as $row) {
@@ -1511,8 +1511,9 @@ if ($text == "version") {
     step('home', $from_id);
 } elseif (function_exists('nmMaybeHandleStockCallback') && nmMaybeHandleStockCallback($datain ?? '', $from_id, $message_id ?? null, $callback_query_id ?? null)) {
     return;
-} elseif (preg_match('/^quickview_(\w+)/', $datain, $dataget) || preg_match('/^product_(\w+)/', $datain, $dataget) || preg_match('/updateproduct_(\w+)/', $datain, $dataget) || $user['step'] == "getuseragnetservice" || $datain == "productcheckdata") {
+} elseif (preg_match('/^quickview_(\w+)/', $datain, $dataget) || preg_match('/^product_(\w+)/', $datain, $dataget) || preg_match('/updateproduct_(\w+)/', $datain, $dataget) || ($user['step'] === "getuseragnetservice" && $datain === '' && trim($text) !== '') || $datain == "productcheckdata") {
 
+    $isServiceSearch = $user['step'] === 'getuseragnetservice' && $datain === '' && trim($text) !== '';
     if (is_string($datain) && strpos($datain, 'quickview_') === 0) {
         $id_invoice_qv = $dataget[1];
         $stmtQv = $pdo->prepare("SELECT * FROM invoice WHERE id_invoice = :i AND id_user = :u LIMIT 1");
@@ -1540,8 +1541,10 @@ if ($text == "version") {
             $cardPath_qv = nm_renderInfoCardForInvoice($panel_qv, $nameloc_qv['username'], $nameloc_qv['id_invoice'], $from_id);
         }
         if ($cardPath_qv !== null && is_file($cardPath_qv)) {
+            [$nameloc_qv] = ServiceSearch::addPanelIds($pdo, [$nameloc_qv]);
+            $accountId_qv = empty($nameloc_qv['panel_user_id']) ? '' : ' (ID ' . $nameloc_qv['panel_user_id'] . ')';
             $note_qv = isset($nameloc_qv['note']) && $nameloc_qv['note'] !== '' ? ' | ' . $nameloc_qv['note'] : '';
-            $caption_qv = '✨ <b>' . htmlspecialchars((string)$nameloc_qv['username'], ENT_QUOTES, 'UTF-8') . '</b>'
+            $caption_qv = '✨ <b>' . htmlspecialchars((string)$nameloc_qv['username'], ENT_QUOTES, 'UTF-8') . $accountId_qv . '</b>'
                         . htmlspecialchars($note_qv, ENT_QUOTES, 'UTF-8');
             $__qvRow = [['text' => '🔧 مدیریت سرویس', 'callback_data' => 'product_' . $nameloc_qv['id_invoice']]];
             if (!(function_exists('isQrDisabled') && isQrDisabled())) {
@@ -1574,16 +1577,12 @@ if ($text == "version") {
         $dataget = [$datain, $id_invoice_qv];
     }
 
-    if ($user['step'] == "getuseragnetservice") {
-        $username = htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
-        $sql = "SELECT * FROM invoice WHERE (username LIKE CONCAT('%', :username, '%') OR note LIKE CONCAT('%', :notes, '%') OR Volume LIKE CONCAT('%',:Volume, '%') OR Service_time LIKE CONCAT('%',:Service_time, '%')) AND id_user = :id_user AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold' OR status = 'disabled' OR status = 'disablebyadmin')";
-        $stmt = $pdo->prepare($sql);
-        $stmt->bindParam(':username', $username, PDO::PARAM_STR);
-        $stmt->bindParam(':Service_time', $username, PDO::PARAM_STR);
-        $stmt->bindParam(':Volume', $username, PDO::PARAM_STR);
-        $stmt->bindParam(':notes', $username, PDO::PARAM_STR);
-        $stmt->bindParam(':id_user', $from_id);
-        $stmt->execute();
+    if ($isServiceSearch) {
+        $scope = 'id_user = :id_user AND ' . ServiceSearch::VISIBLE_STATUS;
+        $params = [':id_user' => $from_id];
+        [$condition, $searchParams] = ServiceSearch::condition($pdo, $text, $scope, $params, ['username', 'note', 'Volume', 'Service_time']);
+        $stmt = $pdo->prepare("SELECT * FROM invoice WHERE $scope AND $condition ORDER BY time_sell DESC, id_invoice DESC LIMIT 51");
+        $stmt->execute($params + $searchParams);
     } elseif ($datain == "productcheckdata") {
         $username = $user['Processing_value'];
         $sql = "SELECT * FROM invoice WHERE username = :username AND id_user = :id_user";
@@ -1612,54 +1611,37 @@ if ($text == "version") {
         $stmt->bindParam(':id_user', $from_id);
         $stmt->execute();
     }
-    if ($user['step'] == "getuseragnetservice" && $stmt->rowCount() > 1) {
-        $countservice = $stmt->rowCount();
-        $pages = 1;
-        update("user", "pagenumber", $pages, "id", $from_id);
-        $page = 1;
-        $items_per_page = 20;
-        $start_index = ($page - 1) * $items_per_page;
-        $keyboardlists = [
-            'inline_keyboard' => [],
-        ];
-        $rxLabelDup = rxServiceListUserDuplicateKeys($from_id, ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin'], $setting['statusnamecustom'] == 'onnamecustom');
-        if ($setting['statusnamecustom'] == 'onnamecustom') {
-            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                $data = "";
-                if ($row != null)
-                    $data = " | {$row['note']}";
-                $keyboardlists['inline_keyboard'][] = [
-                    [
-                        'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, true) . $data . rxServiceListStatusSuffix($row) . "✨",
-                        'callback_data' => "quickview_" . $row['id_invoice']
-                    ],
-                ];
+    if ($isServiceSearch) {
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (count($rows) > 1) {
+            $keyboardlists = ['inline_keyboard' => []];
+            $withNote = $setting['statusnamecustom'] === 'onnamecustom';
+            $displayRows = ServiceSearch::addPanelIds($pdo, array_slice($rows, 0, 50));
+            $duplicates = rxServiceListDuplicateKeys($displayRows, $withNote);
+            foreach ($displayRows as $row) {
+                $note = $withNote && !empty($row['note']) ? ' | ' . $row['note'] : '';
+                $location = empty($row['Service_location']) ? '' : ' | ' . $row['Service_location'];
+                $keyboardlists['inline_keyboard'][] = [[
+                    'text' => "✨" . rxServiceListLabel($row, $duplicates, $withNote) . $location . $note . rxServiceListStatusSuffix($row) . "✨",
+                    'callback_data' => 'quickview_' . $row['id_invoice'],
+                ]];
             }
-        } else {
-            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                $keyboardlists['inline_keyboard'][] = [
-                    [
-                        'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, false) . rxServiceListStatusSuffix($row) . "✨",
-                        'callback_data' => "quickview_" . $row['id_invoice']
-                    ],
-                ];
-            }
+            $keyboardlists['inline_keyboard'][] = [
+                ['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice'],
+                ['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => 'backorder'],
+            ];
+            $foundTemplate = $datatextbot['dyn_errors_service_found_count'] ?? '🛍 %s سرویس یافت شد. برای مدیریت، یکی را انتخاب کنید.';
+            $resultText = count($rows) > 50
+                ? 'بیش از ۵۰ سرویس پیدا شد. برای محدود کردن نتیجه، نام کامل یا شناسهٔ سرویس را وارد کنید.'
+                : sprintf($foundTemplate, count($rows));
+            sendmessage($from_id, $resultText, json_encode($keyboardlists), 'html');
+            step('home', $from_id);
+            return;
         }
-        $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
-        $backuser = [
-            rx_kb_style(['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'backuser'], 'backuser', $_rx_nav_s)
-        ];
-        if ($setting['NotUser'] == "onnotuser") {
-            $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['page']['notusernameme'], 'callback_data' => 'notusernameme']];
-        }
-        $keyboardlists['inline_keyboard'][] = $backuser;
-        $keyboard_json = json_encode($keyboardlists);
-        $rxSvcFoundTpl = $datatextbot['dyn_errors_service_found_count'] ?? "🛍 %s عدد سرویس یافت برای مشاهده و مدیریت سرویس روی یکی از سرویس ها کلیک کنید";
-        sendmessage($from_id, sprintf($rxSvcFoundTpl, $countservice), $keyboard_json, 'html');
-        step("home", $from_id);
-        return;
+        $nameloc = $rows[0] ?? null;
+    } else {
+        $nameloc = $stmt->fetch(PDO::FETCH_ASSOC);
     }
-    $nameloc = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!is_array($nameloc)) {
         sendmessage($from_id, $datatextbot['dyn_errors_service_not_found'] ?? "❌ سرویس مورد نظر پیدا نشد.", $keyboard, 'html');
         step('home', $from_id);
@@ -1675,6 +1657,8 @@ if ($text == "version") {
     if (is_array($marzban) && isset($marzban['name_panel']) && $marzban['name_panel'] != null) {
         update("user", "Processing_value_four", $marzban['name_panel'], "id", $from_id);
     }
+    [$nameloc] = ServiceSearch::addPanelIds($pdo, [$nameloc]);
+    $panelIdLabel = empty($nameloc['panel_user_id']) ? '' : ' (ID ' . $nameloc['panel_user_id'] . ')';
     $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
     if (is_array($DataUserOut) && isset($DataUserOut['status']) && $DataUserOut['status'] !== 'Unsuccessful') {
         try {
@@ -1845,7 +1829,7 @@ if ($text == "version") {
         }
         $manualHasSub = trim((string) $manualDelivery['sub']) !== '';
         $textinfo = "وضعیت سرویس : <b>$status_var</b>
-نام کاربری سرویس : {$DataUserOut['username']}
+نام کاربری سرویس : {$DataUserOut['username']}{$panelIdLabel}
 📎 کد پیگیری سرویس : {$nameloc['id_invoice']}
 
 📅 تاریخ اتمام : $expirationDate ($day)";
@@ -1876,7 +1860,7 @@ if ($text == "version") {
             ['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => 'backorder'],
         ];
         $keyboardsettingManual = json_encode(['inline_keyboard' => $manualRows], JSON_UNESCAPED_UNICODE);
-        if ($user['step'] == "getuseragnetservice") {
+        if ($isServiceSearch) {
             sendmessage($from_id, $textinfo, $keyboardsettingManual, 'html');
         } elseif ($datain == "productcheckdata") {
             deletemessage($from_id, $message_id);
@@ -1915,7 +1899,7 @@ if ($text == "version") {
     $statusremoveserveice = panel_feature_enabled($nameloc['Service_location'], 'refund') ? "on" : "off";
     if (!in_array($status, ["active", "on_hold", "disabled", "Unknown"])) {
         $textinfo = "وضعیت سرویس : <b>$status_var</b>
-👤 نام کاربری سرویس : <code>{$DataUserOut['username']}</code>
+👤 نام کاربری سرویس : <code>{$DataUserOut['username']}{$panelIdLabel}</code>
 🌍 موقعیت سرویس :{$nameloc['Service_location']}
 نام محصول :{$nameloc['name_product']}
 
@@ -2134,7 +2118,7 @@ $nameconfig";
 📅 تاریخ اتمام : {expire_date} ({days_left})";
         $textinfo_replacements = [
             '{status}' => $status_var,
-            '{username}' => $DataUserOut['username'],
+            '{username}' => $DataUserOut['username'] . $panelIdLabel,
             '{location}' => $nameloc['Service_location'],
             '{product}' => $nameloc['name_product'],
             '{traffic}' => $LastTraffic,
@@ -2297,7 +2281,7 @@ $nameconfig";
             }
         }
     }
-    if ($user['step'] == "getuseragnetservice") {
+    if ($isServiceSearch) {
         sendmessage($from_id, $textinfo, $keyboardsetting, 'html');
     } elseif ($datain == "productcheckdata") {
         deletemessage($from_id, $message_id);

@@ -9,23 +9,33 @@ final class InvoicesHandler extends BaseHandler
 {
     public function handle(): void
     {
-        $this->requireMethod('GET');
+        if ($this->method !== 'POST') {
+            $this->requireMethod('GET');
+        }
 
         $limit = FaoximaInput::intRange($this->data, 'limit', 1, 10, 10);
         $page  = FaoximaInput::intMin($this->data, 'page', 1, 1);
         $offset = ($page - 1) * $limit;
 
         $search = FaoximaInput::nullableString($this->data, 'q');
-
-        $where = "id_user = :user_id
-                  AND (Status = 'active' OR Status = 'end_of_time' OR Status = 'end_of_volume'
-                       OR Status = 'sendedwarn' OR Status = 'send_on_hold'
-                       OR Status = 'disabled' OR Status = 'disablebyadmin')";
-        $params = [':user_id' => $this->user['id']];
+        $all = ($this->data['scope'] ?? '') === 'all';
+        $canSearchAll = FaoximaDb::fetchScalar(
+            "SELECT 1 FROM admin WHERE id_admin = :uid AND rule = 'administrator' LIMIT 1",
+            [':uid' => $this->user['id']]
+        ) !== null;
+        if ($all && !$canSearchAll) {
+            FaoximaResponse::forbidden('جستجوی همهٔ سرویس‌ها برای مدیر اصلی در دسترس است.');
+        }
+        if ($all && $search === null) {
+            FaoximaResponse::badRequest('عبارت جستجو را وارد کنید.');
+        }
+        $where = $all ? '1=1' : 'id_user = :user_id AND ' . ServiceSearch::VISIBLE_STATUS;
+        $params = $all ? [] : [':user_id' => $this->user['id']];
 
         if ($search !== null) {
-            $where .= " AND username LIKE :search";
-            $params[':search'] = '%' . $search . '%';
+            [$condition, $searchParams] = ServiceSearch::condition(FaoximaDb::pdo(), $search, $where, $params);
+            $where .= " AND $condition";
+            $params += $searchParams;
         }
 
         $totalItems = (int) FaoximaDb::fetchScalar(
@@ -37,14 +47,25 @@ final class InvoicesHandler extends BaseHandler
         $params[':limit']  = $limit;
         $params[':offset'] = $offset;
 
-        $rows = FaoximaDb::fetchAll(
-            "SELECT * FROM invoice
+        $columns = $all ? 'id_invoice, username, Service_location, name_product, Status' : '*';
+        $rows = ServiceSearch::addPanelIds(FaoximaDb::pdo(), FaoximaDb::fetchAll(
+            "SELECT {$columns} FROM invoice
               WHERE {$where}
-           ORDER BY time_sell DESC
+           ORDER BY time_sell DESC, id_invoice DESC
               LIMIT :limit OFFSET :offset",
             $params
-        );
+        ));
 
+        if ($all) {
+            FaoximaResponse::ok([
+                'items' => $rows,
+                'total' => $totalItems,
+                'total_pages' => $totalPages,
+                'page' => $page,
+                'limit' => $limit,
+                'can_search_all' => true,
+            ]);
+        }
 
         $queuedUsernames = [];
         if (!empty($rows)) {
@@ -174,6 +195,7 @@ final class InvoicesHandler extends BaseHandler
             'total_pages' => $totalPages,
             'page'        => $page,
             'limit'       => $limit,
+            'can_search_all' => $canSearchAll,
         ]);
     }
 }

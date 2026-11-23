@@ -829,7 +829,9 @@ class ManagePanel
             );
         }
         if (isset($Get_Data_Panel['subvip']) && $Get_Data_Panel['subvip'] == "onsubvip") {
-            $inoice = select("invoice", "*", "username", $username, "select");
+            $invoiceStmt = $pdo->prepare("SELECT id_invoice FROM invoice WHERE username = :username AND Service_location = :panel ORDER BY time_sell DESC, id_invoice DESC LIMIT 1");
+            $invoiceStmt->execute([':username' => $username, ':panel' => $Get_Data_Panel['name_panel']]);
+            $inoice = $invoiceStmt->fetch(PDO::FETCH_ASSOC);
         } else {
             $inoice = false;
         }

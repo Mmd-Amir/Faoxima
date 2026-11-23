@@ -1863,8 +1863,9 @@ $text_porsant
         'inline_keyboard' => [],
     ];
     $rxLabelDup = rxServiceListUserDuplicateKeys($from_id, ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold'], (bool) $statusnote);
+    $serviceRows = ServiceSearch::addPanelIds($pdo, $result->fetch_all(MYSQLI_ASSOC));
     if ($statusnote) {
-        while ($row = mysqli_fetch_assoc($result)) {
+        foreach ($serviceRows as $row) {
             $data = "";
             if ($row != null)
                 $data = " | {$row['note']}";
@@ -1876,7 +1877,7 @@ $text_porsant
             ];
         }
     } else {
-        while ($row = mysqli_fetch_assoc($result)) {
+        foreach ($serviceRows as $row) {
             $keyboardlists['inline_keyboard'][] = [
                 [
                     'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, false) . "✨",
@@ -1924,8 +1925,9 @@ $text_porsant
         'inline_keyboard' => [],
     ];
     $rxLabelDup = rxServiceListUserDuplicateKeys($from_id, ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold'], (bool) $statusnote);
+    $serviceRows = ServiceSearch::addPanelIds($pdo, $result->fetch_all(MYSQLI_ASSOC));
     if ($statusnote) {
-        while ($row = mysqli_fetch_assoc($result)) {
+        foreach ($serviceRows as $row) {
             $data = "";
             if ($row != null)
                 $data = " | {$row['note']}";
@@ -1937,7 +1939,7 @@ $text_porsant
             ];
         }
     } else {
-        while ($row = mysqli_fetch_assoc($result)) {
+        foreach ($serviceRows as $row) {
             $keyboardlists['inline_keyboard'][] = [
                 [
                     'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, false) . "✨",
@@ -1986,8 +1988,9 @@ $text_porsant
         'inline_keyboard' => [],
     ];
     $rxLabelDup = rxServiceListUserDuplicateKeys($from_id, ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold'], (bool) $statusnote);
+    $serviceRows = ServiceSearch::addPanelIds($pdo, $result->fetch_all(MYSQLI_ASSOC));
     if ($statusnote) {
-        while ($row = mysqli_fetch_assoc($result)) {
+        foreach ($serviceRows as $row) {
             $data = "";
             if ($row != null)
                 $data = " | {$row['note']}";
@@ -1999,7 +2002,7 @@ $text_porsant
             ];
         }
     } else {
-        while ($row = mysqli_fetch_assoc($result)) {
+        foreach ($serviceRows as $row) {
             $keyboardlists['inline_keyboard'][] = [
                 [
                     'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, false) . "✨",

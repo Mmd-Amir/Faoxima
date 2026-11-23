@@ -1029,7 +1029,7 @@ if (false) {
                 ['text' => "لیست کل کاربران", 'callback_data' => "alllistusers"],
             ],
             [
-                ['text' => "🛍 جستجو سفارش", 'callback_data' => "searchorder"],
+                ...(($adminrulecheck['rule'] ?? '') === 'administrator' ? [['text' => '🛍 جستجو سفارش', 'callback_data' => 'searchorder']] : []),
                 ['text' => "👥 شارژ همگانی", 'callback_data' => "balanceaddall"],
             ],
             [
@@ -2603,63 +2603,43 @@ $iduser  در ربات  رفع مسدود گردید
     nm_adminInstantReply($from_id, "تغییرات با موفقیت اعمال شد", $keyboardadmin, 'HTML');
     update("user", "maxbuyagent", $text, "id", $user['Processing_value']);
     step('home', $from_id);
-} elseif ($datain == "searchorder") {
+} elseif ($datain === 'searchorder' && ($adminrulecheck['rule'] ?? '') === 'administrator') {
     nm_adminInstantReply($from_id, $textbotlang['Admin']['order']['vieworderusername'], $backadmin, 'HTML');
     step('GetusernameconfigAndOrdedrs', $from_id);
-} elseif ($user['step'] == "GetusernameconfigAndOrdedrs" || strpos($text, "/config ") !== false || preg_match('/manageinvoice_(\w+)/', $datain, $datagetr)) {
+} elseif (($adminrulecheck['rule'] ?? '') === 'administrator' && (
+    preg_match('/^manageinvoice_([A-Za-z0-9_-]+)$/D', $datain, $invoiceMatch)
+    || preg_match('/^\/config(?:@\w+)?\s+(.+)$/D', $text, $configMatch)
+    || ($user['step'] === 'GetusernameconfigAndOrdedrs' && $datain === '' && trim($text) !== '')
+)) {
     rxArDraftResetIfAny($from_id, $user);
-    if ($user['step'] == "GetusernameconfigAndOrdedrs") {
-        if (!isset($update['message']) && empty($text)) { return; }
-        $usernameconfig = $text;
-        $sql = "SELECT * FROM invoice WHERE username LIKE CONCAT('%', :username, '%') OR note  LIKE CONCAT('%', :notes, '%')";
-        $stmt = $pdo->prepare($sql);
-        $stmt->bindParam(':username', $usernameconfig, PDO::PARAM_STR);
-        $stmt->bindParam(':notes', $usernameconfig, PDO::PARAM_STR);
-    } elseif ($text[0] == "/") {
-        $usernameconfig = explode(" ", $text)[1];
-        $sql = "SELECT * FROM invoice WHERE username LIKE CONCAT('%', :username, '%') OR note  LIKE CONCAT('%', :notes, '%')";
-        $stmt = $pdo->prepare($sql);
-        $stmt->bindParam(':username', $usernameconfig, PDO::PARAM_STR);
-        $stmt->bindParam(':notes', $usernameconfig, PDO::PARAM_STR);
+    if (!empty($invoiceMatch)) {
+        $stmt = $pdo->prepare('SELECT * FROM invoice WHERE id_invoice = :order_id');
+        $stmt->execute([':order_id' => $invoiceMatch[1]]);
     } else {
-        $usernameconfig = select("invoice", "*", "id_invoice", $datagetr[1], "select")['username'];
-        $sql = "SELECT * FROM invoice WHERE username = :username OR note  = :notes";
-        $stmt = $pdo->prepare($sql);
-        $stmt->bindParam(':username', $usernameconfig, PDO::PARAM_STR);
-        $stmt->bindParam(':notes', $usernameconfig, PDO::PARAM_STR);
+        $search = $configMatch[1] ?? $text;
+        [$condition, $params] = ServiceSearch::condition($pdo, $search, '1=1', [], ['username', 'note', 'id_invoice']);
+        $stmt = $pdo->prepare("SELECT * FROM invoice WHERE $condition ORDER BY time_sell DESC, id_invoice DESC LIMIT 51");
+        $stmt->execute($params);
     }
-    $stmt->execute();
-    step("home", $from_id);
-    if ($stmt->rowCount() > 1) {
-        $keyboardlists = [
-            'inline_keyboard' => [],
-        ];
-        $keyboardlists['inline_keyboard'][] = [
-            ['text' => "عملیات", 'callback_data' => "action"],
-            ['text' => "وضعیت سرویس", 'callback_data' => "Status"],
-            ['text' => "نام کاربری", 'callback_data' => "username"],
-        ];
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => "مشاهده‌اطلاعات",
-                    'callback_data' => "manageinvoice_" . $row['id_invoice']
-                ],
-                [
-                    'text' => $row['Status'],
-                    'callback_data' => "username"
-                ],
-                [
-                    'text' => $row['username'],
-                    'callback_data' => $row['username']
-                ],
-            ];
+    step('home', $from_id);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if (count($rows) > 1) {
+        $buttons = [];
+        foreach (ServiceSearch::addPanelIds($pdo, array_slice($rows, 0, 50)) as $row) {
+            $panelId = empty($row['panel_user_id']) ? '' : ' (ID ' . $row['panel_user_id'] . ')';
+            $buttons[] = [[
+                'text' => $row['username'] . $panelId . ' | ' . $row['Service_location'] . ' | ' . $row['Status'],
+                'callback_data' => 'manageinvoice_' . $row['id_invoice'],
+            ]];
         }
-        $keyboardlists = json_encode($keyboardlists);
-        nm_adminInstantReply($from_id, "⚠️ بیشتر از یک سرویس یافت از لیست زیر سرویس صحیح را انتخاب کنید", $keyboardlists, 'HTML');
+        $buttons[] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchorder']];
+        $resultText = count($rows) > 50
+            ? 'بیش از ۵۰ سرویس پیدا شد. برای محدود کردن نتیجه، نام کامل یا شناسهٔ سرویس را وارد کنید.'
+            : 'چند سرویس پیدا شد. برای مشاهدهٔ اطلاعات، سرویس موردنظر را انتخاب کنید.';
+        nm_adminInstantReply($from_id, $resultText, json_encode(['inline_keyboard' => $buttons]), 'HTML');
         return;
     }
-    $OrderUser = $stmt->fetch(PDO::FETCH_ASSOC);
+    $OrderUser = $rows[0] ?? null;
     if (!$OrderUser) {
         nm_adminInstantReply($from_id, $textbotlang['Admin']['order']['notfound'], null, 'HTML');
         return;
@@ -2704,11 +2684,13 @@ $iduser  در ربات  رفع مسدود گردید
             }
         }
     }
+    [$OrderUser] = ServiceSearch::addPanelIds($pdo, [$OrderUser]);
+    $panelId = empty($OrderUser['panel_user_id']) ? '' : ' (ID ' . $OrderUser['panel_user_id'] . ')';
     $text_order = "
 🛒 شماره سفارش  :  <code>{$OrderUser['id_invoice']}</code>
 🛒  وضعیت سفارش در ربات : <code>{$OrderUser['Status']}</code>
 🙍‍♂️ شناسه کاربر : <code>{$OrderUser['id_user']}</code>
-👤 نام کاربری اشتراک :  <code>{$OrderUser['username']}</code>
+👤 نام کاربری اشتراک :  <code>{$OrderUser['username']}{$panelId}</code>
 📍 موقعیت سرویس :  {$OrderUser['Service_location']}
 🛍 نام محصول :  {$OrderUser['name_product']}
 💰 قیمت پرداختی سرویس : " . rxFormatToman($OrderUser['price_product']) . " تومان

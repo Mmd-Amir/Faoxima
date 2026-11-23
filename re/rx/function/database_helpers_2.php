@@ -2807,6 +2807,10 @@ function rxServiceListLabel(array $invoice, array $duplicateKeys = [], bool $wit
 {
     $label = rxServiceListBaseLabel($invoice);
     $username = (string) ($invoice['username'] ?? '');
+    if (!empty($invoice['panel_user_id'])) {
+        $identity = $username . ' (ID ' . $invoice['panel_user_id'] . ')';
+        return $label === $username ? $identity : $identity . ' | ' . $label;
+    }
     if ($username !== '' && $label !== $username && isset($duplicateKeys[rxServiceListLabelKey($invoice, $withNote)])) {
         $short = mb_strlen($username) > 12 ? '…' . mb_substr($username, -10) : $username;
         $label .= ' (' . $short . ')';

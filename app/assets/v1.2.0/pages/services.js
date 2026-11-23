@@ -1,5 +1,5 @@
 import { call } from '../api.js?v=0.0.53';
-import { escapeHtml, skeletonList, emptyState, toast, fmtNumber, serviceStatusBadge } from '../utils.js?v=0.0.52';
+import { escapeHtml, skeletonList, fmtNumber, serviceStatusBadge } from '../utils.js?v=0.0.52';
 import { icon } from '../icons.js?v=0.0.52';
 
 export async function services(view) {
@@ -8,6 +8,8 @@ export async function services(view) {
     let query = '';
     let totalPages = 1;
     let totalItems = 0;
+    let loadSequence = 0;
+    let allServices = false;
 
     view.innerHTML = `
         <article class="card card-window card-bare">
@@ -21,9 +23,12 @@ export async function services(view) {
                     <span class="list-count hidden" id="services-count"></span>
                 </div>
 
+                <label id="services-scope" class="hidden mt-sm">
+                    <input id="services-all" type="checkbox" /> جستجو در همهٔ سرویس‌ها
+                </label>
                 <label class="search-field mt-sm">
                     ${icon('search', 'class="ico search-field-ico"')}
-                    <input id="services-search" type="text" placeholder="جستجو در نام سرویس..." inputmode="search" />
+                    <input id="services-search" type="text" placeholder="نام کاربری، شناسهٔ حساب، UUID یا لینک اشتراک" aria-label="جستجوی سرویس" inputmode="search" maxlength="2048" autocomplete="off" autocapitalize="off" spellcheck="false" />
                     <button type="button" class="search-field-clear hidden" id="services-search-clear" aria-label="پاک کردن جستجو">
                         ${icon('close', 'class="ico"')}
                     </button>
@@ -50,15 +55,26 @@ export async function services(view) {
     const $search = view.querySelector('#services-search');
     const $searchClear = view.querySelector('#services-search-clear');
     const $count = view.querySelector('#services-count');
+    const $scope = view.querySelector('#services-scope');
+    const $all = view.querySelector('#services-all');
 
     async function load() {
+        const request = ++loadSequence;
         $list.innerHTML = skeletonList(4);
         $pager.classList.add('hidden');
 
         try {
-            const params = { page: String(page), limit: String(limit) };
-            if (query) params.q = query;
-            const res = await call('invoices', { params });
+            if (allServices && !query) {
+                $count.classList.add('hidden');
+                $list.innerHTML = '<div class="empty">برای جستجو در همهٔ سرویس‌ها عبارتی وارد کنید.</div>';
+                return;
+            }
+            const params = { page, limit };
+            const res = query
+                ? await call('invoices', { method: 'POST', body: { ...params, q: query, scope: allServices ? 'all' : 'mine' } })
+                : await call('invoices', { params });
+            if (request !== loadSequence) return;
+            $scope.classList.toggle('hidden', res?.obj?.can_search_all !== true);
 
             const items = res?.obj?.items || [];
             totalPages = Number(res?.obj?.total_pages) || 1;
@@ -87,6 +103,7 @@ export async function services(view) {
                 $next.disabled = page >= totalPages;
             }
         } catch (err) {
+            if (request !== loadSequence) return;
             $count.classList.add('hidden');
             $list.innerHTML = `
                 <div class="empty">
@@ -105,22 +122,27 @@ export async function services(view) {
         const badgeIcon = st.icon;
 
         const username = it.username || '—';
-    const displayUsername = it.display_username || username;
+        const displayUsername = it.display_username || username;
         const productName = it.name_product || '—';
         const location = it.Service_location || '';
+        const accountId = it.panel_user_id ? ` · شناسهٔ حساب <bdi dir="ltr">${escapeHtml(it.panel_user_id)}</bdi>` : '';
+        const detail = allServices ? ` · شمارهٔ سفارش <bdi dir="ltr">${escapeHtml(it.id_invoice)}</bdi>` : '';
+        const href = `#/services/${encodeURIComponent(username)}/${encodeURIComponent(it.id_invoice)}`;
+        const container = allServices ? 'div' : 'a';
 
         return `
-            <a href="#/services/${encodeURIComponent(username)}" class="list-item" data-username="${escapeHtml(username)}">
+            <${container} class="list-item"${allServices ? '' : ` href="${href}"`}>
                 <div class="li-main">
                     <div class="li-title">${escapeHtml(productName)}</div>
-                    <div class="li-sub">${escapeHtml(displayUsername)}${location ? ' · ' + escapeHtml(location) : ''}</div>
+                    <div class="li-sub li-sub-stacked">
+                        <span style="overflow-wrap:anywhere"><bdi>${escapeHtml(displayUsername)}</bdi>${accountId}</span>
+                        ${location || detail ? `<span class="li-sub-line">${escapeHtml(location)}${detail}</span>` : ''}
+                    </div>
                 </div>
                 ${it.has_queued_renewal ? `<span class="badge is-active">${icon('online', 'class="ico"')} رزرو اشتراک</span>` : ''}
                 <span class="badge ${badge}">${icon(badgeIcon, 'class="ico"')} ${escapeHtml(badgeText)}</span>
-                <span class="li-action" aria-hidden="true">
-                    ${icon('chevronLeft', 'class="ico"')}
-                </span>
-            </a>
+                ${allServices ? '' : `<span class="li-action" aria-hidden="true">${icon('chevronLeft', 'class="ico"')}</span>`}
+            </${container}>
         `;
     }
 
@@ -150,6 +172,13 @@ export async function services(view) {
         clearTimeout(searchTimer);
         applySearch();
         $search.focus();
+    });
+    $all.addEventListener('change', () => {
+        clearTimeout(searchTimer);
+        allServices = $all.checked;
+        query = $search.value.trim();
+        page = 1;
+        load();
     });
     $prev.addEventListener('click', () => { if (page > 1) { page--; load(); } });
     $next.addEventListener('click', () => { if (page < totalPages) { page++; load(); } });

@@ -678,8 +678,9 @@ function fmtNum(n) {
     return Number(n || 0).toLocaleString('fa-IR');
 }
 
-export async function service(view, encodedUsername) {
+export async function service(view, encodedUsername, encodedOrderId) {
     const username = decodeURIComponent(encodedUsername || '');
+    const orderId = encodedOrderId ? decodeURIComponent(encodedOrderId) : null;
 
     view.innerHTML = `
         <a href="#/services" class="page-back">
@@ -704,7 +705,8 @@ export async function service(view, encodedUsername) {
         const $body = view.querySelector('#service-body');
         $body.innerHTML = skeletonList(4);
         try {
-            const res = await call('service', { params: { username } });
+            const params = orderId ? { username, order_id: orderId } : { username };
+            const res = await call('service', { params });
             info = res?.obj;
         } catch (err) {
             const _msg = String(err.message || '');
@@ -767,12 +769,12 @@ function renderBody($body, info, username, reload) {
     const disabled = Array.isArray(info.disabled_actions) ? new Set(info.disabled_actions) : new Set();
 
 
-    const visibleActions = ALL_ACTIONS.filter((a) => !disabled.has(a.id));
+    const visibleActions = info.ambiguous_username ? [] : ALL_ACTIONS.filter((a) => !disabled.has(a.id));
 
     $body.innerHTML = `
         <div class="row-spread">
             <div>
-                <div class="muted mono" style="font-size:12px">${escapeHtml(info.display_username || info.username || username)}</div>
+                <div class="muted mono" style="font-size:12px"><bdi>${escapeHtml(info.display_username || info.username || username)}</bdi>${info.panel_user_id ? ` · شناسهٔ حساب <bdi dir="ltr">${escapeHtml(info.panel_user_id)}</bdi>` : ''}</div>
                 <h2 style="margin:4px 0 0;font-size:20px;font-weight:700">${escapeHtml(info.product_name || '—')}</h2>
             </div>
             <span class="badge ${statusBadge}">
@@ -873,6 +875,7 @@ function renderBody($body, info, username, reload) {
             </div>
         </div>` : ''}
 
+        ${info.ambiguous_username ? `<p class="muted">برای مدیریت سرویس‌های هم‌نام، از «سرویس‌های من» در ربات استفاده کنید.</p>` : ''}
         <div id="action-panel-host"></div>
     `;
 
@@ -890,7 +893,7 @@ function renderBody($body, info, username, reload) {
     }
 
     const hasLinkConfigs = outputs.some((o) => String(o?.type || '').toLowerCase() === 'config');
-    if (String(info.panel_type || '') === 'pasarguard' && !isStock && hasLinkConfigs && !disabled.has('config')) {
+    if (String(info.panel_type || '') === 'pasarguard' && !isStock && hasLinkConfigs && !disabled.has('config') && !info.ambiguous_username) {
         $cfgHost.insertAdjacentHTML('beforeend', clientFormatCardHtml());
         bindClientFormatCard($cfgHost, username);
     }

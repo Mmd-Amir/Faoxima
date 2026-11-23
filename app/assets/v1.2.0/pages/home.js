@@ -238,12 +238,16 @@ function renderServiceItem(it) {
     const displayUsername = it.display_username || username;
     const productName = it.name_product || '—';
     const location = it.Service_location || '';
+    const accountId = it.panel_user_id ? ` · شناسهٔ حساب <bdi dir="ltr">${escapeHtml(it.panel_user_id)}</bdi>` : '';
 
     return `
-        <a href="#/services/${encodeURIComponent(username)}" class="list-item" data-username="${escapeHtml(username)}">
+        <a href="#/services/${encodeURIComponent(username)}/${encodeURIComponent(it.id_invoice)}" class="list-item" data-username="${escapeHtml(username)}">
             <div class="li-main">
                 <div class="li-title">${escapeHtml(productName)}</div>
-                <div class="li-sub">${escapeHtml(displayUsername)}${location ? ' · ' + escapeHtml(location) : ''}</div>
+                <div class="li-sub li-sub-stacked">
+                    <span style="overflow-wrap:anywhere"><bdi>${escapeHtml(displayUsername)}</bdi>${accountId}</span>
+                    ${location ? `<span class="li-sub-line">${escapeHtml(location)}</span>` : ''}
+                </div>
             </div>
             <span class="badge ${badge}">${icon(badgeIcon, 'class="ico"')} ${escapeHtml(badgeText)}</span>
             <span class="li-action" aria-hidden="true">

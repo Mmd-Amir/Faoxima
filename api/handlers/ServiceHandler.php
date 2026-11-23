@@ -17,7 +17,8 @@ final class ServiceHandler extends BaseHandler
             FaoximaResponse::badRequest('username is required');
         }
 
-        $invoice = $this->lookupInvoice($username);
+        $orderId = FaoximaInput::nullableString($this->data, 'order_id');
+        $invoice = $this->lookupInvoice($username, $orderId);
         if ($invoice === null) {
             FaoximaResponse::notFound('Service not found');
         }
@@ -27,23 +28,31 @@ final class ServiceHandler extends BaseHandler
             FaoximaResponse::fail(200, 'اطلاعات سرویس در حال حاضر از پنل در دسترس نیست؛ لطفاً چند لحظه دیگر دوباره تلاش کنید.');
         }
 
+        [$invoice] = ServiceSearch::addPanelIds(FaoximaDb::pdo(), [$invoice]);
+        $payload['panel_user_id'] = $invoice['panel_user_id'] ?? null;
+        $payload['ambiguous_username'] = FaoximaDb::fetchScalar(
+            'SELECT 1 FROM invoice WHERE id_user = :user_id AND username = :username AND id_invoice <> :order_id LIMIT 1',
+            [':user_id' => $this->user['id'], ':username' => $invoice['username'], ':order_id' => $invoice['id_invoice']]
+        ) !== null;
         FaoximaResponse::ok($payload);
     }
 
 
-    public function lookupInvoice(string $username): ?array
+    public function lookupInvoice(string $username, ?string $orderId = null): ?array
     {
+        $params = [':user_id' => $this->user['id'], ':username' => $username];
+        if ($orderId !== null) {
+            $params[':order_id'] = $orderId;
+        }
+        $orderFilter = $orderId === null ? '' : ' AND id_invoice = :order_id';
         return FaoximaDb::fetchOne(
             "SELECT * FROM invoice
               WHERE id_user = :user_id
                 AND (Status = 'active' OR Status = 'end_of_time' OR Status = 'end_of_volume'
                      OR Status = 'sendedwarn' OR Status = 'send_on_hold'
                      OR Status = 'disabled' OR Status = 'disablebyadmin')
-                AND username = :username",
-            [
-                ':user_id'  => $this->user['id'],
-                ':username' => $username,
-            ]
+                AND username = :username{$orderFilter}",
+            $params
         );
     }
 

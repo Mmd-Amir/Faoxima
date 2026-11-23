@@ -1,5 +1,5 @@
-import { home } from './pages/home.js?v=0.0.64';
-import { services as servicesPage } from './pages/services.js?v=0.0.53';
+import { home } from './pages/home.js?v=0.0.65';
+import { services as servicesPage } from './pages/services.js?v=0.0.54';
 
 import { buy as buyPage } from './pages/buy.js?v=0.0.62';
 import { account as accountPage } from './pages/account.js?v=0.0.52';
@@ -206,7 +206,7 @@ function loadServicePage() {
 
 
     const url = new URL('./pages/service.js', import.meta.url);
-    url.searchParams.set('v', `${ver}-0.0.64`);
+    url.searchParams.set('v', `${ver}-0.0.65`);
     _serviceModulePromise = import(url.href).catch((err) => {
 
 
@@ -278,6 +278,7 @@ async function transferPage(view) {
 const routes = [
     { pattern: /^\/?$/,                         render: home,              key: '/' },
     { pattern: /^\/services\/?$/,               render: servicesPage,      key: '/services' },
+    { pattern: /^\/services\/([^/]+)\/([^/]+)\/?$/, render: serviceDetailPage, key: '/services' },
     { pattern: /^\/services\/([^/]+)\/?$/,      render: serviceDetailPage, key: '/services' },
     { pattern: /^\/buy\/?$/,                    render: buyPage,           key: '/buy' },
     { pattern: /^\/usertest\/?$/,                render: usertestPage,      key: '/buy' },
