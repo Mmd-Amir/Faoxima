@@ -47,7 +47,7 @@ function getRebeccaPanelConfig($namePanel)
     ];
 }
 
-function rebeccaApiRequest(array $panelConfig, string $method, string $endpoint, $payload = null, bool $asJson = true, bool $redactUrl = false)
+function rebeccaApiRequest(array $panelConfig, string $method, string $endpoint, $payload = null, bool $asJson = true, bool $redactUrl = false, ?int $timeout = null)
 {
     $panel = $panelConfig['panel'];
     $apiKey = $panelConfig['api_key'];
@@ -56,6 +56,9 @@ function rebeccaApiRequest(array $panelConfig, string $method, string $endpoint,
     $request = new CurlRequest($url);
     if ($redactUrl) {
         $request->redactUrl();
+    }
+    if ($timeout !== null) {
+        $request->setTimeout($timeout);
     }
     $headers = [
         'accept: application/json',
@@ -367,7 +370,10 @@ function rebeccaListUsers(string $namePanel, array $usernames = [], ?string $sea
     $endpoint = '/api/users?' . implode('&', $params);
     $offset = 0;
     do {
-        $response = rebeccaDecodeResponse(rebeccaApiRequest($config, 'GET', $endpoint . '&offset=' . $offset, redactUrl: true), true);
+        // Account IDs are supplementary on service lists. Let the list render even if the panel is slow.
+        $response = rebeccaDecodeResponse(rebeccaApiRequest(
+            $config, 'GET', $endpoint . '&offset=' . $offset, redactUrl: true, timeout: $search === null ? 2 : null
+        ), true);
         $users = $response['data']['users'] ?? [];
         if (!is_array($users) || $users === []) {
             return;

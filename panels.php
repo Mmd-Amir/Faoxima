@@ -816,7 +816,7 @@ class ManagePanel
         }
         return $Output;
     }
-    function DataUser($name_panel, $username, $client_type = 'links')
+    function DataUser($name_panel, $username, $client_type = 'links', ?string $invoiceId = null)
     {
         $Output = array();
         global $pdo, $domainhosts;
@@ -829,8 +829,14 @@ class ManagePanel
             );
         }
         if (isset($Get_Data_Panel['subvip']) && $Get_Data_Panel['subvip'] == "onsubvip") {
-            $invoiceStmt = $pdo->prepare("SELECT id_invoice FROM invoice WHERE username = :username AND Service_location = :panel ORDER BY time_sell DESC, id_invoice DESC LIMIT 1");
-            $invoiceStmt->execute([':username' => $username, ':panel' => $Get_Data_Panel['name_panel']]);
+            $params = [':username' => $username, ':panel' => $Get_Data_Panel['name_panel']];
+            $invoiceFilter = '';
+            if ($invoiceId !== null) {
+                $invoiceFilter = ' AND id_invoice = :invoice';
+                $params[':invoice'] = $invoiceId;
+            }
+            $invoiceStmt = $pdo->prepare("SELECT id_invoice FROM invoice WHERE username = :username AND Service_location = :panel$invoiceFilter ORDER BY time_sell DESC, id_invoice DESC LIMIT 1");
+            $invoiceStmt->execute($params);
             $inoice = $invoiceStmt->fetch(PDO::FETCH_ASSOC);
         } else {
             $inoice = false;

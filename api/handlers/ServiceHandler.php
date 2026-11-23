@@ -121,6 +121,9 @@ final class ServiceHandler extends BaseHandler
             $clientType = 'links';
         }
         $rxPanelCacheKey = 'faoxima:panelcache:' . $invoice['Service_location'] . ':' . $invoice['username'];
+        if (($panel['subvip'] ?? '') === 'onsubvip') {
+            $rxPanelCacheKey .= ':invoice:' . $invoice['id_invoice'];
+        }
         if ($clientType !== 'links') {
             $rxPanelCacheKey .= ':fmt:' . $clientType;
         }
@@ -137,9 +140,7 @@ final class ServiceHandler extends BaseHandler
 
         if ($remote === null) {
             $managePanel = new ManagePanel();
-            $remote = $clientType === 'links'
-                ? $managePanel->DataUser($invoice['Service_location'], $invoice['username'])
-                : $managePanel->DataUser($invoice['Service_location'], $invoice['username'], $clientType);
+            $remote = $managePanel->DataUser($invoice['Service_location'], $invoice['username'], $clientType, (string) $invoice['id_invoice']);
 
             if (is_array($remote) && function_exists('rx_redis_is_active') && rx_redis_is_active()) {
                 $rxPanelEncoded = json_encode($remote, JSON_UNESCAPED_UNICODE);

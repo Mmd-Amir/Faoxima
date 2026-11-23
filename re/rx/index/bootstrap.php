@@ -1516,7 +1516,7 @@ if ($text == "version") {
     $isServiceSearch = $user['step'] === 'getuseragnetservice' && $datain === '' && trim($text) !== '';
     if (is_string($datain) && strpos($datain, 'quickview_') === 0) {
         $id_invoice_qv = $dataget[1];
-        $stmtQv = $pdo->prepare("SELECT * FROM invoice WHERE id_invoice = :i AND id_user = :u LIMIT 1");
+        $stmtQv = $pdo->prepare("SELECT * FROM invoice WHERE id_invoice = :i AND id_user = :u AND " . ServiceSearch::VISIBLE_STATUS . " LIMIT 1");
         $stmtQv->execute([':i' => $id_invoice_qv, ':u' => $from_id]);
         $nameloc_qv = $stmtQv->fetch(PDO::FETCH_ASSOC);
         if (!is_array($nameloc_qv)) {
@@ -1659,7 +1659,7 @@ if ($text == "version") {
     }
     [$nameloc] = ServiceSearch::addPanelIds($pdo, [$nameloc]);
     $panelIdLabel = empty($nameloc['panel_user_id']) ? '' : ' (ID ' . $nameloc['panel_user_id'] . ')';
-    $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
+    $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username'], 'links', (string) $nameloc['id_invoice']);
     if (is_array($DataUserOut) && isset($DataUserOut['status']) && $DataUserOut['status'] !== 'Unsuccessful') {
         try {
             update("invoice", "user_info", json_encode($DataUserOut, JSON_UNESCAPED_UNICODE), "id_invoice", $nameloc['id_invoice']);

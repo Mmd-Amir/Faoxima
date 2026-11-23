@@ -136,7 +136,7 @@ final class InvoicesHandler extends BaseHandler
                 if ($calcExpire > 0 && $calcExpire <= time()) {
                     try {
                         $managePanel = new ManagePanel();
-                        $liveData = $managePanel->DataUser($row['Service_location'], $row['username']);
+                        $liveData = $managePanel->DataUser($row['Service_location'], $row['username'], 'links', (string) $row['id_invoice']);
                         if (is_array($liveData) && !empty($liveData['status']) && $liveData['status'] !== 'Unsuccessful') {
                             $liveSt = strtolower((string)$liveData['status']);
                             $liveExp = is_numeric($liveData['expire'] ?? null) ? (int)$liveData['expire'] : 0;

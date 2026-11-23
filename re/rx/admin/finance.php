@@ -2606,11 +2606,10 @@ $iduser  در ربات  رفع مسدود گردید
 } elseif ($datain === 'searchorder' && ($adminrulecheck['rule'] ?? '') === 'administrator') {
     nm_adminInstantReply($from_id, $textbotlang['Admin']['order']['vieworderusername'], $backadmin, 'HTML');
     step('GetusernameconfigAndOrdedrs', $from_id);
-} elseif (($adminrulecheck['rule'] ?? '') === 'administrator' && (
-    preg_match('/^manageinvoice_([A-Za-z0-9_-]+)$/D', $datain, $invoiceMatch)
-    || preg_match('/^\/config(?:@\w+)?\s+(.+)$/D', $text, $configMatch)
+} elseif (preg_match('/^manageinvoice_([A-Za-z0-9_-]+)$/D', $datain, $invoiceMatch) || (($adminrulecheck['rule'] ?? '') === 'administrator' && (
+    preg_match('/^\/config(?:@\w+)?\s+(.+)$/D', $text, $configMatch)
     || ($user['step'] === 'GetusernameconfigAndOrdedrs' && $datain === '' && trim($text) !== '')
-)) {
+))) {
     rxArDraftResetIfAny($from_id, $user);
     if (!empty($invoiceMatch)) {
         $stmt = $pdo->prepare('SELECT * FROM invoice WHERE id_invoice = :order_id');
@@ -2698,7 +2697,7 @@ $iduser  در ربات  رفع مسدود گردید
 ⏳ زمان سرویس خریداری شده : {$OrderUser['Service_time']}
 📆 تاریخ خرید : $datatime
 ";
-    $DataUserOut = $ManagePanel->DataUser($OrderUser['Service_location'], $OrderUser['username']);
+    $DataUserOut = $ManagePanel->DataUser($OrderUser['Service_location'], $OrderUser['username'], 'links', (string) $OrderUser['id_invoice']);
     if ($DataUserOut['status'] == "Unsuccessful") {
         $keyboard_json = json_encode($keyboardlists);
         nm_adminInstantReply($from_id, "کاربر در پنل وجود ندارد", $keyboardadmin, 'html');

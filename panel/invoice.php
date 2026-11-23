@@ -24,14 +24,13 @@ if (!isset($_SESSION["user"]) || !$result) {
     return;
 }
 
-if (($result['rule'] ?? '') !== 'administrator') {
-    http_response_code(403);
-    exit('این بخش برای مدیر اصلی در دسترس است.');
-}
 fx_csrf_guard();
-require_once __DIR__ . '/../rebecca.php';
+$invCanSearchIdentifiers = ($result['rule'] ?? '') === 'administrator';
+if ($invCanSearchIdentifiers) {
+    require_once __DIR__ . '/../rebecca.php';
+}
 
-if (($_POST['action'] ?? '') === 'service_lookup') {
+if ($invCanSearchIdentifiers && ($_POST['action'] ?? '') === 'service_lookup') {
     $term = is_string($_POST['q'] ?? null) ? trim($_POST['q']) : '';
     $redirectParams = array_intersect_key($_POST, array_flip(['status', 'dpreset', 'ddays', 'dfrom', 'dto', 'min_price', 'max_price', 'product', 'pmatch', 'location']));
     if ($term !== '' && strlen($term) <= ServiceSearch::MAX_QUERY_LENGTH) {
@@ -49,13 +48,15 @@ if (($_POST['action'] ?? '') === 'service_lookup') {
     exit;
 }
 
-$lookup = is_string($_GET['lookup'] ?? null) ? $_GET['lookup'] : '';
+$lookup = $invCanSearchIdentifiers && is_string($_GET['lookup'] ?? null) ? $_GET['lookup'] : '';
 $privateQuery = $_SESSION['invoice_service_lookups'][$lookup] ?? [];
 $invQ = is_string($_GET['q'] ?? null) ? trim($_GET['q']) : '';
 if ($lookup !== '') {
     $invQ = ($privateQuery['until'] ?? 0) >= time() ? $privateQuery['query'] : '';
 }
 $invSearchParams = $lookup !== '' ? ['lookup' => $lookup] : ['q' => $invQ !== '' ? $invQ : null];
+$invIdentifierFilter = $invCanSearchIdentifiers
+    && (ServiceSearch::isPrivate($invQ) || ServiceSearch::numericId($invQ) !== null);
 $df = fx_date_filter_resolve();
 $invStatusOptions = [
     'unpaid'        => 'در انتظار پرداخت',
@@ -98,9 +99,10 @@ foreach (['dpreset', 'ddays', 'dfrom', 'dto'] as $invDk) {
 
 $whereSql = '1=1';
 $whereParams = [];
-if ($invQ !== '') {
-    [$condition, $whereParams] = ServiceSearch::condition($pdo, $invQ, $whereSql, $whereParams, ['id_invoice', 'id_user', 'username', 'name_product']);
-    $whereSql .= " AND $condition";
+if ($invQ !== '' && !$invIdentifierFilter) {
+    $invLike = '%' . $invQ . '%';
+    $whereSql .= ' AND (id_invoice LIKE :l1 OR id_user LIKE :l2 OR username LIKE :l3 OR name_product LIKE :l4)';
+    $whereParams = [':l1' => $invLike, ':l2' => $invLike, ':l3' => $invLike, ':l4' => $invLike];
 }
 if ($lookup !== '' && $invQ === '') {
     $whereSql .= ' AND 0 = 1';
@@ -139,7 +141,7 @@ $invFilterCriteria = array_merge(fx_filter_delete_criteria($invStatusActive ? $i
 $invDeleteNote = ($invTestScope ? 'حذف فقط به رکوردهای فاکتور «سرویس تست» مطابق فیلتر محدود است. ' : '')
     . 'این عملیات فقط رکوردهای سفارش (تاریخچه فاکتور) را از پایگاه داده ربات حذف می‌کند و هیچ اکانت یا کانفیگی از پنل خارجی حذف نمی‌شود.';
 if (fx_filter_delete_requested()) {
-    $fdRes = ($invFilterActive && !$invDeleteBlocked) ? fx_filter_delete_where($pdo, 'invoice', $whereSql, $whereParams) : [0, 0];
+    $fdRes = ($invFilterActive && !$invDeleteBlocked && !$invIdentifierFilter) ? fx_filter_delete_where($pdo, 'invoice', $whereSql, $whereParams) : [0, 0];
     fx_filter_delete_redirect('invoice.php', $invFilterParams, (int)$fdRes[0], (int)$fdRes[1], '', !empty($fdRes[2]));
 }
 
@@ -159,6 +161,13 @@ if (!empty($_POST['action']) && $_POST['action'] === 'bulk_delete') {
     fx_bulk_delete_redirect('invoice.php', count($requestedIds), $deletedCount, '', $invBulkKeep, $invBulkFailed);
 }
 
+if ($invIdentifierFilter) {
+    [$condition, $identifierParams] = ServiceSearch::condition(
+        $pdo, $invQ, $whereSql, $whereParams, ['id_invoice', 'id_user', 'username', 'name_product'], includeTextMatches: true
+    );
+    $whereSql .= " AND $condition";
+    $whereParams += $identifierParams;
+}
 $pg = fx_paginate($pdo, "SELECT COUNT(*) FROM invoice WHERE $whereSql", $whereParams, 5);
 
 $query = $pdo->prepare("SELECT * FROM invoice WHERE $whereSql ORDER BY id_invoice DESC LIMIT :perPage OFFSET :offset");
@@ -166,7 +175,10 @@ foreach ($whereParams as $k => $v) $query->bindValue($k, $v, is_int($v) ? PDO::P
 $query->bindValue(':perPage', $pg['perPage'], PDO::PARAM_INT);
 $query->bindValue(':offset', $pg['offset'], PDO::PARAM_INT);
 $query->execute();
-$listinvoice = ServiceSearch::addPanelIds($pdo, $query->fetchAll(PDO::FETCH_ASSOC));
+$listinvoice = $query->fetchAll(PDO::FETCH_ASSOC);
+if ($invCanSearchIdentifiers) {
+    $listinvoice = ServiceSearch::addPanelIds($pdo, $listinvoice);
+}
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
@@ -182,7 +194,7 @@ $listinvoice = ServiceSearch::addPanelIds($pdo, $query->fetchAll(PDO::FETCH_ASSO
 <body>
 
 <section id="container">
-    <?php include("header.php"); ?>
+    <?php include __DIR__ . '/header.php'; ?>
 
     <section id="main-content">
         <div class="wrapper fx-page-list">
@@ -201,7 +213,7 @@ $listinvoice = ServiceSearch::addPanelIds($pdo, $query->fetchAll(PDO::FETCH_ASSO
 
             <?php echo fx_filter_delete_flash_html(); ?>
 
-            <?php echo fx_search_ui('invoice.php', $invQ, array_merge(['status' => $invStatus !== '' ? $invStatus : null, 'lookup' => $lookup], $invDateKeep, $invExtraKeep), 'نام کاربری، شناسهٔ حساب، UUID یا لینک اشتراک', 'q', true); ?>
+            <?php echo fx_search_ui('invoice.php', $invQ, array_merge(['status' => $invStatus !== '' ? $invStatus : null, 'lookup' => $lookup], $invDateKeep, $invExtraKeep), $invCanSearchIdentifiers ? 'نام کاربری، شناسهٔ حساب، UUID یا لینک اشتراک' : 'جستجو در شناسه سفارش، آیدی کاربر، نام کانفیگ یا محصول…', 'q', $invCanSearchIdentifiers); ?>
 
             <?php echo fx_status_filter_ui('invoice.php', $invStatusOptions, $invStatus, array_merge($invSearchParams, $invDateKeep, $invExtraKeep)); ?>
 
@@ -209,7 +221,10 @@ $listinvoice = ServiceSearch::addPanelIds($pdo, $query->fetchAll(PDO::FETCH_ASSO
                 <div class="alert" style="background:var(--color-warning-soft); border:1px solid var(--color-warning); color:var(--color-warning); padding:12px 16px; border-radius:10px; margin-bottom:18px;">برخی مقادیر فیلتر نامعتبر هستند و نادیده گرفته شدند؛ برای جلوگیری از حذف ناخواسته، «حذف همه نتایج فیلترشده» غیرفعال است.</div>
             <?php endif; ?>
 
-            <?php $fxFd = fx_filter_delete_parts('invoice.php', $invFilterParams, ($invFilterActive && !$invDeleteBlocked) ? (int)$pg['total'] : 0, $invFilterCriteria, '', $invDeleteNote); ?>
+            <?php if ($invIdentifierFilter && $pg['total'] > 0): ?>
+                <p class="muted">برای حذف در نتایج جستجوی شناسه یا لینک اشتراک، سفارش‌های موردنظر را انتخاب کنید.</p>
+            <?php endif; ?>
+            <?php $fxFd = fx_filter_delete_parts('invoice.php', $invFilterParams, ($invFilterActive && !$invDeleteBlocked && !$invIdentifierFilter) ? (int)$pg['total'] : 0, $invFilterCriteria, '', $invDeleteNote); ?>
             <?php $fxFdExtra = $fxFd['button'] !== '' ? '<div class="fx-date-filter__active">' . htmlspecialchars($invDeleteNote, ENT_QUOTES, 'UTF-8') . '</div>' : ''; ?>
             <?php echo fx_date_filter_ui('invoice.php', '', array_merge($invSearchParams, ['status' => $invStatus !== '' ? $invStatus : null], $invExtraKeep), '', $fxFd['button'], $fxFd['form'] . $fxFdExtra); ?>
 

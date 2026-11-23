@@ -39,7 +39,7 @@ final class ServiceSearch
      * $scope is supplied by the authenticated entry point and is reapplied to the final invoice query.
      * Returns a WHERE fragment and its new parameters, using the unaliased invoice table.
      */
-    public static function condition(PDO $pdo, string $query, string $scope, array $scopeParams, array $textColumns = ['username']): array
+    public static function condition(PDO $pdo, string $query, string $scope, array $scopeParams, array $textColumns = ['username'], bool $includeTextMatches = false): array
     {
         $query = trim($query);
         if ($query === '' || strlen($query) > self::MAX_QUERY_LENGTH) {
@@ -51,8 +51,8 @@ final class ServiceSearch
         $text = [];
         $textParams = [];
         $isUrl = preg_match('~^https?://~i', $query) === 1;
-        $number = self::numericId($query);
         $uuid = self::uuid($query);
+        $number = $uuid === null ? self::numericId($query) : null;
         if ($isUrl) {
             $url = self::url($query);
             if ($url === null) {
@@ -100,13 +100,16 @@ final class ServiceSearch
                     $exact[] = "(Service_location = :svc_panel_$index AND BINARY username = :svc_user_$index)";
                     $exactParams[":svc_panel_$index"] = $panel;
                     $exactParams[":svc_user_$index"] = $username;
-                    if ($number !== null && $uuid === null) {
+                    if ($number !== null) {
                         break;
                     }
                 }
             }
         }
         if ($exact !== []) {
+            if ($includeTextMatches && !$isUrl) {
+                return ['(' . implode(' OR ', array_merge($exact, $text)) . ')', $exactParams + $textParams];
+            }
             $condition = '(' . implode(' OR ', $exact) . ')';
             if ($isUrl) {
                 return [$condition, $exactParams];
@@ -182,6 +185,10 @@ final class ServiceSearch
                     if (preg_match('/^[A-Za-z0-9_.-]{15,512}$/D', $token)
                         && dirname($input[1]) === dirname($known[1])) {
                         $endpoint = rtrim(dirname($known[1]), '/') . '/' . rawurlencode($token) . '/info';
+                        $panelPath = rtrim((string) parse_url($panelUrl, PHP_URL_PATH), '/');
+                        if ($panelPath !== '' && str_starts_with($endpoint, $panelPath . '/')) {
+                            $endpoint = substr($endpoint, strlen($panelPath));
+                        }
                         $result = rebeccaDecodeResponse(rebeccaApiRequest($config, 'GET', $endpoint, redactUrl: true));
                         if (($result['data']['user']['username'] ?? null) === $user['username']) {
                             return true;
@@ -207,7 +214,7 @@ final class ServiceSearch
             } elseif (stripos($link, 'vmess://') === 0) {
                 $payload = explode('#', substr($link, 8), 2)[0];
                 $config = json_decode((string) base64_decode(strtr($payload, '-_', '+/'), true), true);
-                $credential = $config['id'] ?? null;
+                $credential = $config['id'] ?? $config['uuid'] ?? null;
             } else {
                 continue;
             }
