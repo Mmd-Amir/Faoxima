@@ -2,7 +2,8 @@ import { call } from '../api.js?v=0.0.53';
 import { escapeHtml, skeletonList, fmtBytes, fmtNumber, serviceListIdentity, serviceStatusBadge } from '../utils.js?v=0.0.54';
 import { icon } from '../icons.js?v=0.0.52';
 
-const columns = [
+const sortOptions = [
+    ['زمان خرید', 'recent'],
     ['شناسهٔ سرویس', 'panel_user_id'],
     ['نام کاربری سرویس', 'username'],
     ['روز مانده', 'days_remaining'],
@@ -16,24 +17,33 @@ function statusBadge(it) {
     return `<span class="badge ${status.badge}">${icon(status.icon, 'class="ico"')} ${escapeHtml(status.text)}</span>`;
 }
 
-function renderServiceRow(it) {
+function renderService(it) {
     const username = it.username || '—';
     const href = `#/services/${encodeURIComponent(username)}/${encodeURIComponent(it.id_invoice)}`;
     const days = it.days_remaining == null ? '—' : it.days_remaining === -1 ? 'نامحدود' : fmtNumber(it.days_remaining);
     const traffic = it.remaining_bytes == null ? '—' : it.remaining_bytes === -1 ? 'نامحدود' : fmtBytes(it.remaining_bytes);
     const expires = it.expires_at == null ? '—' : it.expires_at === 0 ? 'نامحدود' : expiryDate.format(it.expires_at * 1000);
 
-    return `<tr>
-        <td>${statusBadge(it)}${it.has_queued_renewal ? `<span class="badge is-active">${icon('online', 'class="ico"')} رزرو اشتراک</span>` : ''}</td>
-        <td><bdi dir="ltr">${escapeHtml(it.panel_user_id || '—')}</bdi></td>
-        <th scope="row">
-            <a href="${href}"><bdi dir="ltr">${escapeHtml(it.display_username || username)}</bdi></a>
-            ${it.name_product ? `<div class="muted">${escapeHtml(it.name_product)}</div>` : ''}
-        </th>
-        <td>${escapeHtml(days)}</td>
-        <td><bdi>${escapeHtml(traffic)}</bdi></td>
-        <td>${escapeHtml(expires)}</td>
-    </tr>`;
+    return `<article class="service-summary">
+        <div class="service-summary-head">
+            <div class="service-summary-identity">
+                <h2><a href="${href}"><bdi>${escapeHtml(it.display_username || username)}</bdi>${icon('chevronLeft', 'class="service-open-icon" aria-hidden="true"')}</a></h2>
+                <div class="service-summary-meta">
+                    <span>شناسهٔ سرویس <bdi dir="ltr">${escapeHtml(it.panel_user_id || '—')}</bdi></span>
+                    ${it.name_product ? `<span class="service-summary-plan">${escapeHtml(it.name_product)}</span>` : ''}
+                </div>
+            </div>
+            <div class="service-summary-badges">
+                ${statusBadge(it)}
+                ${it.has_queued_renewal ? '<span class="badge is-gold">رزرو اشتراک</span>' : ''}
+            </div>
+        </div>
+        <dl class="service-summary-metrics">
+            <div><dt>روز مانده</dt><dd><bdi>${escapeHtml(days)}</bdi></dd></div>
+            <div><dt>حجم مانده</dt><dd><bdi>${escapeHtml(traffic)}</bdi></dd></div>
+            <div><dt>تاریخ انقضا</dt><dd><bdi>${escapeHtml(expires)}</bdi></dd></div>
+        </dl>
+    </article>`;
 }
 
 export async function services(view) {
@@ -48,39 +58,46 @@ export async function services(view) {
     let direction = 'desc';
 
     view.innerHTML = `
-        <article class="card card-window card-bare">
-            <header class="card-window-bar">
-                <span class="dots"><span></span><span></span><span></span></span>
-                <span class="window-url">faoxima/services</span>
-            </header>
-            <div class="card-body">
-                <div class="list-head">
-                    <p class="section-title">${icon('fileText')} سرویس‌های من</p>
-                    <span class="list-count hidden" id="services-count"></span>
-                </div>
+        <section class="services-page" aria-labelledby="services-heading">
+            <div class="services-heading">
+                <h1 id="services-heading">سرویس‌های من</h1>
+                <span class="list-count hidden" id="services-count" aria-live="polite"></span>
+            </div>
 
-                <label id="services-scope" class="hidden mt-sm">
-                    <input id="services-all" type="checkbox" /> جستجو در همهٔ سرویس‌ها
-                </label>
-                <label class="search-field mt-sm">
+            <div class="services-tools">
+                <div class="search-field services-search">
                     ${icon('search', 'class="ico search-field-ico"')}
-                    <input id="services-search" type="text" placeholder="نام کاربری سرویس، شناسهٔ سرویس، UUID یا لینک اشتراک" aria-label="جستجوی سرویس" inputmode="search" maxlength="2048" autocomplete="off" autocapitalize="off" spellcheck="false" />
+                    <input id="services-search" type="text" dir="auto" placeholder="جستجو در سرویس‌ها" aria-label="جستجوی سرویس" enterkeyhint="search" inputmode="search" maxlength="2048" autocomplete="off" autocapitalize="off" spellcheck="false" />
                     <button type="button" class="search-field-clear hidden" id="services-search-clear" aria-label="پاک کردن جستجو">
                         ${icon('close', 'class="ico"')}
                     </button>
-                </label>
-
-                <div id="services-list" class="list mt-sm">
-                    ${skeletonList(4)}
                 </div>
-
-                <div class="pager hidden" id="services-pager">
-                    <button class="btn btn-ghost" id="services-prev">${icon('chevronRight', 'class="ico ico-leading"')}قبلی</button>
-                    <span class="pager-info" id="services-pager-info"></span>
-                    <button class="btn btn-ghost" id="services-next">بعدی${icon('chevronLeft', 'class="ico ico-trailing"')}</button>
+                <details class="services-search-help">
+                    <summary>راهنمای جستجو</summary>
+                    <p>نام کاربری، شناسهٔ سرویس، UUID یا لینک کامل اشتراک</p>
+                </details>
+                <label id="services-scope" class="services-scope hidden">
+                    <input id="services-all" type="checkbox" /> جستجو در همهٔ سرویس‌ها
+                </label>
+                <div class="services-sort" id="services-sort">
+                    <label for="services-sort-field">مرتب‌سازی</label>
+                    <select id="services-sort-field">
+                        ${sortOptions.map(([label, key]) => `<option value="${key}">${label}</option>`).join('')}
+                    </select>
+                    <button class="btn btn-ghost" type="button" id="services-sort-direction" aria-label="تغییر جهت مرتب‌سازی به صعودی">↓ نزولی</button>
                 </div>
             </div>
-        </article>
+
+            <div id="services-list" class="list" aria-busy="true">
+                ${skeletonList(4)}
+            </div>
+
+            <div class="pager hidden" id="services-pager">
+                <button class="btn btn-ghost" id="services-prev"><span aria-hidden="true">›</span> قبلی</button>
+                <span class="pager-info" id="services-pager-info"></span>
+                <button class="btn btn-ghost" id="services-next">بعدی <span aria-hidden="true">‹</span></button>
+            </div>
+        </section>
     `;
 
     const $list = view.querySelector('#services-list');
@@ -93,9 +110,13 @@ export async function services(view) {
     const $count = view.querySelector('#services-count');
     const $scope = view.querySelector('#services-scope');
     const $all = view.querySelector('#services-all');
+    const $sort = view.querySelector('#services-sort');
+    const $sortField = view.querySelector('#services-sort-field');
+    const $sortDirection = view.querySelector('#services-sort-direction');
 
     async function load() {
         const request = ++loadSequence;
+        $list.setAttribute('aria-busy', 'true');
         $list.innerHTML = skeletonList(4);
         $pager.classList.add('hidden');
 
@@ -130,11 +151,11 @@ export async function services(view) {
                 return;
             }
 
-            $list.innerHTML = allServices ? items.map(renderAdminItem).join('') : renderTable(items);
+            $list.innerHTML = items.map(allServices ? renderAdminItem : renderService).join('');
 
             if (totalPages > 1) {
                 $pager.classList.remove('hidden');
-                $info.textContent = `صفحه ${fmtNumber(page)} از ${fmtNumber(totalPages)} (${fmtNumber(totalItems)} سرویس)`;
+                $info.textContent = `صفحه ${fmtNumber(page)} از ${fmtNumber(totalPages)}`;
                 $prev.disabled = page <= 1;
                 $next.disabled = page >= totalPages;
             }
@@ -148,21 +169,9 @@ export async function services(view) {
                     <p class="muted">${escapeHtml(err.message || '')}</p>
                 </div>
             `;
+        } finally {
+            if (request === loadSequence) $list.setAttribute('aria-busy', 'false');
         }
-    }
-
-    function renderTable(items) {
-        const headings = columns.map(([label, key]) => {
-            const order = key === sort ? (direction === 'asc' ? 'ascending' : 'descending') : '';
-            const arrow = order ? (direction === 'asc' ? ' ↑' : ' ↓') : ' ↕';
-            return `<th scope="col"${order ? ` aria-sort="${order}"` : ''}><button type="button" data-sort="${key}">${label}<span aria-hidden="true">${arrow}</span></button></th>`;
-        }).join('');
-        return `<div class="services-table-scroll" tabindex="0" role="region" aria-label="سرویس‌های من">
-            <table class="services-table" aria-label="سرویس‌های من">
-                <thead><tr><th scope="col">وضعیت</th>${headings}</tr></thead>
-                <tbody>${items.map(renderServiceRow).join('')}</tbody>
-            </table>
-        </div>`;
     }
 
     function renderAdminItem(it) {
@@ -207,21 +216,28 @@ export async function services(view) {
     $all.addEventListener('change', () => {
         clearTimeout(searchTimer);
         allServices = $all.checked;
+        $sort.classList.toggle('hidden', allServices);
         query = $search.value.trim();
+        $searchClear.classList.toggle('hidden', query === '');
         page = 1;
         load();
     });
-    $list.addEventListener('click', async (event) => {
-        const button = event.target.closest('button[data-sort]');
-        if (!button) return;
-        const nextSort = button.dataset.sort;
-        direction = sort === nextSort ? (direction === 'asc' ? 'desc' : 'asc') : (nextSort === 'username' ? 'asc' : 'desc');
-        sort = nextSort;
+    function applySort() {
+        const ascending = direction === 'asc';
+        $sortDirection.textContent = ascending ? '↑ صعودی' : '↓ نزولی';
+        $sortDirection.setAttribute('aria-label', ascending ? 'تغییر جهت مرتب‌سازی به نزولی' : 'تغییر جهت مرتب‌سازی به صعودی');
         page = 1;
-        await load();
-        if (document.activeElement === document.body) {
-            $list.querySelector(`button[data-sort="${nextSort}"]`)?.focus();
-        }
+        load();
+    }
+
+    $sortField.addEventListener('change', () => {
+        sort = $sortField.value;
+        direction = sort === 'username' ? 'asc' : 'desc';
+        applySort();
+    });
+    $sortDirection.addEventListener('click', () => {
+        direction = direction === 'asc' ? 'desc' : 'asc';
+        applySort();
     });
     $prev.addEventListener('click', () => { if (page > 1) { page--; load(); } });
     $next.addEventListener('click', () => { if (page < totalPages) { page++; load(); } });

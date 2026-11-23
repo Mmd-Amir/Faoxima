@@ -1179,189 +1179,113 @@ if ($text == "version") {
         update("user", "verify", "1", "id", $from_id);
     }
     step('home', $from_id);
-} elseif (($text !== '' && $text == $datatextbot['text_Purchased_services']) || $datain == "backorder" || $datain == "myservicesbtn" || $text == "/services") {
-    $items_per_page = 20;
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :owner AND " . ServiceSearch::VISIBLE_STATUS
-        . " ORDER BY time_sell DESC, id_invoice DESC LIMIT $items_per_page");
-    $stmt->execute([':owner' => $from_id]);
-    $serviceRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    if ($serviceRows === [] && $setting['NotUser'] == "offnotuser") {
-        sendmessage($from_id, $textbotlang['users']['sell']['service_not_available'], null, 'html');
-        return;
-    }
-    rx_section_media_enter('services', $from_id, $datain, $message_id, ['myservicesbtn'], ['myservicesbtn']);
-    update("user", "pagenumber", 1, "id", $from_id);
-    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $serviceRows, 'quickview_', ($setting['statusnamecustom'] ?? '') === 'onnamecustom')];
-    $pagination_buttons = [
-        [
-            'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page'
-        ],
-        ['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice']
-    ];
-    $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
-    $backuser = [
-        rx_kb_style(['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'backuser'], 'backuser', $_rx_nav_s)
-    ];
-    if ($setting['NotUser'] == "onnotuser") {
-        $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['page']['notusernameme'], 'callback_data' => 'notusernameme']];
-    }
-    $keyboardlists['inline_keyboard'][] = $pagination_buttons;
-    if ($serviceRows !== [] && ($Chat_type ?? '') === 'private') {
-        $keyboardlists['inline_keyboard'][] = [['text' => '📋 جدول سرویس‌ها', 'callback_data' => 'svctable:recent:d:1']];
-        $miniappHost = rtrim(preg_replace('#^https?://#i', '', trim((string) ($domainhosts ?? ''))), '/');
-        $miniappUrl = 'https://' . $miniappHost . '/app/?view=services';
-        if (filter_var($miniappUrl, FILTER_VALIDATE_URL) !== false) {
-            $keyboardlists['inline_keyboard'][] = [['text' => 'جدول در مینی‌اپ', 'web_app' => ['url' => $miniappUrl]]];
-        }
-    }
-    $keyboardlists['inline_keyboard'][] = $backuser;
-    $keyboard_json = json_encode($keyboardlists);
-    if ($datain == "backorder" || $datain == "myservicesbtn") {
-        Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json);
-    } else {
-        sendmessage($from_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json, 'html');
-    }
-
-
-} elseif (($Chat_type ?? '') === 'private' && preg_match('/^svctable:([a-z_]+):([ad]):([0-9]{1,9})$/D', $datain, $tableAction)) {
-    [, $sort, $direction, $page] = $tableAction;
+} elseif (($text !== '' && $text == $datatextbot['text_Purchased_services']) || $text === '/services'
+    || in_array($datain, ['backorder', 'myservicesbtn', 'next_page', 'previous_page'], true)
+    || preg_match('/^svctable:([a-z_]+):([ad]):([0-9]{1,9})(?::(days_remaining|remaining_bytes|expires_at))?$/D', $datain, $serviceTable)) {
+    $sort = $serviceTable[1] ?? 'recent';
+    $direction = $serviceTable[2] ?? 'd';
     if (!in_array($sort, ServiceSearch::TABLE_SORTS, true)) {
         return;
     }
+    $metrics = ['days_remaining' => 'روز مانده', 'remaining_bytes' => 'حجم مانده', 'expires_at' => 'انقضا'];
+    $metric = $serviceTable[4] ?? (isset($metrics[$sort]) ? $sort : 'days_remaining');
+    $limit = 6;
+    $scope = 'id_user = :owner AND ' . ServiceSearch::VISIBLE_STATUS;
+    $params = [':owner' => (string) $from_id];
     if (!empty($callback_query_id)) {
         telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
     }
-    $limit = 5;
-    $scope = 'id_user = :owner AND ' . ServiceSearch::VISIBLE_STATUS;
-    $params = [':owner' => (string) $from_id];
     $count = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE $scope");
     $count->execute($params);
     $totalPages = max(1, (int) ceil($count->fetchColumn() / $limit));
-    $page = max(1, min($totalPages, (int) $page));
-    $offset = ($page - 1) * $limit;
-    $rows = ServiceSearch::invoicePage($pdo, $scope, $params, $limit, $offset, $sort, $direction === 'a');
-    $tableText = "📋 <b>سرویس‌های من</b>\n";
+    $requestedPage = match ($datain) {
+        'next_page', 'previous_page' => (int) ($user['pagenumber'] ?? 1) + ($datain === 'next_page' ? 1 : -1),
+        default => (int) ($serviceTable[3] ?? 1),
+    };
+    $page = max(1, min($totalPages, $requestedPage));
+    $rows = ServiceSearch::invoicePage($pdo, $scope, $params, $limit, ($page - 1) * $limit, $sort, $direction === 'a');
+
+    rx_section_media_enter('services', $from_id, $datain, $message_id, ['myservicesbtn'], ['myservicesbtn']);
     $buttons = [];
+    $tableText = "🛍 <b>سرویس‌های من</b>";
     if ($rows === []) {
-        $tableText .= "\n" . $textbotlang['users']['sell']['service_not_available'];
+        $tableText .= "\n\n" . $textbotlang['users']['sell']['service_not_available'];
     } else {
-        $tableText .= "\n<b>نام کاربری سرویس</b>\nوضعیت | شناسهٔ سرویس | روز مانده | حجم مانده | تاریخ انقضا";
-        $details = [];
-        foreach ($rows as $index => $row) {
-            $number = $offset + $index + 1;
-            $username = htmlspecialchars((string) $row['username'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $tableText .= "\nبرای مرتب‌سازی، عنوان ستون را بزنید.";
+        $headings = [];
+        foreach (['username' => 'نام کاربری', 'panel_user_id' => 'شناسهٔ سرویس', $metric => $metrics[$metric]] as $field => $label) {
+            $nextDirection = $field === $sort ? ($direction === 'a' ? 'd' : 'a') : ($field === 'username' ? 'a' : 'd');
+            $arrow = $field === $sort ? ($direction === 'a' ? ' ↑' : ' ↓') : '';
+            $headings[] = ['text' => $label . $arrow, 'callback_data' => "svctable:$field:$nextDirection:1:$metric"];
+        }
+        $buttons[] = $headings;
+        foreach ($rows as $row) {
             $status = match ($row['panel_usage']['status'] ?? $row['Status']) {
-                'disabled', 'disablebyadmin' => '🔴 غیرفعال',
-                'end_of_time', 'expired' => '🟠 منقضی',
-                'end_of_volume', 'limited' => '🟠 پایان حجم',
-                'send_on_hold', 'on_hold' => '🟡 متوقف',
-                'sendedwarn' => '🟡 هشدار',
-                'active' => '🟢 فعال',
-                default => '⚪ —',
+                'disabled', 'disablebyadmin' => '🔴',
+                'end_of_time', 'expired' => '⌛',
+                'end_of_volume', 'limited' => '📉',
+                'send_on_hold', 'on_hold' => '⏸',
+                'sendedwarn' => '⚠️',
+                'active' => '🟢',
+                default => '⚪',
             };
+            $username = trim((string) $row['username']);
             $id = $row['panel_user_id'] ?? '—';
-            $days = match ($row['days_remaining']) { null => '—', -1 => 'نامحدود', default => (string) $row['days_remaining'] };
-            $traffic = match ($row['remaining_bytes']) {
-                null => '—', -1 => 'نامحدود', 0 => '۰ بایت', default => formatBytes($row['remaining_bytes']),
-            };
-            $expiry = match ($row['expires_at']) { null => '—', 0 => 'نامحدود', default => jdate('Y/m/d', $row['expires_at']) };
-            $tableText .= "\n\n$number. <code>$username</code>\n$status | $id | $days | $traffic | $expiry";
-            $details[] = ['text' => "مشاهده $number", 'callback_data' => 'quickview_' . $row['id_invoice']];
+            $value = $row[$metric];
+            if ($value === null) {
+                $caption = '—';
+            } elseif ($value === -1 || ($metric === 'expires_at' && $value === 0)) {
+                $caption = 'نامحدود';
+            } else {
+                $caption = match ($metric) {
+                    'expires_at' => jdate('Y/m/d', $value),
+                    'remaining_bytes' => $value === 0 ? '۰ بایت' : strtr(formatBytes($value), [
+                        'کیلوبایت' => 'KB', 'مگابایت' => 'MB', 'گیگابایت' => 'GB', 'ترابایت' => 'TB',
+                    ]),
+                    default => (string) $value,
+                };
+            }
+            $details = 'quickview_' . $row['id_invoice'];
+            $buttons[] = [
+                ['text' => $status . ' ' . ($username !== '' ? $username : '—'), 'callback_data' => $details],
+                ['text' => $id, 'callback_data' => $details],
+                ['text' => $caption, 'callback_data' => $details],
+            ];
         }
-        $tableText .= "\n\nصفحه $page از $totalPages";
-        $buttons = array_chunk($details, 3);
-        $sortButtons = [];
-        foreach (['username' => 'نام کاربری سرویس', 'panel_user_id' => 'شناسهٔ سرویس', 'days_remaining' => 'روز مانده',
-            'remaining_bytes' => 'حجم مانده', 'expires_at' => 'تاریخ انقضا'] as $field => $label) {
-            $nextDirection = $sort === $field ? ($direction === 'a' ? 'd' : 'a') : ($field === 'username' ? 'a' : 'd');
-            $arrow = $sort === $field ? ($direction === 'a' ? ' ↑' : ' ↓') : ' ↕';
-            $sortButtons[] = ['text' => $label . $arrow, 'callback_data' => "svctable:$field:$nextDirection:1"];
+
+        $metricButtons = [];
+        foreach ($metrics as $field => $label) {
+            $metricButtons[] = [
+                'text' => ($field === $metric ? '✓ ' : '') . $label,
+                'callback_data' => "svctable:$sort:$direction:$page:$field",
+            ];
         }
-        $buttons = array_merge($buttons, array_chunk($sortButtons, 2));
-        $navigation = [];
-        if ($page > 1) {
-            $navigation[] = ['text' => $textbotlang['users']['page']['previous'], 'callback_data' => "svctable:$sort:$direction:" . ($page - 1)];
-        }
-        if ($page < $totalPages) {
-            $navigation[] = ['text' => $textbotlang['users']['page']['next'], 'callback_data' => "svctable:$sort:$direction:" . ($page + 1)];
-        }
-        if ($navigation !== []) {
+        $buttons[] = $metricButtons;
+        if ($totalPages > 1) {
+            $tableText .= "\nصفحه $page از $totalPages";
+            $navigation = [];
+            if ($page > 1) {
+                $navigation[] = ['text' => $textbotlang['users']['page']['previous'], 'callback_data' => "svctable:$sort:$direction:" . ($page - 1) . ":$metric"];
+            }
+            if ($page < $totalPages) {
+                $navigation[] = ['text' => $textbotlang['users']['page']['next'], 'callback_data' => "svctable:$sort:$direction:" . ($page + 1) . ":$metric"];
+            }
             $buttons[] = $navigation;
         }
     }
+    if (($setting['NotUser'] ?? '') === 'onnotuser') {
+        $buttons[] = [['text' => $textbotlang['users']['page']['notusernameme'], 'callback_data' => 'notusernameme']];
+    }
     $buttons[] = [
         ['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice'],
-        ['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => 'backorder'],
+        rx_kb_style(['text' => '🔙 بازگشت به منوی اصلی', 'callback_data' => 'backuser'], 'backuser', is_array($_rx_nav_styles ?? null) ? $_rx_nav_styles : []),
     ];
-    Editmessagetext($from_id, $message_id, $tableText, json_encode(['inline_keyboard' => $buttons]), 'HTML');
-} elseif ($datain == 'next_page') {
-    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE id_user = :owner AND " . ServiceSearch::VISIBLE_STATUS);
-    $countStmt->execute([':owner' => $from_id]);
-    $page = max(1, (int) $user['pagenumber']);
-    $items_per_page = 20;
-    $next_page = $page * $items_per_page >= (int) $countStmt->fetchColumn() ? 1 : $page + 1;
-    $start_index = ($next_page - 1) * $items_per_page;
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :owner AND " . ServiceSearch::VISIBLE_STATUS
-        . " ORDER BY time_sell DESC, id_invoice DESC LIMIT $start_index, $items_per_page");
-    $stmt->execute([':owner' => $from_id]);
-    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC), 'quickview_', ($setting['statusnamecustom'] ?? '') === 'onnamecustom')];
-    $pagination_buttons = [
-        [
-            'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page'
-        ],
-        [
-            'text' => $textbotlang['users']['page']['previous'],
-            'callback_data' => 'previous_page'
-        ]
-    ];
-    $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
-    $backuser = [
-        rx_kb_style(['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'backuser'], 'backuser', $_rx_nav_s)
-    ];
-    $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice']];
-    if ($setting['NotUser'] == "onnotuser") {
-        $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['page']['notusernameme'], 'callback_data' => 'notusernameme']];
+    $keyboard_json = json_encode(['inline_keyboard' => $buttons], JSON_INVALID_UTF8_SUBSTITUTE);
+    if (!empty($serviceTable) || in_array($datain, ['backorder', 'myservicesbtn', 'next_page', 'previous_page'], true)) {
+        Editmessagetext($from_id, $message_id, $tableText, $keyboard_json, 'HTML');
+    } else {
+        sendmessage($from_id, $tableText, $keyboard_json, 'HTML');
     }
-    $keyboardlists['inline_keyboard'][] = $pagination_buttons;
-    $keyboardlists['inline_keyboard'][] = $backuser;
-    $keyboard_json = json_encode($keyboardlists);
-    update("user", "pagenumber", $next_page, "id", $from_id);
-    Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json);
-
-} elseif ($datain == 'previous_page') {
-    $previous_page = max(1, (int) $user['pagenumber'] - 1);
-    $items_per_page = 20;
-    $start_index = ($previous_page - 1) * $items_per_page;
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :owner AND " . ServiceSearch::VISIBLE_STATUS
-        . " ORDER BY time_sell DESC, id_invoice DESC LIMIT $start_index, $items_per_page");
-    $stmt->execute([':owner' => $from_id]);
-    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC), 'quickview_', ($setting['statusnamecustom'] ?? '') === 'onnamecustom')];
-    $pagination_buttons = [
-        [
-            'text' => $textbotlang['users']['page']['next'],
-            'callback_data' => 'next_page'
-        ],
-        [
-            'text' => $textbotlang['users']['page']['previous'],
-            'callback_data' => 'previous_page'
-        ]
-    ];
-    $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
-    $backuser = [
-        rx_kb_style(['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'backuser'], 'backuser', $_rx_nav_s)
-    ];
-    $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice']];
-    if ($setting['NotUser'] == "onnotuser") {
-        $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['page']['notusernameme'], 'callback_data' => 'notusernameme']];
-    }
-    $keyboardlists['inline_keyboard'][] = $pagination_buttons;
-    $keyboardlists['inline_keyboard'][] = $backuser;
-    $keyboard_json = json_encode($keyboardlists);
-    update("user", "pagenumber", $previous_page, "id", $from_id);
-    Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json);
-
 } elseif ($datain == "notusernameme") {
     sendmessage($from_id, $textbotlang['users']['stateus']['SendUsername'], $backuser, 'html');
     step('getusernameinfo', $from_id);

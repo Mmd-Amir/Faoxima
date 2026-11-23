@@ -831,26 +831,98 @@ img, svg { display: block; max-width: 100%; }
     white-space: normal;
     overflow-wrap: anywhere;
 }
-.services-table-scroll { overflow-x: auto; }
-.services-table { width: 100%; border-collapse: collapse; text-align: start; }
-.services-table th, .services-table td {
-    border-bottom: 1px solid var(--border);
-    padding: 10px 8px;
-    text-align: start;
-    white-space: nowrap;
+.services-page { min-width: 0; }
+.services-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 12px;
 }
-.services-table thead { color: var(--text-muted); }
-.services-table thead button {
-    background: transparent;
-    border: 0;
-    padding: 4px 0;
-    color: inherit;
+.services-heading h1 { margin: 0; font-size: 22px; font-weight: 700; }
+.services-heading .list-count { flex-shrink: 0; }
+.services-tools { display: grid; gap: 8px; margin-bottom: 14px; }
+.search-field.services-search { min-height: 48px; padding-block: 0; padding-inline: 12px 3px; }
+.search-field.services-search input { font-size: 16px; }
+.search-field.services-search input:placeholder-shown { text-align: right; }
+.services-search .search-field-clear { width: 44px; height: 44px; flex: 0 0 44px; }
+.services-search-help { color: var(--text-muted); font-size: 13px; }
+.services-search-help summary { width: fit-content; cursor: pointer; padding-block: 5px; }
+.services-search-help p { margin: 4px 0 2px; }
+.services-scope { display: flex; align-items: center; gap: 8px; min-height: 38px; }
+.services-scope input { accent-color: var(--gold); }
+.services-sort {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+.services-sort select {
+    width: 100%;
+    min-height: 44px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    color: var(--text);
     font: inherit;
-    cursor: pointer;
 }
-.services-table [aria-sort] button { color: var(--gold); }
-.services-table tbody th a { color: inherit; text-decoration: underline; }
-.services-table td .badge + .badge { margin-inline-start: 4px; }
+.services-sort button { min-height: 44px; padding-inline: 8px; white-space: nowrap; }
+.service-summary {
+    position: relative;
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--surface);
+}
+.service-summary:focus-within { border-color: var(--gold); }
+.service-summary-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+.service-summary-identity { min-width: 0; }
+.service-summary h2 { margin: 0; font-size: 16px; line-height: 1.55; overflow-wrap: anywhere; }
+.service-summary h2 a { color: inherit; }
+.service-summary h2 a::after { content: ""; position: absolute; inset: 0; }
+.service-summary h2 .service-open-icon {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-inline-start: 4px;
+    vertical-align: middle;
+    color: var(--gold);
+}
+.service-summary-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 8px;
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+}
+.service-summary-plan { color: var(--gold-bright); }
+.service-summary-badges { display: grid; justify-items: end; gap: 5px; flex-shrink: 0; }
+.service-summary-badges .badge { white-space: nowrap; padding: 3px 7px; }
+.service-summary-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+    margin: 12px 0 0;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+}
+.service-summary-metrics div { text-align: center; }
+.service-summary-metrics div + div { border-inline-start: 1px solid var(--border); }
+.service-summary-metrics dt { font-size: 11px; color: var(--text-muted); }
+.service-summary-metrics dd { margin: 2px 0 0; font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
+.services-page .pager .btn { min-height: 44px; padding-inline: 12px; }
+.services-page .pager .btn:disabled { opacity: .45; }
 .list-item .li-action svg { color: var(--text-muted); }
 .list-item:hover .li-action svg { color: var(--gold); }
 [dir="rtl"] .list-item .li-action svg { transform: scaleX(-1); }
