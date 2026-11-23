@@ -144,6 +144,9 @@ same(['e123'], search($pdo, 'https://east.subscriptions.test/sub/same-name/aaaab
 same(['e123'], search($pdo, 'https://east.subscriptions.test/sub/legacy-address-east', '100'), 'legacy Rebecca subscription');
 same(['e123'], search($pdo, 'https://east.subscriptions.test/sub/old-rebecca-token-signed', '100'), 'signed subscription token');
 same(['w123'], search($pdo, 'https://west.subscriptions.test/west/sub/old-rebecca-token-signed', '200'), 'signed subscription behind a panel path prefix');
+same(['e123'], search($pdo, 'https://east.subscriptions.test/sub/same-name/aaaabbbbccccddddeeeeffff00001111/clash-meta', '100'), 'Rebecca subscription with a client format');
+same(['w123'], search($pdo, 'https://west.subscriptions.test/west/sub/old-rebecca-token-signed/sing_box', '200'), 'signed subscription with a client format');
+same([], search($pdo, 'https://foreign.test/sub/old-rebecca-token-signed/clash-meta', '100'), 'a client suffix does not bypass subscription host matching');
 same([], search($pdo, 'https://east.subscriptions.test/sub/wrong-token-in-note', '100'), 'fuzzy candidate does not validate random subscription');
 same([], search($pdo, 'https://foreign.test/sub/old-rebecca-token-signed', '100'), 'foreign subscription host');
 same(['e123'], search($pdo, 'https://shop.example.test/sub/e123?format=clash', '100'), 'Faoxima public subscription');
@@ -162,18 +165,20 @@ $accountRows = [
     ['id_invoice' => 'm123', 'username' => 'manual-account', 'Service_location' => 'manual', 'name_product' => 'Test plan', 'Status' => 'disabled'],
 ];
 same(
-    [[['text' => 'same-name (ID 91)', 'callback_data' => 'quickview_e123']]],
+    [[['text' => 'same-name · شناسهٔ حساب 91', 'callback_data' => 'quickview_e123']]],
     rxServiceListButtons($pdo, [$accountRows[0]], 'quickview_'),
     'single service displays its username and Rebecca ID'
 );
 same(
     [
-        [['text' => 'same-name (ID 91)', 'callback_data' => 'extend_e123']],
+        [['text' => 'same-name · شناسهٔ حساب 91', 'callback_data' => 'extend_e123']],
         [['text' => 'manual-account', 'callback_data' => 'extend_m123']],
     ],
     rxServiceListButtons($pdo, $accountRows, 'extend_'),
     'shared plans and missing panel IDs keep labels and renewal callbacks independent'
 );
+same("\n🪪 شناسهٔ حساب: <code>91</code>", rxServicePanelIdLine(['panel_user_id' => '91']), 'account ID uses its own Telegram copy field');
+same('', rxServicePanelIdLine([]), 'account details omit the ID line when Rebecca has not supplied an ID');
 
 $pdo->exec("ALTER TABLE invoice ADD time_sell bigint DEFAULT 0");
 $pdo->exec("INSERT INTO invoice (id_invoice, id_user, username, Service_location, Status, time_sell)

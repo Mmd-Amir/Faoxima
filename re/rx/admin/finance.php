@@ -1029,7 +1029,7 @@ if (false) {
                 ['text' => "لیست کل کاربران", 'callback_data' => "alllistusers"],
             ],
             [
-                ...(($adminrulecheck['rule'] ?? '') === 'administrator' ? [['text' => '🛍 جستجو سفارش', 'callback_data' => 'searchorder']] : []),
+                ...(($adminrulecheck['rule'] ?? '') === 'administrator' ? [['text' => '🛍 جستجوی سفارش', 'callback_data' => 'searchorder']] : []),
                 ['text' => "👥 شارژ همگانی", 'callback_data' => "balanceaddall"],
             ],
             [
@@ -2632,8 +2632,8 @@ $iduser  در ربات  رفع مسدود گردید
         }
         $buttons[] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchorder']];
         $resultText = count($rows) > 50
-            ? 'بیش از ۵۰ سرویس پیدا شد. برای محدود کردن نتیجه، نام کامل یا شناسهٔ سرویس را وارد کنید.'
-            : 'چند سرویس پیدا شد. برای مشاهدهٔ اطلاعات، سرویس موردنظر را انتخاب کنید.';
+            ? '🔎 بیش از ۵۰ سرویس پیدا شد. نام کاربری کامل یا شناسهٔ حساب را وارد کنید.'
+            : '🛍 چند سرویس پیدا شد. سرویس موردنظر را انتخاب کنید.';
         nm_adminInstantReply($from_id, $resultText, json_encode(['inline_keyboard' => $buttons]), 'HTML');
         return;
     }
@@ -2683,12 +2683,12 @@ $iduser  در ربات  رفع مسدود گردید
         }
     }
     [$OrderUser] = ServiceSearch::addPanelIds($pdo, [$OrderUser]);
-    $panelId = empty($OrderUser['panel_user_id']) ? '' : ' (ID ' . $OrderUser['panel_user_id'] . ')';
+    $panelIdLine = rxServicePanelIdLine($OrderUser);
     $text_order = "
 🛒 شماره سفارش  :  <code>{$OrderUser['id_invoice']}</code>
 🛒  وضعیت سفارش در ربات : <code>{$OrderUser['Status']}</code>
-🙍‍♂️ شناسه کاربر : <code>{$OrderUser['id_user']}</code>
-👤 نام کاربری اشتراک :  <code>{$OrderUser['username']}{$panelId}</code>
+🙍‍♂️ شناسهٔ تلگرام کاربر: <code>{$OrderUser['id_user']}</code>
+👤 نام کاربری سرویس: <code>{$OrderUser['username']}</code>{$panelIdLine}
 📍 موقعیت سرویس :  {$OrderUser['Service_location']}
 🛍 نام محصول :  {$OrderUser['name_product']}
 💰 قیمت پرداختی سرویس : " . rxFormatToman($OrderUser['price_product']) . " تومان

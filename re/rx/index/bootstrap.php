@@ -1449,10 +1449,9 @@ if ($text == "version") {
         }
         if ($cardPath_qv !== null && is_file($cardPath_qv)) {
             [$nameloc_qv] = ServiceSearch::addPanelIds($pdo, [$nameloc_qv]);
-            $accountId_qv = empty($nameloc_qv['panel_user_id']) ? '' : ' (ID ' . $nameloc_qv['panel_user_id'] . ')';
             $note_qv = isset($nameloc_qv['note']) && $nameloc_qv['note'] !== '' ? ' | ' . $nameloc_qv['note'] : '';
-            $caption_qv = '✨ <b>' . htmlspecialchars((string)$nameloc_qv['username'], ENT_QUOTES, 'UTF-8') . $accountId_qv . '</b>'
-                        . htmlspecialchars($note_qv, ENT_QUOTES, 'UTF-8');
+            $caption_qv = '✨ <b>' . htmlspecialchars((string)$nameloc_qv['username'], ENT_QUOTES, 'UTF-8') . '</b>'
+                        . htmlspecialchars($note_qv, ENT_QUOTES, 'UTF-8') . rxServicePanelIdLine($nameloc_qv);
             $__qvRow = [['text' => '🔧 مدیریت سرویس', 'callback_data' => 'product_' . $nameloc_qv['id_invoice']]];
             if (!(function_exists('isQrDisabled') && isQrDisabled())) {
                 $__qvRow[] = ['text' => faoxima_textbot_get('dyn_purchase_qr_code_btn', '📷 دریافت QR Code'), 'callback_data' => 'infocard_qr_' . $nameloc_qv['id_invoice']];
@@ -1526,9 +1525,9 @@ if ($text == "version") {
                 ['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice'],
                 ['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => 'backorder'],
             ];
-            $foundTemplate = $datatextbot['dyn_errors_service_found_count'] ?? '🛍 %s سرویس یافت شد. برای مدیریت، یکی را انتخاب کنید.';
+            $foundTemplate = ($datatextbot['dyn_errors_service_found_count'] ?? '') ?: '🛍 %s سرویس پیدا شد. سرویس موردنظر را انتخاب کنید.';
             $resultText = count($rows) > 50
-                ? 'بیش از ۵۰ سرویس پیدا شد. برای محدود کردن نتیجه، نام کامل یا شناسهٔ سرویس را وارد کنید.'
+                ? '🔎 بیش از ۵۰ سرویس پیدا شد. نام کاربری کامل یا شناسهٔ حساب را وارد کنید.'
                 : sprintf($foundTemplate, count($rows));
             sendmessage($from_id, $resultText, json_encode($keyboardlists), 'html');
             step('home', $from_id);
@@ -1539,13 +1538,13 @@ if ($text == "version") {
         $nameloc = $stmt->fetch(PDO::FETCH_ASSOC);
     }
     if (!is_array($nameloc)) {
-        sendmessage($from_id, $datatextbot['dyn_errors_service_not_found'] ?? "❌ سرویس مورد نظر پیدا نشد.", $keyboard, 'html');
+        sendmessage($from_id, ($datatextbot['dyn_errors_service_not_found'] ?? '') ?: '❌ سرویس موردنظر پیدا نشد.', $keyboard, 'html');
         step('home', $from_id);
         return;
     }
     $username = $nameloc['id_invoice'];
     if (!in_array($nameloc['Status'], ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin'])) {
-        sendmessage($from_id, $datatextbot['dyn_errors_view_account_unavailable'] ?? "❌ امکان مشاهده اطلاعات اکانت درحال حاضر وجود ندارد", $keyboard, 'html');
+        sendmessage($from_id, ($datatextbot['dyn_errors_view_account_unavailable'] ?? '') ?: '❌ اطلاعات این سرویس فعلاً در دسترس نیست.', $keyboard, 'html');
         step('home', $from_id);
         return;
     }
@@ -1554,7 +1553,7 @@ if ($text == "version") {
         update("user", "Processing_value_four", $marzban['name_panel'], "id", $from_id);
     }
     [$nameloc] = ServiceSearch::addPanelIds($pdo, [$nameloc]);
-    $panelIdLabel = empty($nameloc['panel_user_id']) ? '' : ' (ID ' . $nameloc['panel_user_id'] . ')';
+    $panelIdLine = rxServicePanelIdLine($nameloc);
     $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username'], 'links', (string) $nameloc['id_invoice']);
     if (is_array($DataUserOut) && isset($DataUserOut['status']) && $DataUserOut['status'] !== 'Unsuccessful') {
         try {
@@ -1624,6 +1623,7 @@ if ($text == "version") {
         return;
     }
     $lastonline = formatOnlineAtLabel($DataUserOut['online_at'] ?? null, $DataUserOut['is_online'] ?? null);
+    $serviceUsernameHtml = htmlspecialchars((string) ($DataUserOut['username'] ?? $nameloc['username']), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
     $status = $DataUserOut['status'];
     $bExp2 = is_numeric($DataUserOut['expire'] ?? null) ? (int)$DataUserOut['expire'] : 0;
@@ -1725,7 +1725,7 @@ if ($text == "version") {
         }
         $manualHasSub = trim((string) $manualDelivery['sub']) !== '';
         $textinfo = "وضعیت سرویس : <b>$status_var</b>
-نام کاربری سرویس : {$DataUserOut['username']}{$panelIdLabel}
+نام کاربری سرویس : <code>{$serviceUsernameHtml}</code>{$panelIdLine}
 📎 کد پیگیری سرویس : {$nameloc['id_invoice']}
 
 📅 تاریخ اتمام : $expirationDate ($day)";
@@ -1795,7 +1795,7 @@ if ($text == "version") {
     $statusremoveserveice = panel_feature_enabled($nameloc['Service_location'], 'refund') ? "on" : "off";
     if (!in_array($status, ["active", "on_hold", "disabled", "Unknown"])) {
         $textinfo = "وضعیت سرویس : <b>$status_var</b>
-👤 نام کاربری سرویس : <code>{$DataUserOut['username']}{$panelIdLabel}</code>
+👤 نام کاربری سرویس : <code>{$serviceUsernameHtml}</code>{$panelIdLine}
 🌍 موقعیت سرویس :{$nameloc['Service_location']}
 نام محصول :{$nameloc['name_product']}
 
@@ -2002,19 +2002,22 @@ $nameconfig";
             $textconnect = "📶 اخرین زمان اتصال شما : $lastonline";
         }
         $rwChangelinkHint = (($marzban['type'] ?? '') != "remnawave") ? "💡 برای قطع دسترسی دیگران کافیست روی گزینه \"تغییر لینک\" کلیک کنید." : "";
-        $textinfo_tpl = $datatextbot['text_service_detail'] ?? "🗂 نام سرویس : {product}
+        $textinfo_tpl = ($datatextbot['text_service_detail'] ?? '') ?: "🗂 نام سرویس : {product}
 📊وضعیت سرویس : {status}
 🌍 موقعیت سرویس :{location}
-👤 شناسه سرویس : <code>{username}</code>
+👤 نام کاربری سرویس: <code>{username}</code>
 
 🔋 ترافیک : {traffic}
 📥 حجم مصرفی : {used}
 💢 حجم باقی مانده : {remaining} ({percent}%)
 
 📅 تاریخ اتمام : {expire_date} ({days_left})";
+        $usernameField = '<code>{username}</code>';
         $textinfo_replacements = [
             '{status}' => $status_var,
-            '{username}' => $DataUserOut['username'] . $panelIdLabel,
+            '{username}' => $serviceUsernameHtml,
+            $usernameField => '<code>' . $serviceUsernameHtml . '</code>' . $panelIdLine,
+            '👤 شناسه سرویس : ' => '👤 نام کاربری سرویس: ',
             '{location}' => $nameloc['Service_location'],
             '{product}' => $nameloc['name_product'],
             '{traffic}' => $LastTraffic,
@@ -2025,6 +2028,9 @@ $nameconfig";
             '{days_left}' => $day,
         ];
         $textinfo = strtr($textinfo_tpl, $textinfo_replacements);
+        if (!str_contains($textinfo_tpl, $usernameField)) {
+            $textinfo .= $panelIdLine;
+        }
         $textinfo = "$textinfo\n$userpassword\n$nameconfig\n\n$textconnect\n\n$rwChangelinkHint";
         $rxReservationSummary = function_exists('rxReservationSummaryForService') ? rxReservationSummaryForService((string) $nameloc['username'], (string) $nameloc['Service_location'], (string) $nameloc['id_invoice']) : null;
         if (is_array($rxReservationSummary)) {

@@ -6,6 +6,16 @@ final class ServiceSearch
 {
     public const VISIBLE_STATUS = "Status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin')";
     public const MAX_QUERY_LENGTH = 2048;
+    private const REBECCA_CLIENT_FORMATS = [
+        'clash', 'clash-meta', 'clashmeta', 'clash.meta', 'mihomo', 'clash-mihomo', 'clash-mi', 'clashmi',
+        'sing-box', 'singbox', 'sing',
+        'v2ray', 'v2ray-json', 'xray-json', 'json',
+        'happ', 'hiddify', 'hiddify-next', 'hiddifynext', 'hiddifynextx',
+        'v2raytun', 'v2ray-tun', 'v2ray-tunnel', 'v2raytun-plus',
+        'throne', 'thron', 'throne-vpn', 'thronevpn', 'shadowrocket', 'karing', 'outline',
+        'incy', 'passwall', 'passwall2', 'nekobox', 'nekobox-plus', 'nekoboxplus', 'nekobox+',
+        'openvpn', 'wireguard', 'wg', 'amneziawg', 'awg', 'amnezia-wg',
+    ];
 
     public static function numericId($value): ?string
     {
@@ -86,21 +96,37 @@ final class ServiceSearch
         }
 
         if ($isUrl || $number !== null || $uuid !== null) {
-            $needle = $isUrl ? rawurldecode(basename($url[1])) : ($uuid !== null ? $query : $number);
+            $links = [$url ?? null];
+            if ($isUrl && in_array(str_replace('_', '-', strtolower(rawurldecode(basename($url[1])))), self::REBECCA_CLIENT_FORMATS, true)) {
+                $basePath = dirname($url[1]);
+                if ($basePath !== '/' && $basePath !== '.') {
+                    array_unshift($links, [$url[0], $basePath]);
+                }
+            }
             $panels = $pdo->prepare("SELECT DISTINCT Service_location FROM invoice WHERE ($scope)
                 AND Service_location IN (SELECT name_panel FROM marzban_panel WHERE type = 'rebecca')");
             $panels->execute($scopeParams);
             foreach ($panels->fetchAll(PDO::FETCH_COLUMN) as $panel) {
-                foreach (rebeccaListUsers($panel, search: $needle !== '' ? $needle : $query, links: $uuid !== null) as $user) {
-                    $username = (string) ($user['username'] ?? '');
-                    if ($username === '' || !self::matchesRebecca($panel, $user, $query, $isUrl, $number, $uuid)) {
+                foreach ($links as $link) {
+                    $needle = $link === null ? ($number ?? $query) : rawurldecode(basename($link[1]));
+                    if ($needle === '') {
                         continue;
                     }
-                    $index = count($exact);
-                    $exact[] = "(Service_location = :svc_panel_$index AND BINARY username = :svc_user_$index)";
-                    $exactParams[":svc_panel_$index"] = $panel;
-                    $exactParams[":svc_user_$index"] = $username;
-                    if ($number !== null) {
+                    $matchesBefore = count($exact);
+                    foreach (rebeccaListUsers($panel, search: $needle, links: $uuid !== null) as $user) {
+                        $username = (string) ($user['username'] ?? '');
+                        if ($username === '' || !self::matchesRebecca($panel, $user, $link, $number, $uuid)) {
+                            continue;
+                        }
+                        $index = count($exact);
+                        $exact[] = "(Service_location = :svc_panel_$index AND BINARY username = :svc_user_$index)";
+                        $exactParams[":svc_panel_$index"] = $panel;
+                        $exactParams[":svc_user_$index"] = $username;
+                        if ($number !== null) {
+                            break;
+                        }
+                    }
+                    if (count($exact) > $matchesBefore) {
                         break;
                     }
                 }
@@ -160,16 +186,15 @@ final class ServiceSearch
         return preg_match('/^[A-Za-z0-9_-]{1,200}$/D', $token) ? $token : null;
     }
 
-    private static function matchesRebecca(string $panel, array $user, string $query, bool $isUrl, ?string $number, ?string $uuid): bool
+    private static function matchesRebecca(string $panel, array $user, ?array $input, ?string $number, ?string $uuid): bool
     {
-        if ($number !== null && $uuid === null) {
+        if ($number !== null) {
             return self::numericId($user['id'] ?? null) === $number;
         }
         $urls = (array) ($user['subscription_urls'] ?? []);
-        if ($isUrl) {
+        if ($input !== null) {
             $config = getRebeccaPanelConfig($panel);
             $panelUrl = (string) ($config['panel']['url_panel'] ?? '');
-            $input = self::url($query);
             $urls['primary'] = $user['subscription_url'] ?? '';
             foreach ($urls as $kind => $url) {
                 if (!is_string($url) || ($known = self::url($url, $panelUrl)) === null) {

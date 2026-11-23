@@ -2761,8 +2761,14 @@ function rxServiceListLabel(array $invoice): string
 {
     $username = trim((string) ($invoice['username'] ?? ''));
     $label = $username !== '' ? $username : '—';
-    $id = $invoice['panel_user_id'] ?? null;
-    return $id === null || $id === '' ? $label : $label . ' (ID ' . $id . ')';
+    $id = ServiceSearch::numericId($invoice['panel_user_id'] ?? null);
+    return $id === null ? $label : $label . ' · شناسهٔ حساب ' . $id;
+}
+
+function rxServicePanelIdLine(array $invoice): string
+{
+    $id = ServiceSearch::numericId($invoice['panel_user_id'] ?? null);
+    return $id === null ? '' : "\n🪪 شناسهٔ حساب: <code>{$id}</code>";
 }
 
 function rxServiceListButtons(PDO $pdo, array $invoices, string $callbackPrefix): array
