@@ -1,5 +1,5 @@
 import { call } from '../api.js?v=0.0.53';
-import { fmtPrice, escapeHtml, skeletonList, toast, serviceListIdentity } from '../utils.js?v=0.0.53';
+import { fmtPrice, escapeHtml, skeletonList, toast, serviceListIdentity, serviceStatusBadge } from '../utils.js?v=0.0.54';
 import { setUser } from '../state.js';
 import { icon } from '../icons.js?v=0.0.52';
 import { hapticImpact, showConfirm, getInitDataUnsafe } from '../telegram.js?v=0.0.52';
@@ -230,12 +230,15 @@ async function loadActiveServices(view) {
 
 function renderServiceItem(it) {
     const username = it.username || '—';
+    const status = serviceStatusBadge(it.status || it.Status || '');
 
     return `
         <a href="#/services/${encodeURIComponent(username)}/${encodeURIComponent(it.id_invoice)}" class="list-item" data-username="${escapeHtml(username)}">
             <div class="li-main">
                 ${serviceListIdentity(it.display_username || username, it.panel_user_id)}
+                ${it.name_product ? `<div class="li-sub">${escapeHtml(it.name_product)}</div>` : ''}
             </div>
+            <span class="badge ${status.badge}">${icon(status.icon, 'class="ico"')} ${escapeHtml(status.text)}</span>
             <span class="li-action" aria-hidden="true">
                 ${icon('chevronLeft', 'class="ico"')}
             </span>

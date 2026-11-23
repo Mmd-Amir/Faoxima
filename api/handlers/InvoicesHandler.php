@@ -19,6 +19,9 @@ final class InvoicesHandler extends BaseHandler
 
         $search = FaoximaInput::nullableString($this->data, 'q');
         $all = ($this->data['scope'] ?? '') === 'all';
+        $sort = FaoximaInput::nullableString($this->data, 'sort');
+        $table = !$all && in_array($sort, ['recent', 'username', 'panel_user_id', 'days_remaining', 'remaining_bytes', 'expires_at'], true);
+        $ascending = ($this->data['direction'] ?? '') === 'asc';
         $canSearchAll = FaoximaDb::fetchScalar(
             "SELECT 1 FROM admin WHERE id_admin = :uid AND rule = 'administrator' LIMIT 1",
             [':uid' => $this->user['id']]
@@ -44,17 +47,28 @@ final class InvoicesHandler extends BaseHandler
         );
         $totalPages = $totalItems > 0 ? (int)ceil($totalItems / $limit) : 0;
 
-        $params[':limit']  = $limit;
-        $params[':offset'] = $offset;
-
         $columns = $all ? 'id_invoice, username, Service_location, Status' : '*';
+        $sqlOrder = 'time_sell DESC, id_invoice DESC';
+        if ($table && $sort === 'username') {
+            $sqlOrder = ($ascending ? 'username ASC, ' : 'username DESC, ') . $sqlOrder;
+        }
+        $sortByUsage = $table && !in_array($sort, ['recent', 'username'], true);
+        $pagination = $sortByUsage ? '' : 'LIMIT :limit OFFSET :offset';
         $rows = ServiceSearch::addPanelIds(FaoximaDb::pdo(), FaoximaDb::fetchAll(
-            "SELECT {$columns} FROM invoice
-              WHERE {$where}
-           ORDER BY time_sell DESC, id_invoice DESC
-              LIMIT :limit OFFSET :offset",
-            $params
-        ));
+            "SELECT {$columns} FROM invoice WHERE {$where} ORDER BY {$sqlOrder} {$pagination}",
+            $sortByUsage ? $params : $params + [':limit' => $limit, ':offset' => $offset]
+        ), includeUsage: $table);
+        if ($table) {
+            $now = time();
+            foreach ($rows as &$row) {
+                $row += self::usage($row, $now);
+            }
+            unset($row);
+            if ($sortByUsage) {
+                usort($rows, static fn(array $left, array $right): int => self::compare($left[$sort] ?? null, $right[$sort] ?? null, $sort, $ascending));
+                $rows = array_slice($rows, $offset, $limit);
+            }
+        }
 
         if ($all) {
             FaoximaResponse::ok([
@@ -78,11 +92,11 @@ final class InvoicesHandler extends BaseHandler
                 $queuedParams[$ph] = $uname;
             }
             $queuedRows = FaoximaDb::fetchAll(
-                "SELECT DISTINCT username FROM queued_renewal WHERE status IN (" . rx_rn_unresolved_sql() . ") AND username IN (" . implode(',', $placeholders) . ")",
-                $queuedParams
+                "SELECT DISTINCT username, name_panel FROM queued_renewal WHERE id_user = :owner AND status IN (" . rx_rn_unresolved_sql() . ") AND username IN (" . implode(',', $placeholders) . ")",
+                $queuedParams + [':owner' => $this->user['id']]
             );
             foreach ($queuedRows as $qr) {
-                $queuedUsernames[(string)$qr['username']] = true;
+                $queuedUsernames[$qr['name_panel']][(string) $qr['username']] = true;
             }
         }
 
@@ -90,6 +104,10 @@ final class InvoicesHandler extends BaseHandler
             $cachedUserInfo = null;
             if (!empty($row['user_info'])) {
                 $cachedUserInfo = json_decode((string)$row['user_info'], true);
+            }
+            if (isset($row['panel_usage'])) {
+                $cachedUserInfo = $row['panel_usage'] + (is_array($cachedUserInfo) ? $cachedUserInfo : []);
+                unset($row['panel_usage']);
             }
 
             if (is_array($cachedUserInfo)) {
@@ -183,7 +201,7 @@ final class InvoicesHandler extends BaseHandler
             if (!isset($row['status'])) {
                 $row['status'] = $row['Status'] ?? 'active';
             }
-            $row['has_queued_renewal'] = isset($queuedUsernames[(string)$row['username']]);
+            $row['has_queued_renewal'] = isset($queuedUsernames[$row['Service_location']][(string) $row['username']]);
             $row['display_username'] = guardDisplayUsername((string)$row['username'], (string)($row['Service_location'] ?? ''));
         }
         unset($row);
@@ -197,6 +215,40 @@ final class InvoicesHandler extends BaseHandler
             'limit'       => $limit,
             'can_search_all' => $canSearchAll,
         ]);
+    }
+
+    private static function usage(array $row, int $now): array
+    {
+        $cached = json_decode((string) ($row['user_info'] ?? ''), true);
+        $info = ($row['panel_usage'] ?? []) + (is_array($cached) ? $cached : []);
+        $onHold = in_array($info['status'] ?? $row['Status'], ['on_hold', 'send_on_hold'], true);
+        $expires = !$onHold && array_key_exists('expire', $info) && ($info['expire'] === null || is_numeric($info['expire']))
+            ? max(0, (int) $info['expire']) : null;
+        $limit = array_key_exists('data_limit', $info) && ($info['data_limit'] === null || is_numeric($info['data_limit']))
+            ? (int) $info['data_limit'] : null;
+        $used = is_numeric($info['used_traffic'] ?? null) ? max(0, (int) $info['used_traffic']) : null;
+        return [
+            'expires_at' => $expires,
+            'days_remaining' => $expires === null ? null : ($expires === 0 ? -1 : (int) ceil(max(0, $expires - $now) / 86400)),
+            'remaining_bytes' => $limit === 0 ? -1 : ($limit > 0 && $used !== null ? max(0, $limit - $used) : null),
+        ];
+    }
+
+    private static function compare($left, $right, string $sort, bool $ascending): int
+    {
+        if ($sort === 'expires_at') {
+            $left = $left ?: null;
+            $right = $right ?: null;
+        }
+        if ($left === null || $right === null) {
+            return ($left === null) <=> ($right === null);
+        }
+        if ($sort === 'panel_user_id') {
+            $order = (strlen($left) <=> strlen($right)) ?: strcmp($left, $right);
+        } else {
+            $order = ($left === -1 ? PHP_INT_MAX : $left) <=> ($right === -1 ? PHP_INT_MAX : $right);
+        }
+        return $ascending ? $order : -$order;
     }
 }
 

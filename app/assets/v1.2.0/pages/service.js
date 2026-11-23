@@ -774,7 +774,7 @@ function renderBody($body, info, username, reload) {
     $body.innerHTML = `
         <div class="row-spread">
             <div>
-                <div class="muted mono" style="font-size:12px"><bdi>${escapeHtml(info.display_username || info.username || username)}</bdi>${info.panel_user_id ? ` · شناسهٔ حساب <bdi dir="ltr">${escapeHtml(info.panel_user_id)}</bdi>` : ''}</div>
+                <div class="muted mono" style="font-size:12px"><bdi>${escapeHtml(info.display_username || info.username || username)}</bdi>${info.panel_user_id ? ` · شناسهٔ سرویس <bdi dir="ltr">${escapeHtml(info.panel_user_id)}</bdi>` : ''}</div>
                 <h2 style="margin:4px 0 0;font-size:20px;font-weight:700">${escapeHtml(info.product_name || '—')}</h2>
             </div>
             <span class="badge ${statusBadge}">

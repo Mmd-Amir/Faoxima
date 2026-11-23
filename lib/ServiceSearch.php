@@ -251,7 +251,7 @@ final class ServiceSearch
     }
 
     /** Load numeric IDs by exact username in batches grouped by panel. */
-    public static function addPanelIds(PDO $pdo, array $rows): array
+    public static function addPanelIds(PDO $pdo, array $rows, bool $includeUsage = false): array
     {
         $byPanel = [];
         foreach ($rows as $row) {
@@ -266,16 +266,20 @@ final class ServiceSearch
         $marks = implode(',', array_fill(0, count($byPanel), '?'));
         $stmt = $pdo->prepare("SELECT name_panel FROM marzban_panel WHERE type = 'rebecca' AND name_panel IN ($marks)");
         $stmt->execute(array_keys($byPanel));
-        $ids = [];
+        $accounts = [];
         foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $panel) {
             foreach (array_chunk(array_values(array_unique($byPanel[$panel] ?? [])), 25) as $usernames) {
                 foreach (rebeccaListUsers($panel, usernames: $usernames) as $user) {
-                    $ids[$panel][(string) ($user['username'] ?? '')] = self::numericId($user['id'] ?? null);
+                    $account = ['panel_user_id' => self::numericId($user['id'] ?? null)];
+                    if ($includeUsage) {
+                        $account['panel_usage'] = array_intersect_key($user, array_flip(['expire', 'data_limit', 'used_traffic', 'status']));
+                    }
+                    $accounts[$panel][(string) ($user['username'] ?? '')] = $account;
                 }
             }
         }
         foreach ($rows as &$row) {
-            $row['panel_user_id'] = $ids[$row['Service_location'] ?? ''][$row['username'] ?? ''] ?? null;
+            $row = array_replace($row, $accounts[$row['Service_location'] ?? ''][$row['username'] ?? ''] ?? ['panel_user_id' => null]);
         }
         unset($row);
         return $rows;

@@ -10,7 +10,7 @@ export function escapeHtml(value) {
 
 export function serviceListIdentity(username, panelUserId) {
     const accountId = panelUserId
-        ? `<span class="li-sub">شناسهٔ حساب <bdi dir="ltr">${escapeHtml(panelUserId)}</bdi></span>`
+        ? `<span class="li-sub">شناسهٔ سرویس <bdi dir="ltr">${escapeHtml(panelUserId)}</bdi></span>`
         : '';
     return `<div class="service-list-identity"><bdi class="li-title" dir="ltr">${escapeHtml(username)}</bdi>${accountId}</div>`;
 }

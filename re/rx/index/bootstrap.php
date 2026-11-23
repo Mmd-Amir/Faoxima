@@ -1191,7 +1191,7 @@ if ($text == "version") {
     }
     rx_section_media_enter('services', $from_id, $datain, $message_id, ['myservicesbtn'], ['myservicesbtn']);
     update("user", "pagenumber", 1, "id", $from_id);
-    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $serviceRows, 'quickview_')];
+    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $serviceRows, 'quickview_', ($setting['statusnamecustom'] ?? '') === 'onnamecustom')];
     $pagination_buttons = [
         [
             'text' => $textbotlang['users']['page']['next'],
@@ -1207,6 +1207,13 @@ if ($text == "version") {
         $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['page']['notusernameme'], 'callback_data' => 'notusernameme']];
     }
     $keyboardlists['inline_keyboard'][] = $pagination_buttons;
+    if ($serviceRows !== [] && ($Chat_type ?? '') === 'private') {
+        $miniappHost = rtrim(preg_replace('#^https?://#i', '', trim((string) ($domainhosts ?? ''))), '/');
+        $miniappUrl = 'https://' . $miniappHost . '/app/?view=services';
+        if (filter_var($miniappUrl, FILTER_VALIDATE_URL) !== false) {
+            $keyboardlists['inline_keyboard'][] = [['text' => '📋 جدول سرویس‌ها', 'web_app' => ['url' => $miniappUrl]]];
+        }
+    }
     $keyboardlists['inline_keyboard'][] = $backuser;
     $keyboard_json = json_encode($keyboardlists);
     if ($datain == "backorder" || $datain == "myservicesbtn") {
@@ -1226,7 +1233,7 @@ if ($text == "version") {
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :owner AND " . ServiceSearch::VISIBLE_STATUS
         . " ORDER BY time_sell DESC, id_invoice DESC LIMIT $start_index, $items_per_page");
     $stmt->execute([':owner' => $from_id]);
-    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC), 'quickview_')];
+    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC), 'quickview_', ($setting['statusnamecustom'] ?? '') === 'onnamecustom')];
     $pagination_buttons = [
         [
             'text' => $textbotlang['users']['page']['next'],
@@ -1258,7 +1265,7 @@ if ($text == "version") {
     $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :owner AND " . ServiceSearch::VISIBLE_STATUS
         . " ORDER BY time_sell DESC, id_invoice DESC LIMIT $start_index, $items_per_page");
     $stmt->execute([':owner' => $from_id]);
-    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC), 'quickview_')];
+    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC), 'quickview_', ($setting['statusnamecustom'] ?? '') === 'onnamecustom')];
     $pagination_buttons = [
         [
             'text' => $textbotlang['users']['page']['next'],
@@ -1520,14 +1527,14 @@ if ($text == "version") {
     if ($isServiceSearch) {
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         if (count($rows) > 1) {
-            $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, array_slice($rows, 0, 50), 'quickview_')];
+            $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, array_slice($rows, 0, 50), 'quickview_', ($setting['statusnamecustom'] ?? '') === 'onnamecustom')];
             $keyboardlists['inline_keyboard'][] = [
                 ['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice'],
                 ['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => 'backorder'],
             ];
             $foundTemplate = ($datatextbot['dyn_errors_service_found_count'] ?? '') ?: '🛍 %s سرویس پیدا شد. سرویس موردنظر را انتخاب کنید.';
             $resultText = count($rows) > 50
-                ? '🔎 بیش از ۵۰ سرویس پیدا شد. نام کاربری کامل یا شناسهٔ حساب را وارد کنید.'
+                ? '🔎 بیش از ۵۰ سرویس پیدا شد. نام کاربری کامل یا شناسهٔ سرویس را وارد کنید.'
                 : sprintf($foundTemplate, count($rows));
             sendmessage($from_id, $resultText, json_encode($keyboardlists), 'html');
             step('home', $from_id);

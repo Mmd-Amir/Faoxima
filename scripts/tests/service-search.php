@@ -21,6 +21,7 @@ if (PHP_SAPI === 'cli-server') {
     $key = $panel === 'east' ? 'aaaabbbbccccddddeeeeffff00001111' : 'aaaabbbbccccddddeeeeffff00002222';
     $user = [
         'id' => 91, 'username' => 'same-name',
+        'status' => 'active', 'expire' => 2000000000, 'data_limit' => 500, 'used_traffic' => 250,
         'subscription_url' => $base . '/same-name/' . $key,
         'subscription_urls' => [
             'username-key' => $base . '/same-name/' . $key,
@@ -159,25 +160,27 @@ same([], search($pdo, 'https://east.subscriptions.test/sub/same-name/not-its-key
 same([], search($pdo, str_repeat('a', 2049), null), 'oversized input');
 $rows = ServiceSearch::addPanelIds($pdo, $pdo->query('SELECT * FROM invoice ORDER BY id_invoice')->fetchAll(PDO::FETCH_ASSOC));
 same(['91', null, null, '91', null, null], array_column($rows, 'panel_user_id'), 'batch numeric enrichment keyed by panel and username');
+$tableRows = ServiceSearch::addPanelIds($pdo, [$rows[0], $rows[1]], includeUsage: true);
+same(['status' => 'active', 'expire' => 2000000000, 'data_limit' => 500, 'used_traffic' => 250], $tableRows[0]['panel_usage'], 'table uses Rebecca usage data without copying its subscription links');
 
 $accountRows = [
     ['id_invoice' => 'e123', 'username' => 'same-name', 'Service_location' => 'east', 'name_product' => 'Test plan', 'note' => 'A note'],
     ['id_invoice' => 'm123', 'username' => 'manual-account', 'Service_location' => 'manual', 'name_product' => 'Test plan', 'Status' => 'disabled'],
 ];
 same(
-    [[['text' => 'same-name · شناسهٔ حساب 91', 'callback_data' => 'quickview_e123']]],
+    [[['text' => 'same-name · شناسهٔ سرویس 91 | Test plan', 'callback_data' => 'quickview_e123']]],
     rxServiceListButtons($pdo, [$accountRows[0]], 'quickview_'),
     'single service displays its username and Rebecca ID'
 );
 same(
     [
-        [['text' => 'same-name · شناسهٔ حساب 91', 'callback_data' => 'extend_e123']],
-        [['text' => 'manual-account', 'callback_data' => 'extend_m123']],
+        [['text' => 'same-name · شناسهٔ سرویس 91 | Test plan', 'callback_data' => 'extend_e123']],
+        [['text' => 'manual-account | Test plan | غیرفعال', 'callback_data' => 'extend_m123']],
     ],
     rxServiceListButtons($pdo, $accountRows, 'extend_'),
     'shared plans and missing panel IDs keep labels and renewal callbacks independent'
 );
-same("\n🪪 شناسهٔ حساب: <code>91</code>", rxServicePanelIdLine(['panel_user_id' => '91']), 'account ID uses its own Telegram copy field');
+same("\n🪪 شناسهٔ سرویس: <code>91</code>", rxServicePanelIdLine(['panel_user_id' => '91']), 'account ID uses its own Telegram copy field');
 same('', rxServicePanelIdLine([]), 'account details omit the ID line when Rebecca has not supplied an ID');
 
 $pdo->exec("ALTER TABLE invoice ADD time_sell bigint DEFAULT 0");

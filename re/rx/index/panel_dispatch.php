@@ -1851,7 +1851,7 @@ $text_porsant
     }
     rx_section_media_enter('extend', $from_id, $datain, $message_id, ['extendbtn']);
     update("user", "pagenumber", 1, "id", $from_id);
-    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $serviceRows, 'extend_')];
+    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $serviceRows, 'extend_', !empty($statusnote))];
     $pagination_buttons = [
         [
             'text' => $textbotlang['users']['page']['next'],
@@ -1881,7 +1881,7 @@ $text_porsant
         AND Status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold')
         ORDER BY time_sell DESC, id_invoice DESC LIMIT $start_index, $items_per_page");
     $stmt->execute([':owner' => $from_id]);
-    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC), 'extend_')];
+    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC), 'extend_', !empty($statusnote))];
     $pagination_buttons = [
         [
             'text' => $textbotlang['users']['page']['next'],
@@ -1909,7 +1909,7 @@ $text_porsant
         AND Status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold')
         ORDER BY time_sell DESC, id_invoice DESC LIMIT $start_index, $items_per_page");
     $stmt->execute([':owner' => $from_id]);
-    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC), 'extend_')];
+    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC), 'extend_', !empty($statusnote))];
     $pagination_buttons = [
         [
             'text' => $textbotlang['users']['page']['next'],

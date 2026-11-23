@@ -1029,7 +1029,7 @@ if (false) {
                 ['text' => "لیست کل کاربران", 'callback_data' => "alllistusers"],
             ],
             [
-                ...(($adminrulecheck['rule'] ?? '') === 'administrator' ? [['text' => '🛍 جستجوی سفارش', 'callback_data' => 'searchorder']] : []),
+                ...(($adminrulecheck['rule'] ?? '') === 'administrator' ? [['text' => '🛍 جستجو سفارش', 'callback_data' => 'searchorder']] : []),
                 ['text' => "👥 شارژ همگانی", 'callback_data' => "balanceaddall"],
             ],
             [
@@ -2632,7 +2632,7 @@ $iduser  در ربات  رفع مسدود گردید
         }
         $buttons[] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchorder']];
         $resultText = count($rows) > 50
-            ? '🔎 بیش از ۵۰ سرویس پیدا شد. نام کاربری کامل یا شناسهٔ حساب را وارد کنید.'
+            ? '🔎 بیش از ۵۰ سرویس پیدا شد. نام کاربری کامل یا شناسهٔ سرویس را وارد کنید.'
             : '🛍 چند سرویس پیدا شد. سرویس موردنظر را انتخاب کنید.';
         nm_adminInstantReply($from_id, $resultText, json_encode(['inline_keyboard' => $buttons]), 'HTML');
         return;

@@ -137,7 +137,7 @@ $invExtraCriteria = array_filter([
     'محصول' => $invProduct !== '' ? ($invPmatch === 'exact' ? $invProduct . ' (تطابق دقیق)' : $invProduct) : '',
     'لوکیشن' => $invLocation,
 ], function ($v) { return $v !== ''; });
-$invFilterCriteria = array_merge(fx_filter_delete_criteria($invStatusActive ? $invStatusOptions[$invStatus] : '', $df, $lookup !== '' ? 'شناسهٔ حساب یا لینک اشتراک' : $invQ), $invExtraCriteria);
+$invFilterCriteria = array_merge(fx_filter_delete_criteria($invStatusActive ? $invStatusOptions[$invStatus] : '', $df, $lookup !== '' ? 'شناسهٔ سرویس یا لینک اشتراک' : $invQ), $invExtraCriteria);
 $invDeleteNote = ($invTestScope ? 'حذف فقط به رکوردهای فاکتور «سرویس تست» مطابق فیلتر محدود است. ' : '')
     . 'این عملیات فقط رکوردهای سفارش (تاریخچه فاکتور) را از پایگاه داده ربات حذف می‌کند و هیچ اکانت یا کانفیگی از پنل خارجی حذف نمی‌شود.';
 if (fx_filter_delete_requested()) {
@@ -213,7 +213,7 @@ if ($invCanSearchIdentifiers) {
 
             <?php echo fx_filter_delete_flash_html(); ?>
 
-            <?php echo fx_search_ui('invoice.php', $invQ, array_merge(['status' => $invStatus !== '' ? $invStatus : null, 'lookup' => $lookup], $invDateKeep, $invExtraKeep), $invCanSearchIdentifiers ? 'نام کاربری، شناسهٔ حساب، UUID یا لینک اشتراک' : 'جستجو در شناسه سفارش، آیدی کاربر، نام کانفیگ یا محصول…', 'q', $invCanSearchIdentifiers); ?>
+            <?php echo fx_search_ui('invoice.php', $invQ, array_merge(['status' => $invStatus !== '' ? $invStatus : null, 'lookup' => $lookup], $invDateKeep, $invExtraKeep), $invCanSearchIdentifiers ? 'نام کاربری سرویس، شناسهٔ سرویس، UUID یا لینک اشتراک' : 'جستجو در شماره سفارش، شناسهٔ تلگرام کاربر، نام کاربری سرویس یا محصول…', 'q', $invCanSearchIdentifiers); ?>
 
             <?php echo fx_status_filter_ui('invoice.php', $invStatusOptions, $invStatus, array_merge($invSearchParams, $invDateKeep, $invExtraKeep)); ?>
 
@@ -238,9 +238,9 @@ if ($invCanSearchIdentifiers) {
                         <thead>
                             <tr>
                                 <th><input type="checkbox" id="check-all" onclick="faoximaToggleAll(this)"></th>
-                                <th>شناسه سفارش</th>
-                                <th>آیدی کاربر</th>
-                                <th>نام کانفیگ</th>
+                                <th>شماره سفارش</th>
+                                <th>شناسهٔ تلگرام کاربر</th>
+                                <th>نام کاربری سرویس</th>
                                 <th>لوکیشن</th>
                                 <th>محصول</th>
                                 <th>تاریخ سفارش</th>
@@ -271,16 +271,16 @@ if ($invCanSearchIdentifiers) {
                         ?>
                             <tr data-detail-row data-detail-title="سفارش <?php echo htmlspecialchars((string)$list['id_invoice'], ENT_QUOTES, 'UTF-8'); ?>">
                                 <td><label class="fx-check-row"><input type="checkbox" name="ids[]" value="<?php echo htmlspecialchars($list['id_invoice'], ENT_QUOTES, 'UTF-8'); ?>"></label></td>
-                                <td data-label="شناسه سفارش" data-summary="1"><?php echo $list['id_invoice']; ?></td>
-                                <td data-label="آیدی کاربر">
+                                <td data-label="شماره سفارش" data-summary="1"><?php echo $list['id_invoice']; ?></td>
+                                <td data-label="شناسهٔ تلگرام کاربر">
                                     <a href="user.php?id=<?php echo $list['id_user']; ?>" class="text-link">
                                         <?php echo $list['id_user']; ?>
                                     </a>
                                 </td>
-                                <td data-label="نام کانفیگ" style="direction:ltr; text-align:right;">
+                                <td data-label="نام کاربری سرویس" style="direction:ltr; text-align:right;">
                                     <?php echo htmlspecialchars((string) $list['username'], ENT_QUOTES, 'UTF-8'); ?>
                                     <?php if (!empty($list['panel_user_id'])): ?>
-                                        <span dir="rtl"> · شناسهٔ حساب <bdi dir="ltr"><?= htmlspecialchars($list['panel_user_id'], ENT_QUOTES, 'UTF-8') ?></bdi></span>
+                                        <span dir="rtl"> · شناسهٔ سرویس <bdi dir="ltr"><?= htmlspecialchars($list['panel_user_id'], ENT_QUOTES, 'UTF-8') ?></bdi></span>
                                     <?php endif; ?>
                                 </td>
                                 <td data-label="لوکیشن"><?php echo htmlspecialchars($list['Service_location'], ENT_QUOTES, 'UTF-8'); ?></td>

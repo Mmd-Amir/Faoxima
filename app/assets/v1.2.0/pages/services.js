@@ -1,6 +1,40 @@
 import { call } from '../api.js?v=0.0.53';
-import { escapeHtml, skeletonList, fmtNumber, serviceListIdentity, serviceStatusBadge } from '../utils.js?v=0.0.53';
+import { escapeHtml, skeletonList, fmtBytes, fmtNumber, serviceListIdentity, serviceStatusBadge } from '../utils.js?v=0.0.54';
 import { icon } from '../icons.js?v=0.0.52';
+
+const columns = [
+    ['شناسهٔ سرویس', 'panel_user_id'],
+    ['نام کاربری سرویس', 'username'],
+    ['روز مانده', 'days_remaining'],
+    ['حجم مانده', 'remaining_bytes'],
+    ['تاریخ انقضا', 'expires_at'],
+];
+const expiryDate = new Intl.DateTimeFormat('fa-IR', { dateStyle: 'short', timeZone: 'Asia/Tehran' });
+
+function statusBadge(it) {
+    const status = serviceStatusBadge(it.status || it.Status || '');
+    return `<span class="badge ${status.badge}">${icon(status.icon, 'class="ico"')} ${escapeHtml(status.text)}</span>`;
+}
+
+function renderServiceRow(it) {
+    const username = it.username || '—';
+    const href = `#/services/${encodeURIComponent(username)}/${encodeURIComponent(it.id_invoice)}`;
+    const days = it.days_remaining == null ? '—' : it.days_remaining === -1 ? 'نامحدود' : fmtNumber(it.days_remaining);
+    const traffic = it.remaining_bytes == null ? '—' : it.remaining_bytes === -1 ? 'نامحدود' : fmtBytes(it.remaining_bytes);
+    const expires = it.expires_at == null ? '—' : it.expires_at === 0 ? 'نامحدود' : expiryDate.format(it.expires_at * 1000);
+
+    return `<tr>
+        <td>${statusBadge(it)}${it.has_queued_renewal ? `<span class="badge is-active">${icon('online', 'class="ico"')} رزرو اشتراک</span>` : ''}</td>
+        <td><bdi dir="ltr">${escapeHtml(it.panel_user_id || '—')}</bdi></td>
+        <th scope="row">
+            <a href="${href}"><bdi dir="ltr">${escapeHtml(it.display_username || username)}</bdi></a>
+            ${it.name_product ? `<div class="muted">${escapeHtml(it.name_product)}</div>` : ''}
+        </th>
+        <td>${escapeHtml(days)}</td>
+        <td><bdi>${escapeHtml(traffic)}</bdi></td>
+        <td>${escapeHtml(expires)}</td>
+    </tr>`;
+}
 
 export async function services(view) {
     let page = 1;
@@ -10,6 +44,8 @@ export async function services(view) {
     let totalItems = 0;
     let loadSequence = 0;
     let allServices = false;
+    let sort = 'recent';
+    let direction = 'desc';
 
     view.innerHTML = `
         <article class="card card-window card-bare">
@@ -28,7 +64,7 @@ export async function services(view) {
                 </label>
                 <label class="search-field mt-sm">
                     ${icon('search', 'class="ico search-field-ico"')}
-                    <input id="services-search" type="text" placeholder="نام کاربری، شناسهٔ حساب، UUID یا لینک اشتراک" aria-label="جستجوی سرویس" inputmode="search" maxlength="2048" autocomplete="off" autocapitalize="off" spellcheck="false" />
+                    <input id="services-search" type="text" placeholder="نام کاربری سرویس، شناسهٔ سرویس، UUID یا لینک اشتراک" aria-label="جستجوی سرویس" inputmode="search" maxlength="2048" autocomplete="off" autocapitalize="off" spellcheck="false" />
                     <button type="button" class="search-field-clear hidden" id="services-search-clear" aria-label="پاک کردن جستجو">
                         ${icon('close', 'class="ico"')}
                     </button>
@@ -69,7 +105,7 @@ export async function services(view) {
                 $list.innerHTML = '<div class="empty">برای جستجو در همهٔ سرویس‌ها عبارتی وارد کنید.</div>';
                 return;
             }
-            const params = { page, limit };
+            const params = allServices ? { page, limit } : { page, limit, sort, direction };
             const res = query
                 ? await call('invoices', { method: 'POST', body: { ...params, q: query, scope: allServices ? 'all' : 'mine' } })
                 : await call('invoices', { params });
@@ -94,7 +130,7 @@ export async function services(view) {
                 return;
             }
 
-            $list.innerHTML = items.map(renderItem).join('');
+            $list.innerHTML = allServices ? items.map(renderAdminItem).join('') : renderTable(items);
 
             if (totalPages > 1) {
                 $pager.classList.remove('hidden');
@@ -115,22 +151,29 @@ export async function services(view) {
         }
     }
 
-    function renderItem(it) {
-        const username = it.username || '—';
-        const href = `#/services/${encodeURIComponent(username)}/${encodeURIComponent(it.id_invoice)}`;
-        const container = allServices ? 'div' : 'a';
-        const status = allServices ? serviceStatusBadge(it.status || it.Status || '') : null;
+    function renderTable(items) {
+        const headings = columns.map(([label, key]) => {
+            const order = key === sort ? (direction === 'asc' ? 'ascending' : 'descending') : '';
+            const arrow = order ? (direction === 'asc' ? ' ↑' : ' ↓') : ' ↕';
+            return `<th scope="col"${order ? ` aria-sort="${order}"` : ''}><button type="button" data-sort="${key}">${label}<span aria-hidden="true">${arrow}</span></button></th>`;
+        }).join('');
+        return `<div class="services-table-scroll" tabindex="0" role="region" aria-label="سرویس‌های من">
+            <table class="services-table" aria-label="سرویس‌های من">
+                <thead><tr><th scope="col">وضعیت</th>${headings}</tr></thead>
+                <tbody>${items.map(renderServiceRow).join('')}</tbody>
+            </table>
+        </div>`;
+    }
 
+    function renderAdminItem(it) {
         return `
-            <${container} class="list-item"${allServices ? '' : ` href="${href}"`}>
+            <div class="list-item">
                 <div class="li-main">
-                    ${serviceListIdentity(it.display_username || username, it.panel_user_id)}
-                    ${allServices ? `<div class="li-sub">${escapeHtml(it.Service_location)} · شمارهٔ سفارش <bdi dir="ltr">${escapeHtml(it.id_invoice)}</bdi></div>` : ''}
+                    ${serviceListIdentity(it.display_username || it.username || '—', it.panel_user_id)}
+                    <div class="li-sub">${escapeHtml(it.Service_location)} · شماره سفارش <bdi dir="ltr">${escapeHtml(it.id_invoice)}</bdi></div>
                 </div>
-                ${status
-                    ? `<span class="badge ${status.badge}">${icon(status.icon, 'class="ico"')} ${escapeHtml(status.text)}</span>`
-                    : `<span class="li-action" aria-hidden="true">${icon('chevronLeft', 'class="ico"')}</span>`}
-            </${container}>
+                ${statusBadge(it)}
+            </div>
         `;
     }
 
@@ -167,6 +210,18 @@ export async function services(view) {
         query = $search.value.trim();
         page = 1;
         load();
+    });
+    $list.addEventListener('click', async (event) => {
+        const button = event.target.closest('button[data-sort]');
+        if (!button) return;
+        const nextSort = button.dataset.sort;
+        direction = sort === nextSort ? (direction === 'asc' ? 'desc' : 'asc') : (nextSort === 'username' ? 'asc' : 'desc');
+        sort = nextSort;
+        page = 1;
+        await load();
+        if (document.activeElement === document.body) {
+            $list.querySelector(`button[data-sort="${nextSort}"]`)?.focus();
+        }
     });
     $prev.addEventListener('click', () => { if (page > 1) { page--; load(); } });
     $next.addEventListener('click', () => { if (page < totalPages) { page++; load(); } });

@@ -831,6 +831,26 @@ img, svg { display: block; max-width: 100%; }
     white-space: normal;
     overflow-wrap: anywhere;
 }
+.services-table-scroll { overflow-x: auto; }
+.services-table { width: 100%; border-collapse: collapse; text-align: start; }
+.services-table th, .services-table td {
+    border-bottom: 1px solid var(--border);
+    padding: 10px 8px;
+    text-align: start;
+    white-space: nowrap;
+}
+.services-table thead { color: var(--text-muted); }
+.services-table thead button {
+    background: transparent;
+    border: 0;
+    padding: 4px 0;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+.services-table [aria-sort] button { color: var(--gold); }
+.services-table tbody th a { color: inherit; text-decoration: underline; }
+.services-table td .badge + .badge { margin-inline-start: 4px; }
 .list-item .li-action svg { color: var(--text-muted); }
 .list-item:hover .li-action svg { color: var(--gold); }
 [dir="rtl"] .list-item .li-action svg { transform: scaleX(-1); }
