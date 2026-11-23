@@ -184,6 +184,16 @@ same("\n🪪 شناسهٔ سرویس: <code>91</code>", rxServicePanelIdLine(['p
 same('', rxServicePanelIdLine([]), 'account details omit the ID line when Rebecca has not supplied an ID');
 
 $pdo->exec("ALTER TABLE invoice ADD time_sell bigint DEFAULT 0");
+$pdo->prepare('UPDATE invoice SET user_info = :info WHERE id_invoice = :id')
+    ->execute([':id' => 'm123', ':info' => '{"expire":0,"data_limit":0,"used_traffic":0}']);
+$scope = 'id_user = :owner AND ' . ServiceSearch::VISIBLE_STATUS;
+$params = [':owner' => '100'];
+$firstPage = ServiceSearch::invoicePage($pdo, $scope, $params, 2, 0, 'remaining_bytes');
+$secondPage = ServiceSearch::invoicePage($pdo, $scope, $params, 2, 2, 'remaining_bytes');
+$ascending = ServiceSearch::invoicePage($pdo, $scope, $params, 3, 0, 'remaining_bytes', true);
+same(['m123', 'e123'], array_column($firstPage, 'id_invoice'), 'table sorts all owned results before taking the first page');
+same(['l123'], array_column($secondPage, 'id_invoice'), 'table keeps missing usage last and excludes other owners and removed accounts');
+same(['e123', 'm123', 'l123'], array_column($ascending, 'id_invoice'), 'table reverses finite and unlimited usage but keeps unknown values last');
 $pdo->exec("INSERT INTO invoice (id_invoice, id_user, username, Service_location, Status, time_sell)
     VALUES ('later-order', '100', 'same-name', 'east', 'active', 2)");
 $panel = new ManagePanel();

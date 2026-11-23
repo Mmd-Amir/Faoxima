@@ -1208,10 +1208,11 @@ if ($text == "version") {
     }
     $keyboardlists['inline_keyboard'][] = $pagination_buttons;
     if ($serviceRows !== [] && ($Chat_type ?? '') === 'private') {
+        $keyboardlists['inline_keyboard'][] = [['text' => '📋 جدول سرویس‌ها', 'callback_data' => 'svctable:recent:d:1']];
         $miniappHost = rtrim(preg_replace('#^https?://#i', '', trim((string) ($domainhosts ?? ''))), '/');
         $miniappUrl = 'https://' . $miniappHost . '/app/?view=services';
         if (filter_var($miniappUrl, FILTER_VALIDATE_URL) !== false) {
-            $keyboardlists['inline_keyboard'][] = [['text' => '📋 جدول سرویس‌ها', 'web_app' => ['url' => $miniappUrl]]];
+            $keyboardlists['inline_keyboard'][] = [['text' => 'جدول در مینی‌اپ', 'web_app' => ['url' => $miniappUrl]]];
         }
     }
     $keyboardlists['inline_keyboard'][] = $backuser;
@@ -1223,6 +1224,77 @@ if ($text == "version") {
     }
 
 
+} elseif (($Chat_type ?? '') === 'private' && preg_match('/^svctable:([a-z_]+):([ad]):([0-9]{1,9})$/D', $datain, $tableAction)) {
+    [, $sort, $direction, $page] = $tableAction;
+    if (!in_array($sort, ServiceSearch::TABLE_SORTS, true)) {
+        return;
+    }
+    if (!empty($callback_query_id)) {
+        telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+    }
+    $limit = 5;
+    $scope = 'id_user = :owner AND ' . ServiceSearch::VISIBLE_STATUS;
+    $params = [':owner' => (string) $from_id];
+    $count = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE $scope");
+    $count->execute($params);
+    $totalPages = max(1, (int) ceil($count->fetchColumn() / $limit));
+    $page = max(1, min($totalPages, (int) $page));
+    $offset = ($page - 1) * $limit;
+    $rows = ServiceSearch::invoicePage($pdo, $scope, $params, $limit, $offset, $sort, $direction === 'a');
+    $tableText = "📋 <b>سرویس‌های من</b>\n";
+    $buttons = [];
+    if ($rows === []) {
+        $tableText .= "\n" . $textbotlang['users']['sell']['service_not_available'];
+    } else {
+        $tableText .= "\n<b>نام کاربری سرویس</b>\nوضعیت | شناسهٔ سرویس | روز مانده | حجم مانده | تاریخ انقضا";
+        $details = [];
+        foreach ($rows as $index => $row) {
+            $number = $offset + $index + 1;
+            $username = htmlspecialchars((string) $row['username'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $status = match ($row['panel_usage']['status'] ?? $row['Status']) {
+                'disabled', 'disablebyadmin' => '🔴 غیرفعال',
+                'end_of_time', 'expired' => '🟠 منقضی',
+                'end_of_volume', 'limited' => '🟠 پایان حجم',
+                'send_on_hold', 'on_hold' => '🟡 متوقف',
+                'sendedwarn' => '🟡 هشدار',
+                'active' => '🟢 فعال',
+                default => '⚪ —',
+            };
+            $id = $row['panel_user_id'] ?? '—';
+            $days = match ($row['days_remaining']) { null => '—', -1 => 'نامحدود', default => (string) $row['days_remaining'] };
+            $traffic = match ($row['remaining_bytes']) {
+                null => '—', -1 => 'نامحدود', 0 => '۰ بایت', default => formatBytes($row['remaining_bytes']),
+            };
+            $expiry = match ($row['expires_at']) { null => '—', 0 => 'نامحدود', default => jdate('Y/m/d', $row['expires_at']) };
+            $tableText .= "\n\n$number. <code>$username</code>\n$status | $id | $days | $traffic | $expiry";
+            $details[] = ['text' => "مشاهده $number", 'callback_data' => 'quickview_' . $row['id_invoice']];
+        }
+        $tableText .= "\n\nصفحه $page از $totalPages";
+        $buttons = array_chunk($details, 3);
+        $sortButtons = [];
+        foreach (['username' => 'نام کاربری سرویس', 'panel_user_id' => 'شناسهٔ سرویس', 'days_remaining' => 'روز مانده',
+            'remaining_bytes' => 'حجم مانده', 'expires_at' => 'تاریخ انقضا'] as $field => $label) {
+            $nextDirection = $sort === $field ? ($direction === 'a' ? 'd' : 'a') : ($field === 'username' ? 'a' : 'd');
+            $arrow = $sort === $field ? ($direction === 'a' ? ' ↑' : ' ↓') : ' ↕';
+            $sortButtons[] = ['text' => $label . $arrow, 'callback_data' => "svctable:$field:$nextDirection:1"];
+        }
+        $buttons = array_merge($buttons, array_chunk($sortButtons, 2));
+        $navigation = [];
+        if ($page > 1) {
+            $navigation[] = ['text' => $textbotlang['users']['page']['previous'], 'callback_data' => "svctable:$sort:$direction:" . ($page - 1)];
+        }
+        if ($page < $totalPages) {
+            $navigation[] = ['text' => $textbotlang['users']['page']['next'], 'callback_data' => "svctable:$sort:$direction:" . ($page + 1)];
+        }
+        if ($navigation !== []) {
+            $buttons[] = $navigation;
+        }
+    }
+    $buttons[] = [
+        ['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice'],
+        ['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => 'backorder'],
+    ];
+    Editmessagetext($from_id, $message_id, $tableText, json_encode(['inline_keyboard' => $buttons]), 'HTML');
 } elseif ($datain == 'next_page') {
     $countStmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE id_user = :owner AND " . ServiceSearch::VISIBLE_STATUS);
     $countStmt->execute([':owner' => $from_id]);

@@ -6,6 +6,7 @@ final class ServiceSearch
 {
     public const VISIBLE_STATUS = "Status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin')";
     public const MAX_QUERY_LENGTH = 2048;
+    public const TABLE_SORTS = ['recent', 'username', 'panel_user_id', 'days_remaining', 'remaining_bytes', 'expires_at'];
     private const REBECCA_CLIENT_FORMATS = [
         'clash', 'clash-meta', 'clashmeta', 'clash.meta', 'mihomo', 'clash-mihomo', 'clash-mi', 'clashmi',
         'sing-box', 'singbox', 'sing',
@@ -248,6 +249,72 @@ final class ServiceSearch
             }
         }
         return false;
+    }
+
+    public static function invoicePage(PDO $pdo, string $scope, array $params, int $limit, int $offset, ?string $sort = null, bool $ascending = false, string $columns = '*'): array
+    {
+        $sqlOrder = 'time_sell DESC, id_invoice DESC';
+        if ($sort === 'username') {
+            $sqlOrder = ($ascending ? 'username ASC, ' : 'username DESC, ') . $sqlOrder;
+        }
+        $sortByUsage = $sort !== null && !in_array($sort, ['recent', 'username'], true);
+        $pagination = $sortByUsage ? '' : 'LIMIT :limit OFFSET :offset';
+        $stmt = $pdo->prepare("SELECT {$columns} FROM invoice WHERE {$scope} ORDER BY {$sqlOrder} {$pagination}");
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        if (!$sortByUsage) {
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        }
+        $stmt->execute();
+        $rows = self::addPanelIds($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC), includeUsage: $sort !== null);
+        if ($sort !== null) {
+            $now = time();
+            foreach ($rows as &$row) {
+                $row += self::usage($row, $now);
+            }
+            unset($row);
+            if ($sortByUsage) {
+                usort($rows, static fn(array $left, array $right): int => self::compare($left[$sort] ?? null, $right[$sort] ?? null, $sort, $ascending));
+                $rows = array_slice($rows, $offset, $limit);
+            }
+        }
+        return $rows;
+    }
+
+    private static function usage(array $row, int $now): array
+    {
+        $cached = json_decode((string) ($row['user_info'] ?? ''), true);
+        $info = ($row['panel_usage'] ?? []) + (is_array($cached) ? $cached : []);
+        $onHold = in_array($info['status'] ?? $row['Status'], ['on_hold', 'send_on_hold'], true);
+        $expires = !$onHold && array_key_exists('expire', $info) && ($info['expire'] === null || is_numeric($info['expire']))
+            ? max(0, (int) $info['expire']) : null;
+        $limit = array_key_exists('data_limit', $info) && ($info['data_limit'] === null || is_numeric($info['data_limit']))
+            ? (int) $info['data_limit'] : null;
+        $used = is_numeric($info['used_traffic'] ?? null) ? max(0, (int) $info['used_traffic']) : null;
+        return [
+            'expires_at' => $expires,
+            'days_remaining' => $expires === null ? null : ($expires === 0 ? -1 : (int) ceil(max(0, $expires - $now) / 86400)),
+            'remaining_bytes' => $limit === 0 ? -1 : ($limit > 0 && $used !== null ? max(0, $limit - $used) : null),
+        ];
+    }
+
+    private static function compare($left, $right, string $sort, bool $ascending): int
+    {
+        if ($sort === 'expires_at') {
+            $left = $left ?: null;
+            $right = $right ?: null;
+        }
+        if ($left === null || $right === null) {
+            return ($left === null) <=> ($right === null);
+        }
+        if ($sort === 'panel_user_id') {
+            $order = (strlen($left) <=> strlen($right)) ?: strcmp($left, $right);
+        } else {
+            $order = ($left === -1 ? PHP_INT_MAX : $left) <=> ($right === -1 ? PHP_INT_MAX : $right);
+        }
+        return $ascending ? $order : -$order;
     }
 
     /** Load numeric IDs by exact username in batches grouped by panel. */
