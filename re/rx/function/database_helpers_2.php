@@ -2757,66 +2757,26 @@ function formatInvoiceVolume(array $invoice, $precision = 2): string
     }
     return formatBytes(rxVolumeToBytes($value, rxInvoiceVolumeUnit($invoice)), $precision);
 }
-function rxServiceListStatusSuffix(array $invoice): string
+function rxServiceListLabel(array $invoice): string
 {
-    return in_array(strtolower((string) ($invoice['Status'] ?? '')), ['disabled', 'disablebyadmin'], true) ? ' | غیرفعال' : '';
+    $username = trim((string) ($invoice['username'] ?? ''));
+    $label = $username !== '' ? $username : '—';
+    $id = $invoice['panel_user_id'] ?? null;
+    return $id === null || $id === '' ? $label : $label . ' (ID ' . $id . ')';
 }
-function rxServiceListBaseLabel(array $invoice): string
+
+function rxServiceListButtons(PDO $pdo, array $invoices, string $callbackPrefix): array
 {
-    $product = trim((string) ($invoice['name_product'] ?? ''));
-    return $product !== '' ? $product : (string) ($invoice['username'] ?? '');
+    $buttons = [];
+    foreach (ServiceSearch::addPanelIds($pdo, $invoices) as $invoice) {
+        $buttons[] = [[
+            'text' => rxServiceListLabel($invoice),
+            'callback_data' => $callbackPrefix . $invoice['id_invoice'],
+        ]];
+    }
+    return $buttons;
 }
-function rxServiceListLabelKey(array $invoice, bool $withNote): string
-{
-    return rxServiceListBaseLabel($invoice) . ($withNote ? "\x1F" . trim((string) ($invoice['note'] ?? '')) : '');
-}
-function rxServiceListDuplicateKeys(array $rows, bool $withNote): array
-{
-    $counts = [];
-    foreach ($rows as $row) {
-        if (!is_array($row)) {
-            continue;
-        }
-        $key = rxServiceListLabelKey($row, $withNote);
-        $counts[$key] = ($counts[$key] ?? 0) + 1;
-    }
-    $duplicates = [];
-    foreach ($counts as $key => $count) {
-        if ($count > 1) {
-            $duplicates[$key] = true;
-        }
-    }
-    return $duplicates;
-}
-function rxServiceListUserDuplicateKeys($userId, array $statuses, bool $withNote): array
-{
-    global $pdo;
-    if (!($pdo instanceof PDO) || $statuses === []) {
-        return [];
-    }
-    try {
-        $placeholders = implode(',', array_fill(0, count($statuses), '?'));
-        $stmt = $pdo->prepare("SELECT name_product, username, note FROM invoice WHERE id_user = ? AND Status IN ($placeholders)");
-        $stmt->execute(array_merge([(string) $userId], array_values($statuses)));
-        return rxServiceListDuplicateKeys($stmt->fetchAll(PDO::FETCH_ASSOC), $withNote);
-    } catch (Throwable $e) {
-        return [];
-    }
-}
-function rxServiceListLabel(array $invoice, array $duplicateKeys = [], bool $withNote = false): string
-{
-    $label = rxServiceListBaseLabel($invoice);
-    $username = (string) ($invoice['username'] ?? '');
-    if (!empty($invoice['panel_user_id'])) {
-        $identity = $username . ' (ID ' . $invoice['panel_user_id'] . ')';
-        return $label === $username ? $identity : $identity . ' | ' . $label;
-    }
-    if ($username !== '' && $label !== $username && isset($duplicateKeys[rxServiceListLabelKey($invoice, $withNote)])) {
-        $short = mb_strlen($username) > 12 ? '…' . mb_substr($username, -10) : $username;
-        $label .= ' (' . $short . ')';
-    }
-    return $label;
-}
+
 function formatOnlineAtLabel($onlineAt, $isOnline = null)
 {
     if ($isOnline === true && (empty($onlineAt) || $onlineAt === null)) {

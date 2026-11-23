@@ -157,6 +157,24 @@ same([], search($pdo, str_repeat('a', 2049), null), 'oversized input');
 $rows = ServiceSearch::addPanelIds($pdo, $pdo->query('SELECT * FROM invoice ORDER BY id_invoice')->fetchAll(PDO::FETCH_ASSOC));
 same(['91', null, null, '91', null, null], array_column($rows, 'panel_user_id'), 'batch numeric enrichment keyed by panel and username');
 
+$accountRows = [
+    ['id_invoice' => 'e123', 'username' => 'same-name', 'Service_location' => 'east', 'name_product' => 'Test plan', 'note' => 'A note'],
+    ['id_invoice' => 'm123', 'username' => 'manual-account', 'Service_location' => 'manual', 'name_product' => 'Test plan', 'Status' => 'disabled'],
+];
+same(
+    [[['text' => 'same-name (ID 91)', 'callback_data' => 'quickview_e123']]],
+    rxServiceListButtons($pdo, [$accountRows[0]], 'quickview_'),
+    'single service displays its username and Rebecca ID'
+);
+same(
+    [
+        [['text' => 'same-name (ID 91)', 'callback_data' => 'extend_e123']],
+        [['text' => 'manual-account', 'callback_data' => 'extend_m123']],
+    ],
+    rxServiceListButtons($pdo, $accountRows, 'extend_'),
+    'shared plans and missing panel IDs keep labels and renewal callbacks independent'
+);
+
 $pdo->exec("ALTER TABLE invoice ADD time_sell bigint DEFAULT 0");
 $pdo->exec("INSERT INTO invoice (id_invoice, id_user, username, Service_location, Status, time_sell)
     VALUES ('later-order', '100', 'same-name', 'east', 'active', 2)");

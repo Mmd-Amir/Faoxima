@@ -66,7 +66,7 @@ if (isset($update["inline_query"])) {
         ['text' => "وضعیت سرویس", 'callback_data' => "Status"],
         ['text' => "نام کاربری", 'callback_data' => "username"],
     ];
-    while ($row = mysqli_fetch_assoc($result)) {
+    foreach (ServiceSearch::addPanelIds($pdo, $result->fetch_all(MYSQLI_ASSOC)) as $row) {
         $keyboardlists['inline_keyboard'][] = [
             [
                 'text' => "مشاهده‌اطلاعات",
@@ -77,7 +77,7 @@ if (isset($update["inline_query"])) {
                 'callback_data' => "username"
             ],
             [
-                'text' => $row['username'],
+                'text' => rxServiceListLabel($row),
                 'callback_data' => $row['username']
             ],
         ];
@@ -121,7 +121,7 @@ if (isset($update["inline_query"])) {
         ['text' => "وضعیت سرویس", 'callback_data' => "Status"],
         ['text' => "نام کاربری", 'callback_data' => "username"],
     ];
-    while ($row = mysqli_fetch_assoc($result)) {
+    foreach (ServiceSearch::addPanelIds($pdo, $result->fetch_all(MYSQLI_ASSOC)) as $row) {
         $keyboardlists['inline_keyboard'][] = [
             [
                 'text' => "مشاهده‌اطلاعات",
@@ -132,7 +132,7 @@ if (isset($update["inline_query"])) {
                 'callback_data' => "username"
             ],
             [
-                'text' => $row['username'],
+                'text' => rxServiceListLabel($row),
                 'callback_data' => $row['username']
             ],
         ];
@@ -176,7 +176,7 @@ if (isset($update["inline_query"])) {
         ['text' => "وضعیت سرویس", 'callback_data' => "Status"],
         ['text' => "نام کاربری", 'callback_data' => "username"],
     ];
-    while ($row = mysqli_fetch_assoc($result)) {
+    foreach (ServiceSearch::addPanelIds($pdo, $result->fetch_all(MYSQLI_ASSOC)) as $row) {
         $keyboardlists['inline_keyboard'][] = [
             [
                 'text' => "مشاهده‌اطلاعات",
@@ -187,7 +187,7 @@ if (isset($update["inline_query"])) {
                 'callback_data' => "username"
             ],
             [
-                'text' => $row['username'],
+                'text' => rxServiceListLabel($row),
                 'callback_data' => $row['username']
             ],
         ];

@@ -47,7 +47,7 @@ final class InvoicesHandler extends BaseHandler
         $params[':limit']  = $limit;
         $params[':offset'] = $offset;
 
-        $columns = $all ? 'id_invoice, username, Service_location, name_product, Status' : '*';
+        $columns = $all ? 'id_invoice, username, Service_location, Status' : '*';
         $rows = ServiceSearch::addPanelIds(FaoximaDb::pdo(), FaoximaDb::fetchAll(
             "SELECT {$columns} FROM invoice
               WHERE {$where}

@@ -2625,9 +2625,8 @@ $iduser  در ربات  رفع مسدود گردید
     if (count($rows) > 1) {
         $buttons = [];
         foreach (ServiceSearch::addPanelIds($pdo, array_slice($rows, 0, 50)) as $row) {
-            $panelId = empty($row['panel_user_id']) ? '' : ' (ID ' . $row['panel_user_id'] . ')';
             $buttons[] = [[
-                'text' => $row['username'] . $panelId . ' | ' . $row['Service_location'] . ' | ' . $row['Status'],
+                'text' => rxServiceListLabel($row) . ' | ' . $row['Service_location'] . ' | ' . $row['Status'],
                 'callback_data' => 'manageinvoice_' . $row['id_invoice'],
             ]];
         }

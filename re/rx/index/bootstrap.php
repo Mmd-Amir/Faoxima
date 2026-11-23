@@ -1180,50 +1180,18 @@ if ($text == "version") {
     }
     step('home', $from_id);
 } elseif (($text !== '' && $text == $datatextbot['text_Purchased_services']) || $datain == "backorder" || $datain == "myservicesbtn" || $text == "/services") {
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :id_user AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold' OR status = 'disabled' OR status = 'disablebyadmin')");
-    $stmt->bindParam(':id_user', $from_id);
-    $stmt->execute();
-    $invoices = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (is_null($invoices) && $setting['NotUser'] == "offnotuser") {
+    $items_per_page = 20;
+    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :owner AND " . ServiceSearch::VISIBLE_STATUS
+        . " ORDER BY time_sell DESC, id_invoice DESC LIMIT $items_per_page");
+    $stmt->execute([':owner' => $from_id]);
+    $serviceRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if ($serviceRows === [] && $setting['NotUser'] == "offnotuser") {
         sendmessage($from_id, $textbotlang['users']['sell']['service_not_available'], null, 'html');
         return;
     }
     rx_section_media_enter('services', $from_id, $datain, $message_id, ['myservicesbtn'], ['myservicesbtn']);
-
-    $pages = 1;
-    update("user", "pagenumber", $pages, "id", $from_id);
-    $page = 1;
-    $items_per_page = 20;
-    $start_index = ($page - 1) * $items_per_page;
-    $keyboardlists = [
-        'inline_keyboard' => [],
-    ];
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = '$from_id' AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold' OR status = 'disabled' OR status = 'disablebyadmin') ORDER BY time_sell DESC LIMIT $start_index, $items_per_page");
-    $stmt->execute();
-    $serviceRows = ServiceSearch::addPanelIds($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC));
-    $rxLabelDup = rxServiceListUserDuplicateKeys($from_id, ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin'], $setting['statusnamecustom'] == 'onnamecustom');
-    if ($setting['statusnamecustom'] == 'onnamecustom') {
-        foreach ($serviceRows as $row) {
-            $data = "";
-            if ($row != null)
-                $data = " | {$row['note']}";
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, true) . $data . rxServiceListStatusSuffix($row) . "✨",
-                    'callback_data' => "quickview_" . $row['id_invoice']
-                ],
-            ];
-        }
-    } else {
-        foreach ($serviceRows as $row) {
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, false) . rxServiceListStatusSuffix($row) . "✨",
-                    'callback_data' => "quickview_" . $row['id_invoice']
-                ],
-            ];
-        }
-    }
+    update("user", "pagenumber", 1, "id", $from_id);
+    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $serviceRows, 'quickview_')];
     $pagination_buttons = [
         [
             'text' => $textbotlang['users']['page']['next'],
@@ -1249,45 +1217,16 @@ if ($text == "version") {
 
 
 } elseif ($datain == 'next_page') {
-    $numpage = select("invoice", "id_user", "id_user", $from_id, "count");
-    $page = $user['pagenumber'];
+    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE id_user = :owner AND " . ServiceSearch::VISIBLE_STATUS);
+    $countStmt->execute([':owner' => $from_id]);
+    $page = max(1, (int) $user['pagenumber']);
     $items_per_page = 20;
-    $sum = $user['pagenumber'] * $items_per_page;
-    if ($sum > $numpage) {
-        $next_page = 1;
-    } else {
-        $next_page = $page + 1;
-    }
+    $next_page = $page * $items_per_page >= (int) $countStmt->fetchColumn() ? 1 : $page + 1;
     $start_index = ($next_page - 1) * $items_per_page;
-    $keyboardlists = [
-        'inline_keyboard' => [],
-    ];
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = '$from_id' AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold' OR status = 'disabled' OR status = 'disablebyadmin') ORDER BY time_sell DESC LIMIT $start_index, $items_per_page");
-    $stmt->execute();
-    $serviceRows = ServiceSearch::addPanelIds($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC));
-    $rxLabelDup = rxServiceListUserDuplicateKeys($from_id, ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin'], $setting['statusnamecustom'] == 'onnamecustom');
-    if ($setting['statusnamecustom'] == 'onnamecustom') {
-        foreach ($serviceRows as $row) {
-            $data = "";
-            if ($row != null)
-                $data = " | {$row['note']}";
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, true) . $data . rxServiceListStatusSuffix($row) . "✨",
-                    'callback_data' => "quickview_" . $row['id_invoice']
-                ],
-            ];
-        }
-    } else {
-        foreach ($serviceRows as $row) {
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, false) . rxServiceListStatusSuffix($row) . "✨",
-                    'callback_data' => "quickview_" . $row['id_invoice']
-                ],
-            ];
-        }
-    }
+    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :owner AND " . ServiceSearch::VISIBLE_STATUS
+        . " ORDER BY time_sell DESC, id_invoice DESC LIMIT $start_index, $items_per_page");
+    $stmt->execute([':owner' => $from_id]);
+    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC), 'quickview_')];
     $pagination_buttons = [
         [
             'text' => $textbotlang['users']['page']['next'],
@@ -1313,45 +1252,13 @@ if ($text == "version") {
     Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json);
 
 } elseif ($datain == 'previous_page') {
-    $numpage = select("invoice", "id_user", "id_user", $from_id, "count");
-    $page = $user['pagenumber'];
+    $previous_page = max(1, (int) $user['pagenumber'] - 1);
     $items_per_page = 20;
-    $sum = $user['pagenumber'] * $items_per_page;
-    if ($sum > $numpage) {
-        $previous_page = 1;
-    } else {
-        $previous_page = $page - 1;
-    }
     $start_index = ($previous_page - 1) * $items_per_page;
-    $keyboardlists = [
-        'inline_keyboard' => [],
-    ];
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = '$from_id' AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold' OR status = 'disabled' OR status = 'disablebyadmin') ORDER BY time_sell DESC LIMIT $previous_page, $items_per_page");
-    $stmt->execute();
-    $serviceRows = ServiceSearch::addPanelIds($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC));
-    $rxLabelDup = rxServiceListUserDuplicateKeys($from_id, ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin'], $setting['statusnamecustom'] == 'onnamecustom');
-    if ($setting['statusnamecustom'] == 'onnamecustom') {
-        foreach ($serviceRows as $row) {
-            $data = "";
-            if ($row != null)
-                $data = " | {$row['note']}";
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, true) . $data . rxServiceListStatusSuffix($row) . "✨",
-                    'callback_data' => "quickview_" . $row['id_invoice']
-                ],
-            ];
-        }
-    } else {
-        foreach ($serviceRows as $row) {
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, false) . rxServiceListStatusSuffix($row) . "✨",
-                    'callback_data' => "quickview_" . $row['id_invoice']
-                ],
-            ];
-        }
-    }
+    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :owner AND " . ServiceSearch::VISIBLE_STATUS
+        . " ORDER BY time_sell DESC, id_invoice DESC LIMIT $start_index, $items_per_page");
+    $stmt->execute([':owner' => $from_id]);
+    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC), 'quickview_')];
     $pagination_buttons = [
         [
             'text' => $textbotlang['users']['page']['next'],
@@ -1614,18 +1521,7 @@ if ($text == "version") {
     if ($isServiceSearch) {
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         if (count($rows) > 1) {
-            $keyboardlists = ['inline_keyboard' => []];
-            $withNote = $setting['statusnamecustom'] === 'onnamecustom';
-            $displayRows = ServiceSearch::addPanelIds($pdo, array_slice($rows, 0, 50));
-            $duplicates = rxServiceListDuplicateKeys($displayRows, $withNote);
-            foreach ($displayRows as $row) {
-                $note = $withNote && !empty($row['note']) ? ' | ' . $row['note'] : '';
-                $location = empty($row['Service_location']) ? '' : ' | ' . $row['Service_location'];
-                $keyboardlists['inline_keyboard'][] = [[
-                    'text' => "✨" . rxServiceListLabel($row, $duplicates, $withNote) . $location . $note . rxServiceListStatusSuffix($row) . "✨",
-                    'callback_data' => 'quickview_' . $row['id_invoice'],
-                ]];
-            }
+            $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, array_slice($rows, 0, 50), 'quickview_')];
             $keyboardlists['inline_keyboard'][] = [
                 ['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice'],
                 ['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => 'backorder'],

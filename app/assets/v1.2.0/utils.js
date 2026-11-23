@@ -8,6 +8,13 @@ export function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
+export function serviceListIdentity(username, panelUserId) {
+    const accountId = panelUserId
+        ? `<span class="li-sub">شناسهٔ حساب <bdi dir="ltr">${escapeHtml(panelUserId)}</bdi></span>`
+        : '';
+    return `<div class="service-list-identity"><bdi class="li-title" dir="ltr">${escapeHtml(username)}</bdi>${accountId}</div>`;
+}
+
 export function blobToDataUrl(blob) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();

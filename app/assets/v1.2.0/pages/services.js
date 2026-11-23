@@ -1,5 +1,5 @@
 import { call } from '../api.js?v=0.0.53';
-import { escapeHtml, skeletonList, fmtNumber, serviceStatusBadge } from '../utils.js?v=0.0.52';
+import { escapeHtml, skeletonList, fmtNumber, serviceListIdentity, serviceStatusBadge } from '../utils.js?v=0.0.53';
 import { icon } from '../icons.js?v=0.0.52';
 
 export async function services(view) {
@@ -116,32 +116,20 @@ export async function services(view) {
     }
 
     function renderItem(it) {
-        const st = serviceStatusBadge(it.status || it.Status || '');
-        const badge = st.badge;
-        const badgeText = st.text;
-        const badgeIcon = st.icon;
-
         const username = it.username || '—';
-        const displayUsername = it.display_username || username;
-        const productName = it.name_product || '—';
-        const location = it.Service_location || '';
-        const accountId = it.panel_user_id ? ` · شناسهٔ حساب <bdi dir="ltr">${escapeHtml(it.panel_user_id)}</bdi>` : '';
-        const detail = allServices ? ` · شمارهٔ سفارش <bdi dir="ltr">${escapeHtml(it.id_invoice)}</bdi>` : '';
         const href = `#/services/${encodeURIComponent(username)}/${encodeURIComponent(it.id_invoice)}`;
         const container = allServices ? 'div' : 'a';
+        const status = allServices ? serviceStatusBadge(it.status || it.Status || '') : null;
 
         return `
             <${container} class="list-item"${allServices ? '' : ` href="${href}"`}>
                 <div class="li-main">
-                    <div class="li-title">${escapeHtml(productName)}</div>
-                    <div class="li-sub li-sub-stacked">
-                        <span style="overflow-wrap:anywhere"><bdi>${escapeHtml(displayUsername)}</bdi>${accountId}</span>
-                        ${location || detail ? `<span class="li-sub-line">${escapeHtml(location)}${detail}</span>` : ''}
-                    </div>
+                    ${serviceListIdentity(it.display_username || username, it.panel_user_id)}
+                    ${allServices ? `<div class="li-sub">${escapeHtml(it.Service_location)} · شمارهٔ سفارش <bdi dir="ltr">${escapeHtml(it.id_invoice)}</bdi></div>` : ''}
                 </div>
-                ${it.has_queued_renewal ? `<span class="badge is-active">${icon('online', 'class="ico"')} رزرو اشتراک</span>` : ''}
-                <span class="badge ${badge}">${icon(badgeIcon, 'class="ico"')} ${escapeHtml(badgeText)}</span>
-                ${allServices ? '' : `<span class="li-action" aria-hidden="true">${icon('chevronLeft', 'class="ico"')}</span>`}
+                ${status
+                    ? `<span class="badge ${status.badge}">${icon(status.icon, 'class="ico"')} ${escapeHtml(status.text)}</span>`
+                    : `<span class="li-action" aria-hidden="true">${icon('chevronLeft', 'class="ico"')}</span>`}
             </${container}>
         `;
     }

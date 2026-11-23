@@ -1839,53 +1839,19 @@ $text_porsant
     $price = $rates['USD'];
     sendmessage($from_id, sprintf($textbotlang['users']['pricearze']['tether-price'], $price), null, 'HTML');
 } elseif (($text !== '' && $text == $datatextbot['text_extend']) || $datain == "extendbtn") {
-    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :id_user AND (status = 'active' OR status = 'end_of_time'  OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold')");
-    $stmt->bindParam(':id_user', $from_id);
-    $stmt->execute();
-    $invoices = $stmt->rowCount();
-    if ($invoices == 0) {
+    $items_per_page = 20;
+    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :owner
+        AND Status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold')
+        ORDER BY time_sell DESC, id_invoice DESC LIMIT $items_per_page");
+    $stmt->execute([':owner' => $from_id]);
+    $serviceRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if ($serviceRows === []) {
         sendmessage($from_id, $textbotlang['users']['extend']['emptyServiceforExtend'], null, 'html');
         return;
     }
     rx_section_media_enter('extend', $from_id, $datain, $message_id, ['extendbtn']);
-    $pages = 1;
-    update("user", "pagenumber", $pages, "id", $from_id);
-    $page = 1;
-    $items_per_page = 20;
-    $start_index = ($page - 1) * $items_per_page;
-    $_start_index_i = (int)$start_index; $_p = (int)$items_per_page;
-    $_stmt = $connect->prepare("SELECT * FROM invoice WHERE id_user = ? AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR status = 'send_on_hold') ORDER BY time_sell DESC LIMIT ?, ?");
-    $_stmt->bind_param("sii", $from_id, $_start_index_i, $_p);
-    $_stmt->execute();
-    $result = $_stmt->get_result();
-    $_stmt->close();
-    $keyboardlists = [
-        'inline_keyboard' => [],
-    ];
-    $rxLabelDup = rxServiceListUserDuplicateKeys($from_id, ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold'], (bool) $statusnote);
-    $serviceRows = ServiceSearch::addPanelIds($pdo, $result->fetch_all(MYSQLI_ASSOC));
-    if ($statusnote) {
-        foreach ($serviceRows as $row) {
-            $data = "";
-            if ($row != null)
-                $data = " | {$row['note']}";
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, true) . $data . "✨",
-                    'callback_data' => "extend_" . $row['id_invoice']
-                ],
-            ];
-        }
-    } else {
-        foreach ($serviceRows as $row) {
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, false) . "✨",
-                    'callback_data' => "extend_" . $row['id_invoice']
-                ],
-            ];
-        }
-    }
+    update("user", "pagenumber", 1, "id", $from_id);
+    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $serviceRows, 'extend_')];
     $pagination_buttons = [
         [
             'text' => $textbotlang['users']['page']['next'],
@@ -1905,49 +1871,17 @@ $text_porsant
         sendmessage($from_id, $textbotlang['users']['extend']['selectOrderDirect'], $keyboard_json, 'html');
     }
 } elseif ($datain == 'next_page_extends') {
-    $numpage = select("invoice", "id_user", "id_user", $from_id, "count");
-    $page = $user['pagenumber'];
+    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE id_user = :owner AND Status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold')");
+    $countStmt->execute([':owner' => $from_id]);
+    $page = max(1, (int) $user['pagenumber']);
     $items_per_page = 20;
-    $sum = $user['pagenumber'] * $items_per_page;
-    if ($sum > $numpage) {
-        $next_page = 1;
-    } else {
-        $next_page = $page + 1;
-    }
+    $next_page = $page * $items_per_page >= (int) $countStmt->fetchColumn() ? 1 : $page + 1;
     $start_index = ($next_page - 1) * $items_per_page;
-    $_si2 = (int)$start_index; $_p2 = (int)$items_per_page;
-    $_stmt = $connect->prepare("SELECT * FROM invoice WHERE id_user = ? AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold') ORDER BY time_sell DESC LIMIT ?, ?");
-    $_stmt->bind_param("sii", $from_id, $_si2, $_p2);
-    $_stmt->execute();
-    $result = $_stmt->get_result();
-    $_stmt->close();
-    $keyboardlists = [
-        'inline_keyboard' => [],
-    ];
-    $rxLabelDup = rxServiceListUserDuplicateKeys($from_id, ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold'], (bool) $statusnote);
-    $serviceRows = ServiceSearch::addPanelIds($pdo, $result->fetch_all(MYSQLI_ASSOC));
-    if ($statusnote) {
-        foreach ($serviceRows as $row) {
-            $data = "";
-            if ($row != null)
-                $data = " | {$row['note']}";
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, true) . $data . "✨",
-                    'callback_data' => "extend_" . $row['id_invoice']
-                ],
-            ];
-        }
-    } else {
-        foreach ($serviceRows as $row) {
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, false) . "✨",
-                    'callback_data' => "extend_" . $row['id_invoice']
-                ],
-            ];
-        }
-    }
+    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :owner
+        AND Status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold')
+        ORDER BY time_sell DESC, id_invoice DESC LIMIT $start_index, $items_per_page");
+    $stmt->execute([':owner' => $from_id]);
+    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC), 'extend_')];
     $pagination_buttons = [
         [
             'text' => $textbotlang['users']['page']['next'],
@@ -1968,49 +1902,14 @@ $text_porsant
     update("user", "pagenumber", $next_page, "id", $from_id);
     Editmessagetext($from_id, $message_id, $textbotlang['users']['extend']['selectOrderDirect'], $keyboard_json);
 } elseif ($datain == 'previous_page_extends') {
-    $numpage = select("invoice", "id_user", "id_user", $from_id, "count");
-    $page = $user['pagenumber'];
+    $previous_page = max(1, (int) $user['pagenumber'] - 1);
     $items_per_page = 20;
-    $sum = $user['pagenumber'] * $items_per_page;
-    if ($sum > $numpage) {
-        $previous_page = 1;
-    } else {
-        $previous_page = $page - 1;
-    }
     $start_index = ($previous_page - 1) * $items_per_page;
-    $_pp = (int)$previous_page; $_p = (int)$items_per_page;
-    $_stmt = $connect->prepare("SELECT * FROM invoice WHERE id_user = ? AND (status = 'active' OR status = 'end_of_time' OR status = 'end_of_volume' OR status = 'sendedwarn' OR Status = 'send_on_hold') ORDER BY time_sell DESC LIMIT ?, ?");
-    $_stmt->bind_param("sii", $from_id, $_pp, $_p);
-    $_stmt->execute();
-    $result = $_stmt->get_result();
-    $_stmt->close();
-    $keyboardlists = [
-        'inline_keyboard' => [],
-    ];
-    $rxLabelDup = rxServiceListUserDuplicateKeys($from_id, ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold'], (bool) $statusnote);
-    $serviceRows = ServiceSearch::addPanelIds($pdo, $result->fetch_all(MYSQLI_ASSOC));
-    if ($statusnote) {
-        foreach ($serviceRows as $row) {
-            $data = "";
-            if ($row != null)
-                $data = " | {$row['note']}";
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, true) . $data . "✨",
-                    'callback_data' => "extend_" . $row['id_invoice']
-                ],
-            ];
-        }
-    } else {
-        foreach ($serviceRows as $row) {
-            $keyboardlists['inline_keyboard'][] = [
-                [
-                    'text' => "✨" . rxServiceListLabel($row, $rxLabelDup, false) . "✨",
-                    'callback_data' => "extend_" . $row['id_invoice']
-                ],
-            ];
-        }
-    }
+    $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :owner
+        AND Status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold')
+        ORDER BY time_sell DESC, id_invoice DESC LIMIT $start_index, $items_per_page");
+    $stmt->execute([':owner' => $from_id]);
+    $keyboardlists = ['inline_keyboard' => rxServiceListButtons($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC), 'extend_')];
     $pagination_buttons = [
         [
             'text' => $textbotlang['users']['page']['next'],

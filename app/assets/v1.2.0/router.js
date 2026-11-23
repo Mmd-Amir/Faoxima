@@ -1,5 +1,5 @@
-import { home } from './pages/home.js?v=0.0.65';
-import { services as servicesPage } from './pages/services.js?v=0.0.54';
+import { home } from './pages/home.js?v=0.0.66';
+import { services as servicesPage } from './pages/services.js?v=0.0.55';
 
 import { buy as buyPage } from './pages/buy.js?v=0.0.62';
 import { account as accountPage } from './pages/account.js?v=0.0.52';

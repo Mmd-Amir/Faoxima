@@ -820,6 +820,17 @@ img, svg { display: block; max-width: 100%; }
 .list-item .li-sub-line {
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.service-list-identity {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 8px;
+}
+.list-item .service-list-identity .li-title {
+    margin: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
 .list-item .li-action svg { color: var(--text-muted); }
 .list-item:hover .li-action svg { color: var(--gold); }
 [dir="rtl"] .list-item .li-action svg { transform: scaleX(-1); }
