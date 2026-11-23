@@ -145,7 +145,7 @@ final class CardPhotoUploadHandler extends BaseHandler
     private function uploadPhotoGetFileId(string $apiKey, $userId, string $localPath, string $mime): ?string
     {
         $ch = curl_init('https://api.telegram.org/bot' . $apiKey . '/sendPhoto');
-        if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($ch, 'telegram');
+        FaoximaTelegramTransport::applyProxy($ch);
         $caption = '🪪 عکس کارت ارسال‌شده از مینی‌اپ (ذخیره file_id)';
         if (function_exists('applyPremiumEmojiTransform')) {
             $caption = applyPremiumEmojiTransform($caption, 'HTML');

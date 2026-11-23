@@ -66,7 +66,7 @@ if (isset($_GET['media']) && $_GET['media'] !== '') {
         exit;
     }
 
-    $bin = @file_get_contents("https://api.telegram.org/file/bot{$APIKEY}/{$mediaFilePath}");
+    $bin = FaoximaTelegramTransport::download((string) $APIKEY, $mediaFilePath);
     if ($bin === false || strlen($bin) === 0) {
         http_response_code(502);
         exit;

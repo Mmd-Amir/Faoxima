@@ -1245,6 +1245,7 @@ function tonpayCustomBotDownloadFile($fileId, &$error)
         return null;
     }
     $curl = curl_init('https://api.telegram.org/file/bot' . $token . '/' . $filePath);
+    FaoximaTelegramTransport::applyProxy($curl);
     curl_setopt_array($curl, [
         CURLOPT_FILE => $handle,
         CURLOPT_CONNECTTIMEOUT => 10,
@@ -1253,6 +1254,8 @@ function tonpayCustomBotDownloadFile($fileId, &$error)
         CURLOPT_FAILONERROR => true,
     ]);
     $ok = curl_exec($curl);
+    $status = curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+    FaoximaTelegramTransport::noteUpdateFailure(curl_errno($curl), $status, ['ok' => $ok !== false]);
     curl_close($curl);
     fclose($handle);
     if ($ok === false || (int) @filesize($tmp) <= 0) {

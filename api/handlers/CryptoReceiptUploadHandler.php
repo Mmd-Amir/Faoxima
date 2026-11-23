@@ -155,7 +155,7 @@ final class CryptoReceiptUploadHandler extends BaseHandler
     {
         if (function_exists('applyPremiumEmojiTransform')) { $caption = applyPremiumEmojiTransform($caption, 'HTML'); }
         $ch = curl_init('https://api.telegram.org/bot' . $apiKey . '/sendPhoto');
-        if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($ch, 'telegram');
+        FaoximaTelegramTransport::applyProxy($ch);
         $post = [
             'chat_id'    => $chatId,
             'caption'    => $caption,
@@ -205,7 +205,7 @@ final class CryptoReceiptUploadHandler extends BaseHandler
         ];
         if ($keyboardJson !== '') { $payload['reply_markup'] = $keyboardJson; }
         $ch = curl_init($url);
-        if (function_exists('faoxima_apply_curl_proxy')) faoxima_apply_curl_proxy($ch, 'telegram');
+        FaoximaTelegramTransport::applyProxy($ch);
         curl_setopt_array($ch, [
             CURLOPT_POST           => true,
             CURLOPT_POSTFIELDS     => http_build_query($payload),

@@ -1,0 +1,18 @@
+[Unit]
+Description=Faoxima Telegram %i
+After=network.target
+
+[Service]
+Type=simple
+User=FAOXIMA_USER
+WorkingDirectory=/path/to/faoxima
+ExecStart=/usr/bin/php /path/to/faoxima/scripts/telegram-polling.php %i
+Restart=always
+RestartSec=3s
+KillMode=control-group
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

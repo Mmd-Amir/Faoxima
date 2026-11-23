@@ -425,7 +425,7 @@ final class TicketsHandler extends BaseHandler
             http_response_code(404);
             exit;
         }
-        $bin = @file_get_contents("https://api.telegram.org/file/bot{$APIKEY}/{$path}");
+        $bin = FaoximaTelegramTransport::download((string) $APIKEY, $path);
         if ($bin === false) {
             http_response_code(502);
             exit;

@@ -220,7 +220,7 @@ if (isset($_GET['media']) && $_GET['media'] !== '') {
     $f = telegram('getFile', ['file_id' => $item['file_id']]);
     $path = $f['result']['file_path'] ?? '';
     if ($path === '') { http_response_code(404); exit; }
-    $bin = @file_get_contents("https://api.telegram.org/file/bot{$APIKEY}/{$path}");
+    $bin = FaoximaTelegramTransport::download((string) $APIKEY, $path);
     if ($bin === false) { http_response_code(502); exit; }
     $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
     $ct = $item['type'] === 'video' ? 'video/mp4' : ($ext === 'png' ? 'image/png' : ($ext === 'gif' ? 'image/gif' : 'image/jpeg'));

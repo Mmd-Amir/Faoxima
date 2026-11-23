@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/lib/WebhookAuth.php';
+require_once __DIR__ . '/lib/TelegramTransport.php';
 if (is_file(__DIR__ . '/lib/CronHealth.php')) {
     require_once __DIR__ . '/lib/CronHealth.php';
 }
@@ -9,7 +10,7 @@ if (!function_exists('rx_releaseWebhookConnection')) {
     function rx_releaseWebhookConnection()
     {
         static $released = false;
-        if ($released) {
+        if ($released || PHP_SAPI === 'cli') {
             return;
         }
         $released = true;
@@ -149,6 +150,9 @@ function telegram($method, $datas = [], $token = null)
     }
 
     if (strtolower((string) $method) === 'setwebhook') {
+        if ($token === $APIKEY && !empty(FaoximaTelegramTransport::currentSettings()['polling'])) {
+            return ['ok' => false, 'error_code' => 409, 'description' => 'Telegram polling is enabled.'];
+        }
         $datas['secret_token'] = FaoximaWebhookAuth::secret((string) $token, $token === $APIKEY);
     }
 
@@ -228,86 +232,39 @@ function telegram($method, $datas = [], $token = null)
 
     $preparedPayload = prepareTelegramRequestPayload($datas);
 
-    // Outbound to api.telegram.org has intermittent 2-5s connect timeouts
-    // on some hosting providers (MatHost.eu in particular). When a single
-    // sendmessage() fails, the calling handler usually has ALREADY advanced
-    // `step()` past this state — leaving the admin in a "stuck" state with
-    // no UI to recover. A short network-level retry inside telegram() makes
-    // the rest of the codebase resilient to those blips without touching
-    // ~50+ call-sites.
-    //
-    // Only retry on transient cURL errors (DNS, connect, timeout, recv).
-    // Application errors (HTTP 4xx/5xx, "message to edit not found", etc.)
-    // are NOT retried — they're real responses, not network failures.
-    $retryableCurlErrnos = [6, 7, 28, 35, 56];
-    $maxAttempts = 2; // 1 retry. Total worst case: ~10s (acceptable for a 30s webhook).
+    static $handle = null;
+    $timeout = isset($telegramCurlTimeout) && is_numeric($telegramCurlTimeout) ? (int) $telegramCurlTimeout : 10;
     $rawResponse = false;
     $curlErrorNumber = 0;
-    $curlError = '';
     $httpCode = 0;
     $duration = 0.0;
-    $attemptedTimes = 0;
 
-    while ($attemptedTimes < $maxAttempts) {
-        $attemptedTimes++;
-
-        $ch = curl_init($url);
-        if ($ch === false) {
-            error_log('Unable to initialise cURL for Telegram request.');
-            return [
-                'ok' => false,
-                'description' => 'Unable to initialise cURL for Telegram request.'
-            ];
-        }
-
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_ENCODING, '');
-        $timeout = isset($telegramCurlTimeout) && is_numeric($telegramCurlTimeout) ? (int)$telegramCurlTimeout : 10;
-        curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-        curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
-        curl_setopt($ch, CURLOPT_TCP_KEEPALIVE, 1);
-        curl_setopt($ch, CURLOPT_TCP_KEEPIDLE, 60);
-        curl_setopt($ch, CURLOPT_TCP_KEEPINTVL, 30);
-        if (function_exists('faoxima_apply_curl_proxy')) {
-            faoxima_apply_curl_proxy($ch, 'telegram');
-        }
+    for ($attempt = 1; $attempt <= 2; $attempt++) {
+        $handle = FaoximaTelegramTransport::open($url, $timeout, $handle);
         if (!empty($preparedPayload['headers'])) {
-            curl_setopt($ch, CURLOPT_HTTPHEADER, $preparedPayload['headers']);
+            curl_setopt($handle, CURLOPT_HTTPHEADER, $preparedPayload['headers']);
         }
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $preparedPayload['body']);
+        curl_setopt($handle, CURLOPT_POSTFIELDS, $preparedPayload['body']);
 
-        $requestStartedAt = microtime(true);
-        $rawResponse = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $duration = microtime(true) - $requestStartedAt;
-
+        $rawResponse = curl_exec($handle);
+        $httpCode = curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
+        $duration += curl_getinfo($handle, CURLINFO_TOTAL_TIME);
         if ($rawResponse !== false) {
-            curl_close($ch);
-            break; // network success — proceed to response parsing below
-        }
-
-        $curlErrorNumber = curl_errno($ch);
-        $curlError = curl_error($ch);
-        curl_close($ch);
-
-        // Stop if the error isn't network-transient, or if we just used the
-        // last attempt — fall through to the error-return block.
-        if (!in_array($curlErrorNumber, $retryableCurlErrnos, true) || $attemptedTimes >= $maxAttempts) {
             break;
         }
-
-        usleep(250000); // 250 ms backoff before retry
+        $curlErrorNumber = curl_errno($handle);
+        if ($attempt === 2 || !FaoximaTelegramTransport::mayRetryBeforeSend($curlErrorNumber)) {
+            break;
+        }
+        usleep(150000);
     }
 
     if ($rawResponse === false) {
-        $logError = $curlError !== '' ? $curlError : 'Unknown cURL error';
-        $redactedUrl = preg_replace('#(/bot)[^/]+(/)#', '$1***$2', $url);
-        error_log(sprintf('Telegram request failed (errno: %d, url: %s, attempts: %d): %s',
-            $curlErrorNumber, $redactedUrl, $attemptedTimes, $logError));
+        FaoximaTelegramTransport::noteUpdateFailure($curlErrorNumber, $httpCode);
+        error_log(sprintf('Telegram request failed (method: %s, cURL: %d, attempts: %d)', $method, $curlErrorNumber, $attempt));
         return [
             'ok' => false,
-            'description' => ($curlError !== '' ? $curlError : 'Telegram request failed.') . ' اتصال به تلگرام در مهلت مقرر برقرار نشد؛ فایروال یا پراکسی خروجی را بررسی کنید.'
+            'description' => 'اتصال به تلگرام برقرار نشد یا نتیجهٔ درخواست نامشخص است؛ وضعیت پراکسی خروجی را بررسی کنید.',
         ];
     }
 
@@ -325,9 +282,9 @@ function telegram($method, $datas = [], $token = null)
 function rx_parse_telegram_response($rawResponse, $httpCode)
 {
     $decodedResponse = json_decode($rawResponse, true);
-    if (!is_array($decodedResponse)) {
-        $logSnippet = substr((string) $rawResponse, 0, 200);
-        error_log(sprintf('Invalid response from Telegram API (HTTP %d): %s', $httpCode, $logSnippet));
+    FaoximaTelegramTransport::noteUpdateFailure(0, $httpCode, is_array($decodedResponse) ? $decodedResponse : []);
+    if (!is_array($decodedResponse) || !is_bool($decodedResponse['ok'] ?? null)) {
+        error_log(sprintf('Invalid response from Telegram API (HTTP %d)', $httpCode));
 
         return [
             'ok' => false,
@@ -389,18 +346,7 @@ function rx_telegram_dispatch_concurrent(array $requests)
 
         $preparedPayload = prepareTelegramRequestPayload($datas);
 
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_ENCODING, '');
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-        curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
-        curl_setopt($ch, CURLOPT_TCP_KEEPALIVE, 1);
-        curl_setopt($ch, CURLOPT_TCP_KEEPIDLE, 60);
-        curl_setopt($ch, CURLOPT_TCP_KEEPINTVL, 30);
-        if (function_exists('faoxima_apply_curl_proxy')) {
-            faoxima_apply_curl_proxy($ch, 'telegram');
-        }
+        $ch = FaoximaTelegramTransport::open($url, 10);
         if (!empty($preparedPayload['headers'])) {
             curl_setopt($ch, CURLOPT_HTTPHEADER, $preparedPayload['headers']);
         }
@@ -424,9 +370,10 @@ function rx_telegram_dispatch_concurrent(array $requests)
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlErrno = curl_errno($ch);
         if ($curlErrno !== 0 || $rawResponse === null || $rawResponse === '') {
+            FaoximaTelegramTransport::noteUpdateFailure($curlErrno, $httpCode);
             $results[$index] = [
                 'ok' => false,
-                'description' => curl_error($ch) !== '' ? curl_error($ch) : 'Telegram request failed.'
+                'description' => 'Telegram request failed.'
             ];
         } else {
             $results[$index] = rx_parse_telegram_response($rawResponse, $httpCode);
@@ -3024,7 +2971,8 @@ if (defined('FAOXIMA_SKIP_BOTAPI_ROUTER') && FAOXIMA_SKIP_BOTAPI_ROUTER) {
 }
 
 
-$rx_raw_body = @file_get_contents('php://input');
+$rx_raw_body = PHP_SAPI === 'cli' && defined('FAOXIMA_POLL_UPDATE')
+    ? ($GLOBALS['faoximaPollUpdateBody'] ?? '') : @file_get_contents('php://input');
 if (!is_string($rx_raw_body) || $rx_raw_body === '') {
     return;
 }

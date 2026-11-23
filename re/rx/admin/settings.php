@@ -5393,8 +5393,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
     $response = getFileddire($photoid);
     if ($response['ok']) {
         $filePath = $response['result']['file_path'];
-        $fileUrl = "https://api.telegram.org/file/bot$APIKEY/$filePath";
-        $fileContent = @file_get_contents($fileUrl);
+        $fileContent = FaoximaTelegramTransport::download((string) $APIKEY, $filePath);
 
         $projectRoot = defined('REFACTORED_LEGACY_ROOT') ? REFACTORED_LEGACY_ROOT : dirname(__DIR__, 3);
         $customBgPath = $projectRoot . '/custom.jpg';

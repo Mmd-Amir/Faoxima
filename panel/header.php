@@ -27,34 +27,14 @@ if (isset($_SESSION["user"])) {
         $__stmt_admin_ip->execute();
         $__raw_admin_ip = $__stmt_admin_ip->fetchColumn();
 
-        $__admin_ip_list = [];
-        $__admin_ip_unlimited = false;
-        if ($__raw_admin_ip !== false && $__raw_admin_ip !== null && $__raw_admin_ip !== '') {
-            $__admin_ip_decoded = json_decode((string)$__raw_admin_ip, true);
-            if (is_array($__admin_ip_decoded)) {
-                if (in_array('*', $__admin_ip_decoded, true) || in_array('all', $__admin_ip_decoded, true) || in_array('unlimited', $__admin_ip_decoded, true)) {
-                    $__admin_ip_unlimited = true;
-                } else {
-                    $__admin_ip_list = $__admin_ip_decoded;
-                }
-            } elseif ($__raw_admin_ip === '*' || $__raw_admin_ip === 'all' || $__raw_admin_ip === 'unlimited') {
-                $__admin_ip_unlimited = true;
-            } elseif (filter_var($__raw_admin_ip, FILTER_VALIDATE_IP)) {
-                $__admin_ip_list = [$__raw_admin_ip];
-            }
-        } else {
-            $__admin_ip_unlimited = true;
-        }
-
-        $__current_ip = $_SERVER['REMOTE_ADDR'] ?? '';
-        $__allowed = $__admin_ip_unlimited || (!empty($__admin_ip_list) && in_array($__current_ip, $__admin_ip_list, true));
-        if (!$__allowed) {
+        require_once __DIR__ . '/lib/admin_ip.php';
+        if (!fx_admin_ip_allowed($__raw_admin_ip, $_SERVER['REMOTE_ADDR'] ?? '')) {
             session_unset();
             session_destroy();
             header('Location: login.php', true, 302);
             exit;
         }
-        unset($__stmt_admin_ip, $__raw_admin_ip, $__admin_ip_decoded, $__admin_ip_list, $__admin_ip_unlimited, $__current_ip, $__allowed);
+        unset($__stmt_admin_ip, $__raw_admin_ip);
     }
 }
 

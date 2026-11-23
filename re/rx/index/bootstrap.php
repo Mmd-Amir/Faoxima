@@ -12,13 +12,20 @@ if (!defined('FAOXIMA_LAZY_MYSQLI')) {
 require_once 'config.php';
 require_once REFACTORED_LEGACY_ROOT . '/lib/WebhookAuth.php';
 FaoximaWebhookAuth::enforce((string) ($APIKEY ?? ''));
+require_once REFACTORED_LEGACY_ROOT . '/lib/TelegramTransport.php';
+$rxPollingUpdate = PHP_SAPI === 'cli' && defined('FAOXIMA_POLL_UPDATE');
+if (!$rxPollingUpdate && !empty(FaoximaTelegramTransport::currentSettings()['polling'])) {
+    http_response_code(503);
+    exit;
+}
+
 if (!defined('RX_DEFER_UPDATE_DEDUPE')) {
     define('RX_DEFER_UPDATE_DEDUPE', true);
 }
 require_once 'botapi.php';
 require_once 'jdf.php';
 require_once 'function.php';
-if (isset($update_id) && isDuplicateUpdate($update_id)) {
+if (!$rxPollingUpdate && isset($update_id) && isDuplicateUpdate($update_id)) {
     if (!headers_sent()) {
         http_response_code(200);
     }
@@ -67,6 +74,9 @@ if (isset($chat_member))
     return;
 $first_name = sanitizeUserName($first_name);
 if (!is_array($setting)) {
+    if ($rxPollingUpdate) {
+        http_response_code(503);
+    }
     $rxSettingMissingMarker = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'rx_setting_missing.flag';
     if (!is_file($rxSettingMissingMarker) || (time() - (int) @filemtime($rxSettingMissingMarker)) > 3600) {
         error_log('Settings data is unavailable. Ensure the `setting` table exists and contains records.');

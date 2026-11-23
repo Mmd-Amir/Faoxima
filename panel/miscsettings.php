@@ -93,6 +93,9 @@ function faoxima_misc_enabled($value): bool
                         تنظیمات متفرقه
                     </div>
                     <div class="page-head__sub">تنظیم رفتار گزارش رسید و تحویل لینک سرویس</div>
+                    <?php if ((string) $adminRow['id_admin'] === (string) $adminnumber): ?>
+                        <a href="telegram.php">اتصال تلگرام</a>
+                    <?php endif; ?>
                 </div>
             </div>
             <?php if (isset($_GET['saved'])): ?>
