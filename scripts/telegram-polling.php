@@ -78,18 +78,19 @@ function runTelegramPoller(FaoximaTelegramInbox $inbox, PDO $db, string $token):
     }
 }
 
-function runTelegramUpdate(string $botId, string $payload): int
+function runTelegramUpdate(string $botId, array $job, int $workerConnection): int
 {
     $input = tmpfile();
     if ($input === false) {
         return 75;
     }
     try {
+        $payload = $job['payload'];
         if (fwrite($input, $payload) !== strlen($payload) || !rewind($input)) {
             return 75;
         }
         $process = proc_open(
-            [PHP_BINARY, __DIR__ . '/telegram-update.php', $botId],
+            [PHP_BINARY, __DIR__ . '/telegram-update.php', $botId, (string) $job['seq'], (string) $workerConnection],
             [0 => $input, 1 => ['file', '/dev/null', 'w'], 2 => STDERR],
             $pipes,
             dirname(__DIR__)
@@ -105,7 +106,7 @@ function runTelegramUpdate(string $botId, string $payload): int
                 proc_close($process);
                 return $status['exitcode'];
             }
-            usleep(50000);
+            usleep(10000);
         } while (hrtime(true) < $deadline);
 
         proc_terminate($process, 9);
@@ -119,11 +120,12 @@ function runTelegramUpdate(string $botId, string $payload): int
 function runTelegramWorker(FaoximaTelegramInbox $inbox, PDO $db, string $botId): void
 {
     $inbox->recoverInterrupted();
+    $workerConnection = (int) $db->query('SELECT CONNECTION_ID()')->fetchColumn();
     $nextPrune = 0;
     while (true) {
         if (time() >= $nextPrune) {
-            $inbox->prune();
-            $nextPrune = time() + 3600;
+            $pruned = $inbox->prune();
+            $nextPrune = time() + ($pruned === 1000 ? 10 : 3600);
         }
         $settings = FaoximaTelegramTransport::settings($db);
         if (!$settings || !$settings['polling'] || time() - (int) $settings['last_poll_ok'] > 60) {
@@ -132,14 +134,14 @@ function runTelegramWorker(FaoximaTelegramInbox $inbox, PDO $db, string $botId):
         }
         $job = $inbox->next();
         if ($job === null) {
-            usleep(200000);
+            usleep(100000);
             continue;
         }
         if (!$inbox->transition((int) $job['seq'], 'pending', 'running')) {
             continue;
         }
         $start = hrtime(true);
-        $exit = runTelegramUpdate($botId, $job['payload']);
+        $exit = runTelegramUpdate($botId, $job, $workerConnection);
         $state = match ($exit) {
             0 => 'done',
             75 => 'pending',
@@ -215,7 +217,7 @@ try {
         fwrite(STDERR, "Usage: php scripts/telegram-polling.php init|poll|work|detach-webhook|attach-webhook|retry ROW|resolve ROW\n");
         exit(2);
     }
-    if (!$inbox->lock($role)) {
+    if (!$inbox->lock($role, $role === 'work' ? 5 : 0)) {
         fwrite(STDERR, "Another Telegram process already owns the {$role} lock.\n");
         exit(1);
     }

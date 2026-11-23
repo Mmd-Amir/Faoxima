@@ -58,10 +58,24 @@ final class FaoximaTelegramInbox
         $stmt->execute([$state === 'online' ? time() : 0, $state, $revision]);
     }
 
-    public function lock(string $role): bool
+    private function lockName(string $role): string
     {
-        $stmt = $this->db->prepare('SELECT GET_LOCK(?, 0)');
-        $stmt->execute(['faoxima.telegram.' . $role . '.' . $this->botId]);
+        return 'faoxima.telegram.' . $role . '.' . $this->botId;
+    }
+
+    public function lock(string $role, int $timeout = 0): bool
+    {
+        $stmt = $this->db->prepare('SELECT GET_LOCK(?, ?)');
+        $stmt->execute([$this->lockName($role), $timeout]);
+        return (int) $stmt->fetchColumn() === 1;
+    }
+
+    public function ownsDispatch(int $seq, int $updateId, int $workerConnection): bool
+    {
+        $stmt = $this->db->prepare("SELECT 1 FROM telegram_inbox
+            WHERE bot_id = ? AND seq = ? AND update_id = ? AND state = 'running'
+            AND IS_USED_LOCK(?) = ?");
+        $stmt->execute([$this->botId, $seq, $updateId, $this->lockName('work'), $workerConnection]);
         return (int) $stmt->fetchColumn() === 1;
     }
 
@@ -99,8 +113,16 @@ final class FaoximaTelegramInbox
 
     public function recoverInterrupted(): void
     {
-        $stmt = $this->db->prepare("UPDATE telegram_inbox SET state = 'held' WHERE bot_id = ? AND state = 'running'");
-        $stmt->execute([$this->botId]);
+        // A replacement worker must wait for an orphaned dispatch to exit.
+        if (!$this->lock('dispatch', 130)) {
+            throw new RuntimeException('The previous Telegram dispatch is still running.');
+        }
+        try {
+            $stmt = $this->db->prepare("UPDATE telegram_inbox SET state = 'held' WHERE bot_id = ? AND state = 'running'");
+            $stmt->execute([$this->botId]);
+        } finally {
+            $this->db->prepare('SELECT RELEASE_LOCK(?)')->execute([$this->lockName('dispatch')]);
+        }
     }
 
     public function next(): ?array
@@ -137,10 +159,11 @@ final class FaoximaTelegramInbox
         return $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
     }
 
-    public function prune(): void
+    public function prune(): int
     {
         $stmt = $this->db->prepare("DELETE FROM telegram_inbox WHERE bot_id = ? AND state = 'done'
             AND finished_at < UTC_TIMESTAMP() - INTERVAL 2 DAY LIMIT 1000");
         $stmt->execute([$this->botId]);
+        return $stmt->rowCount();
     }
 }

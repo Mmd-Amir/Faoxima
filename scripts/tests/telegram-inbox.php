@@ -69,6 +69,12 @@ checkTelegramInbox($inbox->store([]) === 0, 'An empty poll clears the in-memory 
 $head = $otherInbox->next();
 checkTelegramInbox((int) $head['update_id'] === 5, 'Oldest update is processed first.');
 $otherInbox->transition((int) $head['seq'], 'pending', 'running');
+$workConnection = (int) $otherConnection->query('SELECT CONNECTION_ID()')->fetchColumn();
+checkTelegramInbox($inbox->ownsDispatch((int) $head['seq'], 5, $workConnection), 'Dispatch belongs to the running worker and row.');
+checkTelegramInbox(!$inbox->ownsDispatch((int) $head['seq'], 6, $workConnection), 'Dispatch cannot claim an unrelated update.');
+checkTelegramInbox(!$inbox->ownsDispatch((int) $head['seq'], 5, $workConnection + 1), 'A stale worker cannot dispatch an update.');
+checkTelegramInbox($otherInbox->lock('dispatch') && !$inbox->lock('dispatch'), 'A second process cannot dispatch during recovery.');
+$otherConnection->query("SELECT RELEASE_LOCK('faoxima.telegram.dispatch.1000001')");
 $inbox->recoverInterrupted();
 checkTelegramInbox(count($inbox->held()) === 1, 'An interrupted update is held.');
 checkTelegramInbox((int) $inbox->next()['update_id'] === 7, 'A held update blocks the same user only.');

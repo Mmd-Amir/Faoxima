@@ -14,10 +14,16 @@ try {
     if (!$pdo instanceof PDO || FaoximaTelegramInbox::botId((string) $APIKEY) !== ($argv[1] ?? '')) {
         exit(75);
     }
+    $inbox = new FaoximaTelegramInbox($pdo, $argv[1]);
+    $seq = (int) ($argv[2] ?? 0);
+    $workerConnection = (int) ($argv[3] ?? 0);
     $body = stream_get_contents(STDIN);
     $update = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
     if (!is_int($update['update_id'] ?? null) || $update['update_id'] < 1) {
         exit(1);
+    }
+    if (!$inbox->lock('dispatch') || !$inbox->ownsDispatch($seq, $update['update_id'], $workerConnection)) {
+        exit(75);
     }
     $settings = FaoximaTelegramTransport::currentSettings();
     if (!$settings || !$settings['polling'] || $settings['proxy_url'] === '') {

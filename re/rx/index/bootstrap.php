@@ -23,6 +23,10 @@ if (!defined('RX_DEFER_UPDATE_DEDUPE')) {
     define('RX_DEFER_UPDATE_DEDUPE', true);
 }
 require_once 'botapi.php';
+if ($rxPollingUpdate && !isset($update_id)) {
+    http_response_code(500);
+    exit;
+}
 require_once 'jdf.php';
 require_once 'function.php';
 if (!$rxPollingUpdate && isset($update_id) && isDuplicateUpdate($update_id)) {
