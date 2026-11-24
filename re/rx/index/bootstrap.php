@@ -1181,14 +1181,15 @@ if ($text == "version") {
     step('home', $from_id);
 } elseif (($text !== '' && $text == $datatextbot['text_Purchased_services']) || $text === '/services'
     || in_array($datain, ['backorder', 'myservicesbtn', 'next_page', 'previous_page'], true)
-    || preg_match('/^svctable:([a-z_]+):([ad]):([0-9]{1,9})(?::(days_remaining|remaining_bytes|expires_at))?$/D', $datain, $serviceTable)) {
+    || preg_match('/^svctable:([a-z_]+):([ad]):([0-9]{1,9})(?::(?:days_remaining|remaining_bytes|expires_at))?$/D', $datain, $serviceTable)) {
     $sort = $serviceTable[1] ?? 'recent';
     $direction = $serviceTable[2] ?? 'd';
     if (!in_array($sort, ServiceSearch::TABLE_SORTS, true)) {
         return;
     }
-    $metrics = ['days_remaining' => 'روز مانده', 'remaining_bytes' => 'حجم مانده', 'expires_at' => 'انقضا'];
-    $metric = $serviceTable[4] ?? (isset($metrics[$sort]) ? $sort : 'days_remaining');
+    if ($sort === 'expires_at') {
+        $sort = 'days_remaining';
+    }
     $limit = 6;
     $scope = 'id_user = :owner AND ' . ServiceSearch::VISIBLE_STATUS;
     $params = [':owner' => (string) $from_id];
@@ -1211,12 +1212,12 @@ if ($text == "version") {
     if ($rows === []) {
         $tableText .= "\n\n" . $textbotlang['users']['sell']['service_not_available'];
     } else {
-        $tableText .= "\nبرای مرتب‌سازی، عنوان ستون را بزنید.";
+        $tableText .= "\nعنوان ستون را برای مرتب‌سازی بزنید.";
         $headings = [];
-        foreach (['username' => 'نام کاربری', 'panel_user_id' => 'شناسهٔ سرویس', $metric => $metrics[$metric]] as $field => $label) {
+        foreach (['username' => 'نام کاربری', 'panel_user_id' => 'شناسه', 'remaining_bytes' => 'حجم', 'days_remaining' => 'روز'] as $field => $label) {
             $nextDirection = $field === $sort ? ($direction === 'a' ? 'd' : 'a') : ($field === 'username' ? 'a' : 'd');
             $arrow = $field === $sort ? ($direction === 'a' ? ' ↑' : ' ↓') : '';
-            $headings[] = ['text' => $label . $arrow, 'callback_data' => "svctable:$field:$nextDirection:1:$metric"];
+            $headings[] = ['text' => $label . $arrow, 'callback_data' => "svctable:$field:$nextDirection:1"];
         }
         $buttons[] = $headings;
         foreach ($rows as $row) {
@@ -1231,44 +1232,26 @@ if ($text == "version") {
             };
             $username = trim((string) $row['username']);
             $id = $row['panel_user_id'] ?? '—';
-            $value = $row[$metric];
-            if ($value === null) {
-                $caption = '—';
-            } elseif ($value === -1 || ($metric === 'expires_at' && $value === 0)) {
-                $caption = 'نامحدود';
-            } else {
-                $caption = match ($metric) {
-                    'expires_at' => jdate('Y/m/d', $value),
-                    'remaining_bytes' => $value === 0 ? '۰ بایت' : strtr(formatBytes($value), [
-                        'کیلوبایت' => 'KB', 'مگابایت' => 'MB', 'گیگابایت' => 'GB', 'ترابایت' => 'TB',
-                    ]),
-                    default => (string) $value,
-                };
-            }
+            $days = match ($row['days_remaining']) {
+                null => '—', -1 => '∞', default => $row['days_remaining'] > 999 ? '999+' : (string) $row['days_remaining'],
+            };
             $details = 'quickview_' . $row['id_invoice'];
             $buttons[] = [
                 ['text' => $status . ' ' . ($username !== '' ? $username : '—'), 'callback_data' => $details],
-                ['text' => $id, 'callback_data' => $details],
-                ['text' => $caption, 'callback_data' => $details],
+                ['text' => strlen($id) > 5 ? '…' . substr($id, -5) : $id, 'callback_data' => $details],
+                ['text' => rxServiceTableTraffic($row['remaining_bytes']), 'callback_data' => $details],
+                ['text' => $days, 'callback_data' => $details],
             ];
         }
 
-        $metricButtons = [];
-        foreach ($metrics as $field => $label) {
-            $metricButtons[] = [
-                'text' => ($field === $metric ? '✓ ' : '') . $label,
-                'callback_data' => "svctable:$sort:$direction:$page:$field",
-            ];
-        }
-        $buttons[] = $metricButtons;
         if ($totalPages > 1) {
             $tableText .= "\nصفحه $page از $totalPages";
             $navigation = [];
             if ($page > 1) {
-                $navigation[] = ['text' => $textbotlang['users']['page']['previous'], 'callback_data' => "svctable:$sort:$direction:" . ($page - 1) . ":$metric"];
+                $navigation[] = ['text' => $textbotlang['users']['page']['previous'], 'callback_data' => "svctable:$sort:$direction:" . ($page - 1)];
             }
             if ($page < $totalPages) {
-                $navigation[] = ['text' => $textbotlang['users']['page']['next'], 'callback_data' => "svctable:$sort:$direction:" . ($page + 1) . ":$metric"];
+                $navigation[] = ['text' => $textbotlang['users']['page']['next'], 'callback_data' => "svctable:$sort:$direction:" . ($page + 1)];
             }
             $buttons[] = $navigation;
         }
@@ -1530,7 +1513,7 @@ if ($text == "version") {
             ];
             $foundTemplate = ($datatextbot['dyn_errors_service_found_count'] ?? '') ?: '🛍 %s سرویس پیدا شد. سرویس موردنظر را انتخاب کنید.';
             $resultText = count($rows) > 50
-                ? '🔎 بیش از ۵۰ سرویس پیدا شد. نام کاربری کامل یا شناسهٔ سرویس را وارد کنید.'
+                ? '🔎 بیش از ۵۰ نتیجه. نام کاربری کامل یا شناسهٔ سرویس را بفرستید.'
                 : sprintf($foundTemplate, count($rows));
             sendmessage($from_id, $resultText, json_encode($keyboardlists), 'html');
             step('home', $from_id);

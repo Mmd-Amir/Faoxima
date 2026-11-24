@@ -2632,7 +2632,7 @@ $iduser  در ربات  رفع مسدود گردید
         }
         $buttons[] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchorder']];
         $resultText = count($rows) > 50
-            ? '🔎 بیش از ۵۰ سرویس پیدا شد. نام کاربری کامل یا شناسهٔ سرویس را وارد کنید.'
+            ? '🔎 بیش از ۵۰ نتیجه. نام کاربری کامل یا شناسهٔ سرویس را بفرستید.'
             : '🛍 چند سرویس پیدا شد. سرویس موردنظر را انتخاب کنید.';
         nm_adminInstantReply($from_id, $resultText, json_encode(['inline_keyboard' => $buttons]), 'HTML');
         return;

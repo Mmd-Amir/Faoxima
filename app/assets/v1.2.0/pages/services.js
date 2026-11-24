@@ -74,7 +74,7 @@ export async function services(view) {
                 </div>
                 <details class="services-search-help">
                     <summary>راهنمای جستجو</summary>
-                    <p>نام کاربری، شناسهٔ سرویس، UUID یا لینک کامل اشتراک</p>
+                    <p>نام کاربری، شناسهٔ سرویس، UUID یا لینک اشتراک</p>
                 </details>
                 <label id="services-scope" class="services-scope hidden">
                     <input id="services-all" type="checkbox" /> جستجو در همهٔ سرویس‌ها

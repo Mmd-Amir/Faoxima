@@ -213,7 +213,7 @@ if ($invCanSearchIdentifiers) {
 
             <?php echo fx_filter_delete_flash_html(); ?>
 
-            <?php echo fx_search_ui('invoice.php', $invQ, array_merge(['status' => $invStatus !== '' ? $invStatus : null, 'lookup' => $lookup], $invDateKeep, $invExtraKeep), $invCanSearchIdentifiers ? 'نام کاربری سرویس، شناسهٔ سرویس، UUID یا لینک اشتراک' : 'جستجو در شماره سفارش، شناسهٔ تلگرام کاربر، نام کاربری سرویس یا محصول…', 'q', $invCanSearchIdentifiers); ?>
+            <?php echo fx_search_ui('invoice.php', $invQ, array_merge(['status' => $invStatus !== '' ? $invStatus : null, 'lookup' => $lookup], $invDateKeep, $invExtraKeep), $invCanSearchIdentifiers ? 'نام کاربری، شناسهٔ سرویس، UUID یا لینک اشتراک' : 'جستجو در شماره سفارش، شناسهٔ تلگرام کاربر، نام کاربری سرویس یا محصول…', 'q', $invCanSearchIdentifiers); ?>
 
             <?php echo fx_status_filter_ui('invoice.php', $invStatusOptions, $invStatus, array_merge($invSearchParams, $invDateKeep, $invExtraKeep)); ?>
 

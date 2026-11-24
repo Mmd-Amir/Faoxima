@@ -182,6 +182,11 @@ same(
 );
 same("\n🪪 شناسهٔ سرویس: <code>91</code>", rxServicePanelIdLine(['panel_user_id' => '91']), 'account ID uses its own Telegram copy field');
 same('', rxServicePanelIdLine([]), 'account details omit the ID line when Rebecca has not supplied an ID');
+same(
+    ['—', '∞', '0B', '512B', '0.5GB', '21GB', '1.2TB', '1TB'],
+    array_map('rxServiceTableTraffic', [null, -1, 0, 512, 512 * 1024 ** 2, 21 * 1024 ** 3, 1319413953331, 1024 ** 4 - 1]),
+    'Telegram traffic cells stay short without changing stored usage values'
+);
 
 $pdo->exec("ALTER TABLE invoice ADD time_sell bigint DEFAULT 0");
 $pdo->prepare('UPDATE invoice SET user_info = :info WHERE id_invoice = :id')

@@ -2757,6 +2757,23 @@ function formatInvoiceVolume(array $invoice, $precision = 2): string
     }
     return formatBytes(rxVolumeToBytes($value, rxInvoiceVolumeUnit($invoice)), $precision);
 }
+function rxServiceTableTraffic(?int $bytes): string
+{
+    if ($bytes === null || $bytes === -1 || $bytes === 0) {
+        return match ($bytes) { null => '—', -1 => '∞', 0 => '0B' };
+    }
+    $unit = (int) floor(log($bytes, 1024));
+    if ($bytes >= (1024 ** 3) / 10) {
+        $unit = max(3, $unit);
+    }
+    $size = round($bytes / (1024 ** $unit), 1);
+    if ($size === 1024.0) {
+        $size = 1;
+        $unit++;
+    }
+    return $size . ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB'][$unit];
+}
+
 function rxServiceListLabel(array $invoice): string
 {
     $username = trim((string) ($invoice['username'] ?? ''));
