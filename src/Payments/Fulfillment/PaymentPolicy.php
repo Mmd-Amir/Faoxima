@@ -39,7 +39,32 @@ final class PaymentPolicy
             && (string) ($payment['tonpay_gateway_mode'] ?? '') === 'custom') {
             return $created > 0 && $created <= $now;
         }
+        if ((string) ($payment['Payment_Method'] ?? '') === 'tetraminator' && defined('TETRAMINATOR_RECONCILE_SECONDS')) {
+            $tetraminatorCreated = (int) ($payment['tetraminator_created_at'] ?? 0);
+            if ($tetraminatorCreated <= 0) {
+                $tetraminatorCreated = $created;
+            }
+            return $tetraminatorCreated > 0 && $tetraminatorCreated <= $now && $tetraminatorCreated >= $now - TETRAMINATOR_RECONCILE_SECONDS;
+        }
         return $created > 0 && $created <= $now && $created >= $now - (method_exists(\Faoxima\Cron\Runtime\TaskState::class, 'rx_cron_catchup_seconds') ? \Faoxima\Cron\Runtime\TaskState::rx_cron_catchup_seconds() : 3600);
+    }
+
+    public static function cronPaymentRecent(array $payment, ?int $now = null, ?int $seconds = null): bool
+    {
+        $now = $now ?? time();
+        $span = $seconds !== null && $seconds > 0 ? $seconds : (method_exists(\Faoxima\Cron\Runtime\TaskState::class, 'rx_cron_catchup_seconds') ? \Faoxima\Cron\Runtime\TaskState::rx_cron_catchup_seconds() : 3600);
+        $raw = trim((string) ($payment['time'] ?? ''));
+        if (preg_match('/^[0-9]{10}$/D', $raw)) {
+            $created = (int) $raw;
+        } else {
+            $normalized = str_replace('/', '-', $raw);
+            $date = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $normalized, new DateTimeZone('Asia/Tehran'));
+            if ($date === false || $date->format('Y-m-d H:i:s') !== $normalized) {
+                return false;
+            }
+            $created = $date->getTimestamp();
+        }
+        return $created > 0 && $created <= $now && $created >= $now - $span;
     }
 
     public static function cronWindowSql(string $alias = 'Payment_report', ?int $seconds = null): string

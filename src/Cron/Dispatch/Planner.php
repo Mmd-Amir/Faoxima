@@ -223,7 +223,19 @@ final class Planner
 
         if ($this->taskStateEnabled) {
             $this->reconcileQueue($queuedTaskKeys, $schedules);
+            Wake::publish(array_keys(array_filter($this->availability, static fn($state) => $state === false)));
         }
+    }
+
+    public function observeQueue(): void
+    {
+        $this->definitions = Schedules::getCronJobDefinitions();
+        $schedules = Schedules::loadCronSchedules();
+        [, , $queuedTaskKeys] = $this->readQueuedTasks();
+        foreach (Wake::deferredJobs($this->now) as $jobKey) {
+            $this->availability[$jobKey] = false;
+        }
+        $this->reconcileQueue($queuedTaskKeys, $schedules);
     }
 
     private function probeWork(string $jobKey): ?bool

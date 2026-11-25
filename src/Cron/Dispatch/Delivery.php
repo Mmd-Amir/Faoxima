@@ -21,9 +21,11 @@ final class Delivery
     private int $maxAttempts;
     private int $maxConcurrency;
     private int $batchSize;
+    private $releaseScheduler;
 
-    public function __construct(PDO $pdo, string $authToken, bool $isCli, bool $sharedProfile, callable $buildUrl, int $lease, int $maxAttempts, int $maxConcurrency)
+    public function __construct(PDO $pdo, string $authToken, bool $isCli, bool $sharedProfile, callable $buildUrl, int $lease, int $maxAttempts, int $maxConcurrency, ?callable $releaseScheduler = null)
     {
+        $this->releaseScheduler = $releaseScheduler;
         $this->pdo = $pdo;
         $this->authToken = $authToken;
         $this->isCli = $isCli;
@@ -184,6 +186,7 @@ final class Delivery
                 && (int) ($valid['workers'] ?? -1) === (int) ($row['workers'] ?? -2);
         };
         $stats = ['dispatched' => 0];
+        $sequential = $this->isCli && $this->sharedProfile;
         $deferredJobs = [];
         foreach ($planner->availability as $jobKey => $state) {
             if ($state === false) {
@@ -196,7 +199,10 @@ final class Delivery
                 'max_attempts' => $this->maxAttempts,
                 'lease_seconds' => $this->lease,
                 'deadline' => $deadline,
-                'reserved_payment_slots' => max(0, min(2, $this->maxConcurrency - 1)),
+                'claim_batch' => $sequential ? 1 : 0,
+                'sequential' => $sequential,
+                'refill_seconds' => $sequential ? 45 : 0,
+                'after_claim' => $this->releaseScheduler,
                 'deferred_jobs' => $deferredJobs,
             ], function (array $task): string {
                 return $this->dispatchTask($task);

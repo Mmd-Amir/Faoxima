@@ -160,6 +160,29 @@ final class PaymentStatusHandler extends \Faoxima\Api\Handlers\BaseHandler
             ];
         }
 
+        $tetraminatorGatewayUrl = '';
+        $tetraminatorMeta = null;
+        if ((string)($report['Payment_Method'] ?? '') === 'tetraminator') {
+            $tetraminatorPayId = trim((string)($report['tetraminator_pay_id'] ?? ''));
+            $tetraminatorCreatedAt = \Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::reportCreatedAt($report);
+            $tetraminatorLinkExpiresAt = \Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::linkExpiresAt($report);
+            $tetraminatorStatus = strtolower(trim((string)($report['tetraminator_status'] ?? '')));
+            $tetraminatorLinkAvailable = \Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::linkAvailable($report);
+            if ($tetraminatorLinkAvailable) {
+                $tetraminatorGatewayUrl = \Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::paymentUrl($report);
+            }
+            $tetraminatorMeta = [
+                'pay_id' => $tetraminatorPayId,
+                'remote_status' => $tetraminatorStatus,
+                'link_available' => $tetraminatorLinkAvailable,
+                'link_expires_at' => $tetraminatorLinkExpiresAt,
+                'awaiting_result' => !in_array(strtolower($paymentStatus), ['paid', 'expire', 'cancelled'], true) && $tetraminatorCreatedAt > 0 && $tetraminatorLinkExpiresAt > 0 && time() >= $tetraminatorLinkExpiresAt,
+                'confirmed_at' => (int)($report['tetraminator_confirmed_at'] ?? 0),
+                'fulfillment_done' => (int) ($report['direct_payment_done'] ?? 0) === 1,
+                'locally_cancelled' => (int) ($report['tetraminator_abandoned_at'] ?? 0) > 0,
+            ];
+        }
+
         $atlaspayCustomView = null;
         if ((string)($report['Payment_Method'] ?? '') === 'atlaspay'
             && (string)($report['atlaspay_gateway_mode'] ?? '') === 'custom'
@@ -200,8 +223,9 @@ final class PaymentStatusHandler extends \Faoxima\Api\Handlers\BaseHandler
             'atlaspay_custom'  => $atlaspayCustomView,
             'atlaspay_receipt' => $atlaspayReceipt,
             'rialit'           => $rialitMeta,
+            'tetraminator'     => $tetraminatorMeta,
             'fulfillment'      => ($sbvView !== null && method_exists(\Faoxima\Payments\Receipts\ReceiptRuntime::class, 'rx_sbv_fulfillment_outcome')) ? \Faoxima\Payments\Receipts\Recovery::fulfillmentOutcome(\Faoxima\Api\Runtime\Db::pdo(), $orderId) : null,
-            'gateway_url'      => $rialitGatewayUrl ?: (trim((string)($report['tronado_payment_url'] ?? '')) ?: ($tonpayGatewayUrl ?: (trim((string)($report['cubepay_payment_link'] ?? '')) ?: (trim((string)($report['blupal_payment_link'] ?? '')) ?: (trim((string)($report['atlaspay_payment_url'] ?? '')) ?: (trim((string)($report['tetrapay_payment_link'] ?? '')) ?: $abangatewayUrl)))))),
+            'gateway_url'      => $rialitGatewayUrl ?: ($tetraminatorGatewayUrl ?: (trim((string)($report['tronado_payment_url'] ?? '')) ?: ($tonpayGatewayUrl ?: (trim((string)($report['cubepay_payment_link'] ?? '')) ?: (trim((string)($report['blupal_payment_link'] ?? '')) ?: (trim((string)($report['atlaspay_payment_url'] ?? '')) ?: (trim((string)($report['tetrapay_payment_link'] ?? '')) ?: $abangatewayUrl))))))),
         ];
 
         \Faoxima\Api\Runtime\Response::ok($payload);
@@ -226,7 +250,7 @@ final class PaymentStatusHandler extends \Faoxima\Api\Handlers\BaseHandler
         $sbvView = method_exists(\Faoxima\Payments\Receipts\ReceiptRuntime::class, 'rx_sbv_public_view') ? \Faoxima\Payments\Receipts\ReceiptOrders::publicView(\Faoxima\Api\Runtime\Db::pdo(), $orderId) : null;
         if ($report === null) {
             $report = \Faoxima\Api\Runtime\Db::fetchOne(
-                'SELECT * FROM Payment_report WHERE id_order = :o AND id_user = :u AND ' . ($sbvView !== null ? '1 = 1' : '(source = \'miniapp\' OR (Payment_Method = \'tonpay\' AND tonpay_gateway_mode = \'custom\') OR (Payment_Method = \'atlaspay\' AND atlaspay_gateway_mode = \'custom\') OR Payment_Method = \'rialit\')') . ' LIMIT 1',
+                'SELECT * FROM Payment_report WHERE id_order = :o AND id_user = :u AND ' . ($sbvView !== null ? '1 = 1' : '(source = \'miniapp\' OR (Payment_Method = \'tonpay\' AND tonpay_gateway_mode = \'custom\') OR (Payment_Method = \'atlaspay\' AND atlaspay_gateway_mode = \'custom\') OR Payment_Method = \'rialit\' OR Payment_Method = \'tetraminator\')') . ' LIMIT 1',
                 [
                     ':o' => $orderId,
                     ':u' => (string)$this->user['id'],
@@ -272,6 +296,15 @@ final class PaymentStatusHandler extends \Faoxima\Api\Handlers\BaseHandler
             }
         }
 
+        if ((string) ($report['Payment_Method'] ?? '') === 'tetraminator' && method_exists(\Faoxima\Payments\Gateways\Tetraminator\BotRuntime::class, 'tetraminatorPollThrottled')) {
+            $fresh = \Faoxima\Payments\Gateways\Tetraminator\BotRuntime::tetraminatorPollThrottled($orderId, (string) $this->user['id']);
+            if (is_array($fresh)) {
+                $report = $fresh;
+            }
+            if (method_exists(\Faoxima\Core\Cache\RedisCache::class, 'rx_redis_del')) {
+                \Faoxima\Core\Cache\RedisCache::rx_redis_del($rxPayCacheKey);
+            }
+        }
         if ((string) ($report['Payment_Method'] ?? '') === 'rialit' && method_exists(\Faoxima\Payments\Gateways\Rialit\BotRuntime::class, 'rialitPollThrottled')) {
             $fresh = \Faoxima\Payments\Gateways\Rialit\BotRuntime::rialitPollThrottled($orderId, (string) $this->user['id']);
             if (is_array($fresh)) {
@@ -399,6 +432,9 @@ final class PaymentStatusHandler extends \Faoxima\Api\Handlers\BaseHandler
         }
         if ((string)($report['Payment_Method'] ?? '') === 'rialit') {
             return 1800;
+        }
+        if ((string)($report['Payment_Method'] ?? '') === 'tetraminator') {
+            return TETRAMINATOR_LINK_TTL_SECONDS;
         }
         return 1800;
     }

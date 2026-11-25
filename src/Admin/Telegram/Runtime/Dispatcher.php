@@ -1536,6 +1536,27 @@ final class Dispatcher
             ) !== true) {
                 return;
             }
+            if (\Faoxima\Admin\Telegram\Routing\TetraminatorSettings::handle(
+                adminAction: $adminAction,
+                adminExecution: $adminExecution ?? null,
+                adminRouteMatched: $adminRouteMatched,
+                adminrulecheck: $adminrulecheck ?? null,
+                backadmin: $backadmin ?? null,
+                callback_query_id: $callback_query_id ?? null,
+                caption: $caption ?? null,
+                datain: $datain ?? null,
+                from_id: $from_id ?? null,
+                pdo: $pdo ?? null,
+                photo: $photo ?? null,
+                photoid: $photoid ?? null,
+                text: $text ?? null,
+                textbotlang: $textbotlang ?? null,
+                user: $user ?? null,
+                video: $video ?? null,
+                videoid: $videoid ?? null
+            ) !== true) {
+                return;
+            }
             if (\Faoxima\Admin\Telegram\Routing\ProviderFeaturesAndOwnerAccess::handle(
                 CartManage: $CartManage ?? null,
                 NowPaymentsManage: $NowPaymentsManage ?? null,

@@ -3,8 +3,8 @@
 namespace Faoxima\Telegram\Bootstrap;
 
 /**
- * Handler stage. Inherited by value: $first_name, $from_id, $last_name, $pdo, $receiptreport, $reportbackup, $reportcron, $reportnight, $reporttest, $setting, $textbotlang, $user, $username, $version.
- * Inherited or exported by reference: $buyreport, $datatextbot, $errorreport, $otherservice, $paymentreports, $porsantreport.
+ * Handler stage. Inherited by value: $first_name, $from_id, $last_name, $pdo, $setting, $textbotlang, $user, $username, $version.
+ * Inherited or exported by reference: $buyreport, $datatextbot, $errorreport, $otherservice, $paymentreports, $porsantreport, $receiptreport, $reportbackup, $reportcron, $reportnight, $reporttest.
  * Returns true to continue the request pipeline, anything else stops it.
  */
 final class Localization
@@ -20,11 +20,11 @@ final class Localization
         &$paymentreports,
         $pdo,
         &$porsantreport,
-        $receiptreport,
-        $reportbackup,
-        $reportcron,
-        $reportnight,
-        $reporttest,
+        &$receiptreport,
+        &$reportbackup,
+        &$reportcron,
+        &$reportnight,
+        &$reporttest,
         $setting,
         $textbotlang,
         $user,
@@ -55,13 +55,10 @@ final class Localization
         \Faoxima\Telegram\Bootstrap\LocalizationHelpers::createForumTopicIfMissing($receiptreport, 'receiptreport', $textbotlang['Admin']['report']['receiptreport'], $setting['Channel_Report']);
         
         $datatextbot = \Faoxima\Telegram\Bootstrap\BotLocalization::textCatalog($datatextbotget);
-        $startTemplate = \Faoxima\Telegram\Bootstrap\BotLocalization::renderStart(
+        \Faoxima\Telegram\Bootstrap\BotLocalization::renderStart(
             $pdo, $datatextbot, $user, $from_id, $username, $first_name, $last_name, $version,
         );
-        if ($startTemplate !== null) {
-            $GLOBALS['rx_rich_diag_templates']['text_start'] = $startTemplate;
-        }
-        unset($datatextbotget, $topicRows, $reportTopics, $startTemplate);
+        unset($datatextbotget, $topicRows, $reportTopics);
         return true;
     }
 }

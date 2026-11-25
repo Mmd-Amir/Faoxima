@@ -14,8 +14,8 @@ final class BackupbotJob
         $root = dirname(__DIR__, 3);
         BackupRun::authorizeRequest($root);
         BackupRun::configureEnvironment();
-        BackupRun::acquireLock($root);
         \Faoxima\Cron\Runtime\TaskState::rx_cron_task_attach('backupbot', 600);
+        BackupRun::acquireLock($root);
         BackupRun::detachFromRequest();
         $logFilePath = BackupRun::configureLogging($root);
         BackupRun::execute($root);

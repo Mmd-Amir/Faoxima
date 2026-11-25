@@ -28,6 +28,9 @@ final class Recovery
         }
         $record = \Faoxima\Payments\Fulfillment\Store::lockRecord($pdo, $orderId);
         if ($record === null && $paidUndelivered && defined('RX_CRON_INIT_LOADED')) {
+            if (!\Faoxima\Payments\Fulfillment\PaymentPolicy::cronPaymentRecent($payment, $now)) {
+                return ['status' => 'not_eligible', 'reason' => 'cron_window_elapsed'];
+            }
             if (($payment['Payment_Method'] ?? '') === 'cart to cart') {
                 $stmt = $pdo->prepare("INSERT INTO payment_fulfillment
                     (id_order, payment_report_id, operation_type, state, attempt_count, last_error, created_at, updated_at)

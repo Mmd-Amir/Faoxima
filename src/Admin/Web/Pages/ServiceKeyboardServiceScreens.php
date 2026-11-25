@@ -103,7 +103,7 @@ final class ServiceKeyboardServiceScreens
         }
 
         $gatewayInternalLabels = [
-            'rialit' => 'ریالیت', 'zarinpal' => 'زرین‌پال', 'plisio' => 'Plisio', 'nowpayment' => 'NowPayments',
+            'rialit' => 'ریالیت', 'tetraminator' => 'تترامیناتور', 'zarinpal' => 'زرین‌پال', 'plisio' => 'Plisio', 'nowpayment' => 'NowPayments',
             'iranpay2' => 'ترونادو', 'blupal' => 'بلوپال', 'cubepay' => 'کیوب‌پی',
             'variza' => 'واریزا', 'abangateway' => 'آبان گیت‌وی',
             'tonpay' => 'تون‌پی — لینک و پیگیری', 'atlaspay' => 'اطلس‌پی — لینک و پیگیری',
@@ -116,12 +116,13 @@ final class ServiceKeyboardServiceScreens
         $gatewayInternalSamples = [];
         foreach ($gatewayInternalLabels as $gateway => $gatewayLabel) {
             $roles = $gatewayCommonRoles;
-            if ($gateway === 'rialit') {
+            if ($gateway === 'rialit' || $gateway === 'tetraminator') {
                 $roles = [
                     'pay_link' => '💳 پرداخت', 'continue_link' => '▶️ ادامه پرداخت', 'check_status' => '🔄 بررسی وضعیت',
                     'cancel_transaction' => '🚫 انصراف و پرداخت جدید', 'cancel_confirm_approve' => '✅ تایید انصراف',
                     'cancel_confirm_back' => '🔙 بازگشت از تایید انصراف', 'retry' => '💳 انتخاب روش پرداخت جدید',
-                    'pending_list' => '⏳ تراکنش‌های در انتظار', 'list_view' => '💚 پیگیری ریالیت در فهرست تراکنش‌ها',
+                    'pending_list' => '⏳ تراکنش‌های در انتظار',
+                    'list_view' => $gateway === 'rialit' ? '💚 پیگیری ریالیت در فهرست تراکنش‌ها' : '💎 پیگیری تترامیناتور در فهرست تراکنش‌ها',
                 ];
             } elseif (in_array($gateway, ['tonpay', 'atlaspay'], true)) {
                 unset($roles['back_main']);

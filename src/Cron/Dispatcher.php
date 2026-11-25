@@ -29,7 +29,8 @@ if (function_exists('putenv') && !preg_match('/(^|,)\s*putenv\s*(,|$)/', strtolo
 }
 
 
-if (method_exists(\Faoxima\Cron\Health\HealthRun::class, 'rx_cron_health_orch_begin')) {
+$rxWake = (getenv('RX_CRON_WAKE') === '1') || (isset($_GET['wake']) && $_GET['wake'] === '1');
+if (!$rxWake && method_exists(\Faoxima\Cron\Health\HealthRun::class, 'rx_cron_health_orch_begin')) {
     \Faoxima\Cron\Health\HealthRun::rx_cron_health_orch_begin();
 }
 $rxHealthStage = static function (string $name, string $state): void {
@@ -40,7 +41,18 @@ $rxHealthStage = static function (string $name, string $state): void {
 
 $lockFile = (dirname(__DIR__, 2) . '/cron') . '/cron.lock';
 $lockHandle = @fopen($lockFile, 'c');
-if ($lockHandle === false || !@flock($lockHandle, LOCK_EX | LOCK_NB)) {
+$rxLockAcquired = false;
+if ($lockHandle !== false) {
+    $rxLockWaitUntil = microtime(true) + 3.0;
+    do {
+        $rxLockAcquired = @flock($lockHandle, LOCK_EX | LOCK_NB);
+        if ($rxLockAcquired) {
+            break;
+        }
+        usleep(150000);
+    } while (microtime(true) < $rxLockWaitUntil);
+}
+if (!$rxLockAcquired) {
     $rxHealthStage('lock', $lockHandle === false ? 'open_failed' : 'busy');
     if (is_resource($lockHandle)) {
         @fclose($lockHandle);
@@ -58,13 +70,14 @@ try {
 } catch (Throwable $e) {
     $rxInternalAuthToken = hash('sha256', uniqid('', true) . microtime(true) . getmypid());
 }
-$rxInternalAuthPayload = hash('sha256', $rxInternalAuthToken) . '|' . time();
-@file_put_contents($rxInternalAuthFile, $rxInternalAuthPayload, LOCK_EX);
-@chmod($rxInternalAuthFile, 0600);
+\Faoxima\Cron\Runtime\CronRuntime::rx_cron_auth_issue($rxInternalAuthFile, $rxInternalAuthToken);
 register_shutdown_function(static function () use ($lockHandle) {
     @flock($lockHandle, LOCK_UN);
     @fclose($lockHandle);
 });
+$rxReleaseScheduler = static function () use ($lockHandle): void {
+    @flock($lockHandle, LOCK_UN);
+};
 
 
 $functionBootstrap = (dirname(__DIR__, 2) . '/cron') . '/function.php';
@@ -155,7 +168,9 @@ try {
 }
 
 $now = time();
-\Faoxima\Cron\Dispatch\Planner::runMaintenance($pdo, $now, (int) date('G', $now), $runtimeState);
+if (!$rxWake) {
+    \Faoxima\Cron\Dispatch\Planner::runMaintenance($pdo, $now, (int) date('G', $now), $runtimeState);
+}
 
 $rxIsCli = (php_sapi_name() === 'cli');
 $rxLegacyLoopbackFlag = (dirname(__DIR__, 2) . '/cron') . '/use_loopback.flag';
@@ -164,10 +179,14 @@ if (is_file($rxLegacyLoopbackFlag)) {
 }
 
 $planner = new \Faoxima\Cron\Dispatch\Planner($pdo, $root, $runtimeState, $plan['jobHours'], $plan['jobWorkerCounts'], $rxTaskStateEnabled, $rxTaskMaxAttempts, $rxTaskDispatchLease, $buildCronUrl, $now);
-$delivery = new \Faoxima\Cron\Dispatch\Delivery($pdo, $rxInternalAuthToken, $rxIsCli, $rxSharedProfile, $buildCronUrl, $rxTaskDispatchLease, $rxTaskMaxAttempts, $plan['maxConcurrency']);
+$delivery = new \Faoxima\Cron\Dispatch\Delivery($pdo, $rxInternalAuthToken, $rxIsCli, $rxSharedProfile, $buildCronUrl, $rxTaskDispatchLease, $rxTaskMaxAttempts, $plan['maxConcurrency'], $rxReleaseScheduler);
 
-$planner->plan();
-$delivery->dispatchIndexFallback($planner);
+if ($rxWake && $rxTaskStateEnabled) {
+    $planner->observeQueue();
+} else {
+    $planner->plan();
+    $delivery->dispatchIndexFallback($planner);
+}
 $delivery->deliver($planner, $rxTaskStateEnabled, $now);
 
 if (!empty($rxHealthTrace['traced'])) {

@@ -300,6 +300,13 @@ final class CoefficientsAndWalletDefaults
                     $valuenew = "onrialit";
                 }
                 \Faoxima\Core\Database\Db::update("PaySetting", "ValuePay", $valuenew, "NamePay", "statusrialit");
+            } elseif ($type == "tetraminator") {
+                if ($value == "ontetraminator") {
+                    $valuenew = "offtetraminator";
+                } else {
+                    $valuenew = "ontetraminator";
+                }
+                \Faoxima\Core\Database\Db::update("PaySetting", "ValuePay", $valuenew, "NamePay", "statustetraminator");
             } elseif ($type == "cubepay") {
                 if ($value == "oncubepay") {
                     $valuenew = "offcubepay";

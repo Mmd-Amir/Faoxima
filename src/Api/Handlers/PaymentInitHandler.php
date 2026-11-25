@@ -31,7 +31,9 @@ final class PaymentInitHandler extends \Faoxima\Api\Handlers\BaseHandler
             return;
         }
 
-        $method = \Faoxima\Api\Runtime\Input::string($this->data, 'method');
+        $this->enforceSingleActiveInvoice();
+
+        $method =\Faoxima\Api\Runtime\Input::string($this->data, 'method');
         $amount = \Faoxima\Api\Runtime\Input::int($this->data, 'amount', 0);
 
         $serverRenewUsername = \Faoxima\Api\Runtime\Input::nullableString($this->data, 'renew_username');
@@ -127,7 +129,7 @@ final class PaymentInitHandler extends \Faoxima\Api\Handlers\BaseHandler
                     $this->purgeCardAndGuard($keepInvoiceKey);
                 }
             } else {
-                if ($method !== 'rialit') {
+                if ($method !== 'rialit' && $method !== 'tetraminator') {
                     $this->purgeStaleGatewayOrders((int)$this->user['id'], $method);
 
                     $pendingFreshGateway = (int) \Faoxima\Api\Runtime\Db::fetchScalar(
@@ -240,6 +242,10 @@ final class PaymentInitHandler extends \Faoxima\Api\Handlers\BaseHandler
 
                 case 'rialit':
                     $this->handleRialit($amount);
+                    return;
+
+                case 'tetraminator':
+                    $this->handleTetraminator($amount);
                     return;
 
                 case 'cubepay':
@@ -396,7 +402,7 @@ final class PaymentInitHandler extends \Faoxima\Api\Handlers\BaseHandler
 
     private function purgeStaleGatewayOrders(int $userId, string $method): void
     {
-        if ($method === 'rialit') {
+        if ($method === 'rialit' || $method === 'tetraminator') {
             return;
         }
         try {
@@ -480,6 +486,9 @@ final class PaymentInitHandler extends \Faoxima\Api\Handlers\BaseHandler
         if ($method === 'rialit') {
             return 1440;
         }
+        if ($method === 'tetraminator') {
+            return 1440;
+        }
         return self::STALE_UNPAID_MINUTES;
     }
 
@@ -515,6 +524,7 @@ final class PaymentInitHandler extends \Faoxima\Api\Handlers\BaseHandler
             'iranpay3'      => ['minbalanceiranpay',       'maxbalanceiranpay'],
             'tonpay'        => ['minbalancetonpay',        'maxbalancetonpay'],
             'rialit'        => ['minbalancerialit',        'maxbalancerialit'],
+            'tetraminator'  => ['minbalancetetraminator',  'maxbalancetetraminator'],
             'cubepay'       => ['minbalancecubepay',       'maxbalancecubepay'],
             'blupal'        => ['minbalanceblupal',        'maxbalanceblupal'],
             'variza'        => ['minbalancevariza',        'maxbalancevariza'],
@@ -538,6 +548,9 @@ final class PaymentInitHandler extends \Faoxima\Api\Handlers\BaseHandler
         if ($method === 'rialit') {
             $min = max(50000, (int) $min);
             $max = (int) $max > 0 ? min(10000000, (int) $max) : 10000000;
+        }
+        if ($method === 'tetraminator') {
+            [$min, $max] = \Faoxima\Payments\Gateways\Tetraminator\Client::amountRange(\Faoxima\Api\Runtime\Db::pdo());
         }
         return [$min, $max];
     }
@@ -1025,6 +1038,76 @@ final class PaymentInitHandler extends \Faoxima\Api\Handlers\BaseHandler
             'order_id' => $orderId,
             'expires_at' => \Faoxima\Payments\Gateways\Rialit\PaymentOrders::linkExpiresAt($storedPayment),
             'message'  => \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_paymentinit_rialit_click_link', '✅ فاکتور ریالیت ساخته شد. برای پرداخت روی لینک زیر بزنید.'),
+        ]);
+    }
+
+
+    private function handleTetraminator(int $amount): void
+    {
+        $pdo = \Faoxima\Api\Runtime\Db::pdo();
+        [$min, $max] = \Faoxima\Payments\Gateways\Tetraminator\Client::amountRange($pdo);
+        if ($amount < $min) {
+            \Faoxima\Api\Runtime\Response::fail(422, \Faoxima\Telegram\Support\Texts::faoxima_render_text(\Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_paymentinit_min_amount', '❌ حداقل مبلغ پرداخت {min} تومان است.'), ['min' => number_format($min)]));
+        }
+        if ($amount > $max) {
+            \Faoxima\Api\Runtime\Response::fail(422, \Faoxima\Telegram\Support\Texts::faoxima_render_text(\Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_paymentinit_max_amount', '❌ حداکثر مبلغ پرداخت {max} تومان است.'), ['max' => number_format($max)]));
+        }
+
+        $invoice = (string) ($this->user['Processing_value_tow'] ?? '') . '|' . (string) ($this->user['Processing_value_one'] ?? '');
+        $existing = \Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::findPendingForUser($pdo, (string) $this->user['id'], $invoice, $amount, [
+            'checkout_id' => $this->checkoutId ?? '',
+            'charge_bonus' => $this->chargeBonus,
+            'discount_code' => $this->chargeDiscountCode,
+            'discount_amount' => $this->chargeDiscountAmount,
+            'price_before_discount' => $this->chargePriceBeforeDiscount,
+        ]);
+        if ($existing !== null && \Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::linkAvailable($existing)) {
+            \Faoxima\Api\Runtime\Response::ok([
+                'kind' => 'url',
+                'url' => \Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::paymentUrl($existing),
+                'order_id' => (string) $existing['id_order'],
+                'expires_at' => \Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::linkExpiresAt($existing),
+                'message' => \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_paymentinit_tetraminator_resume', '✅ همان فاکتور تترامیناتور شما هنوز باز است؛ برای تکمیل پرداخت روی لینک زیر بزنید.'),
+            ]);
+            return;
+        }
+        if (!\Faoxima\Payments\Gateways\Tetraminator\Client::enabled($pdo)) {
+            \Faoxima\Api\Runtime\Response::fail(409, \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_paymentinit_tetraminator_disabled', '❌ درگاه تترامیناتور در حال حاضر غیرفعال است.'));
+        }
+
+        $orderId = bin2hex(random_bytes(5));
+        $this->insertPaymentReport('tetraminator', $amount, $orderId);
+
+        try {
+            $created = \Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::openInvoice($pdo, $orderId, $amount, (int) $this->user['id']);
+        } catch (Throwable $e) {
+            \Faoxima\Api\Runtime\Logger::userFacing('tetraminatorOpenInvoice() threw', ['err' => $e->getMessage()]);
+            \Faoxima\Core\Database\Db::update('Payment_report', 'dec_not_confirmed', 'tetraminator_create_failed:exception', 'id_order', $orderId);
+            \Faoxima\Payments\Settlement\Confirmation::markUnsettledTerminal($pdo, $orderId, 'expire');
+            \Faoxima\Api\Runtime\Response::fail(502, \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_paymentinit_tetraminator_connection_error', '❌ ساخت پرداخت تترامیناتور ناموفق بود. لطفاً دوباره تلاش کنید.'));
+        }
+
+        if (!is_array($created) || empty($created['success'])) {
+            $errorCode = is_array($created) ? (string) ($created['error_code'] ?? '') : '';
+            \Faoxima\Api\Runtime\Logger::userFacing('tetraminatorOpenInvoice() returned bad response', ['code' => $errorCode]);
+            \Faoxima\Core\Database\Db::update('Payment_report', 'dec_not_confirmed', 'tetraminator_create_failed:' . $errorCode, 'id_order', $orderId);
+            \Faoxima\Payments\Settlement\Confirmation::markUnsettledTerminal($pdo, $orderId, 'expire');
+            $message = in_array($errorCode, ['AUTH_FAILED', 'FORBIDDEN', 'MISSING_API_KEY', 'INVALID_CALLBACK'], true)
+                ? \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_paymentinit_tetraminator_config_error', '❌ تنظیمات درگاه تترامیناتور کامل نیست؛ با پشتیبانی تماس بگیرید.')
+                : \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_paymentinit_tetraminator_link_creation_failed', '❌ ساخت لینک پرداخت تترامیناتور ناموفق بود. لطفاً دوباره تلاش کنید.');
+            \Faoxima\Api\Runtime\Response::fail(502, $message);
+        }
+
+        $stored = \Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::fetchReport($pdo, $orderId);
+        if ($stored === null) {
+            \Faoxima\Api\Runtime\Response::serverError(\Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_paymentinit_payment_record_failed', '❌ ثبت درخواست پرداخت ناموفق بود. لطفاً دوباره تلاش کنید.'));
+        }
+        \Faoxima\Api\Runtime\Response::ok([
+            'kind'       => 'url',
+            'url'        => \Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::linkAvailable($stored) ? \Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::paymentUrl($stored) : '',
+            'order_id'   => $orderId,
+            'expires_at' => \Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::linkExpiresAt($stored),
+            'message'    => \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_paymentinit_tetraminator_click_link', '✅ فاکتور تترامیناتور ساخته شد. برای پرداخت روی لینک زیر بزنید.'),
         ]);
     }
 

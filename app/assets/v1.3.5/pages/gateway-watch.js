@@ -76,7 +76,10 @@ export function startGatewayWatch(view, opts) {
     } = opts || {};
 
     const fmtCountdown = (String(method || '').toLowerCase() === 'tonpay') ? fmtHhMmSs : fmtMmSs;
-    const isRialit = String(method || '').toLowerCase() === 'rialit';
+    const isTetraminator = String(method || '').toLowerCase() === 'tetraminator';
+    const isRialit = String(method || '').toLowerCase() === 'rialit' || isTetraminator;
+    const linkMeta = (o) => (isTetraminator ? (o && o.tetraminator) : (o && o.rialit)) || null;
+    const gatewayFaName = isTetraminator ? 'تترامیناتور' : 'ریالیت';
     const isAtlaspay = String(method || '').toLowerCase() === 'atlaspay';
     let currentGatewayUrl = gatewayUrl;
     let atlaspayReceiptUrl = '';
@@ -255,7 +258,8 @@ export function startGatewayWatch(view, opts) {
             const obj = res?.obj || {};
             const status = String(obj.payment_status || '');
             updateAtlaspayReceipt(obj);
-            if (isRialit && obj.rialit && obj.rialit.link_available && obj.gateway_url) {
+            const meta = linkMeta(obj);
+            if (isRialit && meta && meta.link_available && obj.gateway_url) {
                 currentGatewayUrl = String(obj.gateway_url);
                 if (!view.querySelector('#watch-reopen')) {
                     const actions = view.querySelector('#watch-check')?.parentElement;
@@ -270,14 +274,14 @@ export function startGatewayWatch(view, opts) {
                     }
                 }
             }
-            if (isRialit && obj.rialit && !obj.rialit.link_available) {
+            if (isRialit && meta && !meta.link_available) {
                 const reopen = view.querySelector('#watch-reopen');
                 if (reopen) reopen.remove();
-                if (obj.rialit.awaiting_result && !deadlineReached) enterDeadlineState();
+                if (meta.awaiting_result && !deadlineReached) enterDeadlineState();
             }
 
             if (status === 'paid') {
-                if (isRialit && obj.rialit && !obj.rialit.fulfillment_done) {
+                if (isRialit && meta && !meta.fulfillment_done) {
                     serviceBuilding = true;
                     setSubtitle(finalizingMsg);
                     return;
@@ -324,7 +328,7 @@ export function startGatewayWatch(view, opts) {
             const status = String(obj.payment_status || '');
             updateAtlaspayReceipt(obj);
 
-            const isReady = (!isRialit || !obj.rialit || !!obj.rialit.fulfillment_done)
+            const isReady = (!isRialit || !linkMeta(obj) || !!linkMeta(obj).fulfillment_done)
                 && ((mode === 'recharge' || mode === 'pending_action') ? true : !!obj.is_service_ready);
             if (status === 'paid' && isReady) {
                 cleanup();
@@ -431,7 +435,7 @@ export function startGatewayWatch(view, opts) {
         $cancel.addEventListener('click', async () => {
             if (cancelling) return;
             cancelling = true;
-            if (isRialit && !await showConfirm('از این پرداخت انصراف می‌دهید؟ می‌توانید پرداخت جدید بسازید. لینک قبلی در ریالیت باطل نمی‌شود؛ اگر بعداً تأیید شود، مبلغ سفارش به کیف پول اضافه می‌شود.')) {
+            if (isRialit && !await showConfirm(`از این پرداخت انصراف می‌دهید؟ می‌توانید پرداخت جدید بسازید. لینک قبلی در ${gatewayFaName} باطل نمی‌شود؛ اگر بعداً تأیید شود، مبلغ سفارش به کیف پول اضافه می‌شود.`)) {
                 cancelling = false;
                 return;
             }

@@ -11,6 +11,7 @@ function iconForMethod(m) {
     if (id === 'iranpay2')             return 'tronado';
     if (id === 'tonpay')               return 'tronado';
     if (id === 'rialit')               return 'tronado';
+    if (id === 'tetraminator')         return 'tronado';
     if (id === 'cubepay')              return 'tronado';
     if (id === 'blupal')               return 'tronado';
     if (id === 'variza')               return 'tronado';
@@ -273,7 +274,7 @@ function renderCryptoOfflineForm(view, limits, randomWallet) {
             return;
         }
         try {
-            const mod = await import( './crypto-offline.js?v=3');
+            const mod = await import( './crypto-offline.js?v=4');
             if (mod && typeof mod.renderCryptoOffline === 'function') {
                 mod.renderCryptoOffline(view, {
                     amount,
@@ -418,7 +419,7 @@ function isAutoConfirmGatewayId(id) {
     const x = String(id || '').toLowerCase();
     return (
         x === 'plisio' || x === 'nowpayment' || x === 'digitaltron' ||
-        x.startsWith('iranpay') || x === 'tonpay' || x === 'rialit' || x === 'cubepay' ||
+        x.startsWith('iranpay') || x === 'tonpay' || x === 'rialit' || x === 'tetraminator' || x === 'cubepay' ||
         x === 'zarinpal' || x === 'blupal' || x === 'variza' || x === 'abangateway' || x === 'atlaspay'
     );
 }
@@ -428,7 +429,24 @@ function handleInitResult(view, methodId, obj) {
     const $form = view.querySelector('#pay-form-host');
     if (!$result) return;
 
-    if (obj.kind === 'url' && (obj.url || methodId === 'rialit')) {
+    if (obj.kind === 'active_invoice') {
+        if ($form) $form.innerHTML = '';
+        $result.innerHTML = `
+            <div class="card-section">
+                <div class="empty">
+                    ${icon('clock', 'class="ico ico-xxl ico-warn"')}
+                    <h3>فاکتور فعال تترامیناتور</h3>
+                    <p class="muted">${escapeHtml(obj.message || '')}</p>
+                    <a class="btn btn-primary mt-md" href="#/watch/${encodeURIComponent(String(obj.order_id || ''))}">
+                        ${icon('arrowLeft', 'class="ico ico-leading"')}
+                        <span>ادامه یا انصراف از پرداخت قبلی</span>
+                    </a>
+                </div>
+            </div>`;
+        return;
+    }
+
+    if (obj.kind === 'url' && (obj.url || methodId === 'rialit' || methodId === 'tetraminator')) {
 
         if (isAutoConfirmGatewayId(methodId)) {
             startGatewayWatchForRecharge(view, methodId, obj);
@@ -996,7 +1014,7 @@ async function startAtlaspayCustomForRecharge(view, obj) {
 async function startGatewayWatchForRecharge(view, methodId, obj) {
     if (obj.url) openLink(obj.url);
     try {
-        const mod = await import( './gateway-watch.js?v=2');
+        const mod = await import( './gateway-watch.js?v=3');
         if (!mod || typeof mod.startGatewayWatch !== 'function') {
             const $r = view.querySelector('#pay-result-host');
             if ($r) {
@@ -1021,8 +1039,8 @@ async function startGatewayWatchForRecharge(view, methodId, obj) {
             isCrypto,
             mode: 'recharge',
             method: methodId,
-            expiresAtSec: methodId === 'rialit' ? Number(obj.expires_at || 0) : 0,
-            timeoutSec: methodId === 'cubepay' ? 3600 : (methodId === 'atlaspay' ? 1200 : (methodId === 'tonpay' ? 86400 : (methodId === 'rialit' ? 1800 : 1800))),
+            expiresAtSec: (methodId === 'rialit' || methodId === 'tetraminator') ? Number(obj.expires_at || 0) : 0,
+            timeoutSec: (methodId === 'cubepay' || methodId === 'tetraminator') ? 3600 : (methodId === 'atlaspay' ? 1200 : (methodId === 'tonpay' ? 86400 : (methodId === 'rialit' ? 1800 : 1800))),
             pollEverySec: 5,
             onSuccess: (st) => {
                 const amount = Number(st.amount || 0).toLocaleString('en-US');

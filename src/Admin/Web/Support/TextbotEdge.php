@@ -139,6 +139,7 @@ final class TextbotEdge
             'abangateway',
             'atlaspay',
             'rialit',
+            'tetraminator',
             'zarinpal',
             'textpaymentnotverify',
             'text_star_telegram',

@@ -20,7 +20,7 @@ final class CryptoCancelInvoiceHandler extends \Faoxima\Api\Handlers\BaseHandler
 
         $report = \Faoxima\Api\Runtime\Db::fetchOne(
             'SELECT id_order, payment_Status, Payment_Method, atlaspay_order_id FROM Payment_report
-              WHERE id_order = :o AND id_user = :u AND (source = \'miniapp\' OR (Payment_Method = \'tonpay\' AND tonpay_gateway_mode = \'custom\') OR (Payment_Method = \'atlaspay\' AND atlaspay_gateway_mode = \'custom\') OR Payment_Method = \'rialit\') LIMIT 1',
+              WHERE id_order = :o AND id_user = :u AND (source = \'miniapp\' OR (Payment_Method = \'tonpay\' AND tonpay_gateway_mode = \'custom\') OR (Payment_Method = \'atlaspay\' AND atlaspay_gateway_mode = \'custom\') OR Payment_Method = \'rialit\' OR Payment_Method = \'tetraminator\') LIMIT 1',
             [':o' => $orderId, ':u' => (string)$this->user['id']]
         );
         if ($report === null) {
@@ -29,6 +29,14 @@ final class CryptoCancelInvoiceHandler extends \Faoxima\Api\Handlers\BaseHandler
         $method = trim((string)($report['Payment_Method'] ?? ''));
         if ($method === 'rialit') {
             $result = \Faoxima\Payments\Gateways\Rialit\PaymentOrders::cancelLocally(\Faoxima\Api\Runtime\Db::pdo(), $orderId, (string) $this->user['id']);
+            if (empty($result['ok'])) {
+                \Faoxima\Api\Runtime\Response::fail(409, (string) $result['message']);
+            }
+            \Faoxima\Api\Runtime\Response::ok(['kind' => 'cancelled', 'message' => (string) $result['message']]);
+            return;
+        }
+        if ($method === 'tetraminator') {
+            $result = \Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::cancelLocally(\Faoxima\Api\Runtime\Db::pdo(), $orderId, (string) $this->user['id'], $this->setting);
             if (empty($result['ok'])) {
                 \Faoxima\Api\Runtime\Response::fail(409, (string) $result['message']);
             }

@@ -7,7 +7,7 @@ import {
 import { hapticImpact, hapticNotify, showConfirm, openLink, supportsNativeDownload, downloadFileNative } from '../telegram.js?v=0.0.52';
 import { icon } from '../icons.js?v=0.0.52';
 import { showVerifyPending } from '../card-verify.js?v=0.0.6';
-import { renderMethodCard, handleInitResult, resolveWalletChoice, walletBreakdownHtml } from '../payment-ui.js?v=0.0.73';
+import { renderMethodCard, handleInitResult, resolveWalletChoice, walletBreakdownHtml } from '../payment-ui.js?v=0.0.75';
 
 const ALL_ACTIONS = [
     { id: 'renew',           label: 'تمدید سرویس',            ico: 'rotate',     cls: '', inline: true  },
@@ -2006,7 +2006,7 @@ async function renderRenewInlinePayment($panel, pay, reload) {
         const cryptoOfflineIds = ['crypto_offline', 'digitaltron'];
         if (method.kind === 'crypto_offline' || cryptoOfflineIds.includes(method.id)) {
             try {
-                const mod = await import('./crypto-offline.js?v=3');
+                const mod = await import('./crypto-offline.js?v=4');
                 if (mod && typeof mod.renderCryptoOffline === 'function') {
                     mod.renderCryptoOffline($panel, {
                         amount: amountDue,
@@ -2321,7 +2321,7 @@ async function renderExtraInlinePayment($host, pay, reload, $panel, kind) {
         const cryptoOfflineIds = ['crypto_offline', 'digitaltron'];
         if ((method.kind === 'crypto_offline' || cryptoOfflineIds.includes(method.id)) && $panel) {
             try {
-                const mod = await import('./crypto-offline.js?v=3');
+                const mod = await import('./crypto-offline.js?v=4');
                 if (mod && typeof mod.renderCryptoOffline === 'function') {
                     mod.renderCryptoOffline($panel, {
                         amount: amountDue,

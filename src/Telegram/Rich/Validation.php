@@ -441,7 +441,7 @@ final class Validation
             return $result;
         }
         $visible = \Faoxima\Telegram\Rich\Markup::rx_richUi_visibleRichText($richMessage['blocks']);
-        $result['visible_length'] = method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_utf16Length') ? \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_utf16Length($visible) : strlen($visible);
+        $result['visible_length'] = \Faoxima\Telegram\Media\SectionMedia::rx_start_media_utf16_length($visible);
         if (mb_strlen($visible, 'UTF-8') > 16000) {
             $result['reason'] = 'text_length_exceeds_limit';
             return $result;

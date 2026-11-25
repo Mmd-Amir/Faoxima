@@ -18,6 +18,8 @@ final class ConversationRoutes
             (bool) ($datain === 'tpc_list') => 'tonpay_list',
             (bool) (preg_match('/^rl_(cancel|abandon|retry)_([A-Za-z0-9_\-]{1,64})$/', (string) $datain, $rialitActionMatch)) => 'rialit_action',
             (bool) (preg_match('/^rl_view_([A-Za-z0-9_\-]{1,64})$/', (string) $datain, $rialitViewMatch)) => 'rialit_view',
+            (bool) (preg_match('/^tm_(cancel|abandon|retry)_[A-Za-z0-9_\-]{1,64}$/', (string) $datain)) => 'tetraminator_action',
+            (bool) (preg_match('/^tm_view_[A-Za-z0-9_\-]{1,64}$/', (string) $datain)) => 'tetraminator_view',
             (bool) (preg_match('/^apc_(chk|can|cny|view)_(\w+)$/', (string) $datain, $apcMatch)) => 'atlaspay_action',
             (bool) (preg_match('/^tpc_(chk|chg|rcp|can|cny|view|rfd)_(\w+)$/', (string) $datain, $tpcMatch)) => 'tonpay_action',
             (bool) ($user['step'] == "tpc_receipt" && $datain === '' && isset($update['message'])) => 'tonpay_receipt',

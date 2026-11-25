@@ -490,6 +490,12 @@ final class TaskState
                 $GLOBALS['rxCronTaskOutcome'] = null;
                 @flock($live, LOCK_UN);
                 @fclose($live);
+                if ($done && $pdo instanceof PDO) {
+                    try {
+                        \Faoxima\Cron\Dispatch\Wake::request($pdo);
+                    } catch (\Throwable $e) {
+                    }
+                }
             });
         }
 

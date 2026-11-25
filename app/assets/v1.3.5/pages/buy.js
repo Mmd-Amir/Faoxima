@@ -9,7 +9,7 @@ import { icon } from '../icons.js?v=0.0.52';
 import { showVerifyPending } from '../card-verify.js?v=0.0.6';
 import {
     fmtNum, renderMethodCard, handleInitResult, resolveWalletChoice, walletBreakdownHtml, inlinePaymentSummaryHtml,
-} from '../payment-ui.js?v=0.0.73';
+} from '../payment-ui.js?v=0.0.75';
 
 
 let _successModulePromise = null;
@@ -800,7 +800,7 @@ export async function buy(view) {
             const cryptoOfflineIds = ['crypto_offline', 'digitaltron'];
             if (method.kind === 'crypto_offline' || cryptoOfflineIds.includes(method.id)) {
                 try {
-                    const mod = await import( './crypto-offline.js?v=3');
+                    const mod = await import( './crypto-offline.js?v=4');
                     if (mod && typeof mod.renderCryptoOffline === 'function') {
                         mod.renderCryptoOffline(view, {
                             amount: amountDue,

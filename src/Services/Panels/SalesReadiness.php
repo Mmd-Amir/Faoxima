@@ -455,6 +455,7 @@ final class SalesReadiness
         $gateway('ترونادو', $v('statustarnado') === 'onternado', ['کلید API' => ['apiternado'], 'آدرس کیف پول' => ['walletaddress'], 'کلید امضای IPN' => ['ipnsigningkeytronado']]);
         $gateway('تون‌پی', $v('statustonpay') === 'ontonpay', ['کلید API' => ['apitonpay']]);
         $gateway('ریالیت', $v('statusrialit') === 'onrialit', ['کلید API' => ['apirialit'], 'وب‌هوک' => ['rialit_webhook_url']]);
+        $gateway('تترامیناتور', $v('statustetraminator') === 'ontetraminator', ['کلید API' => ['apitetraminator']]);
         $gateway('کیوب‌پی', $v('statuscubepay') === 'oncubepay', ['توکن API' => ['apicubepay']]);
         $gateway('بلوپال', $v('statusblupal') === 'onblupal', ['کلید API' => ['apiblupal']]);
         $gateway('واریزا', $v('statusvariza') === 'onvariza', ['توکن API' => ['apivariza'], 'کلید وب‌هوک' => ['variza_webhook_secret']]);

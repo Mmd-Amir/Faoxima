@@ -26,6 +26,8 @@ final class CryptoInvoiceInitHandler extends \Faoxima\Api\Handlers\BaseHandler
             \Faoxima\Api\Runtime\Response::fail(503, 'فلوی ارز آفلاین روی سرور تنظیم نشده است');
         }
 
+        $this->enforceSingleActiveInvoice();
+
         $amount       = \Faoxima\Api\Runtime\Input::int($this->data, 'amount', 0);
         $currency     = strtoupper(\Faoxima\Api\Runtime\Input::string($this->data, 'currency_code'));
         $purchaseUser = \Faoxima\Api\Runtime\Input::nullableString($this->data, 'purchase_username');

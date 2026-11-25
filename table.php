@@ -1800,6 +1800,7 @@ try {
         ['zarinpal', '🟡 زرین پال'],
         ['tonpay', '💠 تون‌پی'],
         ['rialit', '💚 ریالیت'],
+        ['tetraminator', '💎 تترامیناتور'],
         ['cubepay', '🟦 کیوب‌پی'],
         ['blupal', '💙 بلوپال'],
         ['variza', '💳 واریزا'],
@@ -2422,6 +2423,12 @@ try {
         ['rialit_webhook_checked_at', '0'],
         ['rialit_webhook_last_action', ''],
         ['rialit_webhook_last_message', ''],
+        ['statustetraminator', 'offtetraminator'],
+        ['apitetraminator', ''],
+        ['chashbacktetraminator', '0'],
+        ['minbalancetetraminator', 50000],
+        ['maxbalancetetraminator', 10000000],
+        ['helptetraminator', '2'],
         ['statuscubepay', 'offcubepay'],
         ['apicubepay', ''],
         ['chashbackcubepay', '0'],
@@ -2461,6 +2468,7 @@ try {
         ['chashbackiranpay2_target', 'all'],
         ['chashbacktonpay_target', 'all'],
         ['chashbackrialit_target', 'all'],
+        ['chashbacktetraminator_target', 'all'],
         ['chashbackcubepay_target', 'all'],
         ['chashbackblupal_target', 'all'],
         ['chashbackvariza_target', 'all'],
@@ -3594,6 +3602,17 @@ try {
     rxSafeAddColumn($connect, "Payment_report", "rialit_abandoned_at", "BIGINT NULL");
     rxSafeAddColumn($connect, "Payment_report", "rialit_paid_at", "VARCHAR(40) NULL");
     rxSafeAddColumn($connect, "Payment_report", "rialit_reference", "VARCHAR(64) NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tetraminator_pay_id", "VARCHAR(64) NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tetraminator_callback_token", "VARCHAR(64) NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tetraminator_payment_url", "VARCHAR(500) NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tetraminator_status", "VARCHAR(32) NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tetraminator_amount", "BIGINT NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tetraminator_created_at", "BIGINT NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tetraminator_last_checked_at", "BIGINT NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tetraminator_webhook_at", "BIGINT NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tetraminator_confirmed_at", "BIGINT NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tetraminator_local_state", "VARCHAR(32) NULL");
+    rxSafeAddColumn($connect, "Payment_report", "tetraminator_abandoned_at", "BIGINT NULL");
     rxSafeAddColumn($connect, "Payment_report", "cubepay_authority",      "VARCHAR(64) NULL");
     rxSafeAddColumn($connect, "Payment_report", "cubepay_payment_link",   "VARCHAR(500) NULL");
     rxSafeAddColumn($connect, "Payment_report", "cubepay_method",         "VARCHAR(20) NULL");
@@ -3655,6 +3674,9 @@ try {
 
     rxSafeAddUniqueIndex($connect, "Payment_report", "uniq_pr_rialit_token", ["rialit_token"]);
     rxSafeAddIndex($connect, "Payment_report", "idx_pr_rialit_created", "rialit_created_at");
+    rxSafeAddUniqueIndex($connect, "Payment_report", "uniq_pr_tetraminator_pay_id", ["tetraminator_pay_id"]);
+    rxSafeAddUniqueIndex($connect, "Payment_report", "uniq_pr_tetraminator_cb", ["tetraminator_callback_token"]);
+    rxSafeAddIndex($connect, "Payment_report", "idx_pr_tetraminator_created", "tetraminator_created_at");
 
     try {
         $connect->query("CREATE TABLE IF NOT EXISTS rialit_webhook_event (

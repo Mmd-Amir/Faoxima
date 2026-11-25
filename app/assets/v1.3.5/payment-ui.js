@@ -11,6 +11,7 @@ export function iconForMethod(m) {
     if (id === 'iranpay2')             return 'tronado';
     if (id === 'tonpay')               return 'tronado';
     if (id === 'rialit')               return 'tronado';
+    if (id === 'tetraminator')         return 'tronado';
     if (id === 'cubepay')              return 'tronado';
     if (id === 'blupal')               return 'tronado';
     if (id === 'variza')               return 'tronado';
@@ -36,6 +37,7 @@ export function methodLabel(m) {
     if (id === 'iranpay2')                  return 'ترونادو';
     if (id === 'tonpay')                    return 'تون‌پی';
     if (id === 'rialit')                    return '💚 ریالیت';
+    if (id === 'tetraminator')              return '💎 تترامیناتور';
     if (id === 'cubepay')                   return 'کیوب‌پی';
     if (id === 'blupal')                    return 'بلوپال';
     if (id === 'variza')                    return 'واریزا';
@@ -335,7 +337,7 @@ export function wireCardToCard(view, d, opts = {}) {
 let _gatewayWatchModulePromise = null;
 function loadGatewayWatch() {
     if (_gatewayWatchModulePromise) return _gatewayWatchModulePromise;
-    _gatewayWatchModulePromise = import('./pages/gateway-watch.js?v=2');
+    _gatewayWatchModulePromise = import('./pages/gateway-watch.js?v=3');
     return _gatewayWatchModulePromise;
 }
 
@@ -362,7 +364,7 @@ function isAutoConfirmGateway(methodId) {
     const id = String(methodId || '').toLowerCase();
     return (
         id === 'plisio' || id === 'nowpayment' || id === 'digitaltron' ||
-        id.startsWith('iranpay') || id === 'tonpay' || id === 'rialit' || id === 'cubepay' ||
+        id.startsWith('iranpay') || id === 'tonpay' || id === 'rialit' || id === 'tetraminator' || id === 'cubepay' ||
         id === 'zarinpal' || id === 'blupal' || id === 'variza' || id === 'abangateway' || id === 'atlaspay'
     );
 }
@@ -379,6 +381,7 @@ function gatewayTimeoutSec(methodId) {
     if (id === 'atlaspay') return 1200;
     if (id === 'tonpay') return 86400;
     if (id === 'rialit') return 1800;
+    if (id === 'tetraminator') return 3600;
     return 1800;
 }
 
@@ -577,7 +580,7 @@ export function startUrlGatewayFlow(rootView, methodId, obj, opts = {}) {
             mode: opts.purchaseUsername ? 'direct_buy' : 'recharge',
             method: methodId,
             timeoutSec: gatewayTimeoutSec(methodId),
-            expiresAtSec: methodId === 'rialit' ? Number(obj.expires_at || 0) : 0,
+            expiresAtSec: (methodId === 'rialit' || methodId === 'tetraminator') ? Number(obj.expires_at || 0) : 0,
             pollEverySec: 5,
             onSuccess: (statusObj) => renderGatewaySuccess(watchHost, statusObj, opts),
             onFail: (statusObj) => renderGatewayFail(watchHost, statusObj, opts),
@@ -801,7 +804,24 @@ export function handleInitResult(view, methodId, obj, opts = {}) {
     const $form = view.querySelector('#pay-form-host');
     if (!$result) return;
 
-    if (obj.kind === 'url' && (obj.url || methodId === 'rialit')) {
+    if (obj.kind === 'active_invoice') {
+        if ($form) $form.innerHTML = '';
+        $result.innerHTML = `
+            <div class="card-section">
+                <div class="empty">
+                    ${icon('clock', 'class="ico ico-xxl ico-warn"')}
+                    <h3>فاکتور فعال تترامیناتور</h3>
+                    <p class="muted">${escapeHtml(obj.message || '')}</p>
+                    <a class="btn btn-primary mt-md" href="#/watch/${encodeURIComponent(String(obj.order_id || ''))}">
+                        ${icon('arrowLeft', 'class="ico ico-leading"')}
+                        <span>ادامه یا انصراف از پرداخت قبلی</span>
+                    </a>
+                </div>
+            </div>`;
+        return;
+    }
+
+    if (obj.kind === 'url' && (obj.url || methodId === 'rialit' || methodId === 'tetraminator')) {
 
         if ($form) $form.innerHTML = '';
 

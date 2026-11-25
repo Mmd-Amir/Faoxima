@@ -125,6 +125,9 @@ final class BannerRequest
                 }
             }
 
+            if (method_exists(\Faoxima\Core\Database\SelectCache::class, 'faoxima_bust_bot_selectcache')) {
+                \Faoxima\Core\Database\SelectCache::faoxima_bust_bot_selectcache('setting');
+            }
             if (empty($formErrors)) {
                 header('Location: banner.php?saved=' . $savedCount);
                 exit;

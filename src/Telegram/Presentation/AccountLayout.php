@@ -154,7 +154,8 @@ final class AccountLayout
         if ($condition === 'pending_payments') {
             return (method_exists(\Faoxima\Payments\Gateways\Tonpay\BotRuntime::class, 'tonpayCustomUserPending') && (\Faoxima\Payments\Gateways\Tonpay\Client::paymentMode() === 'custom' || !empty(\Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomUserPending($userId, 1))))
                 || (method_exists(\Faoxima\Payments\Gateways\Atlaspay\BotRuntime::class, 'atlaspayCustomUserPending') && (\Faoxima\Payments\Gateways\Atlaspay\CustomClient::paymentMode() === 'custom' || !empty(\Faoxima\Payments\Gateways\Atlaspay\BotRuntime::atlaspayCustomUserPending($userId, 1))))
-                || (method_exists(\Faoxima\Payments\Gateways\Rialit\BotRuntime::class, 'rialitUserHasPending') && \Faoxima\Payments\Gateways\Rialit\BotRuntime::rialitUserHasPending($userId));
+                || (method_exists(\Faoxima\Payments\Gateways\Rialit\BotRuntime::class, 'rialitUserHasPending') && \Faoxima\Payments\Gateways\Rialit\BotRuntime::rialitUserHasPending($userId))
+                || (method_exists(\Faoxima\Payments\Gateways\Tetraminator\BotRuntime::class, 'tetraminatorUserHasPending') && \Faoxima\Payments\Gateways\Tetraminator\BotRuntime::tetraminatorUserHasPending($userId));
         }
         return false;
     }

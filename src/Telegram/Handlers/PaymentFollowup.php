@@ -37,6 +37,9 @@ final class PaymentFollowup
             if (method_exists(\Faoxima\Payments\Gateways\Rialit\BotRuntime::class, 'rialitBotListMerge')) {
                 $tpcListView = \Faoxima\Payments\Gateways\Rialit\BotRuntime::rialitBotListMerge($from_id, $tpcListView);
             }
+            if (method_exists(\Faoxima\Payments\Gateways\Tetraminator\BotRuntime::class, 'tetraminatorBotListMerge')) {
+                $tpcListView = \Faoxima\Payments\Gateways\Tetraminator\BotRuntime::tetraminatorBotListMerge($from_id, $tpcListView);
+            }
             Editmessagetext($from_id, $message_id, $tpcListView['text'], $tpcListView['keyboard'], 'HTML');
             \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id);
             break;
@@ -96,6 +99,66 @@ final class PaymentFollowup
             $rialitReport = \Faoxima\Payments\Gateways\Rialit\BotRuntime::rialitPollThrottled($rialitViewMatch[1], $from_id) ?? $rialitReport;
             $rialitView = \Faoxima\Payments\Gateways\Rialit\BotRuntime::rialitBotPaymentView($rialitReport);
             Editmessagetext($from_id, $message_id, $rialitView['text'], $rialitView['keyboard'], 'HTML');
+            \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id);
+            break;
+        case 'tetraminator_action':
+            preg_match('/^tm_(cancel|abandon|retry)_([A-Za-z0-9_\-]{1,64})$/', (string) $datain, $tetraminatorActionMatch);
+            $tetraminatorOrder = (string) ($tetraminatorActionMatch[2] ?? '');
+            $tetraminatorReport = \Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::fetchReport($pdo, $tetraminatorOrder);
+            if ($tetraminatorReport === null || (string) $tetraminatorReport['id_user'] !== (string) $from_id) {
+                \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, \Faoxima\Telegram\Support\MessageTemplates::plain('payment_invoice_not_found_alert'), true);
+                return;
+            }
+            if ($tetraminatorActionMatch[1] === 'cancel') {
+                $tetraminatorCancelKeyboard = json_encode(['inline_keyboard' => [
+                    [rx_payment_button('tetraminator', 'cancel_confirm_approve', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_tetraminator_confirm_abandon'), 'callback_data' => 'tm_abandon_' . $tetraminatorOrder])],
+                    [rx_payment_button('tetraminator', 'cancel_confirm_back', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back'), 'callback_data' => 'tm_view_' . $tetraminatorOrder])],
+                ]], JSON_UNESCAPED_UNICODE);
+                Editmessagetext($from_id, $message_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_tetraminator_cancel_confirm'), $tetraminatorCancelKeyboard, 'HTML');
+            } elseif ($tetraminatorActionMatch[1] === 'abandon') {
+                $tetraminatorCancelled = \Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::cancelLocally($pdo, $tetraminatorOrder, $from_id);
+                if (empty($tetraminatorCancelled['ok'])) {
+                    \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, (string) $tetraminatorCancelled['message'], true);
+                    return;
+                }
+                $tetraminatorRetryKeyboard = json_encode(['inline_keyboard' => [
+                    [rx_payment_button('tetraminator', 'retry', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_tetraminator_retry'), 'callback_data' => 'tm_retry_' . $tetraminatorOrder])],
+                    [rx_payment_button('tetraminator', 'back_account', ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back_account'), 'callback_data' => 'account', '_rxcolor' => 'navigation:account_back', '_rxsk' => 'backinfo', '_rxkeep' => true])],
+                ]], JSON_UNESCAPED_UNICODE);
+                Editmessagetext($from_id, $message_id, (string) $tetraminatorCancelled['message'], $tetraminatorRetryKeyboard, 'HTML');
+            } else {
+                if ((int) ($tetraminatorReport['tetraminator_abandoned_at'] ?? 0) <= 0) {
+                    \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, \Faoxima\Telegram\Support\MessageTemplates::plain('payment_tetraminator_cancel_first_alert'), true);
+                    return;
+                }
+                $tetraminatorInvoiceParts = explode('|', (string) ($tetraminatorReport['id_invoice'] ?? ''), 2);
+                $tetraminatorRetryValues = [
+                    'Processing_value' => (string) $tetraminatorReport['price'],
+                    'Processing_value_tow' => (string) ($tetraminatorInvoiceParts[0] ?? ''),
+                    'Processing_value_one' => (string) ($tetraminatorInvoiceParts[1] ?? ''),
+                    'Processing_value_four' => '',
+                ];
+                if ($tetraminatorRetryValues['Processing_value_tow'] === '' && trim((string) ($tetraminatorReport['discount_code'] ?? '')) !== '') {
+                    $tetraminatorRetryValues['Processing_value_four'] = 'chg|' . (int) ($tetraminatorReport['charge_bonus'] ?? 0) . '|' . (string) $tetraminatorReport['discount_code'] . '|' . (string) ($tetraminatorReport['price_before_discount'] ?? 0);
+                }
+                foreach ($tetraminatorRetryValues as $tetraminatorRetryKey => $tetraminatorRetryValue) {
+                    \Faoxima\Core\Database\Db::update('user', $tetraminatorRetryKey, $tetraminatorRetryValue, 'id', $from_id);
+                }
+                \Faoxima\Telegram\Navigation\Steps::step('get_step_payment', $from_id);
+                sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('payment_tetraminator_choose_new_method'), $step_payment, 'HTML');
+            }
+            \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id);
+            break;
+        case 'tetraminator_view':
+            preg_match('/^tm_view_([A-Za-z0-9_\-]{1,64})$/', (string) $datain, $tetraminatorViewMatch);
+            $tetraminatorReport = \Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::fetchReport($pdo, (string) ($tetraminatorViewMatch[1] ?? ''));
+            if ($tetraminatorReport === null || (string) $tetraminatorReport['id_user'] !== (string) $from_id) {
+                \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id, \Faoxima\Telegram\Support\MessageTemplates::plain('payment_invoice_not_found_alert'), true);
+                return;
+            }
+            $tetraminatorReport = \Faoxima\Payments\Gateways\Tetraminator\BotRuntime::tetraminatorPollThrottled($tetraminatorViewMatch[1], $from_id) ?? $tetraminatorReport;
+            $tetraminatorView = \Faoxima\Payments\Gateways\Tetraminator\BotRuntime::tetraminatorBotPaymentView($tetraminatorReport);
+            Editmessagetext($from_id, $message_id, $tetraminatorView['text'], $tetraminatorView['keyboard'], 'HTML');
             \Faoxima\Payments\Gateways\Tonpay\BotRuntime::tonpayCustomBotAnswer($callback_query_id);
             break;
         case 'atlaspay_action':

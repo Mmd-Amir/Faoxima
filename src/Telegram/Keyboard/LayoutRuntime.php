@@ -213,6 +213,7 @@ final class LayoutRuntime
             'iranpay3' => '',
             'tonpay' => '',
             'rialit' => '',
+            'tetraminator' => '',
             'cubepay' => '',
             'blupal' => '',
             'abangateway' => '',

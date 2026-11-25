@@ -49,6 +49,12 @@ final class RechargePayment
         switch ($telegramRoute) {
         case 'recharge_payment':
             if (isset($update['message']) && empty($datain)) { return; }
+            if (\Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::isNewInvoiceSelection($datain) && !\Faoxima\Payments\Gateways\Tetraminator\BotRuntime::tetraminatorBotGuard($from_id)) {
+                if (!empty($callback_query_id)) {
+                    telegram('answerCallbackQuery', ['callback_query_id' => $callback_query_id]);
+                }
+                return;
+            }
             if (!preg_match('/^sbv(resume|cancel)_\w+$/', (string) $datain) && !\Faoxima\Orders\Checkout\CheckoutRuntime::rx_ck_bot_payment_guard($user, $message_id)) { return; }
             $__chargeBonus = is_callable([\Faoxima\Cashback\ChargeBonus::class, 'pendingChargeBonus']) ? \Faoxima\Cashback\ChargeBonus::pendingChargeBonus($user) : 0;
             if ($datain == "cart_to_offline") {
@@ -81,6 +87,10 @@ final class RechargePayment
                 }
             } elseif ($datain == "rialit") {
                 if (\Faoxima\Telegram\Handlers\Gateways\Rialit::handle(__chargeBonus: $__chargeBonus ?? null, connect: $connect ?? null, data: $data, datatextbot: $datatextbot ?? null, from_id: $from_id ?? null, keyboard: $keyboard ?? null, message_id: $message_id, payment: $payment, pdo: $pdo ?? null, randomString: $randomString, stmt: $stmt, textbotlang: $textbotlang ?? null, user: $user ?? null) !== true) {
+                    return;
+                }
+            } elseif ($datain == "tetraminator") {
+                if (\Faoxima\Telegram\Handlers\Gateways\Tetraminator::handle(__chargeBonus: $__chargeBonus ?? null, connect: $connect ?? null, data: $data, datatextbot: $datatextbot ?? null, from_id: $from_id ?? null, keyboard: $keyboard ?? null, message_id: $message_id, payment: $payment, pdo: $pdo ?? null, randomString: $randomString, stmt: $stmt, textbotlang: $textbotlang ?? null, user: $user ?? null) !== true) {
                     return;
                 }
             } elseif ($datain == "blupal") {

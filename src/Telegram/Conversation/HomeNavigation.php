@@ -22,7 +22,6 @@ final class HomeNavigation
         callable $sendBanner,
         callable $telegram,
         ?callable $removeKeyboard,
-        ?callable $trace,
     ): void {
         if ($removeKeyboard !== null) {
             $removeKeyboard($fromId);
@@ -33,12 +32,7 @@ final class HomeNavigation
                 'cache_time' => 0,
             ]);
         }
-        $send = static fn () => $sendBanner($fromId, 'start', $label, $keyboard, 'html');
-        if ($trace !== null) {
-            $trace('text_start', $send);
-        } else {
-            $send();
-        }
+        $sendBanner($fromId, 'start', $label, $keyboard, 'html');
     }
 
     public static function back(

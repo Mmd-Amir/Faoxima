@@ -2,7 +2,7 @@ import { call } from '../api.js?v=0.0.53';
 import { escapeHtml, copyToClipboard, toast, blobToDataUrl } from '../utils.js?v=0.0.52';
 import { icon } from '../icons.js?v=0.0.52';
 import { hapticImpact, hapticNotify, showConfirm } from '../telegram.js?v=0.0.52';
-import { startGatewayWatch } from './gateway-watch.js?v=2';
+import { startGatewayWatch } from './gateway-watch.js?v=3';
 import { getToken } from '../state.js';
 
 
@@ -189,6 +189,17 @@ export function renderCryptoOffline(view, opts = {}) {
             const res = await call('crypto_invoice_init', { method: 'POST', body });
             state.invoice = res?.obj || null;
             if (!state.invoice) throw new Error('پاسخ سرور خالی بود');
+            if (state.invoice.kind === 'active_invoice') {
+                const active = state.invoice;
+                view.innerHTML = `
+                    <div class="empty">
+                        ${icon('clock', 'class="ico ico-xxl ico-warn"')}
+                        <h3>فاکتور فعال تترامیناتور</h3>
+                        <p class="muted">${escapeHtml(active.message || '')}</p>
+                        <a class="btn btn-primary mt-md" href="#/watch/${encodeURIComponent(String(active.order_id || ''))}">ادامه یا انصراف از پرداخت قبلی</a>
+                    </div>`;
+                return;
+            }
             renderInvoiceView();
         } catch (err) {
             view.innerHTML = `

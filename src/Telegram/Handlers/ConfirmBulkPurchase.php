@@ -319,9 +319,6 @@ final class ConfirmBulkPurchase
                     }
                 }
                 $datatextbot['textafterpay'] = $marzban_list_get['type'] == "Manualsale" ? $datatextbot['textmanual'] : $datatextbot['textafterpay'];
-                $rxServicePanelType = (string) ($marzban_list_get['type'] ?? '');
-                $rxServiceTemplateKey = $rxServicePanelType === 'Manualsale' ? 'textmanual' : 'textafterpay';
-                $rxServiceTemplateSource = 'panel_type_conditional';
                 if ($marzban_list_get['type'] == "WGDashboard") {
                     $datatextbot['textafterpay'] = "✅ سرویس با موفقیت ایجاد شد
 
@@ -332,13 +329,6 @@ final class ConfirmBulkPurchase
 🗜 حجم سرویس:  {volume} گیگابایت
 
 🧑‍🦯 شما میتوانید شیوه اتصال را  با فشردن دکمه زیر و انتخاب سیستم عامل خود را دریافت کنید";
-                    $rxServiceTemplateSource = 'hardcoded_wgdashboard_bulk';
-                    $rxServiceTemplateKey = 'text_wgdashboard';
-                }
-                $rxServiceTemplateBefore = (string) ($datatextbot['textafterpay'] ?? '');
-                if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_enabled') && \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_enabled() && method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_active') && !\Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_active() && method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_begin')) {
-                    \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_begin($rxServiceTemplateKey, 'src/Telegram/Handlers/ConfirmBulkPurchase.php', 'bulk_service_template_render');
-                    $GLOBALS['rx_rich_diag_service_key'] = $rxServiceTemplateKey;
                 }
                 $textcreatuser = str_replace('{username}', "<code>" . \Faoxima\Services\Panels\Drivers\Guard::guardDisplayUsername($dataoutput['username'], $marzban_list_get) . "</code>", $datatextbot['textafterpay']);
                 $textcreatuser = str_replace('{name_service}', $info_product['name_product'], $textcreatuser);
@@ -349,51 +339,7 @@ final class ConfirmBulkPurchase
                     $textcreatuser .= \Faoxima\Orders\Pricing\CustomDuration::fx_custom_price_text($marzban_list_get, $user['agent'], $parts[2], $parts[1], $__bulkItemCharge);
                 }
                 $textcreatuser = \Faoxima\Core\Database\Db::applyConnectionPlaceholders($textcreatuser, $output_config_link, $config);
-                if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_text') && method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_structure')) {
-                    $rxServiceBefore = \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($rxServiceTemplateBefore);
-                    $rxServiceAfter = \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($textcreatuser);
-                    $rxServiceRich = isset($datatextbot['richmsg.' . $rxServiceTemplateKey]) ? (string) $datatextbot['richmsg.' . $rxServiceTemplateKey] : '';
-                    $GLOBALS['rx_rich_diag_templates'][$rxServiceTemplateKey] = [
-                        'text' => $rxServiceAfter,
-                        'structure' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_structure($rxServiceRich),
-                        'variables' => [
-                            'before' => (int) $rxServiceBefore['variables'],
-                            'after' => (int) $rxServiceAfter['variables'],
-                            'resolved' => max(0, (int) $rxServiceBefore['variables'] - (int) $rxServiceAfter['variables']),
-                            'unresolved' => (int) $rxServiceAfter['variables'],
-                            'length_before' => (int) $rxServiceBefore['length'],
-                            'length_after' => (int) $rxServiceAfter['length'],
-                            'length_delta' => (int) $rxServiceAfter['length'] - (int) $rxServiceBefore['length'],
-                            'table_preserved' => !empty($rxServiceBefore['html_table']) && !empty($rxServiceAfter['html_table']),
-                            'rows_preserved' => (int) $rxServiceAfter['row_count'] >= (int) $rxServiceBefore['row_count'],
-                            'rtl_marker_before' => !empty($rxServiceBefore['rtl_marker']),
-                            'rtl_marker_after' => !empty($rxServiceAfter['rtl_marker']),
-                        ],
-                        'selection' => [
-                            'template_key' => $rxServiceTemplateKey,
-                            'template_source' => $rxServiceTemplateSource,
-                            'panel_type' => $rxServicePanelType,
-                            'selection_mode' => 'bulk_purchase_path',
-                            'rich_structure_key' => 'richmsg.' . $rxServiceTemplateKey,
-                            'rich_structure_present' => trim($rxServiceRich) !== '',
-                            'render_input' => 'textbot_text_html',
-                            'parse_mode' => 'html',
-                            'send_call' => 'sendMessageService',
-                            'sub_link_present' => trim((string) $output_config_link) !== '',
-                            'config_count' => is_array($dataoutput['configs'] ?? null) ? count($dataoutput['configs']) : 0,
-                            'invoice_present' => trim((string) $randomString) !== '',
-                        ],
-                    ];
-                    $GLOBALS['rx_rich_diag_service_key'] = $rxServiceTemplateKey;
-                }
-                if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_traceSend')) {
-                    \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_traceSend($rxServiceTemplateKey, static function () use ($marzban_list_get, $dataoutput, $output_config_link, $Shoppinginfo, $textcreatuser, $randomString) {
-                        return \Faoxima\Services\Delivery\ServiceDelivery::sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
-                    });
-                    $GLOBALS['rx_rich_diag_service_key'] = null;
-                } else {
-                    \Faoxima\Services\Delivery\ServiceDelivery::sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
-                }
+                \Faoxima\Services\Delivery\ServiceDelivery::sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
                 $rxBulkFilesPaid = (float) $__bulkItemCharge <= 0;
                 if (is_callable([\Faoxima\Wallet\Balance\Balances::class, 'charge'])) {
                     $__bulkChargeLive = \Faoxima\Wallet\Balance\Balances::charge($pdo, $from_id, (float)$__bulkItemCharge, $__bulkAllowNeg);

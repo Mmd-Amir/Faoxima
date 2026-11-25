@@ -76,7 +76,6 @@ final class Db
 
     public static function applyConnectionPlaceholders($template, $subscriptionLink, $configList)
     {
-        $rxDiagTemplateBefore = (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_active') && \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_active() && method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_text')) ? \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($template) : null;
         $trimmedSubscription = trim((string) $subscriptionLink);
         $trimmedConfigList = trim((string) $configList);
 
@@ -190,33 +189,6 @@ final class Db
         }
 
         $template = preg_replace("/\n{3,}/u", "\n\n", $template);
-
-        if (is_array($rxDiagTemplateBefore) && method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_text')) {
-            $rxDiagTemplateAfter = \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($template);
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_VARIABLES_APPLIED', 'connection_placeholders', 'applied', [
-                'before' => [
-                    'length' => (int) $rxDiagTemplateBefore['length'],
-                    'sha256' => $rxDiagTemplateBefore['sha256'],
-                    'html_table' => !empty($rxDiagTemplateBefore['html_table']),
-                    'table_count' => (int) $rxDiagTemplateBefore['table_count'],
-                    'row_count' => (int) $rxDiagTemplateBefore['row_count'],
-                    'variables' => (int) $rxDiagTemplateBefore['variables'],
-                ],
-                'after' => [
-                    'length' => (int) $rxDiagTemplateAfter['length'],
-                    'sha256' => $rxDiagTemplateAfter['sha256'],
-                    'html_table' => !empty($rxDiagTemplateAfter['html_table']),
-                    'table_count' => (int) $rxDiagTemplateAfter['table_count'],
-                    'row_count' => (int) $rxDiagTemplateAfter['row_count'],
-                    'variables' => (int) $rxDiagTemplateAfter['variables'],
-                ],
-                'table_preserved' => !empty($rxDiagTemplateBefore['html_table']) && !empty($rxDiagTemplateAfter['html_table']),
-                'rows_preserved' => (int) $rxDiagTemplateAfter['row_count'] >= (int) $rxDiagTemplateBefore['row_count'],
-                'length_delta' => (int) $rxDiagTemplateAfter['length'] - (int) $rxDiagTemplateBefore['length'],
-                'subscription_present' => trim((string) $subscriptionLink) !== '',
-                'config_present' => trim((string) $configList) !== '',
-            ]);
-        }
 
         return $template;
     }

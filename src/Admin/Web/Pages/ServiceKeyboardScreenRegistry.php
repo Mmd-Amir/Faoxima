@@ -190,6 +190,7 @@ final class ServiceKeyboardScreenRegistry
             ['iranpay2', '🟠 ترونادو', 'statustarnado', 'onternado', 'ترونادو', 'iranpay3'],
             ['tonpay', '💠 تون‌پی', 'statustonpay', 'ontonpay', 'تون‌پی', 'tonpay'],
             ['rialit', '💚 ریالیت', 'statusrialit', 'onrialit', 'ریالیت', 'rialit'],
+            ['tetraminator', '💎 تترامیناتور', 'statustetraminator', 'ontetraminator', 'تترامیناتور', 'tetraminator'],
             ['cubepay', '🟦 کیوب‌پی', 'statuscubepay', 'oncubepay', 'کیوب‌پی', 'cubepay'],
             ['blupal', '💙 بلوپال', 'statusblupal', 'onblupal', 'بلوپال', 'blupal'],
             ['variza', '💳 واریزا', 'statusvariza', 'onvariza', 'واریزا', 'variza'],

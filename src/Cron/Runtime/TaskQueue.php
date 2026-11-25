@@ -100,66 +100,9 @@ final class TaskQueue
             }
         }
 
-    public static function rx_cron_task_is_payment_job(string $jobKey): bool
-        {
-            return in_array($jobKey, [
-                'croncard', 'plisio', 'nowpaymentcheck', 'blupalcheck', 'atlaspaycheck',
-                'tronadocheck', 'tonpaycheck', 'rialitcheck', 'cryptocheck',
-            ], true);
-        }
-
-    public static function rx_cron_task_priority_map(): array
-        {
-            static $map = null;
-            if (is_array($map)) {
-                return $map;
-            }
-            $map = [];
-            foreach ([
-                'croncard', 'plisio', 'nowpaymentcheck', 'blupalcheck', 'atlaspaycheck',
-                'tronadocheck', 'tonpaycheck', 'rialitcheck', 'cryptocheck',
-                'activeconfig', 'queued_renewal',
-            ] as $jobKey) {
-                $map[$jobKey] = 0;
-            }
-            foreach ([
-                'sendmessage', 'notifications', 'gift', 'payment_expire', 'ip_block_notify',
-                'disableconfig', 'public_log_drain',
-            ] as $jobKey) {
-                $map[$jobKey] = 1;
-            }
-            foreach ([
-                'statusday', 'configtest', 'uptime_node', 'uptime_panel', 'on_hold', 'expireagent',
-                'discount_expire', 'lottery', 'remnawave_usage', 'fx_rate_sync', 'xui_inbound_sync',
-                'pin_expire',
-            ] as $jobKey) {
-                $map[$jobKey] = 2;
-            }
-            foreach (['backupbot', 'logs_cleanup', 'notification_expire'] as $jobKey) {
-                $map[$jobKey] = 3;
-            }
-            return $map;
-        }
-
     public static function rx_cron_task_priority(string $jobKey): int
         {
-            $map = self::rx_cron_task_priority_map();
-            return isset($map[$jobKey]) ? max(0, min(3, (int) $map[$jobKey])) : 2;
-        }
-
-    public static function rx_cron_task_priority_aging(): int
-        {
-            return 300;
-        }
-
-    public static function rx_cron_task_priority_sql(string $column = 'job_key'): string
-        {
-            $cases = '';
-            foreach (self::rx_cron_task_priority_map() as $jobKey => $priority) {
-                $literal = str_replace(['\\', "'"], ['\\\\', "''"], (string) $jobKey);
-                $cases .= " WHEN '" . $literal . "' THEN " . (int) $priority;
-            }
-            return 'CASE ' . $column . $cases . ' ELSE 2 END';
+            return 0;
         }
 
     public static function rx_cron_task_load_pending(PDO $pdo, int $limit, int $maxAttempts, array $deferredJobs = []): array
@@ -167,11 +110,8 @@ final class TaskQueue
             $limit = max(1, min(500, $limit));
             $deferredJobs = array_values(array_filter($deferredJobs, 'is_string'));
             $excluded = $deferredJobs ? ' AND job_key NOT IN (' . implode(',', array_fill(0, count($deferredJobs), '?')) . ')' : '';
-            $priority = self::rx_cron_task_priority_sql();
-            $aging = max(60, self::rx_cron_task_priority_aging());
             $now = time();
-            $rank = 'GREATEST(0, (' . $priority . ') - LEAST((' . $priority . '), FLOOR(GREATEST(0, ' . $now . ' - scheduled_for) / ' . $aging . ')))';
-            $stmt = $pdo->prepare("SELECT task_key, job_key, script, worker, workers, token, attempts, scheduled_for, job_dispatched_at, next_attempt_at FROM cron_task_state WHERE state = 'pending' AND attempts < ? AND next_attempt_at <= ? AND scheduled_for BETWEEN ? AND ?" . $excluded . " ORDER BY " . $rank . " ASC, scheduled_for ASC, job_dispatched_at ASC, task_key ASC LIMIT " . $limit);
+            $stmt = $pdo->prepare("SELECT task_key, job_key, script, worker, workers, token, attempts, scheduled_for, job_dispatched_at, next_attempt_at FROM cron_task_state WHERE state = 'pending' AND attempts < ? AND next_attempt_at <= ? AND scheduled_for BETWEEN ? AND ?" . $excluded . " ORDER BY scheduled_for ASC, job_dispatched_at ASC, task_key ASC LIMIT " . $limit);
             $params = array_merge([max(1, $maxAttempts), $now, $now - \Faoxima\Cron\Runtime\TaskState::rx_cron_catchup_seconds(), $now], $deferredJobs);
             $stmt->execute($params);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -399,7 +339,8 @@ final class TaskQueue
 
     public static function rx_cron_task_select_claims(PDO $pdo, array $limits, int $now, array $deferredJobs, ?callable $validate): array
         {
-            [$concurrency, $maxAttempts, $leaseSeconds, $deadline, $reservedPaymentSlots] = $limits;
+            [$concurrency, $maxAttempts, $leaseSeconds, $deadline] = $limits;
+            $claimBatch = max(0, (int) ($limits[4] ?? 0));
             $claims = [];
             $skip = [];
             $cancelled = 0;
@@ -409,7 +350,10 @@ final class TaskQueue
                 $active = $concurrency;
             }
             $free = max(0, $concurrency - $active);
-            $paymentClaimed = 0;
+            if ($claimBatch > 0) {
+                $free = min($free, $claimBatch);
+            }
+            $capacity = $free;
             if ($free > 0) {
                 $pending = [];
                 try {
@@ -417,13 +361,6 @@ final class TaskQueue
                 } catch (\Throwable $e) {
                     $pending = [];
                 }
-                $paymentDue = 0;
-                foreach ($pending as $pendingRow) {
-                    if (self::rx_cron_task_is_payment_job((string) ($pendingRow['job_key'] ?? ''))) {
-                        $paymentDue++;
-                    }
-                }
-                $paymentReserve = min($reservedPaymentSlots, $paymentDue, max(0, $free - 1));
                 foreach ($pending as $row) {
                     if ($free <= 0 || microtime(true) >= $deadline) {
                         break;
@@ -432,27 +369,21 @@ final class TaskQueue
                     if ($taskKey === '' || isset($skip[$taskKey])) {
                         continue;
                     }
-                    $isPayment = self::rx_cron_task_is_payment_job((string) ($row['job_key'] ?? ''));
-                    if (!$isPayment) {
-                        $remainingReserve = max(0, $paymentReserve - $paymentClaimed);
-                        if ($remainingReserve > 0 && $free <= $remainingReserve && $paymentClaimed < $paymentDue) {
-                            continue;
-                        }
-                    }
                     if (is_callable($validate)) {
                         try {
-                            $isValid = (bool) $validate($row);
+                            $isValid = $validate($row);
                         } catch (\Throwable $e) {
                             $isValid = false;
+                        }
+                        if ($isValid === null) {
+                            $skip[$taskKey] = true;
+                            continue;
                         }
                         if (!$isValid) {
                             try {
                                 self::rx_cron_task_cancel_pending($pdo, $taskKey, 'obsolete');
                                 $cancelled++;
                             } catch (\Throwable $e) {
-                            }
-                            if ($isPayment) {
-                                $paymentDue = max(0, $paymentDue - 1);
                             }
                             $skip[$taskKey] = true;
                             continue;
@@ -465,19 +396,36 @@ final class TaskQueue
                         $claim = null;
                     }
                     if (!is_array($claim)) {
-                        if ($isPayment) {
-                            $paymentDue = max(0, $paymentDue - 1);
-                        }
                         continue;
                     }
                     $claims[] = $claim;
-                    if ($isPayment) {
-                        $paymentClaimed++;
-                    }
                     $free--;
                 }
             }
-            return [$claims, $cancelled];
+            return [$claims, $cancelled, $capacity];
+        }
+
+    public static function rx_cron_task_claim_pass(PDO $pdo, string $capacityLock, array $limits, int $now, array $deferredJobs, ?callable $validate): ?array
+        {
+            $lockState = false;
+            try {
+                $stmt = $pdo->prepare('SELECT GET_LOCK(?, 0)');
+                $stmt->execute([$capacityLock]);
+                $lockState = ((int) $stmt->fetchColumn() === 1);
+            } catch (\Throwable $e) {
+                $lockState = false;
+            }
+            if (!$lockState) {
+                return null;
+            }
+            try {
+                return self::rx_cron_task_select_claims($pdo, $limits, $now, $deferredJobs, $validate);
+            } finally {
+                try {
+                    $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$capacityLock]);
+                } catch (\Throwable $e) {
+                }
+            }
         }
 
     public static function rx_cron_task_dispatch_claim(PDO $pdo, array $claim, callable $dispatch, ?callable $onDispatch, int $uncertainDelay): string
@@ -530,7 +478,8 @@ final class TaskQueue
             $maxAttempts = max(1, (int) ($options['max_attempts'] ?? 3));
             $leaseSeconds = max(60, (int) ($options['lease_seconds'] ?? 120));
             $deadline = (float) ($options['deadline'] ?? (microtime(true) + 20));
-            $reservedPaymentSlots = max(0, min(4, (int) ($options['reserved_payment_slots'] ?? 1)));
+            $claimBatch = max(0, min(8, (int) ($options['claim_batch'] ?? 0)));
+            $refillUntil = min($deadline, microtime(true) + max(0.0, (float) ($options['refill_seconds'] ?? 0)));
             $uncertainDelay = max(60, min(1800, (int) ($options['uncertain_delay'] ?? 180)));
             $deferredJobs = array_values(array_filter((array) ($options['deferred_jobs'] ?? []), 'is_string'));
             $stats = ['dispatched' => 0, 'failed' => 0, 'active' => 0, 'pending' => 0, 'cancelled' => 0, 'deferred' => 0, 'uncertain' => 0];
@@ -549,39 +498,48 @@ final class TaskQueue
             } catch (\Throwable $e) {
             }
 
-            $lockState = null;
-            try {
-                $stmt = $pdo->prepare('SELECT GET_LOCK(?, 0)');
-                $stmt->execute([$capacityLock]);
-                $lockState = ((int) $stmt->fetchColumn() === 1);
-            } catch (\Throwable $e) {
-                $lockState = null;
-            }
-            if ($lockState !== true) {
-                try {
-                    $stats['active'] = self::rx_cron_task_active_count($pdo, $now);
-                    $stats['pending'] = self::rx_cron_task_pending_count($pdo, $deferredJobs, $now);
-                } catch (\Throwable $e) {
+            $limits = [$concurrency, $maxAttempts, $leaseSeconds, $deadline, $claimBatch];
+            $sequential = !empty($options['sequential']);
+            $afterClaim = $options['after_claim'] ?? null;
+            $passes = 0;
+            while ($passes < 64) {
+                $passes++;
+                $passValidate = $validate;
+                if ($passes > 1 && is_callable($validate)) {
+                    $passValidate = static function (array $row) use ($validate): ?bool {
+                        return $validate($row) ? true : null;
+                    };
                 }
-                return $stats;
-            }
-
-            $claims = [];
-            try {
-                [$claims, $stats['cancelled']] = self::rx_cron_task_select_claims(
-                    $pdo, [$concurrency, $maxAttempts, $leaseSeconds, $deadline, $reservedPaymentSlots],
-                    $now, $deferredJobs, $validate
-                );
-            } finally {
-                try {
-                    $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$capacityLock]);
-                } catch (\Throwable $e) {
+                $pass = self::rx_cron_task_claim_pass($pdo, $capacityLock, $limits, time(), $deferredJobs, $passValidate);
+                if ($pass === null) {
+                    if ($passes === 1) {
+                        try {
+                            $stats['active'] = self::rx_cron_task_active_count($pdo, $now);
+                            $stats['pending'] = self::rx_cron_task_pending_count($pdo, $deferredJobs, $now);
+                        } catch (\Throwable $e) {
+                        }
+                        return $stats;
+                    }
+                    break;
                 }
-            }
+                [$claims, $cancelled] = $pass;
+                $stats['cancelled'] += (int) $cancelled;
 
-            foreach ($claims as $claim) {
-                $outcome = self::rx_cron_task_dispatch_claim($pdo, $claim, $dispatch, $onDispatch, $uncertainDelay);
-                $stats[$outcome]++;
+                if ($passes === 1 && is_callable($afterClaim)) {
+                    try {
+                        $afterClaim();
+                    } catch (\Throwable $e) {
+                    }
+                }
+
+                foreach ($claims as $claim) {
+                    $outcome = self::rx_cron_task_dispatch_claim($pdo, $claim, $dispatch, $onDispatch, $uncertainDelay);
+                    $stats[$outcome]++;
+                }
+
+                if (!$sequential || !$claims || microtime(true) >= $refillUntil) {
+                    break;
+                }
             }
 
             try {

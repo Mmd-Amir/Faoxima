@@ -11,6 +11,7 @@ final class AdminBuildersHelpers
     $arzireyali2 = \Faoxima\Core\Database\Db::getPaySettingValue('statustarnado', 'offternado');
     $tonpay_status_raw = \Faoxima\Core\Database\Db::getPaySettingValue('statustonpay', 'offtonpay');
     $rialit_status_raw = \Faoxima\Core\Database\Db::getPaySettingValue('statusrialit', 'offrialit');
+    $tetraminator_status_raw = \Faoxima\Core\Database\Db::getPaySettingValue('statustetraminator', 'offtetraminator');
     $cubepay_status_raw = \Faoxima\Core\Database\Db::getPaySettingValue('statuscubepay', 'offcubepay');
     $blupal_status_raw = \Faoxima\Core\Database\Db::getPaySettingValue('statusblupal', 'offblupal');
     $atlaspay_status_raw = \Faoxima\Core\Database\Db::getPaySettingValue('statusatlaspay', 'offatlaspay');
@@ -26,6 +27,7 @@ final class AdminBuildersHelpers
     $arzireyali2status = $arzireyali2 === 'onternado' ? $statusOn : $statusOff;
     $tonpaystatus = $tonpay_status_raw === 'ontonpay' ? $statusOn : $statusOff;
     $rialitstatus = $rialit_status_raw === 'onrialit' ? $statusOn : $statusOff;
+    $tetraminatorstatus = $tetraminator_status_raw === 'ontetraminator' ? $statusOn : $statusOff;
     $cubepaystatus = $cubepay_status_raw === 'oncubepay' ? $statusOn : $statusOff;
     $blupalstatus = $blupal_status_raw === 'onblupal' ? $statusOn : $statusOff;
     $variza_status_raw = \Faoxima\Core\Database\Db::getPaySettingValue('statusvariza', 'offvariza');
@@ -73,6 +75,11 @@ final class AdminBuildersHelpers
             ['text' => '⚙️ تنظیمات', 'callback_data' => 'rialitsetting'],
             ['text' => $rialitstatus, 'callback_data' => "editpayment-rialit-$rialit_status_raw"],
             ['text' => '💚 ریالیت', 'callback_data' => 'rialit'],
+        ],
+        [
+            ['text' => '⚙️ تنظیمات', 'callback_data' => 'tetraminatorsetting'],
+            ['text' => $tetraminatorstatus, 'callback_data' => "editpayment-tetraminator-$tetraminator_status_raw"],
+            ['text' => '💎 تترامیناتور', 'callback_data' => 'tetraminator'],
         ],
         [
             ['text' => '⚙️ تنظیمات', 'callback_data' => 'cubepaysetting'],

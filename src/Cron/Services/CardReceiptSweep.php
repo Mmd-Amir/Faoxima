@@ -33,6 +33,7 @@ final class CardReceiptSweep
     private int $worker = 0;
     private int $workers = 1;
     private string $window = '';
+    private string $strictWindow = '';
     private string $shardSql = '';
     private string $sbvExclude = '';
     private array $queue = [];
@@ -88,6 +89,7 @@ final class CardReceiptSweep
         $this->workers = $n;
         $this->shardSql = ($n > 1) ? " AND MOD(id, $n) = $w " : "";
         $this->window = PaymentPolicy::cronReceiptWindowSql();
+        $this->strictWindow = PaymentPolicy::cronWindowSql();
         $this->queue = [];
         $this->waitingLastId = 0;
         $this->stopped = false;
@@ -104,7 +106,7 @@ final class CardReceiptSweep
     private function collectRecoverable(): void
     {
         $cursor = CronBatches::rx_cron_invoice_cursor('croncard_recover:' . $this->workers . ':' . $this->worker);
-        $sql = "SELECT id, id_order FROM Payment_report WHERE {$this->window} AND (payment_Status IN ('processing', 'reconciling') OR (payment_Status = 'paid' AND COALESCE(direct_payment_done, 0) = 0 AND (Payment_Method = 'cart to cart' OR EXISTS (SELECT 1 FROM payment_fulfillment recover_pf WHERE recover_pf.id_order = Payment_report.id_order)))) AND (Payment_Method = 'cart to cart' OR Payment_Method = 'arze digital offline') AND bottype IS NULL AND NOT EXISTS (SELECT 1 FROM payment_fulfillment pf WHERE pf.id_order = Payment_report.id_order AND pf.state IN ('completed', 'manual_review')){$this->sbvExclude}{$this->shardSql} AND id > ? ORDER BY id ASC LIMIT 20";
+        $sql = "SELECT id, id_order FROM Payment_report WHERE {$this->window} AND (payment_Status IN ('processing', 'reconciling') OR (payment_Status = 'paid' AND COALESCE(direct_payment_done, 0) = 0 AND (EXISTS (SELECT 1 FROM payment_fulfillment recover_pf WHERE recover_pf.id_order = Payment_report.id_order) OR (Payment_Method = 'cart to cart' AND {$this->strictWindow})))) AND (Payment_Method = 'cart to cart' OR Payment_Method = 'arze digital offline') AND bottype IS NULL AND NOT EXISTS (SELECT 1 FROM payment_fulfillment pf WHERE pf.id_order = Payment_report.id_order AND pf.state IN ('completed', 'manual_review')){$this->sbvExclude}{$this->shardSql} AND id > ? ORDER BY id ASC LIMIT 20";
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([$cursor]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -122,7 +124,7 @@ final class CardReceiptSweep
     private function collectWaiting(): void
     {
         $cursor = CronBatches::rx_cron_invoice_cursor('croncard_waiting:' . $this->workers . ':' . $this->worker);
-        $sql = "SELECT * FROM Payment_report WHERE {$this->window} AND payment_Status = 'waiting' AND COALESCE(direct_payment_done, 0) = 0 AND (Payment_Method = 'cart to cart' OR Payment_Method = 'arze digital offline') AND bottype IS NULL AND NOT EXISTS (SELECT 1 FROM payment_fulfillment pf WHERE pf.id_order = Payment_report.id_order AND pf.state IN ('completed', 'manual_review')){$this->sbvExclude}{$this->shardSql} AND at_updated IS NOT NULL AND id > ? ORDER BY id ASC LIMIT 50";
+        $sql = "SELECT * FROM Payment_report WHERE {$this->strictWindow} AND payment_Status = 'waiting' AND COALESCE(direct_payment_done, 0) = 0 AND (Payment_Method = 'cart to cart' OR Payment_Method = 'arze digital offline') AND bottype IS NULL AND NOT EXISTS (SELECT 1 FROM payment_fulfillment pf WHERE pf.id_order = Payment_report.id_order AND pf.state IN ('completed', 'manual_review')){$this->sbvExclude}{$this->shardSql} AND at_updated IS NOT NULL AND id > ? ORDER BY id ASC LIMIT 50";
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([$cursor]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);

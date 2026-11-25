@@ -4,7 +4,7 @@ import { setUser } from '../state.js';
 import { icon } from '../icons.js?v=0.0.52';
 import { hapticImpact, showConfirm, getInitDataUnsafe } from '../telegram.js?v=0.0.52';
 import { mountHomeBell } from '../notifications.js?v=0.0.52';
-import { methodLabel } from '../payment-ui.js?v=0.0.73';
+import { methodLabel } from '../payment-ui.js?v=0.0.75';
 import { cancelVerifyPayment } from '../card-verify.js?v=0.0.6';
 
 function greetingName() {
@@ -276,7 +276,7 @@ async function loadPendingBanner(view) {
     } catch (_) { return () => {}; }
     if (!pending.length) return () => {};
 
-    const externalGatewayPending = pending.find(p => p.method === 'iranpay2' || p.method === 'tonpay' || p.method === 'rialit' || p.method === 'cubepay' || p.method === 'blupal' || p.method === 'variza' || p.method === 'abangateway' || p.method === 'atlaspay');
+    const externalGatewayPending = pending.find(p => p.method === 'iranpay2' || p.method === 'tonpay' || p.method === 'rialit' || p.method === 'tetraminator' || p.method === 'cubepay' || p.method === 'blupal' || p.method === 'variza' || p.method === 'abangateway' || p.method === 'atlaspay');
     if (externalGatewayPending) {
         const autoJumpKey = 'faoxima_extgw_autojump_' + externalGatewayPending.order_id;
         let alreadyJumped = false;
@@ -305,7 +305,9 @@ async function loadPendingBanner(view) {
             if (!order) return;
             const ok = await showConfirm(btn.getAttribute('data-method') === 'rialit'
                 ? 'از این پرداخت انصراف می‌دهید؟ می‌توانید پرداخت جدید بسازید. لینک قبلی در ریالیت باطل نمی‌شود؛ اگر بعداً تأیید شود، مبلغ سفارش به کیف پول اضافه می‌شود.'
-                : 'این فاکتور لغو شود؟');
+                : (btn.getAttribute('data-method') === 'tetraminator'
+                    ? 'از این پرداخت انصراف می‌دهید؟ می‌توانید پرداخت جدید بسازید. لینک قبلی در تترامیناتور باطل نمی‌شود؛ اگر بعداً تأیید شود، مبلغ سفارش به کیف پول اضافه می‌شود.'
+                    : 'این فاکتور لغو شود؟'));
             if (!ok) return;
             try {
                 if (btn.getAttribute('data-verify') === '1') {
@@ -353,7 +355,7 @@ function startPendingTicker(host) {
             const exp = Number(el.getAttribute('data-expires-at')) || 0;
             if (exp <= 0) return;
             const fmt = el.getAttribute('data-method') === 'tonpay' ? fmtRemainHhMmSs : fmtRemainMmSs;
-            if (el.getAttribute('data-method') === 'rialit' && (exp - nowSec) <= 0) {
+            if ((el.getAttribute('data-method') === 'rialit' || el.getAttribute('data-method') === 'tetraminator') && (exp - nowSec) <= 0) {
                 el.textContent = 'در انتظار نتیجه';
                 const card = el.closest ? el.closest('.pending-banner') : null;
                 const note = card ? card.querySelector('.pending-banner-note') : null;
@@ -372,11 +374,12 @@ function startPendingTicker(host) {
 function renderPendingCard(p) {
     const expiresAt = Number(p.expires_at) || 0;
     const isTonpay = String(p.method || '').toLowerCase() === 'tonpay';
-    const isRialit = String(p.method || '').toLowerCase() === 'rialit';
+    const isRialit = ['rialit', 'tetraminator'].includes(String(p.method || '').toLowerCase());
+    const linkPending = String(p.method || '').toLowerCase() === 'tetraminator' ? p.tetraminator : p.rialit;
     const cancelAllowed = p.cancel_eligible === true
         || (p.cancel_eligible !== false && (!p.verify || p.cancellable));
     const fmtRemain = isTonpay ? fmtRemainHhMmSs : fmtRemainMmSs;
-    const rialitAwaitingResult = isRialit && ((p.rialit && p.rialit.awaiting_result) || (expiresAt > 0 && expiresAt <= Math.floor(Date.now() / 1000)));
+    const rialitAwaitingResult = isRialit && ((linkPending && linkPending.awaiting_result) || (expiresAt > 0 && expiresAt <= Math.floor(Date.now() / 1000)));
     const initialRemain = rialitAwaitingResult
         ? 'در انتظار نتیجه'
         : (expiresAt > 0

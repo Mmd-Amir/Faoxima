@@ -25,6 +25,7 @@ final class PaymentMethods
         $trnadoo = \Faoxima\Core\Database\Db::getPaySettingValue("statustarnado");
         $tonpayStatus = \Faoxima\Core\Database\Db::getPaySettingValue("statustonpay");
         $rialitStatus = \Faoxima\Core\Database\Db::getPaySettingValue("statusrialit");
+        $tetraminatorStatus = \Faoxima\Core\Database\Db::getPaySettingValue("statustetraminator");
         $cubepayStatus = \Faoxima\Core\Database\Db::getPaySettingValue("statuscubepay");
         $blupalStatus = \Faoxima\Core\Database\Db::getPaySettingValue("statusblupal");
         $varizaStatus = \Faoxima\Core\Database\Db::getPaySettingValue("statusvariza");
@@ -84,6 +85,11 @@ final class PaymentMethods
            if($rialitStatus == "onrialit"){
                 $step_payment['inline_keyboard'][] = [
                     \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => $datatextbot['rialit'] ?: '💚 ریالیت', 'callback_data' => "rialit"], 'rialit', $_rx_pay_styles)
+            ];
+            }
+           if($tetraminatorStatus == "ontetraminator"){
+                $step_payment['inline_keyboard'][] = [
+                    \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => $datatextbot['tetraminator'] ?: '💎 تترامیناتور', 'callback_data' => "tetraminator"], 'tetraminator', $_rx_pay_styles)
             ];
             }
            if($cubepayStatus == "oncubepay"){

@@ -1,19 +1,19 @@
-import { home } from './pages/home.js?v=0.0.76';
+import { home } from './pages/home.js?v=0.0.77';
 import { services as servicesPage } from './pages/services.js?v=0.0.54';
 
 import { buy as buyPage } from './pages/buy.js?v=0.0.68';
 import { account as accountPage } from './pages/account.js?v=0.0.56';
 import { settings as settingsPage } from './pages/settings.js?v=0.0.53';
-import { recharge as rechargePage } from './pages/recharge.js?v=0.0.69';
+import { recharge as rechargePage } from './pages/recharge.js?v=0.0.71';
 import { icon } from './icons.js?v=0.0.52';
-import { methodLabel, handleInitResult } from './payment-ui.js?v=0.0.73';
+import { methodLabel, handleInitResult } from './payment-ui.js?v=0.0.75';
 import { startVerifyTracker } from './card-verify.js?v=0.0.6';
 
 
 let _watchModulePromise = null;
 function loadWatchPage() {
     if (_watchModulePromise) return _watchModulePromise;
-    _watchModulePromise = import('./pages/gateway-watch.js?v=2');
+    _watchModulePromise = import('./pages/gateway-watch.js?v=3');
     return _watchModulePromise;
 }
 
@@ -47,7 +47,7 @@ async function watchResumePage(view, encodedOrderId) {
         gatewayUrl = String(obj.gateway_url || '');
         paymentStatus = String(obj.payment_status || '');
 
-        const WATCH_WINDOW_SEC = methodStr === 'cubepay' ? 3600 : (methodStr === 'atlaspay' ? 1200 : (methodStr === 'tonpay' ? 86400 : (methodStr === 'rialit' ? 1800 : 1800)));
+        const WATCH_WINDOW_SEC = (methodStr === 'cubepay' || methodStr === 'tetraminator') ? 3600 : (methodStr === 'atlaspay' ? 1200 : (methodStr === 'tonpay' ? 86400 : (methodStr === 'rialit' ? 1800 : 1800)));
         const nowSec = Math.floor(Date.now() / 1000);
         const hashAt = Number(obj.hash_at || 0);
         const expiresAtFromServer = Number(obj.expires_at || 0);
@@ -60,6 +60,9 @@ async function watchResumePage(view, encodedOrderId) {
             expiresAtSec = nowSec + WATCH_WINDOW_SEC;
         }
         if (statusObj.rialit && statusObj.rialit.awaiting_result) {
+            expiresAtSec = nowSec;
+        }
+        if (statusObj.tetraminator && statusObj.tetraminator.awaiting_result) {
             expiresAtSec = nowSec;
         }
     } catch (_) {  }
@@ -145,7 +148,7 @@ async function watchResumePage(view, encodedOrderId) {
 
     const isCryptoFlow = methodStr.includes('digital') || methodStr.includes('arze') || methodStr.includes('crypto');
     const isDirectBuy = flowStr === 'direct_buy';
-    const isExternalBotGateway = methodStr === 'iranpay2' || methodStr === 'tonpay' || methodStr === 'rialit' || methodStr === 'cubepay' || methodStr === 'blupal' || methodStr === 'variza' || methodStr === 'abangateway' || methodStr === 'atlaspay';
+    const isExternalBotGateway = methodStr === 'iranpay2' || methodStr === 'tonpay' || methodStr === 'rialit' || methodStr === 'tetraminator' || methodStr === 'cubepay' || methodStr === 'blupal' || methodStr === 'variza' || methodStr === 'abangateway' || methodStr === 'atlaspay';
     const resolvedMode = isCryptoFlow
         ? (isDirectBuy ? 'crypto_offline' : 'recharge')
         : 'recharge';
@@ -160,7 +163,7 @@ async function watchResumePage(view, encodedOrderId) {
         gatewayUrl,
         keepMiniAppOpen: isExternalBotGateway,
         expiresAtSec,
-        timeoutSec: (methodStr === 'cubepay' || methodStr === 'variza') ? 3600 : (methodStr === 'atlaspay' ? 1200 : (methodStr === 'tonpay' ? 86400 : (methodStr === 'rialit' ? 1800 : 1800))),
+        timeoutSec: (methodStr === 'cubepay' || methodStr === 'variza' || methodStr === 'tetraminator') ? 3600 : (methodStr === 'atlaspay' ? 1200 : (methodStr === 'tonpay' ? 86400 : (methodStr === 'rialit' ? 1800 : 1800))),
         pollEverySec: 5,
         onSuccess: (st) => {
             const amount = Number(st.amount || 0).toLocaleString('en-US');

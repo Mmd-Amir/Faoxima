@@ -150,8 +150,6 @@ function telegram($method, $datas = [], $token = null)
     unset($datas['_rx_curl_timeout']);
     $rxNoNetworkRetry = !empty($datas['_rx_no_network_retry']);
     unset($datas['_rx_no_network_retry']);
-    $rxDiagOn = method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_active') && \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_active();
-    $rxDiagStartedAt = microtime(true);
 
     if (strtolower((string) $method) === 'setwebhook') {
         $datas['secret_token'] = FaoximaWebhookAuth::secret((string) $token, $token === $APIKEY);
@@ -231,14 +229,6 @@ function telegram($method, $datas = [], $token = null)
         && method_exists(\Faoxima\Telegram\Rich\Dispatcher::class, 'rx_richUi_resolveTarget')) {
         $rxResolvedTarget = \Faoxima\Telegram\Rich\Dispatcher::rx_richUi_resolveTarget($datas['chat_id'], (int) $datas['message_id']);
         if ($rxResolvedTarget['deleted'] || ($rxSendMethod === 'deletemessage' && $rxResolvedTarget['redirected'])) {
-            if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_MESSAGE_TARGET', 'stale_target', 'skipped', [
-                    'telegram_api_method' => $rxSendMethod,
-                    'original_message_id' => (int) $datas['message_id'],
-                    'deletion_status' => 'already_confirmed',
-                    'reason' => 'target_already_deleted_in_request',
-                ], 'info');
-            }
             return $rxSendMethod === 'deletemessage'
                 ? ['ok' => true, 'result' => true, '_rx_already_deleted' => true]
                 : ['ok' => false, 'error_code' => 400, 'description' => 'Bad Request: message to edit not found', '_rx_stale_target' => true];
@@ -256,13 +246,6 @@ function telegram($method, $datas = [], $token = null)
     }
 
     $preparedPayload = prepareTelegramRequestPayload($datas);
-    if ($rxDiagOn) {
-        \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_PAYLOAD_PREPARED', 'telegram_request', 'prepared', [
-            'api_method' => (string) $method,
-            'request' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_payload($datas),
-            'already_transformed' => $rxAlreadyTransformed,
-        ], 'debug');
-    }
 
     // Outbound to api.telegram.org has intermittent 2-5s connect timeouts
     // on some hosting providers (MatHost.eu in particular). When a single
@@ -357,19 +340,10 @@ function telegram($method, $datas = [], $token = null)
 
     if ($rawResponse === false) {
         $logError = $curlError !== '' ? $curlError : 'Unknown cURL error';
-        $logError = method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_sanitize') ? \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_sanitize($logError) : 'Telegram transport failed';
+        $logError = method_exists(\Faoxima\Telegram\Rich\Dispatcher::class, 'rx_richUi_redactLogText') ? \Faoxima\Telegram\Rich\Dispatcher::rx_richUi_redactLogText($logError) : 'Telegram transport failed';
         $redactedUrl = preg_replace('#(/bot)[^/]+(/)#', '$1***$2', $url);
         error_log(sprintf('Telegram request failed (errno: %d, url: %s, attempts: %d): %s',
             $curlErrorNumber, $redactedUrl, $attemptedTimes, $logError));
-        if ($rxDiagOn) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_TELEGRAM_API_RESPONSE', 'telegram_transport', 'transport_failed', [
-                'api_method' => (string) $method,
-                'curl_errno' => (int) $curlErrorNumber,
-                'error' => $logError,
-                'attempts' => (int) $attemptedTimes,
-                'http_code' => (int) $httpCode,
-            ], 'error', (microtime(true) - $rxDiagStartedAt) * 1000.0);
-        }
         return [
             'ok' => false,
             'description' => ($curlError !== '' ? $curlError : 'Telegram request failed.') . ' اتصال به تلگرام در مهلت مقرر برقرار نشد؛ فایروال یا پراکسی خروجی را بررسی کنید.'
@@ -384,28 +358,11 @@ function telegram($method, $datas = [], $token = null)
     if (!$rxEmojiFallbackAttempt) {
         $rxRetryResult = FxTelegramEmojiFallback::recover((string) $method, $datas, $rxParsedResponse, (string) $token, $rxRequestTimeout);
         if ($rxRetryResult !== null) {
-            if ($rxDiagOn) {
-                \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_TELEGRAM_API_RESPONSE', 'telegram_emoji_fallback', 'retried', [
-                    'api_method' => (string) $method,
-                    'http_code' => (int) $httpCode,
-                    'first_result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($rxParsedResponse),
-                    'retry_result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($rxRetryResult),
-                ], 'warning', (microtime(true) - $rxDiagStartedAt) * 1000.0);
-            }
             return $rxRetryResult;
         }
     }
     if (method_exists(\Faoxima\Telegram\Presentation\Sections::class, 'rx_ui_after_send')) {
         \Faoxima\Telegram\Presentation\Sections::rx_ui_after_send($method, $datas, $rxParsedResponse);
-    }
-    if ($rxDiagOn) {
-        \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_TELEGRAM_API_RESPONSE', 'telegram_response', !empty($rxParsedResponse['ok']) ? 'ok' : 'rejected', [
-            'api_method' => (string) $method,
-            'http_code' => (int) $httpCode,
-            'attempts' => (int) $attemptedTimes,
-            'duration_ms' => round($duration * 1000.0, 2),
-            'response' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($rxParsedResponse),
-        ], !empty($rxParsedResponse['ok']) ? 'info' : 'error', (microtime(true) - $rxDiagStartedAt) * 1000.0);
     }
     return $rxParsedResponse;
 }
@@ -454,7 +411,7 @@ function rx_parse_telegram_response($rawResponse, $httpCode)
             $rxSafeError = [
                 'ok' => false,
                 'error_code' => $decodedResponse['error_code'] ?? 0,
-                'description' => method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_sanitize') ? \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_sanitize($rxDesc) : 'Telegram rejected the request',
+                'description' => method_exists(\Faoxima\Telegram\Rich\Dispatcher::class, 'rx_richUi_redactLogText') ? \Faoxima\Telegram\Rich\Dispatcher::rx_richUi_redactLogText($rxDesc) : 'Telegram rejected the request',
             ];
             if (method_exists(\Faoxima\Services\Panels\PanelHttp::class, 'faoxima_dedup_error_log')) {
                 \Faoxima\Services\Panels\PanelHttp::faoxima_dedup_error_log($rxTgKey, json_encode($rxSafeError), 21600);
@@ -698,38 +655,16 @@ function getPremiumEmojiMap($forceReload = false) {
     return $cache;
 }
 function applyPremiumEmojiTransform($text, $parseMode) {
-    $rxDiagEnabled = method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_active') && \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_active();
-    $rxDiagBefore = $rxDiagEnabled ? \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($text) : null;
     if (!is_string($text) || $text === '') {
-        if ($rxDiagEnabled) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_PREMIUM_EMOJI_PROCESS', 'premium_emoji', 'skipped', [
-                'reason' => 'not_string_or_empty',
-                'parse_mode' => (string) $parseMode,
-            ], 'debug');
-        }
         return $text;
     }
     $pm = strtolower((string)$parseMode);
 
     if ($pm !== 'html') {
-        if ($rxDiagEnabled) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_PREMIUM_EMOJI_PROCESS', 'premium_emoji', 'skipped', [
-                'reason' => 'parse_mode_not_html',
-                'parse_mode' => (string) $parseMode,
-                'before' => $rxDiagBefore,
-            ], 'debug');
-        }
         return $text;
     }
     $map = getPremiumEmojiMap();
     if (empty($map)) {
-        if ($rxDiagEnabled) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_PREMIUM_EMOJI_PROCESS', 'premium_emoji', 'skipped', [
-                'reason' => 'emoji_map_empty',
-                'parse_mode' => (string) $parseMode,
-                'before' => $rxDiagBefore,
-            ], 'debug');
-        }
         return $text;
     }
 
@@ -746,13 +681,6 @@ function applyPremiumEmojiTransform($text, $parseMode) {
     $tagPattern = '~(<(?:[^>"\']|"[^"]*"|\'[^\']*\')*>)~s';
     $segments = preg_split($tagPattern, $text, -1, PREG_SPLIT_DELIM_CAPTURE);
     if ($segments === false) {
-        if ($rxDiagEnabled) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_PREMIUM_EMOJI_PROCESS', 'premium_emoji', 'failed', [
-                'reason' => 'html_segment_split_failed',
-                'parse_mode' => (string) $parseMode,
-                'before' => $rxDiagBefore,
-            ], 'warning');
-        }
         return $text;
     }
     $protected = [];
@@ -770,29 +698,6 @@ function applyPremiumEmojiTransform($text, $parseMode) {
             $out .= $segment;
         } else {
             $out .= array_sum($protected) > 0 ? $segment : strtr($segment, $replacements);
-        }
-    }
-    if ($rxDiagEnabled) {
-        $rxDiagAfter = \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($out);
-        \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_PREMIUM_EMOJI_PROCESS', 'premium_emoji', 'transformed', [
-            'parse_mode' => (string) $parseMode,
-            'before' => $rxDiagBefore,
-            'after' => $rxDiagAfter,
-            'changed' => $out !== $text,
-            'map_size' => count($map),
-            'length_delta' => (int) $rxDiagAfter['length'] - (int) ($rxDiagBefore['length'] ?? 0),
-            'table_count_before' => (int) ($rxDiagBefore['table_count'] ?? 0),
-            'table_count_after' => (int) $rxDiagAfter['table_count'],
-            'html_table_preserved' => (int) ($rxDiagBefore['table_count'] ?? 0) === (int) $rxDiagAfter['table_count'],
-            'emoji_tags_before' => (int) ($rxDiagBefore['tg_emoji_tags'] ?? 0),
-            'emoji_tags_after' => (int) $rxDiagAfter['tg_emoji_tags'],
-            'escaped_markup_after' => (int) $rxDiagAfter['escaped_markup'],
-        ], 'debug');
-        if (in_array(\Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_currentKey(), ['text_start', 'text_account_info'], true)) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_comparison('premium_emoji', \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_currentKey(), $rxDiagBefore, $rxDiagAfter, [
-                'render_mode' => 'premium_emoji_transform',
-                'phase' => 'premium_emoji',
-            ]);
         }
     }
     return $out;
@@ -2251,6 +2156,7 @@ if (!function_exists('rx_getKeyboardDefaultStyles')) {
 
                     'tonpay_name'      => 'primary',
                     'rialit_name'      => 'primary',
+                    'tetraminator_name' => 'primary',
                     'cubepay_name'     => 'primary',
                     'blupal_name'      => 'primary',
                     'variza_name'      => 'primary',
@@ -2656,6 +2562,7 @@ if (!function_exists('rx_getKeyboardDefaultStyles')) {
                     'digitaltron'      => 'primary',
                     'startelegrams'    => 'primary',
                     'rialit'           => 'success',
+                    'tetraminator'     => 'success',
                     'piroozpay'        => 'primary',
                     'aptdc'            => 'success',
                     'chargenodiscount' => 'primary',
@@ -3084,26 +2991,6 @@ function rxPrepareTelegramTextAndKeyboard($chatId, $text, $keyboard, $parseMode)
 
 function sendmessage($chat_id,$text,$keyboard,$parse_mode,$bot_token = null){
     if(intval($chat_id) == 0)return ['ok' => false];
-    $rxDiagOwn = false;
-    if (is_string($text) && method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_enabled') && \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_enabled() && method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_active') && !\Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_active()) {
-        $rxDiagText = \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($text);
-        if (!empty($rxDiagText['html_table']) || !empty($rxDiagText['rtl_marker'])) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_begin('unknown', 'botapi.php', 'sendmessage');
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_TEMPLATE_LOADED', 'sendmessage_text', 'observed', ['text' => $rxDiagText], 'debug');
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_MESSAGE_CONTEXT', 'context_enter', 'entered', [
-                'handler' => 'sendmessage',
-                'callback_route' => '',
-                'template_source' => 'unknown',
-                'template_key' => 'unknown',
-                'parent_trace_id' => null,
-                'context_origin' => 'sendmessage_auto_trace',
-                'context_depth' => 0,
-                'context_inherited' => false,
-                'context_valid' => true,
-            ], 'debug');
-            $rxDiagOwn = true;
-        }
-    }
     [$text, $keyboard] = rxPrepareTelegramTextAndKeyboard($chat_id, $text, $keyboard, $parse_mode);
     $rxSendResult = telegram('sendmessage',[
         'chat_id' => $chat_id,
@@ -3112,11 +2999,6 @@ function sendmessage($chat_id,$text,$keyboard,$parse_mode,$bot_token = null){
         'parse_mode' => $parse_mode,
         '_rx_already_transformed' => true,
         ],$bot_token);
-    if ($rxDiagOwn) {
-        $GLOBALS['rx_rich_diag_last_result'] = $rxSendResult;
-        $rxSendState = rxMediaResultState($rxSendResult);
-        \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_finish($rxSendState === 'confirmed' ? 'completed' : $rxSendState, ['delivery_mode' => 'sendmessage', '_function' => 'sendmessage', '_source_file' => 'botapi.php']);
-    }
     return $rxSendResult;
 }
 
@@ -3300,18 +3182,6 @@ function rxRemoveMessageKeyboard($chat_id, $message_id, $keyboard = null)
             '_rx_already_transformed' => true,
         ], null);
     }
-    if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-        $ok = is_array($result) && !empty($result['ok']);
-        \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_MESSAGE_TARGET', 'keyboard_edit', $ok ? 'completed' : 'not_completed', [
-            'telegram_api_method' => 'editmessagereplymarkup',
-            'chat_hash' => substr(hash('sha256', (string) $chat_id), 0, 12),
-            'original_message_id' => $message_id,
-            'replacement_status' => 'not_required',
-            'deletion_status' => 'not_requested',
-            'reason' => 'keyboard_only_edit',
-            'result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($result),
-        ], $ok ? 'info' : 'warning');
-    }
     return $result;
 }
 
@@ -3332,17 +3202,6 @@ function rxBeginProgressMessage($chat_id, $message_id, string $text): array
     }
     $result = sendmessage($chat_id, $text, null, 'HTML');
     $progressId = is_array($result) && !empty($result['ok']) ? (int) ($result['result']['message_id'] ?? 0) : 0;
-    if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-        \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_MESSAGE_TARGET', 'progress_message', $progressId > 0 ? 'separate_created' : 'separate_not_confirmed', [
-            'telegram_api_method' => 'sendmessage',
-            'chat_hash' => substr(hash('sha256', (string) $chat_id), 0, 12),
-            'original_message_id' => $message_id,
-            'replacement_message_id' => $progressId > 0 ? $progressId : null,
-            'replacement_status' => 'not_required',
-            'reason' => 'progress_separate_from_rich_target',
-            'result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($result),
-        ], $progressId > 0 ? 'info' : 'warning');
-    }
     return ['mode' => 'separate', 'message_id' => $progressId];
 }
 
@@ -3530,15 +3389,6 @@ function rxSendMediaWithCaption(string $method, array $payload, $token = null, ?
         'caption_source' => $split ? 'separate_text' : ($required ? 'media_caption' : 'none'),
         'text_message_result' => $text['result'] ?? null,
     ];
-    if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-        $rxStatus = $delivery['delivery_status'];
-        \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'media_delivery', $rxStatus, $delivery + [
-            'delivery_mode' => $method,
-            'fallback_reason' => $split ? 'separate_caption_text' : null,
-            'media_result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($result),
-            'text_result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($text['result']),
-        ], $rxStatus === 'completed' ? 'info' : 'warning');
-    }
     return $result;
 }
 
@@ -3555,12 +3405,6 @@ function sendDocument($chat_id, $documentPath, $caption, $filename = null, ?arra
             'caption_complete' => !$required || $text['state'] === 'confirmed',
             'delivery_status' => $text['state'] === 'unknown' ? 'unknown' : ($text['chunks_confirmed'] > 0 ? 'partial' : 'failed'),
         ];
-        if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'media_delivery', $delivery['delivery_status'], [
-                'delivery_mode' => 'sendDocument',
-                'fallback_reason' => 'document_unavailable',
-            ] + $delivery, 'warning');
-        }
         return [
             'ok' => false,
             'description' => 'Document could not be prepared for Telegram upload.'
@@ -3620,35 +3464,7 @@ function Editmessagetext($chat_id, $message_id, $text, $keyboard,$parse_mode = '
     $__origThreadId = $threadId !== null
         ? (int) $threadId
         : ($__callbackMsg ? (int)($__callbackMsg['message_thread_id'] ?? 0) : 0);
-    $__diagChatHash = substr(hash('sha256', (string) $chat_id), 0, 12);
-    $__diagTargetRich = $__callbackMsg && isset($__callbackMsg['rich_message']);
-    $__diagTargetText = $__callbackMsg && isset($__callbackMsg['text']);
-    $__diagTargetMedia = $__callbackMsg && (
-        !empty($__callbackMsg['photo'])
-        || !empty($__callbackMsg['video'])
-        || !empty($__callbackMsg['animation'])
-        || !empty($__callbackMsg['document'])
-    );
-    if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-        \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_MESSAGE_TARGET', 'edit_dispatch', 'selected', [
-            'original_operation' => 'editmessagetext',
-            'requested_api_method' => 'editmessagetext',
-            'selected_api_method' => 'editmessagetext',
-            'is_edit' => true,
-            'is_new_message' => false,
-            'chat_hash' => $__diagChatHash,
-            'target_message_id' => $message_id,
-            'previous_message_id' => $__callbackMsgId,
-            'target_is_rich' => $__diagTargetRich,
-            'target_has_text' => $__diagTargetText,
-            'target_has_media' => $__diagTargetMedia,
-            'replacement_created' => false,
-            'deletion_requested' => false,
-            'rich_intercepted_edit' => false,
-            'reason' => 'standard_edit_request',
-            'target_rich_meta' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_targetRichMeta(),
-        ], 'info');
-    }
+    $__targetIsRich = $__callbackMsg && isset($__callbackMsg['rich_message']);
     $__sendFallback = function ($fbChatId, $fbText, $fbKeyboard, $fbParseMode) use ($__origThreadId) {
         [$fbText, $fbKeyboard] = rxPrepareTelegramTextAndKeyboard($fbChatId, $fbText, $fbKeyboard, $fbParseMode);
         $fbPayload = [
@@ -3664,39 +3480,10 @@ function Editmessagetext($chat_id, $message_id, $text, $keyboard,$parse_mode = '
         return telegram('sendmessage', $fbPayload);
     };
     if ($message_id <= 0) {
-        if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_MESSAGE_TARGET', 'edit_dispatch', 'send_fallback_selected', [
-                'original_operation' => 'editmessagetext',
-                'requested_api_method' => 'editmessagetext',
-                'selected_api_method' => 'sendmessage',
-                'is_edit' => false,
-                'is_new_message' => true,
-                'chat_hash' => $__diagChatHash,
-                'target_message_id' => $message_id,
-                'previous_message_id' => $__callbackMsgId,
-                'replacement_created' => false,
-                'deletion_requested' => false,
-                'rich_intercepted_edit' => false,
-                'reason' => 'missing_target_message_id',
-            ], 'warning');
-        }
         $__fallbackResult = $__sendFallback($chat_id, $text, $keyboard, strtolower($parse_mode));
-        if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_MESSAGE_TARGET', 'edit_dispatch', is_array($__fallbackResult) && !empty($__fallbackResult['ok']) ? 'send_fallback_completed' : 'send_fallback_failed', [
-                'original_operation' => 'editmessagetext',
-                'selected_api_method' => 'sendmessage',
-                'is_edit' => false,
-                'is_new_message' => true,
-                'chat_hash' => $__diagChatHash,
-                'resulting_message_id' => is_array($__fallbackResult) ? (int) ($__fallbackResult['result']['message_id'] ?? 0) : null,
-                'replacement_created' => true,
-                'deletion_requested' => false,
-                'result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($__fallbackResult),
-            ], is_array($__fallbackResult) && !empty($__fallbackResult['ok']) ? 'info' : 'warning');
-        }
         return $__fallbackResult;
     }
-    if ($__diagTargetRich && $__callbackMsgId === $message_id && is_string($text) && trim($text) !== ''
+    if ($__targetIsRich && $__callbackMsgId === $message_id && is_string($text) && trim($text) !== ''
         && rxIsKeyboardOnlyCompatible($keyboard)
         && method_exists(\Faoxima\Telegram\Rich\Markup::class, 'rx_richUi_extractText')
         && rxNormalizeVisibleText($text) === rxNormalizeVisibleText(\Faoxima\Telegram\Rich\Markup::rx_richUi_extractText($__callbackMsg['rich_message']))) {
@@ -3711,24 +3498,6 @@ function Editmessagetext($chat_id, $message_id, $text, $keyboard,$parse_mode = '
         || !empty($__callbackMsg['document'])
     );
     if ($__isPhotoMsg && $__callbackMsgId === (int)$message_id) {
-        if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_MESSAGE_TARGET', 'edit_dispatch', 'replacement_selected', [
-                'original_operation' => 'editmessagetext',
-                'requested_api_method' => 'editmessagetext',
-                'selected_api_method' => 'sendmessage',
-                'is_edit' => false,
-                'is_new_message' => true,
-                'chat_hash' => $__diagChatHash,
-                'target_message_id' => $message_id,
-                'previous_message_id' => $__callbackMsgId,
-                'target_is_rich' => $__diagTargetRich,
-                'target_has_media' => true,
-                'replacement_created' => null,
-                'deletion_requested' => true,
-                'rich_intercepted_edit' => false,
-                'reason' => 'media_target_delete_and_send',
-            ], 'info');
-        }
         $__fallbackResult = $__sendFallback($chat_id, $text, $keyboard, strtolower($parse_mode));
         $__replacementOk = is_array($__fallbackResult) && !empty($__fallbackResult['ok']);
         $__deleteResult = null;
@@ -3737,25 +3506,6 @@ function Editmessagetext($chat_id, $message_id, $text, $keyboard,$parse_mode = '
             if (\Faoxima\Telegram\Rich\Dispatcher::rx_richUi_deleteWasConfirmed($__deleteResult)) {
                 \Faoxima\Telegram\Rich\Dispatcher::rx_richUi_noteReplacement($chat_id, $message_id, (int) ($__fallbackResult['result']['message_id'] ?? 0));
             }
-        }
-        if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_MESSAGE_TARGET', 'edit_dispatch', $__replacementOk ? 'replacement_completed' : 'replacement_failed', [
-                'original_operation' => 'editmessagetext',
-                'selected_api_method' => 'sendmessage',
-                'is_edit' => false,
-                'is_new_message' => true,
-                'chat_hash' => $__diagChatHash,
-                'target_message_id' => $message_id,
-                'previous_message_id' => $__callbackMsgId,
-                'resulting_message_id' => is_array($__fallbackResult) ? (int) ($__fallbackResult['result']['message_id'] ?? 0) : null,
-                'replacement_created' => $__replacementOk,
-                'deletion_requested' => $__replacementOk,
-                'deletion_succeeded' => $__deleteResult === null ? null : (is_array($__deleteResult) && !empty($__deleteResult['ok'])),
-                'rich_intercepted_edit' => false,
-                'reason' => 'media_target_delete_and_send',
-                'result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($__fallbackResult),
-                'delete_result' => $__deleteResult === null ? null : \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($__deleteResult),
-            ], $__replacementOk ? 'info' : 'warning');
         }
         return $__fallbackResult;
     }
@@ -3768,27 +3518,6 @@ function Editmessagetext($chat_id, $message_id, $text, $keyboard,$parse_mode = '
         'parse_mode' => $parse_mode,
         '_rx_already_transformed' => true,
     ]);
-    if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-        \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_MESSAGE_TARGET', 'edit_dispatch', is_array($result) && !empty($result['ok']) ? 'edit_completed' : 'edit_rejected', [
-            'original_operation' => 'editmessagetext',
-            'requested_api_method' => 'editmessagetext',
-            'selected_api_method' => 'editmessagetext',
-            'is_edit' => true,
-            'is_new_message' => false,
-            'chat_hash' => $__diagChatHash,
-            'target_message_id' => $message_id,
-            'previous_message_id' => $__callbackMsgId,
-            'resulting_message_id' => is_array($result) ? (int) ($result['result']['message_id'] ?? 0) : null,
-            'target_is_rich' => $__diagTargetRich,
-            'target_has_text' => $__diagTargetText,
-            'target_has_media' => $__diagTargetMedia,
-            'replacement_created' => false,
-            'deletion_requested' => false,
-            'rich_intercepted_edit' => false,
-            'reason' => 'edit_api_response',
-            'result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($result),
-        ], is_array($result) && !empty($result['ok']) ? 'info' : 'warning');
-    }
 
     if (is_array($result) && isset($result['ok']) && $result['ok'] === false) {
         $desc = strtolower((string)($result['description'] ?? ''));
@@ -3810,24 +3539,6 @@ function Editmessagetext($chat_id, $message_id, $text, $keyboard,$parse_mode = '
             } elseif (strpos($desc, 'message to edit not found') !== false) {
                 $__fallbackReason = 'target_not_found';
             }
-            if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_MESSAGE_TARGET', 'edit_dispatch', 'replacement_selected', [
-                    'original_operation' => 'editmessagetext',
-                    'requested_api_method' => 'editmessagetext',
-                    'selected_api_method' => 'sendmessage',
-                    'is_edit' => false,
-                    'is_new_message' => true,
-                    'chat_hash' => $__diagChatHash,
-                    'target_message_id' => $message_id,
-                    'previous_message_id' => $__callbackMsgId,
-                    'target_is_rich' => $__diagTargetRich,
-                    'replacement_created' => null,
-                    'deletion_requested' => true,
-                    'rich_intercepted_edit' => false,
-                    'reason' => $__fallbackReason,
-                    'edit_error' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($result),
-                ], 'warning');
-            }
             $__fallbackResult = $__sendFallback($chat_id, $text, $keyboard, strtolower($parse_mode));
             $__replacementOk = is_array($__fallbackResult) && !empty($__fallbackResult['ok']);
             $__deleteResult = null;
@@ -3840,26 +3551,6 @@ function Editmessagetext($chat_id, $message_id, $text, $keyboard,$parse_mode = '
             } elseif ($__replacementOk && $__deleteSkipped) {
                 \Faoxima\Telegram\Rich\Dispatcher::rx_richUi_noteReplacement($chat_id, $message_id, (int) ($__fallbackResult['result']['message_id'] ?? 0));
             }
-            if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_MESSAGE_TARGET', 'edit_dispatch', $__replacementOk ? 'replacement_completed' : 'replacement_failed', [
-                    'original_operation' => 'editmessagetext',
-                    'selected_api_method' => 'sendmessage',
-                    'is_edit' => false,
-                    'is_new_message' => true,
-                    'chat_hash' => $__diagChatHash,
-                    'target_message_id' => $message_id,
-                    'previous_message_id' => $__callbackMsgId,
-                    'resulting_message_id' => is_array($__fallbackResult) ? (int) ($__fallbackResult['result']['message_id'] ?? 0) : null,
-                    'replacement_created' => $__replacementOk,
-                    'deletion_requested' => $__replacementOk && !$__deleteSkipped,
-                    'deletion_skipped_reason' => $__deleteSkipped ? 'target_already_missing' : null,
-                    'deletion_succeeded' => $__deleteResult === null ? null : (is_array($__deleteResult) && !empty($__deleteResult['ok'])),
-                    'rich_intercepted_edit' => false,
-                    'reason' => $__fallbackReason,
-                    'result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($__fallbackResult),
-                    'delete_result' => $__deleteResult === null ? null : \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($__deleteResult),
-                ], $__replacementOk ? 'info' : 'warning');
-            }
             return $__fallbackResult;
         }
     }
@@ -3868,28 +3559,14 @@ function Editmessagetext($chat_id, $message_id, $text, $keyboard,$parse_mode = '
  function deletemessage($chat_id, $message_id){
   $message_id = (int) $message_id;
   if ($message_id <= 0) return ['ok' => false, 'description' => 'message_id missing'];
-  $rxDiagDeleteResult = telegram('deletemessage', [
+  $rxDeleteResult = telegram('deletemessage', [
 'chat_id' => $chat_id,
 'message_id' => $message_id,
 ]);
-  if (empty($rxDiagDeleteResult['_rx_already_deleted']) && method_exists(\Faoxima\Telegram\Rich\Dispatcher::class, 'rx_richUi_deleteWasConfirmed') && \Faoxima\Telegram\Rich\Dispatcher::rx_richUi_deleteWasConfirmed($rxDiagDeleteResult)) {
+  if (empty($rxDeleteResult['_rx_already_deleted']) && method_exists(\Faoxima\Telegram\Rich\Dispatcher::class, 'rx_richUi_deleteWasConfirmed') && \Faoxima\Telegram\Rich\Dispatcher::rx_richUi_deleteWasConfirmed($rxDeleteResult)) {
       \Faoxima\Telegram\Rich\Dispatcher::rx_richUi_noteReplacement($chat_id, $message_id, 0);
   }
-  if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_active') && \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_active() && method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-      \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_MESSAGE_TARGET', 'delete', is_array($rxDiagDeleteResult) && !empty($rxDiagDeleteResult['ok']) ? 'deleted' : 'delete_failed', [
-          'original_operation' => 'deletemessage',
-          'requested_api_method' => 'deletemessage',
-          'selected_api_method' => 'deletemessage',
-          'is_edit' => false,
-          'is_new_message' => false,
-          'chat_hash' => substr(hash('sha256', (string) $chat_id), 0, 12),
-          'target_message_id' => $message_id,
-          'deletion_requested' => true,
-          'deletion_succeeded' => is_array($rxDiagDeleteResult) && !empty($rxDiagDeleteResult['ok']),
-          'result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($rxDiagDeleteResult),
-      ], is_array($rxDiagDeleteResult) && !empty($rxDiagDeleteResult['ok']) ? 'info' : 'warning');
-  }
-  return $rxDiagDeleteResult;
+  return $rxDeleteResult;
  }
 function getFileddire($photoid){
   return telegram('getFile', [

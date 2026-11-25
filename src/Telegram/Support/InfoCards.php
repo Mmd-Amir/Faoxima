@@ -96,32 +96,32 @@ final class InfoCards
 
     public static function nm_sendServiceQrFallback($user_id, string $qrPayload, string $backgroundImage = 'images.jpg', string $caption = '', $replyMarkup = null, ?array &$deliveryDetail = null): bool
     {
-        $deliveryDetail = ['state' => 'not_attempted', 'reason' => '', 'result' => null];
+        $deliveryDetail = ['state' => 'not_attempted', 'reason' => ''];
         if (method_exists(\Faoxima\Telegram\Support\InfoCardRenderer::class, 'isQrDisabled') && \Faoxima\Telegram\Support\InfoCardRenderer::isQrDisabled()) {
-            $deliveryDetail = ['state' => 'skipped', 'reason' => 'qr_disabled', 'result' => null];
+            $deliveryDetail = ['state' => 'skipped', 'reason' => 'qr_disabled'];
             return false;
         }
         if (!method_exists(\Faoxima\Telegram\Support\QrAndKeys::class, 'createqrcode') || !function_exists('telegram')) {
-            $deliveryDetail = ['state' => 'failed', 'reason' => 'qr_stack_unavailable', 'result' => null];
+            $deliveryDetail = ['state' => 'failed', 'reason' => 'qr_stack_unavailable'];
             return false;
         }
         $qrPayload = trim($qrPayload);
         if ($qrPayload === '') {
-            $deliveryDetail = ['state' => 'failed', 'reason' => 'empty_qr_payload', 'result' => null];
+            $deliveryDetail = ['state' => 'failed', 'reason' => 'empty_qr_payload'];
             return false;
         }
         $urlimage = '';
         try {
             $qrCode = \Faoxima\Telegram\Support\QrAndKeys::createqrcode($qrPayload);
             if ($qrCode === null) {
-                $deliveryDetail = ['state' => 'failed', 'reason' => 'qr_generation_failed', 'result' => null];
+                $deliveryDetail = ['state' => 'failed', 'reason' => 'qr_generation_failed'];
                 return false;
             }
             $urlimage = (defined('REFACTORED_LEGACY_ROOT') ? REFACTORED_LEGACY_ROOT : __DIR__)
                 . DIRECTORY_SEPARATOR . $user_id . bin2hex(random_bytes(3)) . '.png';
             $written = file_put_contents($urlimage, $qrCode->getString());
             if ($written === false) {
-                $deliveryDetail = ['state' => 'failed', 'reason' => 'qr_file_write_failed', 'result' => null];
+                $deliveryDetail = ['state' => 'failed', 'reason' => 'qr_file_write_failed'];
                 return false;
             }
             if (method_exists(\Faoxima\Telegram\Support\QrAndKeys::class, 'addBackgroundImage')) {
@@ -140,7 +140,6 @@ final class InfoCards
             $deliveryDetail = [
                 'state' => $state,
                 'reason' => !($mediaDelivery['caption_valid'] ?? true) ? 'caption_unsafe' : ('telegram_' . $state),
-                'result' => method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_result') ? \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($result) : null,
                 'message_id' => is_array($result) ? (int) ($result['result']['message_id'] ?? 0) : 0,
             ] + $mediaDelivery;
             @unlink($urlimage);
@@ -153,7 +152,6 @@ final class InfoCards
             $deliveryDetail = [
                 'state' => $attempted ? 'unknown' : 'failed',
                 'reason' => 'exception:' . get_class($e),
-                'result' => null,
             ];
             error_log('nm_sendServiceQrFallback failed: ' . $e->getMessage());
             return false;

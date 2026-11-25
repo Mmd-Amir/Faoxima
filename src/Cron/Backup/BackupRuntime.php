@@ -405,8 +405,19 @@ final class BackupRuntime
         try {
             $expire = $pdo->prepare("UPDATE cron_backup_delivery SET state = 'failed', next_attempt_at = 0, last_error = 'catchup_window_elapsed', updated_at = NOW() WHERE state = 'pending' AND occurrence < ?");
             $expire->execute([$now - \Faoxima\Cron\Runtime\TaskState::rx_cron_catchup_seconds()]);
-            $prune = $pdo->prepare("DELETE FROM cron_backup_delivery WHERE state IN ('sent','failed') AND updated_at < FROM_UNIXTIME(?) LIMIT 100");
-            $prune->execute([$now - 2592000]);
+            $old = $pdo->prepare("SELECT id, file_path FROM cron_backup_delivery WHERE state IN ('sent','failed','superseded') AND updated_at < FROM_UNIXTIME(?) LIMIT 100");
+            $old->execute([$now - 2592000]);
+            $oldIds = [];
+            foreach ($old->fetchAll(PDO::FETCH_ASSOC) as $oldRow) {
+                $oldPath = (string) ($oldRow['file_path'] ?? '');
+                if ($oldPath !== '' && is_file($oldPath) && preg_match('/^backup-[0-9]+-[a-f0-9]+\.zip$/', basename($oldPath))) {
+                    @unlink($oldPath);
+                }
+                $oldIds[] = (int) $oldRow['id'];
+            }
+            if ($oldIds) {
+                $pdo->exec('DELETE FROM cron_backup_delivery WHERE id IN (' . implode(',', $oldIds) . ')');
+            }
             $stale = $pdo->prepare("UPDATE cron_backup_delivery SET state = 'uncertain', next_attempt_at = ?, last_error = 'delivery_interrupted', updated_at = NOW() WHERE state = 'sending' AND updated_at < FROM_UNIXTIME(?)");
             $stale->execute([$now + 300, $now - 600]);
             $stmt = $pdo->prepare("SELECT * FROM cron_backup_delivery WHERE state = 'pending' AND attempts < 5 AND next_attempt_at <= ? ORDER BY id ASC LIMIT 3");

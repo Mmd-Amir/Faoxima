@@ -26,15 +26,17 @@ final class PendingPaymentsHandler extends \Faoxima\Api\Handlers\BaseHandler
             $rows = \Faoxima\Api\Runtime\Db::fetchAll(
                 "SELECT id, id_order, time, price, payment_Status, Payment_Method,
                         dec_not_confirmed, crypto_currency, crypto_tx_hash, tonpay_invoice_id, cubepay_payment_link, blupal_invoice_id, atlaspay_order_id,
-                        rialit_token, rialit_status, rialit_created_at, rialit_payer_amount, rialit_payer_fee
+                        rialit_token, rialit_status, rialit_created_at, rialit_payer_amount, rialit_payer_fee,
+                        tetraminator_pay_id, tetraminator_status, tetraminator_created_at, tetraminator_payment_url, tetraminator_abandoned_at
                    FROM Payment_report
                   WHERE id_user = :u
                     AND (payment_Status IN ('Unpaid','waiting','AwaitingHash','pending','expire')
                          OR (Payment_Method = 'tonpay' AND tonpay_gateway_mode = 'custom'
                              AND payment_Status = 'cancelled' AND tonpay_remote_status = 'pending'))
                     AND (Payment_Method <> 'rialit' OR COALESCE(rialit_abandoned_at, 0) = 0)
-                     AND Payment_Method IN ('plisio','nowpayment','digitaltron','arze digital offline','cart to cart','carttocart_pv','iranpay2','tonpay','rialit','cubepay','blupal','variza','abangateway','atlaspay')
-                    AND (source = 'miniapp'" . $sbvSourceSql . " OR (Payment_Method = 'tonpay' AND tonpay_gateway_mode = 'custom') OR (Payment_Method = 'atlaspay' AND atlaspay_gateway_mode = 'custom') OR Payment_Method = 'rialit')
+                    AND (Payment_Method <> 'tetraminator' OR COALESCE(tetraminator_abandoned_at, 0) = 0)
+                     AND Payment_Method IN ('plisio','nowpayment','digitaltron','arze digital offline','cart to cart','carttocart_pv','iranpay2','tonpay','rialit','tetraminator','cubepay','blupal','variza','abangateway','atlaspay')
+                    AND (source = 'miniapp'" . $sbvSourceSql . " OR (Payment_Method = 'tonpay' AND tonpay_gateway_mode = 'custom') OR (Payment_Method = 'atlaspay' AND atlaspay_gateway_mode = 'custom') OR Payment_Method = 'rialit' OR Payment_Method = 'tetraminator')
                   ORDER BY id DESC
                   LIMIT 8",
                 [':u' => $userId]
@@ -96,6 +98,8 @@ final class PendingPaymentsHandler extends \Faoxima\Api\Handlers\BaseHandler
                     return !empty($labels['tonpay']) ? $labels['tonpay'] : 'تون‌پی';
                 case 'rialit':
                     return !empty($labels['rialit']) ? $labels['rialit'] : '💚 ریالیت';
+                case 'tetraminator':
+                    return !empty($labels['tetraminator']) ? $labels['tetraminator'] : '💎 تترامیناتور';
                 case 'cubepay':
                     return !empty($labels['cubepay']) ? $labels['cubepay'] : 'کیوب‌پی';
                 case 'blupal':
@@ -143,6 +147,8 @@ final class PendingPaymentsHandler extends \Faoxima\Api\Handlers\BaseHandler
                 if ($decVal === '' && !isset($sbvMap[(string) $r['id_order']])) continue;
             } elseif ($methodLc === 'tonpay') {
                 if (trim((string)($r['tonpay_invoice_id'] ?? '')) === '') continue;
+            } elseif ($methodLc === 'tetraminator') {
+                if (trim((string)($r['tetraminator_pay_id'] ?? '')) === '') continue;
             } elseif ($methodLc === 'cubepay') {
                 if (trim((string)($r['cubepay_payment_link'] ?? '')) === '') continue;
             } elseif ($methodLc === 'blupal') {
@@ -198,7 +204,23 @@ final class PendingPaymentsHandler extends \Faoxima\Api\Handlers\BaseHandler
                 $rialitLinkAvailable = trim((string) ($r['rialit_token'] ?? '')) !== '' && $rialitLinkExpiresAt > 0 && $now < $rialitLinkExpiresAt && !in_array($rialitRemote, ['paid', 'expired', 'cancelled'], true);
                 $rialitAwaitingResult = !$rialitLinkAvailable;
             }
-            if ($status !== 'expire' && $expiresAt < $now && $methodLc !== 'rialit') {
+            $tetraminatorLinkExpiresAt = 0;
+            $tetraminatorLinkAvailable = false;
+            $tetraminatorAwaitingResult = false;
+            if ($methodLc === 'tetraminator') {
+                $tetraminatorCreated = (int) ($r['tetraminator_created_at'] ?? 0);
+                if ($tetraminatorCreated <= 0) {
+                    $tetraminatorCreated = $createdAt;
+                }
+                $tetraminatorLinkExpiresAt = $tetraminatorCreated > 0 ? $tetraminatorCreated + TETRAMINATOR_LINK_TTL_SECONDS : 0;
+                $expiresAt = $tetraminatorLinkExpiresAt;
+                $tetraminatorLinkAvailable = in_array(strtolower($status), ['unpaid', 'pending', 'waiting'], true)
+                    && trim((string) ($r['tetraminator_payment_url'] ?? '')) !== ''
+                    && $tetraminatorLinkExpiresAt > 0 && $now < $tetraminatorLinkExpiresAt
+                    && strtolower(trim((string) ($r['tetraminator_status'] ?? ''))) !== 'paid';
+                $tetraminatorAwaitingResult = !$tetraminatorLinkAvailable;
+            }
+            if ($status !== 'expire' && $expiresAt < $now && $methodLc !== 'rialit' && $methodLc !== 'tetraminator') {
                 continue;
             }
 
@@ -224,6 +246,13 @@ final class PendingPaymentsHandler extends \Faoxima\Api\Handlers\BaseHandler
                     'awaiting_result' => $rialitAwaitingResult,
                     'payer_amount' => (int)($r['rialit_payer_amount'] ?? 0),
                     'payer_fee' => (int)($r['rialit_payer_fee'] ?? 0),
+                ] : null,
+                'tetraminator'  => $methodLc === 'tetraminator' ? [
+                    'pay_id' => trim((string)($r['tetraminator_pay_id'] ?? '')),
+                    'remote_status' => strtolower(trim((string)($r['tetraminator_status'] ?? ''))),
+                    'link_available' => $tetraminatorLinkAvailable,
+                    'link_expires_at' => $tetraminatorLinkExpiresAt,
+                    'awaiting_result' => $tetraminatorAwaitingResult,
                 ] : null,
                 'cancellable'   => isset($sbvMap[(string) $r['id_order']]) && $sbvActive !== null && (string) $sbvActive['id_order'] === (string) $r['id_order'] && !empty($sbvActive['cancellable']),
                 'cancel_eligible' => $customCancelEligible,
@@ -254,6 +283,9 @@ final class PendingPaymentsHandler extends \Faoxima\Api\Handlers\BaseHandler
         }
         if (strtolower($method) === 'rialit') {
             return 1800;
+        }
+        if (strtolower($method) === 'tetraminator') {
+            return TETRAMINATOR_LINK_TTL_SECONDS;
         }
         return 1800;
     }

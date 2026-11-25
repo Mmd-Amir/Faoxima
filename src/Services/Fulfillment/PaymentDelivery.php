@@ -39,6 +39,17 @@ final class PaymentDelivery
             sendmessage($Payment_report['id_user'], \Faoxima\Telegram\Support\MessageTemplates::get('payment_rialit_late_approved_wallet', ['amount' => number_format((int) $Payment_report['price'])]), null, 'HTML');
             return \Faoxima\Payments\Fulfillment\Claims::result('completed', 'wallet_credit', ['resolved' => 'wallet_credit']);
         }
+        if ((string) ($Payment_report['Payment_Method'] ?? '') === 'tetraminator' && (int) ($Payment_report['tetraminator_abandoned_at'] ?? 0) > 0) {
+            $rxLateCredit = \Faoxima\Wallet\Ledger\FulfillmentCredit::walletCredit($pdo, $order_id, $rxToken, $Payment_report['id_user'], (int) $Payment_report['price'], 'topup_gateway', 'تأیید پرداخت تترامیناتور پس از انصراف');
+            if ($rxLateCredit === 'already_completed') {
+                return \Faoxima\Payments\Fulfillment\Claims::result('already_completed', 'tetraminator_cancelled_already_credited');
+            }
+            if ($rxLateCredit !== 'credited') {
+                return \Faoxima\Payments\Fulfillment\Settlement::abort($pdo, $order_id, $rxToken, 'tetraminator_cancelled_credit_failed', true);
+            }
+            sendmessage($Payment_report['id_user'], \Faoxima\Telegram\Support\MessageTemplates::get('payment_tetraminator_late_approved_wallet', ['amount' => number_format((int) $Payment_report['price'])]), null, 'HTML');
+            return \Faoxima\Payments\Fulfillment\Claims::result('completed', 'wallet_credit', ['resolved' => 'wallet_credit']);
+        }
         $receipt = $telegram->receipt($Payment_report);
         $keyboard =& $telegram->keyboard;
         $paymentNote = \Faoxima\Payments\Settlement\PendingInvoices::formatPaymentReportNote($Payment_report['dec_not_confirmed'] ?? null);

@@ -225,21 +225,12 @@ final class Markup
             $out .= self::rx_richUi_inlineToParagraphs($inline);
         }
         $normalized = preg_replace('~<tg-emoji\s+emoji-id="(\d+)"\s*>[\s\S]*?</tg-emoji>~u', '<tg-emoji emoji-id="$1"></tg-emoji>', $out);
-        if (\Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_active() && strpos((string) $normalized, '<tg-emoji') !== false) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_PREMIUM_EMOJI_PROCESS', 'html_normalize', 'normalized', [
-                'parse_mode' => (string) $parseMode,
-                'input' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($text),
-                'output' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text((string) $normalized),
-                'fallback_text_removed' => (bool) preg_match('~<tg-emoji\s+emoji-id="\d+"\s*>[^<]+</tg-emoji>~u', $out),
-            ], 'debug');
-        }
         return $normalized;
     }
 
     public static function rx_richUi_fallbackDom(string $html): ?DOMElement
     {
         if (!class_exists('DOMDocument')) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_RENDER_FAILED', 'html_to_text', 'unavailable', ['reason' => 'dom_unavailable'], 'warning');
             return null;
         }
         $doc = new DOMDocument('1.0', 'UTF-8');
@@ -251,9 +242,6 @@ final class Markup
     {
         $href = trim($href);
         if (!preg_match('~^(?:https?|tg|tg-proxy|proxy|vmess|vless|trojan|ss|ssr|hysteria2?|hy2|tuic|wireguard|wg|vpn|awg|amneziawg|xuifile|xuiawgfile|openvpn|socks5?)://[^\s\p{Cc}\p{Cf}<>]+$~iuD', $href)) {
-            if ($href !== '') {
-                \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_RENDER_FAILED', 'html_to_text', 'degraded', ['reason' => 'link_destination_unrepresentable'], 'warning');
-            }
             return $label;
         }
         if ($label === '' || preg_match('~(?:^|[\s(\[])' . preg_quote($href, '~') . '(?=$|[\s)\]])~u', $label) === 1) {
@@ -764,18 +752,7 @@ final class Markup
 
     public static function rx_richUi_buildMessage(string $textHtml, string $buttonsHtml, array $media = [], $rtlOverride = null): array
     {
-        $hasTable = (bool) preg_match('~<table\b~i', $textHtml);
-        $inputMetrics = null;
-        if ($hasTable) {
-            $inputMetrics = \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($textHtml);
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_TABLE_RENDER_START', 'table_render', 'started', [
-                'text' => $inputMetrics,
-                'buttons_length' => strlen($buttonsHtml),
-                'media_count' => count($media),
-                'rtl_override' => $rtlOverride,
-            ], 'debug');
-        }
-        $rtl = $rtlOverride === null ? self::rx_richUi_isRtl(strip_tags($textHtml)) : (bool) $rtlOverride;
+        $rtl =$rtlOverride === null ? self::rx_richUi_isRtl(strip_tags($textHtml)) : (bool) $rtlOverride;
         $html = $textHtml;
         $blocks = !$media && preg_match('~<table\b~i', $html) ? self::rx_richUi_structuredHtml($html . $buttonsHtml) : null;
         $mediaInline = false;
@@ -803,40 +780,6 @@ final class Markup
         } else $message['html'] = $html . $buttonsHtml;
         if ($media && !$mediaInline) {
             $message['media'] = $media;
-        }
-        if ($hasTable) {
-            $tableBlocks = 0;
-            $tableRows = 0;
-            if (isset($message['blocks']) && is_array($message['blocks'])) {
-                foreach ($message['blocks'] as $block) {
-                    if (!is_array($block) || ($block['type'] ?? '') !== 'table') {
-                        continue;
-                    }
-                    $tableBlocks++;
-                    $tableRows += isset($block['cells']) && is_array($block['cells']) ? count($block['cells']) : 0;
-                }
-            }
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_TABLE_RENDER_END', 'table_render', 'completed', [
-                'render_mode' => isset($message['blocks']) ? 'blocks' : 'html',
-                'structured_parse' => $blocks !== null,
-                'physical_layout' => isset($message['blocks']),
-                'blocks' => isset($message['blocks']) && is_array($message['blocks']) ? count($message['blocks']) : 0,
-                'table_blocks' => $tableBlocks,
-                'table_rows' => $tableRows,
-                'html_preserved' => !isset($message['blocks']),
-                'html_length' => isset($message['html']) ? strlen($message['html']) : 0,
-                'is_rtl' => $message['is_rtl'],
-                'media_count' => count($media),
-            ], isset($message['blocks']) ? 'debug' : 'warning');
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_comparison('table_render', \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_currentKey(), $inputMetrics ?? [], $inputMetrics ?? [], [
-                'render_mode' => isset($message['blocks']) ? 'blocks' : 'html',
-                'rich_json_blocks' => isset($message['blocks']) && is_array($message['blocks']) ? count($message['blocks']) : 0,
-                'structure_available' => $blocks !== null,
-                'after' => [
-                    'rich_blocks' => isset($message['blocks']) && is_array($message['blocks']) ? count($message['blocks']) : 0,
-                ],
-                'phase' => 'rich_table_render',
-            ]);
         }
         return $message;
     }
@@ -956,10 +899,6 @@ final class Markup
         $richPayload = ['blocks' => $blocks, 'is_rtl' => !empty($rich['is_rtl'])];
         $richPayloadValidation = \Faoxima\Telegram\Rich\Validation::rx_richUi_validateRichPayload($richPayload, ['method' => 'editMessageText']);
         if (empty($richPayloadValidation['valid'])) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_RENDER_FAILED', 'edit_rich_buttons', 'validation_failed', [
-                'reason' => (string) ($richPayloadValidation['reason'] ?? 'rich_validation_failed'),
-                'validation' => $richPayloadValidation,
-            ], 'error');
             return [
                 'ok' => false,
                 'error_code' => 400,

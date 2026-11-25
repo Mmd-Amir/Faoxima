@@ -26,6 +26,8 @@ final class PaymentMethodsHandler extends \Faoxima\Api\Handlers\BaseHandler
         $iranpay2Active = $get('statustarnado');
         $tonpayActive   = $get('statustonpay');
         $rialitActive   = $get('statusrialit');
+        $tetraminatorActive = $get('statustetraminator');
+        $tetraminatorKey    = trim((string) $get('apitetraminator'));
         $cubepayActive  = $get('statuscubepay');
         $blupalActive   = $get('statusblupal');
         $varizaActive   = $get('statusvariza');
@@ -57,6 +59,7 @@ final class PaymentMethodsHandler extends \Faoxima\Api\Handlers\BaseHandler
             'iranpay2'      => ['minbalanceiranpay2',      'maxbalanceiranpay2'],
             'tonpay'        => ['minbalancetonpay',        'maxbalancetonpay'],
             'rialit'        => ['minbalancerialit',        'maxbalancerialit'],
+            'tetraminator'  => ['minbalancetetraminator',  'maxbalancetetraminator'],
             'cubepay'       => ['minbalancecubepay',       'maxbalancecubepay'],
             'blupal'        => ['minbalanceblupal',        'maxbalanceblupal'],
             'variza'        => ['minbalancevariza',        'maxbalancevariza'],
@@ -172,6 +175,14 @@ final class PaymentMethodsHandler extends \Faoxima\Api\Handlers\BaseHandler
                 'kind'  => 'form',
             ];
         }
+        if ($tetraminatorActive === 'ontetraminator' && $tetraminatorKey !== '' && $tetraminatorKey !== '0') {
+            $methods[] = [
+                'id'    => 'tetraminator',
+                'label' => $L('tetraminator', '💎 تترامیناتور'),
+                'icon'  => '💎',
+                'kind'  => 'form',
+            ];
+        }
         if ($cubepayActive === 'oncubepay') {
             $methods[] = [
                 'id'    => 'cubepay',
@@ -258,6 +269,9 @@ final class PaymentMethodsHandler extends \Faoxima\Api\Handlers\BaseHandler
             if ($mid === 'rialit') {
                 $mMin = max(50000, (int) $mMin);
                 $mMax = (int) $mMax > 0 ? min(10000000, (int) $mMax) : 10000000;
+            }
+            if ($mid === 'tetraminator') {
+                [$mMin, $mMax] = \Faoxima\Payments\Gateways\Tetraminator\Client::amountRange(\Faoxima\Api\Runtime\Db::pdo());
             }
             $m['min'] = $mMin;
             $m['max'] = $mMax;

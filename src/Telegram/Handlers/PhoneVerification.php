@@ -30,13 +30,7 @@ final class PhoneVerification
             return null;
         }
         sendmessage($from_id, $labels['active'], json_encode(['inline_keyboard' => [], 'remove_keyboard' => true]), 'html');
-        if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_traceSend')) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_traceSend('text_start', static function () use ($from_id, $welcomeText, $keyboard) {
-                return \Faoxima\Telegram\Media\SectionMedia::rx_send_banner_message($from_id, 'start', $welcomeText, $keyboard, 'html');
-            });
-        } else {
-            \Faoxima\Telegram\Media\SectionMedia::rx_send_banner_message($from_id, 'start', $welcomeText, $keyboard, 'html');
-        }
+        \Faoxima\Telegram\Media\SectionMedia::rx_send_banner_message($from_id, 'start', $welcomeText, $keyboard, 'html');
         \Faoxima\Core\Database\Db::update("user", "number", $user_phone, "id", $from_id);
         if ($setting['verifystart'] == "onverify") {
             \Faoxima\Core\Database\Db::update("user", "verify", "1", "id", $from_id);

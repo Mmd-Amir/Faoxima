@@ -441,13 +441,6 @@ final class ConfirmPurchase
             $Shoppinginfo = json_encode($Shoppinginfo);
             $datatextbot['textafterpay'] = $marzban_list_get['type'] == "Manualsale" ? $datatextbot['textmanual'] : $datatextbot['textafterpay'];
             $datatextbot['textafterpay'] = $marzban_list_get['type'] == "WGDashboard" ? $datatextbot['text_wgdashboard'] : $datatextbot['textafterpay'];
-            $rxServicePanelType = (string) ($marzban_list_get['type'] ?? '');
-            $rxServiceTemplateKey = $rxServicePanelType === 'Manualsale' ? 'textmanual' : ($rxServicePanelType === 'WGDashboard' ? 'text_wgdashboard' : 'textafterpay');
-            $rxServiceTemplateBefore = (string) ($datatextbot['textafterpay'] ?? '');
-            if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_enabled') && \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_enabled() && method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_active') && !\Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_active() && method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_begin')) {
-                \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_begin($rxServiceTemplateKey, 'src/Telegram/Handlers/ConfirmPurchase.php', 'service_template_render');
-                $GLOBALS['rx_rich_diag_service_key'] = $rxServiceTemplateKey;
-            }
             if (intval($info_product['Service_time']) == 0)
                 $info_product['Service_time'] = $textbotlang['users']['stateus']['Unlimited'];
             if (($marzban_list_get['type'] ?? '') === 'jovadpanel' ? (is_numeric($info_product['Volume_constraint']) && (float) $info_product['Volume_constraint'] === 0.0) : intval($info_product['Volume_constraint']) == 0)
@@ -468,56 +461,14 @@ final class ConfirmPurchase
                 $textcreatuser = str_replace('{password}', $dataoutput['subscription_url'], $textcreatuser);
                 \Faoxima\Core\Database\Db::update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $randomString);
             }
-            if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_text') && method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_structure')) {
-                $rxServiceBefore = \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($rxServiceTemplateBefore);
-                $rxServiceAfter = \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($textcreatuser);
-                $rxServiceRich = isset($datatextbot['richmsg.' . $rxServiceTemplateKey]) ? (string) $datatextbot['richmsg.' . $rxServiceTemplateKey] : '';
-                $GLOBALS['rx_rich_diag_templates'][$rxServiceTemplateKey] = [
-                    'text' => $rxServiceAfter,
-                    'structure' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_structure($rxServiceRich),
-                    'variables' => [
-                        'before' => (int) $rxServiceBefore['variables'],
-                        'after' => (int) $rxServiceAfter['variables'],
-                        'resolved' => max(0, (int) $rxServiceBefore['variables'] - (int) $rxServiceAfter['variables']),
-                        'unresolved' => (int) $rxServiceAfter['variables'],
-                        'length_before' => (int) $rxServiceBefore['length'],
-                        'length_after' => (int) $rxServiceAfter['length'],
-                        'length_delta' => (int) $rxServiceAfter['length'] - (int) $rxServiceBefore['length'],
-                        'table_preserved' => !empty($rxServiceBefore['html_table']) && !empty($rxServiceAfter['html_table']),
-                        'rows_preserved' => (int) $rxServiceAfter['row_count'] >= (int) $rxServiceBefore['row_count'],
-                        'rtl_marker_before' => !empty($rxServiceBefore['rtl_marker']),
-                        'rtl_marker_after' => !empty($rxServiceAfter['rtl_marker']),
-                    ],
-                    'selection' => [
-                        'template_key' => $rxServiceTemplateKey,
-                        'template_source' => 'textbot_row',
-                        'panel_type' => $rxServicePanelType,
-                        'selection_mode' => 'panel_type_conditional',
-                        'rich_structure_key' => 'richmsg.' . $rxServiceTemplateKey,
-                        'rich_structure_present' => trim($rxServiceRich) !== '',
-                        'render_input' => 'textbot_text_html',
-                        'parse_mode' => 'html',
-                        'send_call' => 'sendMessageService',
-                        'sub_link_present' => trim((string) $output_config_link) !== '',
-                        'config_count' => is_array($dataoutput['configs'] ?? null) ? count($dataoutput['configs']) : 0,
-                        'invoice_present' => trim((string) $randomString) !== '',
-                    ],
-                ];
-                $GLOBALS['rx_rich_diag_service_key'] = $rxServiceTemplateKey;
-            }
             \Faoxima\Services\Fulfillment\WalletPurchaseEffects::send($pdo, (string) $from_id, (string) $randomString, 'delivery',
-                static function () use ($rxServiceTemplateKey, $marzban_list_get, $dataoutput, $output_config_link, $Shoppinginfo, $textcreatuser, $randomString, $from_id) {
+                static function () use ($marzban_list_get, $dataoutput, $output_config_link, $Shoppinginfo, $textcreatuser, $randomString, $from_id) {
                     $deliveryResult = null;
                     $deliver = static function () use ($marzban_list_get, $dataoutput, $output_config_link, $Shoppinginfo, $textcreatuser, $randomString, &$deliveryResult) {
                         \Faoxima\Services\Delivery\ServiceDelivery::sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'],
                             $Shoppinginfo, $textcreatuser, $randomString, null, 'images.jpg', false, $deliveryResult);
                     };
-                    if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_traceSend')) {
-                        \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_traceSend($rxServiceTemplateKey, $deliver);
-                        $GLOBALS['rx_rich_diag_service_key'] = null;
-                    } else {
-                        $deliver();
-                    }
+                    $deliver();
                     $files = \Faoxima\Services\Delivery\ServiceDelivery::rxAutoDeliverPurchaseFilesSafe($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $from_id, $randomString);
                     return !empty($deliveryResult['ok']) && empty($files['failed']) && empty($files['unknown']);
                 }

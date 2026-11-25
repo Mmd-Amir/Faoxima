@@ -519,18 +519,6 @@ final class ServiceDelivery
                 'delivery_status' => \Faoxima\Services\Fulfillment\DeliveryState::deliveryAggregate(array_merge([['required' => true, 'state' => $state]], $itemText)),
             ];
             array_push($text, ...$itemText);
-            if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'manual_file_item', $state, [
-                    'delivery_mode' => 'manualsale_file',
-                    'attachment_index' => $index,
-                    'attachment_total' => $fileCount,
-                    'caption_valid' => $detail['caption_valid'] ?? null,
-                    'caption_complete' => !$required || $captionState === 'confirmed',
-                    'caption_source' => $detail['caption_source'] ?? 'none',
-                    'caption_delivery_state' => $captionState,
-                    'result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($result),
-                ], $state === 'confirmed' && (!$required || $captionState === 'confirmed') ? 'info' : 'warning');
-            }
         }
         $filesStatus = $files ? \Faoxima\Services\Fulfillment\DeliveryState::deliveryAggregate($files) : 'not_attempted';
         $deliveryResults = [
@@ -542,14 +530,6 @@ final class ServiceDelivery
             'keyboard_state' => $keyboardState,
             'delivery_status' => $files ? \Faoxima\Services\Fulfillment\DeliveryState::deliveryAggregate(array_merge($files, $text)) : 'failed',
         ];
-        if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'manual_file_collection', $deliveryResults['delivery_status'], [
-                'delivery_mode' => 'manualsale_files',
-                'files_delivery_status' => $filesStatus,
-                'file_states' => $files,
-                'text_delivery_status' => $deliveryResults['text_delivery_status'],
-            ], $deliveryResults['delivery_status'] === 'completed' ? 'info' : 'warning');
-        }
         return $sentAny;
     }
 
@@ -710,13 +690,6 @@ final class ServiceDelivery
             'caption_delivery_state' => $captionState,
             'caption_fallback_reason' => $source === 'separate_text' ? 'separate_caption_text' : null,
         ];
-        if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'auto_file_delivery', $status, $detail + [
-                'delivery_mode' => 'automatic_document',
-                'result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($result),
-                'text_result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($textResult),
-            ], $status === 'completed' ? 'info' : 'warning');
-        }
         return $detail['state'];
     }
 
@@ -762,13 +735,6 @@ final class ServiceDelivery
                 $captionState = $documentState;
             }
             if (!self::rxAutoFileCaptionMark($invoice_id, $file_key, $documentStatus, $caption, $captionState, $cursor)) {
-                if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                    \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'auto_file_state', 'unknown', [
-                        'document_state' => $documentState,
-                        'caption_delivery_state' => $captionState,
-                        'reason' => 'document_result_not_persisted',
-                    ], 'warning');
-                }
                 $deliveryDetail = \Faoxima\Services\Fulfillment\DeliveryState::deliveryComponentContext([
                     'document' => ['required' => true, 'state' => $documentState],
                     'caption' => ['required' => trim($caption) !== '', 'state' => $captionState],
@@ -1105,13 +1071,6 @@ final class ServiceDelivery
         }
         $summary['delivery_status'] = $summary['ok'] ? 'completed'
             : ($summary['unknown'] > 0 || $summary['failed'] === 0 ? 'unknown' : ($confirmed > 0 ? 'partial' : 'failed'));
-        if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'automatic_file_collection', $summary['delivery_status'], [
-                'delivery_mode' => 'automatic_file_collection',
-                'files_delivery_status' => $summary['delivery_status'],
-                'file_states' => $summary['file_states'] ?? [],
-            ], $summary['ok'] ? 'info' : 'warning');
-        }
         return $summary;
     }
 
@@ -1162,37 +1121,14 @@ final class ServiceDelivery
         return $caption;
     }
 
-    public static function rxServiceDeliveryDiagnosticContext(array $components, string $status, array $extra, ?array $autoFilesSummary): array
+    public static function rxServiceDeliveryStatus(array $components): string
     {
         $deliveryStatus = \Faoxima\Services\Fulfillment\DeliveryState::deliveryAggregate(array_values($components));
         $summary = \Faoxima\Services\Fulfillment\DeliveryState::deliveryComponentContext($components);
         if ($deliveryStatus === 'completed' && empty($summary['required_components']) && empty($summary['confirmed_components'])) {
             $deliveryStatus = 'failed';
         }
-        $summary['delivery_status'] = $deliveryStatus;
-        $context = array_merge(['branch_status' => $status], $extra, $summary);
-        $context += [
-            'delivery_mode' => null,
-            'files_delivery_status' => null,
-            'file_states' => [],
-            'caption_valid' => null,
-            'caption_complete' => null,
-            'caption_contains_required_content' => null,
-            'caption_delivery_confirmed' => null,
-            'caption_source' => null,
-            'caption_validation_status' => null,
-            'caption_fallback_reason' => null,
-        ];
-        if ($autoFilesSummary !== null) {
-            $context['auto_files'] = $autoFilesSummary;
-            if (empty($context['files_delivery_status']) && isset($autoFilesSummary['delivery_status'])) {
-                $context['files_delivery_status'] = $autoFilesSummary['delivery_status'];
-            }
-            if (empty($context['file_states'])) {
-                $context['file_states'] = $autoFilesSummary['file_states'] ?? [];
-            }
-        }
-        return [$deliveryStatus, $context];
+        return $deliveryStatus;
     }
 
     public static function sendMessageService($panel_info, $config, $sub_link, $username_service, $reply_markup, $caption, $invoice_id, $user_id = null, $image = 'images.jpg', $auto_files = false, ?array &$deliveryResult = null)
@@ -1232,39 +1168,11 @@ final class ServiceDelivery
             }
             return [$result, $state, $chunks];
         };
-        unset($GLOBALS['rx_rich_diag_last_result'], $GLOBALS['rx_rich_diag_validation_reason'], $GLOBALS['rx_rich_diag_fallback_reason']);
 
-        $rxDiagOwn = false;
-        if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_enabled') && \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_enabled() && method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_active') && method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_begin') && !\Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_active()) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_begin((string) ($GLOBALS['rx_rich_diag_service_key'] ?? 'service_message'), 'src/Services/Delivery/ServiceDelivery.php', 'service_send');
-            $rxDiagOwn = true;
-        }
         $rxAutoFilesSummary = null;
-        $rxDiagDone = static function (string $status, array $extra = []) use (&$rxDiagOwn, &$rxDeliveryComponents, &$rxAutoFilesSummary, &$deliveryResult) {
-            [$deliveryStatus, $context] = self::rxServiceDeliveryDiagnosticContext($rxDeliveryComponents, $status, $extra, $rxAutoFilesSummary);
+        $rxDeliveryDone = static function () use (&$rxDeliveryComponents, &$deliveryResult) {
+            $deliveryStatus = self::rxServiceDeliveryStatus($rxDeliveryComponents);
             $deliveryResult = ['ok' => $deliveryStatus === 'completed', 'status' => $deliveryStatus];
-            if (!array_key_exists('fallback_reason', $context)) {
-                $context['fallback_reason'] = $GLOBALS['rx_rich_diag_validation_reason'] ?? ($GLOBALS['rx_rich_diag_fallback_reason'] ?? null);
-            }
-            if (isset($GLOBALS['rx_rich_diag_last_result']) && is_array($GLOBALS['rx_rich_diag_last_result'])) {
-                $lastDeliveryResult = $GLOBALS['rx_rich_diag_last_result'];
-                $context['telegram_error_code'] = (int) ($lastDeliveryResult['error_code'] ?? 0);
-                $context['telegram_error_description'] = (string) ($lastDeliveryResult['description'] ?? '');
-            } else {
-                $context['telegram_error_code'] = null;
-                $context['telegram_error_description'] = null;
-            }
-            $level = $deliveryStatus === 'failed' ? 'error' : ($deliveryStatus === 'partial' ? 'warning' : 'info');
-            if ($deliveryStatus === 'unknown') {
-                $level = 'warning';
-            }
-            if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'service_delivery', $deliveryStatus, $context, $level);
-            }
-            if ($rxDiagOwn && method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_finish')) {
-                \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_finish($deliveryStatus, ['_function' => 'sendMessageService', '_source_file' => 'src/Services/Delivery/ServiceDelivery.php'] + $context);
-                $rxDiagOwn = false;
-            }
         };
         $rxAutoFilesAttempt = static function () use ($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id, &$rxSetDelivery, &$rxAutoFilesSummary): void {
             $rxAutoFilesSummary = ['ok' => false, 'sent' => 0, 'failed' => 0, 'unknown' => 0, 'skipped' => 0, 'total' => 0, 'delivery_status' => 'unknown', 'state' => 'unknown', 'counts' => []];
@@ -1306,28 +1214,8 @@ final class ServiceDelivery
                 $rxSetDelivery('files', $rxUnknown > 0 || $rxFailed === 0 ? 'unknown' : 'failed');
             }
         };
-        if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_TEMPLATE_SELECTED', 'service_template', 'received', [
-                'template_key' => (string) ($GLOBALS['rx_rich_diag_service_key'] ?? 'service_message'),
-                'panel_type' => (string) ($panel_info['type'] ?? ''),
-                'caption' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($caption),
-                'config_count' => is_array($config) ? count($config) : 0,
-                'sub_link_present' => is_string($sub_link) && trim($sub_link) !== '',
-                'reply_markup_present' => !empty($reply_markup),
-                'auto_files' => (bool) $auto_files,
-                'chat_hash' => substr(hash('sha256', (string) $user_id), 0, 12),
-            ], 'info');
-        }
 
         if (($panel_info['type'] ?? '') == "Manualsale") {
-            if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'selected', [
-                    'delivery_mode' => 'manualsale',
-                    'panel_type' => 'Manualsale',
-                    'rich_bypass' => true,
-                    'caption' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($caption),
-                ], 'info');
-            }
             $manual = \Faoxima\Services\Fulfillment\DeliveryState::manualsaleDelivery($username_service);
             if ($manual['content'] === "" && is_string($sub_link) && trim($sub_link) !== '') {
                 $manual['configs'] = [$sub_link];
@@ -1347,14 +1235,6 @@ final class ServiceDelivery
             $hasConfigOffer = !empty($textItems);
 
             if (!empty($fileItems)) {
-                if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                    \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'selected', [
-                        'delivery_mode' => 'manualsale_files',
-                        'file_items' => count($fileItems),
-                        'text_items' => count($textItems),
-                        'caption' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($cleanCaption),
-                    ], 'info');
-                }
                 $fileKeyboard = self::rxBuildDeliveryOffer($panel_info, $invoice_id, $hasConfigOffer, $hasSubOffer, $reply_markup) ?? $reply_markup;
                 self::rxManualsaleSendFileItems($user_id, $username_service, $fileItems, $cleanCaption, $fileKeyboard, 0, 0, $fileDelivery);
                 foreach ($fileDelivery['files'] as $index => $item) {
@@ -1367,45 +1247,21 @@ final class ServiceDelivery
                     $keyboardResult = sendmessage($user_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_files_incomplete_contact_support'), $fileKeyboard, 'HTML');
                     $rxSetDelivery('file_keyboard_notice', \Faoxima\Services\Fulfillment\DeliveryState::deliveryResultState($keyboardResult), false);
                 }
-                $rxDiagDone($fileDelivery['delivery_status'], [
-                    'delivery_mode' => 'manualsale_files',
-                    'files' => count($fileDelivery['files']),
-                    'file_states' => $fileDelivery['files'],
-                    'files_delivery_status' => $fileDelivery['files_delivery_status'],
-                    'caption_complete' => in_array($fileDelivery['text_delivery_status'], ['completed', 'skipped'], true),
-                ]);
+                $rxDeliveryDone();
                 return;
             }
 
             $availability = self::rxDeliveryAvailability($panel_info, ['__manual__' => $manual], $manual['sub']);
             $offerKeyboard = self::rxBuildDeliveryOffer($panel_info, $invoice_id, $availability['config'], $availability['sub'], $reply_markup);
             if ($offerKeyboard === null) {
-                if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                    \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'selected', [
-                        'delivery_mode' => 'manual_text_plain',
-                        'rich_bypass' => false,
-                        'buttons_detached' => false,
-                        'caption' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($cleanCaption),
-                    ], 'info');
-                }
                 $rxManualPlainResult = sendmessage($user_id, $cleanCaption, $reply_markup, 'HTML');
-                $GLOBALS['rx_rich_diag_last_result'] = $rxManualPlainResult;
                 $rxSetDelivery('text', \Faoxima\Services\Fulfillment\DeliveryState::deliveryResultState($rxManualPlainResult), true);
-                $rxDiagDone('completed', ['delivery_mode' => 'manual_text_plain']);
+                $rxDeliveryDone();
                 return;
             }
-            if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'selected', [
-                    'delivery_mode' => 'manual_text_offer',
-                    'rich_bypass' => false,
-                    'buttons_detached' => false,
-                    'caption' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($cleanCaption),
-                ], 'info');
-            }
             $rxManualOfferResult = sendmessage($user_id, $cleanCaption, $offerKeyboard, 'HTML');
-            $GLOBALS['rx_rich_diag_last_result'] = $rxManualOfferResult;
             $rxSetDelivery('text', \Faoxima\Services\Fulfillment\DeliveryState::deliveryResultState($rxManualOfferResult), true);
-            $rxDiagDone('completed', ['delivery_mode' => 'manual_text_offer']);
+            $rxDeliveryDone();
             return;
         }
 
@@ -1423,22 +1279,6 @@ final class ServiceDelivery
         if (!$rxTextRequired) {
             $rxSetDelivery('text', 'skipped', false);
         }
-        if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'evaluated', [
-                'panel_type' => (string) ($panel_info['type'] ?? ''),
-                'config_available' => !empty($availability['config']),
-                'sub_available' => !empty($availability['sub']),
-                'offer_keyboard' => $offerKeyboard !== null,
-                'info_card_renderer' => method_exists(\Faoxima\Telegram\Support\InfoCards::class, 'nm_renderInfoCardForInvoice'),
-                'qr_fallback' => method_exists(\Faoxima\Telegram\Support\InfoCards::class, 'nm_sendServiceQrFallback'),
-                'caption' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($cleanCaption),
-                'caption_has_table' => $rxServiceCaptionHasTable,
-                'caption_needs_split' => $rxServiceCaptionNeedsSplit,
-                'caption_safe_length' => $rxSafeMediaCaption !== null ? mb_strlen($rxSafeMediaCaption, 'UTF-8') : null,
-                'text_required' => $rxTextRequired,
-                'rich_bypass' => false,
-            ], 'info');
-        }
 
         if (method_exists(\Faoxima\Telegram\Support\InfoCards::class, 'nm_renderInfoCardForInvoice')) {
             $cardPath = \Faoxima\Telegram\Support\InfoCards::nm_renderInfoCardForInvoice($panel_info, $username_service, $invoice_id, $user_id);
@@ -1451,32 +1291,12 @@ final class ServiceDelivery
                     array_unshift($kb['inline_keyboard'], [['text' => \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_purchase_qr_code_btn', '📷 دریافت QR Code'), 'callback_data' => 'infocard_qr_' . $invoice_id]]);
                 }
                 $cardKeyboard = json_encode($kb, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                    \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'selected', [
-                        'delivery_mode' => 'info_card_photo',
-                        'api_method' => 'sendphoto',
-                        'rich_bypass' => true,
-                        'rich_bypass_reason' => 'photo_caption_delivery',
-                        'caption' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($cleanCaption),
-                        'infocard_rendered' => true,
-                    ], 'info');
-                }
                 $rxCardPhotoResult = null;
                 $rxCardTextResult = null;
                 $rxCardTextState = 'not_attempted';
                 $rxCardTextAttempted = false;
                 try {
                     if ($rxServiceCaptionNeedsSplit) {
-                        if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'selected', [
-                                'delivery_mode' => 'info_card_plus_rich_text',
-                                'api_method' => 'sendphoto+sendmessage',
-                                'rich_bypass' => false,
-                                'rich_bypass_reason' => $rxServiceCaptionHasTable ? 'table_moved_out_of_media_caption' : 'caption_requires_separate_text',
-                                'caption' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($cleanCaption),
-                                'infocard_rendered' => true,
-                            ], 'info');
-                        }
                         $rxCardPhotoResult = telegram('sendphoto', [
                             'chat_id' => $user_id,
                             'photo'   => new CURLFile($cardPath),
@@ -1495,34 +1315,10 @@ final class ServiceDelivery
                             $rxCardQrState = is_array($rxCardQrDetail) ? (string) ($rxCardQrDetail['state'] ?? \Faoxima\Services\Fulfillment\DeliveryState::deliveryResultState($rxCardQrFallback)) : \Faoxima\Services\Fulfillment\DeliveryState::deliveryResultState($rxCardQrFallback);
                             $rxSetDelivery('qr', $rxCardQrState, $rxCardQrState !== 'skipped');
                         }
-                        if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'service_delivery', \Faoxima\Services\Fulfillment\DeliveryState::deliveryAggregate(array_values($rxDeliveryComponents)), [
-                                'delivery_mode' => 'info_card_plus_rich_text',
-                                'rich_bypass' => false,
-                                'caption' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($cleanCaption),
-                                'photo_result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($rxCardPhotoResult),
-                                'result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($rxCardTextResult),
-                                'qr_fallback_state' => $rxCardQrState,
-                                'caption_complete' => $rxServiceCaptionDelivered,
-                                'caption_validation_status' => $rxServiceCaptionDelivered ? 'text_message_confirmed' : 'text_not_confirmed',
-                            ], $rxCardTextState === 'confirmed' ? 'info' : 'warning');
-                        }
-                        $GLOBALS['rx_rich_diag_last_result'] = ($rxCardQrState !== 'not_attempted' && $rxCardQrState !== 'confirmed' && isset($rxCardQrDetail['result']) && is_array($rxCardQrDetail['result']))
-                            ? $rxCardQrDetail['result']
-                            : $rxCardTextResult;
                         if ($auto_files) {
                             $rxAutoFilesAttempt();
                         }
-                        $rxDiagDone(\Faoxima\Services\Fulfillment\DeliveryState::deliveryAggregate($rxDeliveryComponents), [
-                            'delivery_mode' => 'info_card_plus_rich_text',
-                            'caption_valid' => $rxSafeMediaCaption !== null,
-                            'caption_complete' => $rxServiceCaptionDelivered,
-                            'caption_contains_required_content' => $rxServiceCaptionDelivered,
-                            'caption_delivery_confirmed' => $rxServiceCaptionDelivered,
-                            'caption_source' => 'text_message',
-                            'caption_validation_status' => $rxServiceCaptionDelivered ? 'text_message_confirmed' : 'text_not_confirmed',
-                            'caption_fallback_reason' => $rxServiceCaptionDelivered ? null : 'caption_incomplete',
-                        ]);
+                        $rxDeliveryDone();
                         return;
                     }
                     $rxCardResult = rxSendMediaWithCaption('sendphoto', [
@@ -1542,15 +1338,6 @@ final class ServiceDelivery
                     } else {
                         $rxSetDelivery('text', 'skipped', false);
                     }
-                    if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                        \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'service_delivery', $rxCardState, [
-                            'delivery_mode' => 'info_card_photo',
-                            'rich_bypass' => true,
-                            'caption' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($cleanCaption),
-                            'result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($rxCardResult),
-                        ], $rxCardState === 'confirmed' ? 'info' : ($rxCardState === 'unknown' ? 'warning' : 'error'));
-                    }
-                    $GLOBALS['rx_rich_diag_last_result'] = $rxCardResult;
                     @unlink($cardPath);
                     if ($rxCardState === 'confirmed' || ($rxCardDelivery['caption_source'] === 'separate_text'
                         && ($rxCardDelivery['text_state'] !== 'failed' || $rxCardDelivery['text_chunks_confirmed'] > 0))) {
@@ -1558,14 +1345,14 @@ final class ServiceDelivery
                         if ($auto_files) {
                             $rxAutoFilesAttempt();
                         }
-                        $rxDiagDone($rxCardDelivery['delivery_status'], ['delivery_mode' => 'info_card_photo', 'caption_complete' => $rxCardDelivery['caption_complete']]);
+                        $rxDeliveryDone();
                         return;
                     }
                     if ($rxCardState === 'unknown') {
                         if ($auto_files) {
                             $rxAutoFilesAttempt();
                         }
-                        $rxDiagDone('unknown', ['delivery_mode' => 'info_card_photo', 'fallback_reason' => 'card_delivery_ambiguous']);
+                        $rxDeliveryDone();
                         return;
                     }
                 } catch (Throwable $e) {
@@ -1581,14 +1368,8 @@ final class ServiceDelivery
                         if ($auto_files) {
                             $rxAutoFilesAttempt();
                         }
-                        $rxDiagDone('unknown', ['delivery_mode' => 'info_card_plus_rich_text', 'fallback_reason' => 'text_delivery_exception']);
+                        $rxDeliveryDone();
                         return;
-                    }
-                    if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                        \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_RENDER_FAILED', 'service_delivery', 'exception', [
-                            'delivery_mode' => 'info_card_photo',
-                            'exception' => get_class($e),
-                        ], 'error');
                     }
                     error_log('sendMessageService info card send failed: ' . get_class($e));
                 }
@@ -1600,16 +1381,6 @@ final class ServiceDelivery
         }
         if (method_exists(\Faoxima\Telegram\Support\InfoCards::class, 'nm_sendServiceQrFallback') && is_string($sub_link) && trim($sub_link) !== '') {
                 if ($rxServiceCaptionNeedsSplit) {
-                    if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                        \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'selected', [
-                            'delivery_mode' => 'qr_plus_rich_text',
-                            'api_method' => 'sendphoto+sendmessage',
-                            'delivery_order' => 'qr_first',
-                            'rich_bypass' => false,
-                            'rich_bypass_reason' => $rxServiceCaptionHasTable ? 'table_moved_out_of_qr_caption' : 'caption_requires_separate_text',
-                            'caption' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($cleanCaption),
-                        ], 'info');
-                    }
                     $rxQrDetail = null;
                     $rxQrDelivered = \Faoxima\Telegram\Support\InfoCards::nm_sendServiceQrFallback($user_id, $sub_link, $image, '', null, $rxQrDetail);
                     $rxQrState = is_array($rxQrDetail) ? (string) ($rxQrDetail['state'] ?? \Faoxima\Services\Fulfillment\DeliveryState::deliveryResultState($rxQrDelivered)) : \Faoxima\Services\Fulfillment\DeliveryState::deliveryResultState($rxQrDelivered);
@@ -1632,50 +1403,11 @@ final class ServiceDelivery
                             'reply_markup' => $finalKeyboard,
                         ]);
                     }
-                    if ($rxQrState !== 'confirmed' && isset($rxQrDetail['result']) && is_array($rxQrDetail['result'])) {
-                        $GLOBALS['rx_rich_diag_last_result'] = $rxQrDetail['result'];
-                    }
-                    if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                        \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'service_delivery', \Faoxima\Services\Fulfillment\DeliveryState::deliveryAggregate(array_values($rxDeliveryComponents)), [
-                            'delivery_mode' => 'qr_plus_rich_text',
-                            'rich_bypass' => false,
-                            'caption' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($cleanCaption),
-                            'caption_valid' => $rxSafeMediaCaption !== null,
-                            'caption_complete' => $rxServiceCaptionDelivered,
-                            'caption_contains_required_content' => $rxServiceCaptionDelivered,
-                            'caption_delivery_confirmed' => $rxServiceCaptionDelivered,
-                            'caption_source' => 'text_message',
-                            'caption_validation_status' => $rxServiceCaptionDelivered ? 'text_message_confirmed' : 'text_not_confirmed',
-                            'caption_fallback_reason' => $rxServiceCaptionDelivered ? null : 'caption_incomplete',
-                            'qr_caption_used_for_text' => false,
-                            'text_result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($rxQrTextResult),
-                            'qr_detail' => is_array($rxQrDetail) ? $rxQrDetail : null,
-                        ], $rxQrTextState === 'confirmed' && $rxQrState === 'confirmed' ? 'info' : 'warning');
-                    }
-                    $GLOBALS['rx_rich_diag_last_result'] = ($rxQrState !== 'confirmed' && isset($rxQrDetail['result']) && is_array($rxQrDetail['result']))
-                        ? $rxQrDetail['result']
-                        : $rxQrTextResult;
                     if ($auto_files) {
                         $rxAutoFilesAttempt();
                     }
-                    $rxDiagDone(\Faoxima\Services\Fulfillment\DeliveryState::deliveryAggregate($rxDeliveryComponents), [
-                        'delivery_mode' => 'qr_plus_rich_text',
-                        'caption_valid' => $rxSafeMediaCaption !== null,
-                        'caption_complete' => $rxServiceCaptionDelivered,
-                        'caption_contains_required_content' => $rxServiceCaptionDelivered,
-                        'caption_delivery_confirmed' => $rxServiceCaptionDelivered,
-                        'caption_source' => 'text_message',
-                        'caption_validation_status' => $rxServiceCaptionDelivered ? 'text_message_confirmed' : 'text_not_confirmed',
-                    ]);
+                    $rxDeliveryDone();
                     return;
-                }
-                if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                    \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'selected', [
-                        'delivery_mode' => 'qr_fallback',
-                        'rich_bypass' => true,
-                        'rich_bypass_reason' => 'qr_image_delivery',
-                        'caption' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($cleanCaption),
-                    ], 'info');
                 }
                 $rxQrDetail = null;
                 $rxQrCaption = $cleanCaption;
@@ -1709,24 +1441,6 @@ final class ServiceDelivery
                         $rxSetDelivery('text', 'not_attempted', true);
                     }
                 }
-                if ($rxQrState !== 'confirmed' && isset($rxQrDetail['result']) && is_array($rxQrDetail['result'])) {
-                    $GLOBALS['rx_rich_diag_last_result'] = $rxQrDetail['result'];
-                }
-                if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                    \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'service_delivery', \Faoxima\Services\Fulfillment\DeliveryState::deliveryAggregate(array_values($rxDeliveryComponents)), [
-                        'delivery_mode' => 'qr_fallback',
-                        'rich_bypass' => true,
-                        'caption' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($cleanCaption),
-                        'caption_valid' => $rxSafeMediaCaption !== null,
-                        'caption_complete' => $rxQrCaptionComplete,
-                        'caption_contains_required_content' => $rxQrCaptionComplete,
-                        'caption_delivery_confirmed' => $rxQrCaptionComplete,
-                        'caption_source' => $rxQrCaptionSeparate ? 'separate_text' : ($rxQrCaptionComplete ? 'qr_caption' : ($rxTextRequired ? 'pending' : 'none')),
-                        'caption_validation_status' => $rxQrCaptionComplete ? 'validated' : 'generic_or_unsafe',
-                        'caption_fallback_reason' => $rxQrCaption === '' ? 'no_safe_caption' : (($rxQrDetail['reason'] ?? '') === 'caption_unsafe' ? 'caption_unsafe' : null),
-                        'qr_detail' => is_array($rxQrDetail) ? $rxQrDetail : null,
-                    ], $rxQrState === 'confirmed' ? 'info' : 'warning');
-                }
                 if ($rxQrState === 'confirmed' || ($rxQrCaptionSeparate
                     && ($rxQrDetail['caption_delivery_state'] !== 'failed' || $rxQrDetail['text_chunks_confirmed'] > 0))) {
                     if (!$rxTextRequired) {
@@ -1736,30 +1450,21 @@ final class ServiceDelivery
                     if ($auto_files) {
                         $rxAutoFilesAttempt();
                     }
-                    $rxDiagDone(\Faoxima\Services\Fulfillment\DeliveryState::deliveryAggregate($rxDeliveryComponents), ['delivery_mode' => 'qr_fallback', 'caption_complete' => $rxServiceCaptionDelivered]);
+                    $rxDeliveryDone();
                     return;
                 }
                 if ($rxQrState === 'unknown') {
                     if ($auto_files) {
                         $rxAutoFilesAttempt();
                     }
-                    $rxDiagDone('unknown', ['delivery_mode' => 'qr_fallback', 'fallback_reason' => 'qr_delivery_ambiguous']);
+                    $rxDeliveryDone();
                     return;
                 }
             } else {
                 $rxSetDelivery('qr', 'skipped', false);
             }
 
-        $rxFinalDeliveryMode = 'qr_only_no_text';
         if ($rxTextRequired && !$rxServiceCaptionDelivered) {
-            if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
-                \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_SEND_METHOD_SELECTED', 'service_branch', 'selected', [
-                    'delivery_mode' => 'plain_text',
-                    'api_method' => 'sendmessage',
-                    'rich_bypass' => false,
-                    'caption' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_text($cleanCaption),
-                ], 'info');
-            }
             try {
                 [$rxServiceTextResult, $rxServiceTextState] = $rxSendServiceText($rxQrKeyboardDelivered ? null : $finalKeyboard);
             } catch (Throwable $e) {
@@ -1769,21 +1474,10 @@ final class ServiceDelivery
             }
             $rxSetDelivery('text', $rxServiceTextState, true);
             $rxServiceCaptionDelivered = $rxServiceTextState === 'confirmed';
-            $GLOBALS['rx_rich_diag_last_result'] = $rxServiceTextResult;
-            $rxFinalDeliveryMode = 'plain_text';
         }
         if ($auto_files) {
             $rxAutoFilesAttempt();
         }
-        $rxDiagDone(\Faoxima\Services\Fulfillment\DeliveryState::deliveryAggregate($rxDeliveryComponents), [
-            'delivery_mode' => $rxFinalDeliveryMode,
-            'rich_bypass' => false,
-            'caption_valid' => $rxSafeMediaCaption !== null,
-            'caption_complete' => $rxServiceCaptionDelivered,
-            'caption_contains_required_content' => $rxServiceCaptionDelivered || !$rxTextRequired,
-            'caption_delivery_confirmed' => $rxServiceCaptionDelivered,
-            'caption_source' => $rxTextRequired ? 'text_message' : 'none',
-            'caption_validation_status' => $rxServiceCaptionDelivered ? 'text_confirmed' : 'text_not_confirmed',
-        ]);
+        $rxDeliveryDone();
     }
 }

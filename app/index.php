@@ -30,7 +30,7 @@ $apiPath = $rootForApi === '/' ? '/api' : $rootForApi . '/api';
 
 $apiUrl = $apiPath;
 
-$brandAppVersion = trim((string)@file_get_contents(__DIR__ . '/version')) ?: '1.3.0';
+$brandAppVersion = trim((string)@file_get_contents(__DIR__ . '/version')) ?: '1.3.5';
 
 
 const FX_DEFAULT_BRAND_NAME = 'faoxima';
@@ -148,7 +148,7 @@ $sdkFallback = 'https://telegram.org/js/telegram-web-app.js';
 $cssUrl      = htmlspecialchars($assetPrefix . 'assets/css/app.css?v=' . \Faoxima\Api\Runtime\AppShell::fx_asset_v(__DIR__ . '/assets/css/app.css', $versionSafe, $hardR), ENT_QUOTES);
 
 
-$jsUrl       = htmlspecialchars($assetPrefix . 'assets/v1.3.0/app.js?v=' . \Faoxima\Api\Runtime\AppShell::fx_asset_v(__DIR__ . '/assets/v1.3.0/app.js', $versionSafe, $hardR), ENT_QUOTES);
+$jsUrl       = htmlspecialchars($assetPrefix . 'assets/v1.3.5/app.js?v=' . \Faoxima\Api\Runtime\AppShell::fx_asset_v(__DIR__ . '/assets/v1.3.5/app.js', $versionSafe, $hardR), ENT_QUOTES);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">

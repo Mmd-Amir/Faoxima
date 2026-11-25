@@ -124,6 +124,66 @@ final class CronRuntime
         }
     }
 
+    public static function rx_cron_auth_issue(string $file, string $token): void
+    {
+        $entry = hash('sha256', $token) . '|' . time();
+        $gate = @fopen($file . '.lock', 'c');
+        if ($gate === false || !@flock($gate, LOCK_EX)) {
+            if (is_resource($gate)) {
+                @fclose($gate);
+            }
+            @file_put_contents($file, $entry, LOCK_EX);
+            @chmod($file, 0600);
+            return;
+        }
+        try {
+            $lines = [];
+            $raw = is_file($file) ? preg_split('/\R/', trim((string) @file_get_contents($file))) : [];
+            foreach ((array) $raw as $line) {
+                $parts = explode('|', trim((string) $line), 2);
+                if (count($parts) === 2 && preg_match('/^[a-f0-9]{64}$/', $parts[0]) && (int) $parts[1] > time() - 120) {
+                    $lines[] = trim((string) $line);
+                }
+            }
+            $lines = array_slice($lines, -7);
+            $lines[] = $entry;
+            $tmp = $file . '.tmp' . getmypid();
+            if (@file_put_contents($tmp, implode("\n", $lines), LOCK_EX) !== false) {
+                @chmod($tmp, 0600);
+                if (!@rename($tmp, $file)) {
+                    @unlink($tmp);
+                    @file_put_contents($file, $entry, LOCK_EX);
+                }
+            } else {
+                @file_put_contents($file, $entry, LOCK_EX);
+            }
+            @chmod($file, 0600);
+        } finally {
+            @flock($gate, LOCK_UN);
+            @fclose($gate);
+        }
+    }
+
+    public static function rx_cron_auth_valid(string $file, string $token): bool
+    {
+        if ($token === '' || !is_readable($file)) {
+            return false;
+        }
+        $hash = hash('sha256', $token);
+        foreach ((array) preg_split('/\R/', trim((string) @file_get_contents($file))) as $line) {
+            $parts = explode('|', trim((string) $line), 2);
+            if (count($parts) !== 2) {
+                continue;
+            }
+            $issuedAt = (int) $parts[1];
+            $expected = trim((string) $parts[0]);
+            if ($expected !== '' && $issuedAt > 0 && abs(time() - $issuedAt) <= 120 && hash_equals($expected, $hash)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static function rx_cron_verify_web_access(): void
     {
         if (PHP_SAPI === 'cli') {
@@ -132,18 +192,7 @@ final class CronRuntime
         $rxCronAuthFile = dirname((dirname(__DIR__, 3) . '/cronbot')) . '/cron/.cron_internal_auth';
         $rxCronToken = isset($_SERVER['HTTP_X_CRON_TOKEN']) ? trim((string) $_SERVER['HTTP_X_CRON_TOKEN']) : '';
         $rxCronSource = isset($_SERVER['HTTP_X_CRON_SOURCE']) ? trim((string) $_SERVER['HTTP_X_CRON_SOURCE']) : '';
-        $rxCronAuthValid = false;
-        if ($rxCronToken !== '' && $rxCronSource === 'cron-orchestrator' && is_readable($rxCronAuthFile)) {
-            $rxCronAuthData = trim((string) @file_get_contents($rxCronAuthFile));
-            $rxCronAuthParts = explode('|', $rxCronAuthData, 2);
-            if (count($rxCronAuthParts) === 2) {
-                $rxCronExpectedHash = trim((string) $rxCronAuthParts[0]);
-                $rxCronIssuedAt = (int) $rxCronAuthParts[1];
-                if ($rxCronExpectedHash !== '' && $rxCronIssuedAt > 0 && abs(time() - $rxCronIssuedAt) <= 120) {
-                    $rxCronAuthValid = hash_equals($rxCronExpectedHash, hash('sha256', $rxCronToken));
-                }
-            }
-        }
+        $rxCronAuthValid = $rxCronSource === 'cron-orchestrator' && self::rx_cron_auth_valid($rxCronAuthFile, $rxCronToken);
         if (!$rxCronAuthValid) {
             http_response_code(403);
             exit('Cron request is not authorized');

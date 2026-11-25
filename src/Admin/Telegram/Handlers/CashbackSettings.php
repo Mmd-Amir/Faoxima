@@ -280,6 +280,7 @@ final class CashbackSettings
                 'trnado' => $trnado,
                 'tonpay' => $tonpay,
                 'rialit' => $rialit,
+                'tetraminator' => \Faoxima\Admin\Telegram\Handlers\TetraminatorSettings::menuKeyboard(),
                 'blupal' => $blupal,
                 'abangateway' => $abangateway,
                 'cubepay' => $cubepay,

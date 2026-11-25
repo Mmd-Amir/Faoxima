@@ -91,6 +91,7 @@ final class PendingInvoices
             'iranpay2'    => 'Currency Rial 2',
             'tonpay'      => 'tonpay',
             'rialit'      => 'rialit',
+            'tetraminator' => 'tetraminator',
             'blupal'      => 'blupal',
             'atlaspay'    => 'atlaspay',
             'cubepay'     => 'cubepay',
@@ -107,6 +108,9 @@ final class PendingInvoices
         if ($paymentMethod === 'rialit') {
             return 1440;
         }
+        if ($paymentMethod === 'tetraminator') {
+            return 1440;
+        }
         return 30;
     }
 
@@ -116,7 +120,7 @@ final class PendingInvoices
         if (!($pdo instanceof PDO)) {
             return;
         }
-        if ($paymentMethod === 'rialit') {
+        if ($paymentMethod === 'rialit' || $paymentMethod === 'tetraminator') {
             return;
         }
         try {
@@ -208,7 +212,7 @@ final class PendingInvoices
             return false;
         }
 
-        if ($paymentMethod === 'rialit') {
+        if ($paymentMethod === 'rialit' || $paymentMethod === 'tetraminator') {
             return false;
         }
 
@@ -285,6 +289,7 @@ final class PendingInvoices
             'iranpay2'    => 'ایران‌پی',
             'tonpay'      => 'تون‌پی',
             'rialit'      => '💚 ریالیت',
+            'tetraminator' => '💎 تترامیناتور',
             'blupal'      => 'بلوپال',
             'atlaspay'    => 'اطلس‌پی',
             'cubepay'     => 'کیوب‌پی',

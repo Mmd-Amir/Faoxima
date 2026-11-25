@@ -50,6 +50,28 @@ abstract class BaseHandler
     }
 
 
+    protected function enforceSingleActiveInvoice(): void
+    {
+        $pdo = \Faoxima\Api\Runtime\Db::pdo();
+        $userId = (int) ($this->user['id'] ?? 0);
+        if ($userId <= 0 || !\Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::holdUserLock($pdo, $userId, 5)) {
+            \Faoxima\Api\Runtime\Response::fail(409, \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_paymentinit_pending_request_exists', '⏳ یک درخواست پرداخت در انتظار بررسی دارید. لطفاً ابتدا آن را تکمیل یا لغو کنید.'));
+        }
+        $blocking = \Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::resolveBlockingInvoice($pdo, $this->setting, $userId);
+        if ($blocking === null) {
+            return;
+        }
+        $message = !empty($blocking['ambiguous'])
+            ? \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_paymentinit_tetraminator_active_unverifiable', 'وضعیت فاکتور فعال تترامیناتور شما هنوز قابل بررسی نیست. چند لحظه بعد دوباره تلاش کنید؛ تا آن زمان پرداخت جدید ایجاد نمی‌شود.')
+            : \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_paymentinit_tetraminator_active_invoice', 'شما یک فاکتور پرداخت فعال در تترامیناتور دارید. برای ایجاد پرداخت جدید، ابتدا پرداخت قبلی را تکمیل یا از آن انصراف دهید.');
+        if (!empty($blocking['lookup_failed'])) {
+            \Faoxima\Api\Runtime\Response::fail(409, $message);
+        }
+        $payload = \Faoxima\Payments\Gateways\Tetraminator\PaymentOrders::activeInvoicePayload($blocking);
+        $payload['message'] = $message;
+        \Faoxima\Api\Runtime\Response::ok($payload, $message);
+    }
+
     protected function diag(string $channel, string $step, array $ctx = []): void
     {
         try {

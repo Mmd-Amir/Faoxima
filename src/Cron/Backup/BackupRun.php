@@ -27,17 +27,7 @@ final class BackupRun
         $authFile = $root . '/cron/.cron_internal_auth';
         $token = isset($_SERVER['HTTP_X_CRON_TOKEN']) ? trim((string) $_SERVER['HTTP_X_CRON_TOKEN']) : '';
         $source = isset($_SERVER['HTTP_X_CRON_SOURCE']) ? trim((string) $_SERVER['HTTP_X_CRON_SOURCE']) : '';
-        $valid = false;
-        if ($token !== '' && $source === 'cron-orchestrator' && is_readable($authFile)) {
-            $parts = explode('|', trim((string) @file_get_contents($authFile)), 2);
-            if (count($parts) === 2) {
-                $expectedHash = trim((string) $parts[0]);
-                $issuedAt = (int) $parts[1];
-                if ($expectedHash !== '' && $issuedAt > 0 && abs(time() - $issuedAt) <= 120) {
-                    $valid = hash_equals($expectedHash, hash('sha256', $token));
-                }
-            }
-        }
+        $valid = $source === 'cron-orchestrator' && \Faoxima\Cron\Runtime\CronRuntime::rx_cron_auth_valid($authFile, $token);
         if (!$valid) {
             http_response_code(403);
             exit('Backup request is not authorized');
@@ -61,6 +51,7 @@ final class BackupRun
         $fh = @fopen($lockFile, 'c');
         if ($fh === false) {
             if (is_file($lockFile) && (time() - (int) @filemtime($lockFile)) < 600) {
+                TaskState::rx_cron_task_defer('backup_lock_busy', 30);
                 exit;
             }
             @file_put_contents($lockFile, getmypid() . '|' . date('Y-m-d H:i:s'));
@@ -71,6 +62,7 @@ final class BackupRun
         }
         if (!@flock($fh, LOCK_EX | LOCK_NB)) {
             @fclose($fh);
+            TaskState::rx_cron_task_defer('backup_lock_busy', 30);
             exit;
         }
         @ftruncate($fh, 0);
@@ -157,11 +149,16 @@ final class BackupRun
 
     private function perform(): void
     {
-        if ($this->deliveryBacklogBlocksNewDump()) {
+        BackupRuntime::rxBackupDeliveryProcess($this->pdo, $this->setting, $this->reportThread, $this->deadline);
+        if ($this->occurrenceAlreadyHandled()) {
+            $this->settle('backup_occurrence_handled');
             return;
         }
-        if ($this->occurrenceAlreadyHandled()) {
-            TaskState::rx_cron_task_complete('backup_occurrence_handled');
+        if ($this->refreshThrottled()) {
+            BackupRuntime::logMessage('INFO', 'Backup delivery is rate-limited; keeping the pending archive instead of exporting again', [
+                'occurrence' => $this->occurrence,
+            ]);
+            $this->settle('backup_refresh_throttled');
             return;
         }
         $workDir = $this->runtimeDir . DIRECTORY_SEPARATOR . 'work-' . bin2hex(random_bytes(12));
@@ -195,33 +192,65 @@ final class BackupRun
         }
     }
 
-    private function deliveryBacklogBlocksNewDump(): bool
+    private function refreshThrottled(): bool
     {
-        $pdo = $this->pdo;
-        $stats = BackupRuntime::rxBackupDeliveryProcess($pdo, $this->setting, $this->reportThread, $this->deadline);
-        $sentBefore = (int) ($stats['sent'] ?? 0);
-        $open = 0;
         try {
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM cron_backup_delivery WHERE state IN ('pending','sending')");
-            $stmt->execute();
-            $open = (int) $stmt->fetchColumn();
+            $now = time();
+            $stmt = $this->pdo->prepare("SELECT 1 FROM cron_backup_delivery WHERE state = 'pending' AND next_attempt_at > ? AND created_at > FROM_UNIXTIME(?) LIMIT 1");
+            $stmt->execute([$now, $now - 300]);
+            return $stmt->fetchColumn() !== false;
         } catch (Throwable $e) {
-            $open = 0;
-        }
-        if (!($open > 0 || $sentBefore > 0)) {
             return false;
         }
-        BackupRuntime::logMessage('INFO', 'Backup delivery is still pending; skipping new dump to avoid backlog', [
-            'open' => $open,
-            'stats' => $stats,
-        ]);
-        if ($open > 0) {
-            $next = (int) $pdo->query("SELECT MIN(next_attempt_at) FROM cron_backup_delivery WHERE state = 'pending'")->fetchColumn();
-            TaskState::rx_cron_task_defer('backup_delivery_pending', max(60, $next - time()));
-        } else {
-            TaskState::rx_cron_task_complete('backup_delivery_processed');
+    }
+
+    private function settle(string $message): void
+    {
+        $next = 0;
+        try {
+            $next = (int) $this->pdo->query("SELECT MIN(next_attempt_at) FROM cron_backup_delivery WHERE state = 'pending' AND attempts < 5")->fetchColumn();
+        } catch (Throwable $e) {
+            $next = 0;
         }
-        return true;
+        if ($next > 0 && $this->retryFitsBeforeNextSlot($next)) {
+            TaskState::rx_cron_task_defer('backup_delivery_pending', max(60, min(900, $next - time())));
+            return;
+        }
+        TaskState::rx_cron_task_complete($message);
+    }
+
+    private function retryFitsBeforeNextSlot(int $retryAt): bool
+    {
+        try {
+            $schedules = \Faoxima\Core\Cron\Schedules::loadCronSchedules();
+            $interval = \Faoxima\Core\Cron\Schedules::rx_cron_schedule_interval_seconds($schedules['backupbot'] ?? ['unit' => 'hour', 'value' => 5]);
+        } catch (Throwable $e) {
+            return false;
+        }
+        return $interval > 0 && $retryAt + 60 < $this->occurrence + $interval;
+    }
+
+    private function supersedeOlder(int $newId): void
+    {
+        try {
+            $stmt = $this->pdo->prepare("SELECT id, state, file_path FROM cron_backup_delivery WHERE id < ? AND file_path <> '' AND state IN ('pending','uncertain','failed') ORDER BY id ASC LIMIT 50");
+            $stmt->execute([$newId]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $update = $this->pdo->prepare("UPDATE cron_backup_delivery SET last_error = CASE WHEN state = 'failed' THEN last_error ELSE 'superseded_by_newer_backup' END, state = CASE WHEN state = 'failed' THEN 'failed' ELSE 'superseded' END, file_path = '', next_attempt_at = 0, updated_at = NOW() WHERE id = ? AND state = ? AND file_path = ?");
+            $runtimeDir = realpath($this->runtimeDir);
+            foreach ($rows as $row) {
+                $path = (string) ($row['file_path'] ?? '');
+                $update->execute([(int) $row['id'], (string) $row['state'], $path]);
+                if ($update->rowCount() !== 1) {
+                    continue;
+                }
+                if ($runtimeDir !== false && is_file($path) && preg_match('/^backup-[0-9]+-[a-f0-9]+\.zip$/', basename($path)) && realpath(dirname($path)) === $runtimeDir) {
+                    @unlink($path);
+                }
+            }
+        } catch (Throwable $e) {
+            BackupRuntime::logException($e, ['function' => 'backup_supersede_older']);
+        }
     }
 
     private function occurrenceAlreadyHandled(): bool
@@ -310,9 +339,10 @@ final class BackupRun
             }
             $insert = $this->pdo->prepare("INSERT INTO cron_backup_delivery (occurrence, state, attempts, next_attempt_at, file_path, chat_id, thread_id, created_at, updated_at) VALUES (?, 'pending', 0, ?, ?, ?, ?, FROM_UNIXTIME(?), FROM_UNIXTIME(?))");
             $now = time();
+            $hold = (int) $this->pdo->query("SELECT COALESCE(MAX(next_attempt_at), 0) FROM cron_backup_delivery WHERE state = 'pending'")->fetchColumn();
             $insert->execute([
                 $this->occurrence,
-                $now,
+                max($now, $hold),
                 $persistentZip,
                 (string) ($this->setting['Channel_Report'] ?? ''),
                 $this->reportThread,
@@ -322,6 +352,9 @@ final class BackupRun
             $id = (int) $this->pdo->lastInsertId();
         } catch (Throwable $e) {
             BackupRuntime::logException($e, ['function' => 'backup_delivery_insert']);
+        }
+        if ($id > 0) {
+            $this->supersedeOlder($id);
         }
         return $id;
     }
@@ -347,8 +380,8 @@ final class BackupRun
         ]);
         if ($ok) {
             TaskState::rx_cron_task_complete('backup_delivered');
-        } elseif ($state === 'pending') {
-            TaskState::rx_cron_task_defer('backup_delivery_pending', 900);
+        } elseif ($state === 'pending' || $state === 'busy') {
+            $this->settle('backup_delivery_queued');
         } elseif ($state === 'uncertain' && $deliveryId > 0) {
             TaskState::rx_cron_task_complete('backup_retained_for_delivery_review');
         } elseif ($state === 'uncertain') {

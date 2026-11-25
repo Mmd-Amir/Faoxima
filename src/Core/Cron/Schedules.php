@@ -34,6 +34,7 @@ final class Schedules
             'tronadocheck' => ['script' => 'tronadocheck.php', 'admin_label' => 'پولر ترونادو', 'instruction' => '🔷 بازیابی وضعیت پرداخت‌های ترونادو — %s', 'default' => ['unit' => 'minute', 'value' => 1]],
             'tonpaycheck' => ['script' => 'tonpaycheck.php', 'admin_label' => 'پولر تون‌پی', 'instruction' => '💠 بررسی پرداخت‌های تون‌پی — %s', 'default' => ['unit' => 'minute', 'value' => 1]],
             'rialitcheck' => ['script' => 'rialitcheck.php', 'admin_label' => 'پولر ریالیت', 'instruction' => '💚 بررسی پرداخت‌های ریالیت — %s', 'default' => ['unit' => 'minute', 'value' => 2]],
+            'tetraminatorcheck' => ['script' => 'tetraminatorcheck.php', 'admin_label' => 'پولر تترامیناتور', 'instruction' => '💎 بررسی پرداخت‌های تترامیناتور — %s', 'default' => ['unit' => 'minute', 'value' => 2]],
             'remnawave_usage' => ['script' => 'remnawave_usage.php', 'admin_label' => 'مصرف رمن‌ویو', 'instruction' => '📊 بررسی مصرف کاربران رمن‌ویو — %s', 'default' => ['unit' => 'minute', 'value' => 15]],
             'logs_cleanup' => ['script' => 'logs_cleanup.php', 'admin_label' => 'پاکسازی لاگ API', 'instruction' => '🧹 پاکسازی لاگ‌های قدیمی API — %s', 'default' => ['unit' => 'day', 'value' => 7]],
             'pin_expire' => ['script' => 'pin_expire.php', 'admin_label' => 'انقضای پین پیام', 'instruction' => '📌 لغو خودکار پیام‌های پین‌شده منقضی — %s', 'default' => ['unit' => 'minute', 'value' => 5]],
@@ -501,6 +502,36 @@ final class Schedules
                         . " AND payment_Status = 'paid' AND COALESCE(direct_payment_done, 0) = 0 LIMIT 1"
                     ),
                 ]);
+            case 'tetraminatorcheck':
+                if (!defined('TETRAMINATOR_RECONCILE_SECONDS')) {
+                    return null;
+                }
+                return self::rx_cron_work_combine([
+                    static fn() => self::rx_cron_work_probe(
+                        $pdo,
+                        "SELECT 1 FROM Payment_report WHERE Payment_Method = 'tetraminator'"
+                        . " AND tetraminator_pay_id IS NOT NULL AND tetraminator_pay_id <> ''"
+                        . " AND payment_Status IN ('Unpaid','pending','waiting','expire','cancelled')"
+                        . " AND (tetraminator_local_state IS NULL OR tetraminator_local_state <> 'closed')"
+                        . " AND tetraminator_created_at >= ?"
+                        . " AND (tetraminator_last_checked_at IS NULL OR tetraminator_last_checked_at <= ?) LIMIT 1",
+                        [(int) ($now - TETRAMINATOR_RECONCILE_SECONDS), (int) ($now - TETRAMINATOR_POLL_THROTTLE_SECONDS)]
+                    ),
+                    static fn() => self::rx_cron_work_probe(
+                        $pdo,
+                        "SELECT 1 FROM Payment_report WHERE Payment_Method = 'tetraminator'"
+                        . " AND payment_Status IN ('Unpaid','pending','waiting')"
+                        . " AND tetraminator_created_at IS NOT NULL AND tetraminator_created_at < ?"
+                        . " AND (tetraminator_local_state IS NULL OR tetraminator_local_state NOT IN ('paid_verified','paid_pending_fulfillment','completed')) LIMIT 1",
+                        [(int) ($now - 1800)]
+                    ),
+                    static fn() => self::rx_cron_work_probe(
+                        $pdo,
+                        "SELECT 1 FROM Payment_report WHERE Payment_Method = 'tetraminator'"
+                        . " AND tetraminator_local_state IN ('paid_verified','paid_pending_fulfillment')"
+                        . " AND (payment_Status <> 'paid' OR COALESCE(direct_payment_done, 0) = 0) LIMIT 1"
+                    ),
+                ]);
             case 'atlaspaycheck':
                 if (!defined('ATLASPAY_CUSTOM_LATE_RECONCILE_SECONDS') || !defined('ATLASPAY_CUSTOM_CARD_RETENTION_SECONDS')
                     || !defined('RX_PAYMENT_PROCESSING_VERSION')) {
@@ -566,7 +597,7 @@ final class Schedules
                         $pdo,
                         "SELECT 1 FROM Payment_report WHERE $paymentWindow AND payment_Status = 'Unpaid'"
                         . " AND (crypto_currency IS NULL OR crypto_currency = '')"
-                        . " AND Payment_Method != 'tonpay' AND Payment_Method != 'rialit' AND time < ? LIMIT 1",
+                        . " AND Payment_Method != 'tonpay' AND Payment_Method != 'rialit' AND Payment_Method != 'tetraminator' AND time < ? LIMIT 1",
                         [$rxCutoff]
                     ),
                     static fn() => self::rx_cron_work_probe(

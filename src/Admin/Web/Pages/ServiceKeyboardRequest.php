@@ -118,6 +118,7 @@ final class ServiceKeyboardRequest
                     'iranpay2'         => '🟠 ترونادو',
                     'tonpay'           => '💠 تون‌پی',
                     'rialit'           => '💚 ریالیت',
+                    'tetraminator'     => '💎 تترامیناتور',
                     'cubepay'          => '🟦 کیوب‌پی',
                     'blupal'           => '💙 بلوپال',
                     'variza'           => '💳 واریزا',

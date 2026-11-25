@@ -165,6 +165,19 @@ final class MessageTemplates
         $d['payment_rialit_status_expired'] = self::def('msg_pay_gateways', 'ریالیت: وضعیت منقضی', "⌛ پرداخت منقضی شده است");
         $d['payment_rialit_status_canceled'] = self::def('msg_pay_gateways', 'ریالیت: وضعیت لغو', "❌ پرداخت در ریالیت لغو شده است");
         $d['payment_rialit_status_recovering_link'] = self::def('msg_pay_gateways', 'ریالیت: بازیابی لینک', "⏳ در حال بازیابی لینک پرداخت");
+        $d['payment_tetraminator_processing'] = self::def('msg_pay_gateways', 'تترامیناتور: درخواست در حال پردازش', "⏳ درخواست پرداخت شما در حال پردازش است؛ کمی بعد دوباره تلاش کنید.");
+        $d['payment_tetraminator_active_invoice_blocked'] = self::def('msg_pay_gateways', 'تترامیناتور: وجود فاکتور فعال', "شما یک فاکتور پرداخت فعال در تترامیناتور دارید. برای ایجاد پرداخت جدید، ابتدا پرداخت قبلی را تکمیل یا از آن انصراف دهید.\n\nانصراف فقط در سیستم ما ثبت می‌شود و لینک قبلی را در تترامیناتور باطل نمی‌کند.");
+        $d['payment_tetraminator_active_invoice_unverifiable'] = self::def('msg_pay_gateways', 'تترامیناتور: وضعیت فاکتور فعال قابل بررسی نیست', "وضعیت فاکتور فعال تترامیناتور شما هنوز قابل بررسی نیست. چند لحظه بعد با دکمه «بررسی وضعیت» دوباره تلاش کنید؛ تا آن زمان پرداخت جدید ایجاد نمی‌شود.");
+        $d['payment_tetraminator_gateway_disabled'] =self::def('msg_pay_gateways', 'تترامیناتور: درگاه غیرفعال', "❌ درگاه تترامیناتور در حال حاضر غیرفعال است.");
+        $d['payment_tetraminator_cancel_confirm'] = self::def('msg_pay_gateways', 'تترامیناتور: تأیید انصراف', "از این پرداخت انصراف می‌دهید؟ پس از انصراف می‌توانید پرداخت جدید بسازید. این کار لینک قبلی تترامیناتور را باطل نمی‌کند؛ اگر پرداخت قبلی بعداً تأیید شود، مبلغ سفارش به کیف پول اضافه می‌شود و سفارش قبلی اجرا نمی‌شود.");
+        $d['payment_tetraminator_choose_new_method'] = self::def('msg_pay_gateways', 'تترامیناتور: انتخاب روش پرداخت جدید', "💳 روش پرداخت جدید را انتخاب کنید:");
+        $d['payment_tetraminator_status_waiting'] = self::def('msg_pay_gateways', 'تترامیناتور: وضعیت در انتظار نتیجه', "⏳ در انتظار نتیجه");
+        $d['payment_tetraminator_status_abandoned'] = self::def('msg_pay_gateways', 'تترامیناتور: وضعیت انصراف', "🚫 از این پرداخت انصراف داده‌اید. اگر بعداً تأیید شود، مبلغ سفارش به کیف پول اضافه می‌شود.");
+        $d['payment_tetraminator_status_completed'] = self::def('msg_pay_gateways', 'تترامیناتور: وضعیت تکمیل سفارش', "✅ پرداخت و سفارش تکمیل شد");
+        $d['payment_tetraminator_status_paid_finalizing'] = self::def('msg_pay_gateways', 'تترامیناتور: وضعیت تأیید و تکمیل', "⏳ پرداخت تأیید شد؛ در حال تکمیل سفارش");
+        $d['payment_tetraminator_status_expired'] = self::def('msg_pay_gateways', 'تترامیناتور: وضعیت منقضی', "⌛ پرداخت منقضی شده است");
+        $d['payment_tetraminator_status_recovering_link'] = self::def('msg_pay_gateways', 'تترامیناتور: بازیابی لینک', "⏳ در حال ساخت لینک پرداخت");
+        $d['payment_tetraminator_status_link_expired'] = self::def('msg_pay_gateways', 'تترامیناتور: پایان مهلت ورود', "⏳ مهلت ورود به پرداخت تمام شده؛ در انتظار نتیجه");
         $d['payment_rialit_status_link_expired'] = self::def('msg_pay_gateways', 'ریالیت: پایان مهلت ورود', "⏳ مهلت ورود به پرداخت تمام شده؛ در انتظار نتیجه");
         $d['payment_atlaspay_cancel_confirm'] = self::def('msg_pay_gateways', 'اطلس‌پی: تأیید لغو تراکنش', "آیا از لغو این تراکنش اطمینان دارید؟\n\n⚠️ لغو فاکتور به‌معنی بازگشت وجه واریزشده نیست. اطلس‌پی فقط تا زمانی که هیچ پرداخت یا رسیدی برای این سفارش ثبت نشده باشد اجازه لغو می‌دهد.");
         $d['payment_atlaspay_cancel_blocked_paid'] = self::def('msg_pay_gateways', 'اطلس‌پی: لغو ممکن نیست (پرداخت‌شده)', "پرداخت شما در اطلس‌پی تأیید شده است و فاکتور قابل لغو نیست.");
@@ -174,6 +187,7 @@ final class MessageTemplates
         $d['payment_atlaspay_card_only_warning'] = self::def('msg_pay_gateways', 'اطلس‌پی: هشدار فقط کارت‌به‌کارت', "🚫 پرداخت فقط از طریق کارت‌به‌کارت مجاز است. از واریز با شماره شبا، پایا، ساتنا یا سایر روش‌های انتقال بانکی خودداری کنید.");
 
         $d['payment_rialit_late_approved_wallet'] = self::def('msg_pay_refund', 'ریالیت: تأیید پس از انصراف و شارژ کیف پول', "💚 پرداخت قبلی ریالیت شما پس از انصراف تأیید شد. مبلغ {amount} تومان به کیف پول اضافه شد؛ سفارش قبلی اجرا نشد.", $amount);
+        $d['payment_tetraminator_late_approved_wallet'] = self::def('msg_pay_refund', 'تترامیناتور: تأیید پس از انصراف و شارژ کیف پول', "💎 پرداخت قبلی تترامیناتور شما پس از انصراف تأیید شد. مبلغ {amount} تومان به کیف پول اضافه شد؛ سفارش قبلی اجرا نشد.", $amount);
         $d['payment_wallet_insufficient_credited'] = self::def('msg_pay_refund', 'کیف پول ناکافی؛ مبلغ پرداختی شارژ شد', "پرداخت شما تأیید شد، اما موجودی کیف پول برای تکمیل خرید کافی نبود. مبلغ پرداختی شما، معادل {amount} تومان، به کیف پولتان اضافه شد. لطفاً دوباره خرید کنید.", $amount);
         $d['payment_order_unfulfillable_refunded'] = self::def('msg_pay_refund', 'سفارش قابل تکمیل نیست؛ وجه بازگشت', "❌ این سفارش دیگر قابل تکمیل نیست (لغو یا قبلاً تسویه شده است). مبلغ پرداختی شما به کیف پول بازگردانده شد.");
         $d['payment_order_unfulfillable_refund_failed'] = self::def('msg_pay_refund', 'سفارش قابل تکمیل نیست؛ بازگشت وجه ناموفق', "❌ این سفارش دیگر قابل تکمیل نیست و بازگشت وجه با خطا مواجه شد؛ لطفاً با پشتیبانی در ارتباط باشید.");
@@ -305,7 +319,9 @@ final class MessageTemplates
 
         $d['payment_rialit_line_tracking'] = self::def('msg_pay_gateways', 'ریالیت: سطر کد پیگیری', "🛒 کد پیگیری: <code>{order_id}</code>", ['order_id' => 'کد پیگیری']);
         $d['payment_rialit_line_amount'] = self::def('msg_pay_gateways', 'ریالیت: سطر مبلغ سفارش', "💰 مبلغ سفارش: <b>{amount}</b> تومان", ['amount' => 'مبلغ به تومان']);
-        $d['payment_rialit_line_payer_amount'] = self::def('msg_pay_gateways', 'ریالیت: سطر مبلغ پرداختی با کارمزد', "💳 مبلغ پرداختی با کارمزد: <b>{amount}</b> تومان", ['amount' => 'مبلغ به تومان']);
+        $d['payment_tetraminator_line_tracking'] = self::def('msg_pay_gateways', 'تترامیناتور: سطر کد پیگیری', "🛒 کد پیگیری: <code>{order_id}</code>", ['order_id' => 'کد پیگیری']);
+        $d['payment_tetraminator_line_amount'] = self::def('msg_pay_gateways', 'تترامیناتور: سطر مبلغ سفارش', "💰 مبلغ سفارش: <b>{amount}</b> تومان", ['amount' => 'مبلغ به تومان']);
+        $d['payment_rialit_line_payer_amount'] =self::def('msg_pay_gateways', 'ریالیت: سطر مبلغ پرداختی با کارمزد', "💳 مبلغ پرداختی با کارمزد: <b>{amount}</b> تومان", ['amount' => 'مبلغ به تومان']);
 
         $d['payment_btn_view_details'] = self::def('msg_btn_payment', 'دکمه: مشاهده جزئیات و وضعیت', "🔍 مشاهده جزئیات و وضعیت");
         $d['payment_btn_support'] = self::def('msg_btn_payment', 'دکمه: پشتیبانی', "📞 پشتیبانی");
@@ -326,7 +342,15 @@ final class MessageTemplates
         $d['payment_btn_refund_card_short'] = self::def('msg_btn_payment', 'دکمه: ثبت کارت عودت (لیست)', "💳 ثبت کارت عودت");
         $d['payment_btn_send_receipt_remaining'] = self::def('msg_btn_payment', 'دکمه: ارسال رسید مابقی', "📤 ارسال رسید مابقی");
         $d['payment_btn_send_receipt_payment'] = self::def('msg_btn_payment', 'دکمه: ارسال رسید پرداخت', "📤 ارسال رسید پرداخت");
-        $d['payment_btn_rialit_continue'] = self::def('msg_btn_payment', 'دکمه ریالیت: ادامه پرداخت', "💳 ادامه پرداخت");
+        $d['payment_btn_tetraminator_continue'] = self::def('msg_btn_payment', 'دکمه تترامیناتور: ادامه پرداخت', "💳 ادامه پرداخت");
+        $d['payment_btn_tetraminator_check_status'] = self::def('msg_btn_payment', 'دکمه تترامیناتور: بررسی وضعیت', "🔄 بررسی وضعیت");
+        $d['payment_btn_tetraminator_cancel_new'] = self::def('msg_btn_payment', 'دکمه تترامیناتور: انصراف و پرداخت جدید', "🚫 انصراف و پرداخت جدید");
+        $d['payment_btn_tetraminator_pending_list'] = self::def('msg_btn_payment', 'دکمه تترامیناتور: تراکنش‌های در انتظار', "🔙 تراکنش‌های در انتظار");
+        $d['payment_btn_tetraminator_follow'] = self::def('msg_btn_payment', 'دکمه تترامیناتور: پیگیری سفارش', "💎 پیگیری تترامیناتور · {order_id}", ['order_id' => 'کد پیگیری']);
+        $d['payment_btn_tetraminator_confirm_abandon'] = self::def('msg_btn_payment', 'دکمه تترامیناتور: تأیید انصراف', "🚫 تأیید انصراف");
+        $d['payment_btn_tetraminator_retry'] = self::def('msg_btn_payment', 'دکمه تترامیناتور: انتخاب روش پرداخت جدید', "💳 انتخاب روش پرداخت جدید");
+        $d['payment_tetraminator_cancel_first_alert'] = self::def('msg_pay_followup', 'هشدار تترامیناتور: ابتدا انصراف دهید', "ابتدا از پرداخت قبلی انصراف دهید.");
+        $d['payment_btn_rialit_continue'] =self::def('msg_btn_payment', 'دکمه ریالیت: ادامه پرداخت', "💳 ادامه پرداخت");
         $d['payment_btn_rialit_check_status'] = self::def('msg_btn_payment', 'دکمه ریالیت: بررسی وضعیت', "🔄 بررسی وضعیت");
         $d['payment_btn_rialit_cancel_new'] = self::def('msg_btn_payment', 'دکمه ریالیت: انصراف و پرداخت جدید', "🚫 انصراف و پرداخت جدید");
         $d['payment_btn_rialit_pending_list'] = self::def('msg_btn_payment', 'دکمه ریالیت: تراکنش‌های در انتظار', "🔙 تراکنش‌های در انتظار");
@@ -479,6 +503,7 @@ final class MessageTemplates
         $d['payment_invoice_created_tonpay'] = self::def('msg_pay_invoice', 'تون‌پی: پیام ایجاد تراکنش', "✅ تراکنش شما ایجاد شد\n\n🛒 کد پیگیری:  <code>{tracking_code}</code>\n💲 مبلغ تراکنش به تومان  : <code>{amount}</code>\n\n💢 لطفا به این نکات قبل از پرداخت توجه کنید 👇\n\n🔹 تراکنش تا ۲۴ ساعت اعتبار و پس از آن در صورت پرداخت تایید نخواهد شد .\n\n✅ در صورت مشکل میتوانید با پشتیبانی در ارتباط باشید", $gwVars);
         $d['payment_invoice_created_atlaspay'] = self::def('msg_pay_invoice', 'اطلس‌پی: پیام ایجاد تراکنش', "✅ تراکنش شما ایجاد شد\n\n🛒 کد پیگیری:  <code>{tracking_code}</code>\n💲 مبلغ تراکنش به تومان  : <code>{amount}</code>\n\n💢 لطفا به این نکات قبل از پرداخت توجه کنید 👇\n\n🔹 تراکنش تا ۲۰ دقیقه اعتبار و پس از آن در صورت پرداخت تایید نخواهد شد .{receipt_block}\n\n✅ در صورت مشکل میتوانید با پشتیبانی در ارتباط باشید", $gwVars + ['receipt_block' => 'راهنمای ارسال رسید (در صورت وجود)']);
         $d['payment_invoice_created_rialit'] = self::def('msg_pay_invoice', 'ریالیت: پیام ایجاد تراکنش', "✅ تراکنش شما ایجاد شد\n\n🛒 کد پیگیری:  <code>{tracking_code}</code>\n💲 مبلغ تراکنش به تومان  : <code>{amount}</code>\n\n💢 لطفا به این نکات قبل از پرداخت توجه کنید 👇\n\n🔹 لینک پرداخت تا ۳۰ دقیقه باز است. اگر پس از پایان این مهلت، پرداخت هنوز در انتظار باشد، نتیجه از سمت ریالیت بررسی و در صورت تأیید به‌صورت خودکار اعمال می‌شود.\n\n✅ در صورت مشکل میتوانید با پشتیبانی در ارتباط باشید", $gwVars);
+        $d['payment_invoice_created_tetraminator'] = self::def('msg_pay_invoice', 'تترامیناتور: پیام ایجاد تراکنش', "✅ تراکنش شما ایجاد شد\n\n🛒 کد پیگیری:  <code>{tracking_code}</code>\n💲 مبلغ تراکنش به تومان  : <code>{amount}</code>\n\n💢 لطفا به این نکات قبل از پرداخت توجه کنید 👇\n\n🔹 لینک پرداخت تا ۶۰ دقیقه باز است. پس از پرداخت، تأیید به‌صورت خودکار انجام می‌شود و نیازی به ارسال رسید نیست.\n\n✅ در صورت مشکل میتوانید با پشتیبانی در ارتباط باشید", $gwVars);
         $cryptoGwVars = ['order_id' => 'شماره فاکتور', 'price' => 'مبلغ فاکتور به تومان', 'usd_rate' => 'قیمت دلار به تومان'];
         $d['payment_invoice_created_plisio'] = self::def('msg_pay_invoice', 'Plisio: پیام ایجاد فاکتور', "<b>💲 جهت افزایش اعتبار کیف پول خود از طریق ارز دیجیتال روی دکمه پرداخت در انتهای پیام کلیک کنید</b>\n\n⚠️ توجه:  زمان پرداخت 30 دقیقه می باشد پس از 30 دقیقه تراکنش لغو خواهد شد\n\n🌐 برخی از سایت های داخلی جهت خرید ارز دیجیتال 👇\n🔸 nikpardakht.com\n🔹 webpurse.org\n🔸 bitpin.ir\n🔹 sarmayex.com\n🔸 ok-ex.io\n🔹 nobitex.ir\n🔸 bitbarg.com\n🔹 cafearz.com\n🔸 pay98.app\n🔢 شماره فاکتور : {order_id}\n💰 مبلغ فاکتور : {price} تومان\n📊 قیمت دلار: {usd_rate} تومان تا این لحظه\n\nجهت پرداخت از دکمه زیر استفاده👇🏻", $cryptoGwVars);
         $d['payment_invoice_created_nowpayments'] = self::def('msg_pay_invoice', 'NowPayments: پیام ایجاد فاکتور', "<b>💲 جهت افزایش اعتبار کیف پول خود از طریق ارز دیجیتال روی دکمه پرداخت در انتهای پیام کلیک کنید</b>\n\n⚠️ توجه:  زمان پرداخت 30 دقیقه می باشد پس از 30 دقیقه تراکنش لغو خواهد شد\n\n🌐 برخی از سایت های داخلی جهت خرید ارز دیجیتال 👇\n🔸 nikpardakht.com\n🔹 webpurse.org\n🔸 bitpin.ir\n🔹 sarmayex.com\n🔸 ok-ex.io\n🔹 nobitex.ir\n🔸 bitbarg.com\n🔹 cafearz.com\n🔸 pay98.app\n🔢 شماره فاکتور : {order_id}\n💰 مبلغ فاکتور : {price} تومان\n📊 قیمت دلار: {usd_rate} تومان تا این لحظه\n\n<blockquote>⚠️ پس از پرداخت، در صورتی که مبلغ تراکنش به‌درستی واریز شده باشد، موجودی شما حداکثر تا ۱۵ دقیقه آینده به‌صورت خودکار شارژ خواهد شد.</blockquote>\n\nجهت پرداخت از دکمه زیر استفاده👇🏻", $cryptoGwVars);

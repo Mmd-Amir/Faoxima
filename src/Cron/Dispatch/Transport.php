@@ -26,8 +26,9 @@ final class Transport
         return null;
     }
 
-    public static function async(array $tasks, bool $useLoopback, string $authToken): array
+    public static function async(array $tasks, bool $useLoopback, string $authToken, int $timeoutMs = 4000): array
     {
+        $timeoutMs = max(300, min(4000, $timeoutMs));
         $result = ['success' => [], 'failed' => [], 'uncertain' => []];
         if (empty($tasks)) {
             return $result;
@@ -58,8 +59,8 @@ final class Transport
             $curlOpts = [
                 CURLOPT_RETURNTRANSFER  => true,
                 CURLOPT_NOSIGNAL        => true,
-                CURLOPT_CONNECTTIMEOUT_MS => 1500,
-                CURLOPT_TIMEOUT_MS      => 4000,
+                CURLOPT_CONNECTTIMEOUT_MS => min(1500, $timeoutMs),
+                CURLOPT_TIMEOUT_MS      => $timeoutMs,
                 CURLOPT_SSL_VERIFYPEER  => false,
                 CURLOPT_SSL_VERIFYHOST  => 0,
                 CURLOPT_FOLLOWLOCATION  => false,
@@ -99,7 +100,7 @@ final class Transport
             return $result;
         }
 
-        $deadline = microtime(true) + 5.0;
+        $deadline = microtime(true) + ($timeoutMs / 1000) + 1.0;
         do {
             $status = curl_multi_exec($multi, $running);
             if ($status === CURLM_OK && $running > 0) {
@@ -135,7 +136,7 @@ final class Transport
         return $result;
     }
 
-    public static function http(array $tasks, bool $useLoopback, string $authToken): array
+    public static function http(array $tasks, bool $useLoopback, string $authToken, int $timeoutMs = 4000): array
     {
         if (empty($tasks)) {
             return ['success' => [], 'failed' => [], 'uncertain' => []];
@@ -157,7 +158,33 @@ final class Transport
             }
         }
 
-        return self::async($tasks, $useLoopback, $authToken);
+        return self::async($tasks, $useLoopback, $authToken, $timeoutMs);
+    }
+
+    public static function cliDispatcher(): bool
+    {
+        if (!self::canExec()) {
+            return false;
+        }
+        $file = realpath(dirname(__DIR__, 3) . '/cron/cron.php');
+        if ($file === false || !is_file($file)) {
+            return false;
+        }
+        $phpBin = self::resolveCliPhp();
+        if ($phpBin === null) {
+            return false;
+        }
+        if (DIRECTORY_SEPARATOR === '\\') {
+            $handle = @popen('start /B cmd /C "set "RX_CRON_WAKE=1" && ' . escapeshellarg($phpBin) . ' ' . escapeshellarg($file) . '"', 'r');
+            if (is_resource($handle)) {
+                @pclose($handle);
+                return true;
+            }
+            return false;
+        }
+        $exitCode = 1;
+        @exec('RX_CRON_WAKE=1 ' . escapeshellarg($phpBin) . ' ' . escapeshellarg($file) . ' > /dev/null 2>&1 &', $unused, $exitCode);
+        return $exitCode === 0;
     }
 
     public static function canExec(): bool
@@ -257,6 +284,9 @@ final class Transport
             if ($occurrence > 0) {
                 $envParts[] = 'set "RX_CRON_OCCURRENCE=' . (int) $occurrence . '"';
             }
+            if (!$background) {
+                $envParts[] = 'set "RX_CRON_NOWAKE=1"';
+            }
             $cmd = implode(' && ', $envParts) . ' && ' . escapeshellarg($phpBin) . ' ' . escapeshellarg($file);
             if ($background) {
                 $handle = @popen('start /B cmd /C "' . $cmd . '"', 'r');
@@ -278,6 +308,9 @@ final class Transport
         }
         if ($occurrence > 0) {
             $env .= ' RX_CRON_OCCURRENCE=' . (int) $occurrence;
+        }
+        if (!$background) {
+            $env .= ' RX_CRON_NOWAKE=1';
         }
         $cmd = $env . ' ' . escapeshellarg($phpBin) . ' ' . escapeshellarg($file);
 

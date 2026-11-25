@@ -173,6 +173,7 @@ final class BotLocalization
             'iranpay3' => '',
             'tonpay' => '',
             'rialit' => '',
+            'tetraminator' => '',
             'cubepay' => '',
             'blupal' => '',
             'variza' => '',
@@ -203,7 +204,7 @@ final class BotLocalization
     public static function renderStart(
         PDO $pdo, array &$datatextbot, array $user, $from_id, $username,
         $first_name, $last_name, $version,
-    ): ?array {
+    ): void {
         $time_Start = jdate('Y/m/d');
         $date_start = jdate('H:i:s', time());
         $time_string = "📆 $date_start → ⏰ $time_Start";
@@ -235,7 +236,6 @@ final class BotLocalization
             '{time_now}' => $date_start,
         ];
         // Only count orders/payments when the start template actually uses them.
-        $rxDiagStartBeforeRaw = $datatextbot['text_start'];
         if (strpos($datatextbot['text_start'], '{order_count}') !== false) {
             $startOrderStmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE id_user = :id_user AND name_product != 'سرویس تست' AND status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold')");
             $startOrderStmt->execute([':id_user' => $from_id]);
@@ -247,23 +247,5 @@ final class BotLocalization
             $varable_start['{payment_count}'] = (int) $startPaymentStmt->fetchColumn();
         }
         $datatextbot['text_start'] = strtr($datatextbot['text_start'], $varable_start);
-        if (isset($rxDiagStartBeforeRaw) && method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_text') && method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_structure')) {
-            $rxDiagStartRich = isset($datatextbot['richmsg.text_start']) ? (string) $datatextbot['richmsg.text_start'] : '';
-            return [
-                'text_raw' => $datatextbot['text_start'],
-                'text_before_raw' => $rxDiagStartBeforeRaw,
-                'structure_raw' => $rxDiagStartRich,
-                'selection' => [
-                    'template_key' => 'text_start',
-                    'template_source' => 'textbot_row',
-                    'rich_structure_key' => 'richmsg.text_start',
-                    'rich_structure_present' => trim($rxDiagStartRich) !== '',
-                    'render_input' => 'textbot_text_html',
-                    'parse_mode' => 'html',
-                    'send_call' => 'rx_send_banner_message',
-                ],
-            ];
-        }
-        return null;
     }
 }

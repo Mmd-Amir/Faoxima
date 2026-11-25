@@ -123,7 +123,7 @@ final class Conversations
             ?? \Faoxima\Telegram\Routing\ConversationRoutes::recharge($user, $datain, $photoid, $rwPickMatch, $rccPick);
         $telegramHandler = match ($telegramRoute) {
             'trial' => 'TrialProvisioning',
-            'tonpay_list', 'rialit_action', 'rialit_view', 'atlaspay_action', 'tonpay_action', 'tonpay_receipt', 'tonpay_refund', 'checkout_wallet' => 'PaymentFollowup',
+            'tonpay_list', 'rialit_action', 'rialit_view', 'tetraminator_action', 'tetraminator_view', 'atlaspay_action', 'tonpay_action', 'tonpay_receipt', 'tonpay_refund', 'checkout_wallet' => 'PaymentFollowup',
             'help_menu', 'help_category', 'help_topic' => 'Help',
             'support_menu', 'ticket_list', 'ticket_new', 'ticket_department', 'ticket_cancel', 'ticket_subject', 'ticket_subject_invalid', 'ticket_text_only', 'ticket_media_choice', 'ticket_media_count', 'ticket_media_invalid', 'ticket_collect', 'ticket_submit', 'ticket_body_invalid', 'ticket_open', 'ticket_reply', 'ticket_album', 'ticket_close' => 'Tickets',
             'miniapp_pending', 'faq' => 'MiniAppPending',

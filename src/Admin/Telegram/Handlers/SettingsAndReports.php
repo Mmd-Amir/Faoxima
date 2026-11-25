@@ -254,6 +254,7 @@ final class SettingsAndReports
                 'Currency Rial 3' => $datatextbot['iranpay1'] ?? 'Currency Rial 3',
                 'tonpay' => $datatextbot['tonpay'] ?? 'tonpay',
                 'rialit' => $datatextbot['rialit'] ?? 'rialit',
+                'tetraminator' => $datatextbot['tetraminator'] ?? 'tetraminator',
                 'cubepay' => $datatextbot['cubepay'] ?? 'cubepay',
                 'blupal' => $datatextbot['blupal'] ?? 'blupal',
                 'abangateway' => $datatextbot['abangateway'] ?? 'abangateway',

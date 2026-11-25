@@ -152,7 +152,6 @@ final class UserOnboarding
                 [\Faoxima\Telegram\Media\SectionMedia::class, 'rx_send_banner_message'],
                 'telegram',
                 function_exists('removeReplyKeyboardOnStartIfNeeded') ? 'removeReplyKeyboardOnStartIfNeeded' : null,
-                method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_traceSend') ? [\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_traceSend'] : null,
             );
             return null;
         }
@@ -241,13 +240,7 @@ final class UserOnboarding
                         \Faoxima\Core\Database\Db::update("user", "joinchannel", "active", "id", $from_id);
                         $user['joinchannel'] = "active";
                         deletemessage($from_id, $message_id);
-                        if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_traceSend')) {
-                            \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_traceSend('text_start', static function () use ($from_id, $datatextbot, $keyboard) {
-                                return \Faoxima\Telegram\Media\SectionMedia::rx_send_banner_message($from_id, 'start', $datatextbot['text_start'], $keyboard, 'html');
-                            });
-                        } else {
-                            \Faoxima\Telegram\Media\SectionMedia::rx_send_banner_message($from_id, 'start', $datatextbot['text_start'], $keyboard, 'html');
-                        }
+                        \Faoxima\Telegram\Media\SectionMedia::rx_send_banner_message($from_id, 'start', $datatextbot['text_start'], $keyboard, 'html');
                         telegram('answerCallbackQuery', [
                             'callback_query_id' => $callback_query_id,
                             'text' => $textbotlang['users']['channel']['confirmed'],
