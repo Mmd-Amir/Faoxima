@@ -260,6 +260,11 @@ final class ServiceActionHandler extends \Faoxima\Api\Handlers\BaseHandler
         }
 
 
+        \Faoxima\Services\Fulfillment\Purchase::persistProvisionedUserInfo(
+            \Faoxima\Api\Runtime\Db::pdo(), (string) $invoice['id_invoice'], ['username' => $svcUsername] + $result, true
+        );
+        \Faoxima\Core\Cache\RedisCache::rx_redis_del('faoxima:panelcache:' . $panelName . ':' . $svcUsername);
+        $panel = \Faoxima\Services\Delivery\ServiceDelivery::rxPurchaseDeliveryPanel($panel, $result['subscription_url'] ?? '');
         $newSubLink = '';
         if (($panel['sublink'] ?? '') === 'onsublink') {
             $newSubLink = (string)($result['subscription_url'] ?? '');

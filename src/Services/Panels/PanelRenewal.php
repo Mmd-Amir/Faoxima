@@ -408,9 +408,25 @@ trait PanelRenewal
                 'error' => $error,
             ));
         };
-        if ($ownLock && !\Faoxima\Services\Renewal\ReservationStore::lockAcquire($pdo, $serviceKey, $opId)) {
-            $rxLogFail('apply_lock', 'renewal_in_progress', 'none');
-            return array('status' => false, 'code' => 'renewal_in_progress', 'no_mutation' => true, 'operation_id' => $opId, 'msg' => 'another renewal operation is running for this service');
+        if ($ownLock) {
+            $rxLock = \Faoxima\Services\Renewal\ReservationStore::lockAcquireResult($pdo, $serviceKey, $opId);
+            if (empty($rxLock['ok'])) {
+                $rxLockReason = (string) ($rxLock['reason'] ?? 'lock_unavailable');
+                $rxLockContended = !empty($rxLock['contended']) && $rxLockReason === 'lock_contended';
+                $rxLockCode = $rxLockContended
+                    ? 'renewal_in_progress'
+                    : ($rxLockReason === 'schema_unavailable' ? 'renewal_schema_unavailable' : 'renewal_lock_unavailable');
+                $rxLogFail('apply_lock', $rxLockCode, 'none', $rxLockReason);
+                return array(
+                    'status' => false,
+                    'code' => $rxLockCode,
+                    'no_mutation' => true,
+                    'operation_id' => $opId,
+                    'msg' => $rxLockContended
+                        ? 'another renewal operation is running for this service'
+                        : ($rxLockReason === 'schema_unavailable' ? 'renewal schema is not ready' : 'renewal lock storage is unavailable')
+                );
+            }
         }
         try {
             if ($ownLock && in_array($source, ['wallet', 'miniapp'], true)) {

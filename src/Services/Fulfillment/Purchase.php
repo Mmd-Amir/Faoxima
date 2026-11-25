@@ -109,6 +109,36 @@ final class Purchase
         return $statement->execute([$status, $invoice, $userId]) && $statement->rowCount() === 1;
     }
 
+    public static function persistProvisionedUserInfo(PDO $pdo, string $invoice, array $remote, bool $replace = false): bool
+    {
+        if ($invoice === '' || empty($remote['username'])) {
+            return false;
+        }
+        $encoded = json_encode($remote, JSON_UNESCAPED_UNICODE);
+        if ($encoded === false || strlen($encoded) > 65535) {
+            $encoded = json_encode(array_intersect_key($remote, array_flip(['username', 'subscription_url'])), JSON_INVALID_UTF8_SUBSTITUTE);
+            if ($encoded === false || strlen($encoded) > 65535) {
+                return false;
+            }
+        }
+        try {
+            $find = $pdo->prepare('SELECT user_info FROM invoice WHERE id_invoice = ? LIMIT 1');
+            $find->execute([$invoice]);
+            $current = $find->fetchColumn();
+            if (!$replace && is_string($current) && trim($current) !== '') {
+                $decoded = json_decode($current, true);
+                if (is_array($decoded) && ($decoded['username'] ?? null) === $remote['username']
+                    && trim((string) ($decoded['subscription_url'] ?? '')) !== '') {
+                    return true;
+                }
+            }
+            $update = $pdo->prepare('UPDATE invoice SET user_info = ? WHERE id_invoice = ?');
+            return $update->execute([$encoded, $invoice]);
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
     public static function settleWalletStock(PDO $pdo, string $userId, string $invoice, array $panel, array $product, string $mode): ?array
     {
         if ($pdo->inTransaction() || !Inventory::nmStockEnsureSchema($pdo)) {
@@ -690,6 +720,11 @@ final class Purchase
         if ($rxCompletion !== 'completed') {
             return \Faoxima\Payments\Fulfillment\Settlement::completionOutcome($pdo, $order_id, $rxToken, $rxCompletion);
         }
+        if (!empty($get_invoice['id_invoice']) && ($marzban_list_get['type'] ?? '') !== 'Manualsale') {
+            self::persistProvisionedUserInfo($pdo, (string) $get_invoice['id_invoice'], $dataoutput);
+            \Faoxima\Services\Delivery\AutoFileQueue::enqueue($pdo, $marzban_list_get,
+                (string) $get_invoice['id_invoice'], (string) $get_invoice['id_user']);
+        }
         $Shoppinginfo = json_encode([
             'inline_keyboard' => [
                 [
@@ -705,7 +740,8 @@ final class Purchase
                 $config .= "\n" . $link;
             }
         }
-        $output_config_link = $marzban_list_get['sublink'] == "onsublink" ? \Faoxima\Services\Delivery\ServiceDelivery::rxResolveConnectionLink($marzban_list_get, $dataoutput['subscription_url'], $dataoutput['file_ext'] ?? null) : "";
+        $deliveryPanel = \Faoxima\Services\Delivery\ServiceDelivery::rxPurchaseDeliveryPanel($marzban_list_get, $dataoutput['subscription_url'] ?? '');
+        $output_config_link = $deliveryPanel['sublink'] == "onsublink" ? \Faoxima\Services\Delivery\ServiceDelivery::rxResolveConnectionLink($deliveryPanel, $dataoutput['subscription_url'], $dataoutput['file_ext'] ?? null) : "";
         $rxAfterPayTpl = $marzban_list_get['type'] == "Manualsale" ? $datatextbot['textmanual'] : $datatextbot['textafterpay'];
         $rxAfterPayTpl = $marzban_list_get['type'] == "WGDashboard" ? $datatextbot['text_wgdashboard'] : $rxAfterPayTpl;
         if (intval($get_invoice['Service_time']) == 0)
@@ -725,7 +761,7 @@ final class Purchase
             $textcreatuser = str_replace('{password}', $dataoutput['subscription_url'], $textcreatuser);
             \Faoxima\Core\Database\Db::update("invoice", "user_info", $dataoutput['subscription_url'], "id_invoice", $get_invoice['id_invoice']);
         }
-        \Faoxima\Services\Delivery\ServiceDelivery::sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $get_invoice['id_invoice'], $get_invoice['id_user'], $image, true);
+        \Faoxima\Services\Delivery\ServiceDelivery::sendMessageService($deliveryPanel, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $get_invoice['id_invoice'], $get_invoice['id_user'], $image);
         $partsdic = explode("_", $Balance_id['Processing_value_four']);
         if ($partsdic[0] == "dis") {
             $__discountUseLegacy = true;

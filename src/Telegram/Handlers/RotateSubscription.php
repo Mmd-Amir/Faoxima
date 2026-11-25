@@ -79,6 +79,14 @@ final class RotateSubscription
                 sendmessage($from_id, \Faoxima\Telegram\Support\MessageTemplates::get('service_link_change_failed'), null, 'HTML');
                 return;
             }
+            $pdo = $GLOBALS['pdo'] ?? null;
+            if ($pdo instanceof \PDO && is_array($DataUserOut)) {
+                \Faoxima\Services\Fulfillment\Purchase::persistProvisionedUserInfo(
+                    $pdo, (string) $nameloc['id_invoice'], ['username' => $nameloc['username']] + $DataUserOut, true
+                );
+                \Faoxima\Core\Cache\RedisCache::rx_redis_del('faoxima:panelcache:' . $nameloc['Service_location'] . ':' . $nameloc['username']);
+            }
+            $marzban_list_get = \Faoxima\Services\Delivery\ServiceDelivery::rxPurchaseDeliveryPanel($marzban_list_get, $DataUserOut['subscription_url'] ?? '');
             $textconfig = "✅ کانفیگ شما با موفقیت بروزرسانی گردید.";
             if ($marzban_list_get['sublink'] == "onsublink") {
                 $output_config_link = $DataUserOut['subscription_url'];

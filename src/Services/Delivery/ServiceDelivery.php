@@ -41,6 +41,36 @@ final class ServiceDelivery
         return (string) $subscriptionLink;
     }
 
+    public static function rxPurchaseDeliveryPanel(array $panel, $subscriptionLink): array
+    {
+        if (($panel['type'] ?? '') !== 'Manualsale' && ($panel['auto_file'] ?? '') === 'onautofile'
+            && self::rxValidSubscriptionUrl($subscriptionLink)) {
+            $panel['sublink'] = 'onsublink';
+        }
+        return $panel;
+    }
+
+    public static function rxValidSubscriptionUrl($link): bool
+    {
+        return is_string($link) && filter_var($link, FILTER_VALIDATE_URL) !== false
+            && in_array(strtolower((string) parse_url($link, PHP_URL_SCHEME)), ['https', 'http'], true);
+    }
+
+    public static function rxSavedSubscriptionUrl(array $invoice, array $panel): string
+    {
+        if (!in_array($invoice['Status'] ?? '', ['active', 'sendedwarn', 'send_on_hold'], true)
+            || ($panel['type'] ?? '') === 'Manualsale'
+            || ($panel['national_net_status'] ?? '') === 'on_national_net') {
+            return '';
+        }
+        $saved = json_decode((string) ($invoice['user_info'] ?? ''), true);
+        $link = $saved['subscription_url'] ?? '';
+        if (!self::rxValidSubscriptionUrl($link) || ($saved['username'] ?? null) !== ($invoice['username'] ?? null)) {
+            return '';
+        }
+        return self::rxShouldShowConnectionLink(self::rxPurchaseDeliveryPanel($panel, $link)) ? $link : '';
+    }
+
     public static function rxServiceListStatusSuffix(array $invoice): string
     {
         return in_array(strtolower((string) ($invoice['Status'] ?? '')), ['disabled', 'disablebyadmin'], true) ? ' | غیرفعال' : '';
@@ -651,18 +681,24 @@ final class ServiceDelivery
         return [trim($caption) === '' ? 'skipped' : 'not_attempted', 0];
     }
 
-    public static function rxAutoFileCaptionMark($invoiceId, $fileKey, string $documentStatus, string $caption, string $state, int $cursor): bool
+    public static function rxAutoFileCaptionMark($invoiceId, $fileKey, string $documentStatus, string $caption, string $state, int $cursor, ?PDO $pdo = null): bool
     {
-        return \Faoxima\Services\Fulfillment\DeliveryState::autoFileDeliveryMark($invoiceId, $fileKey, $documentStatus, 'caption_v1 ' . $state . ' ' . $cursor . ' ' . hash('sha256', $caption));
+        if (!($pdo instanceof PDO)) {
+            $pdo = $GLOBALS['pdo'] ?? null;
+        }
+        return \Faoxima\Services\Fulfillment\DeliveryState::autoFileDeliveryMark($pdo, $invoiceId, $fileKey, $documentStatus, 'caption_v1 ' . $state . ' ' . $cursor . ' ' . hash('sha256', $caption));
     }
 
-    public static function rxAutoFileFinish($userId, $invoiceId, $fileKey, string $documentStatus, string $caption, string $captionState, int $cursor, ?bool $captionValid, string $source, $result, ?array &$detail): string
+    public static function rxAutoFileFinish($userId, $invoiceId, $fileKey, string $documentStatus, string $caption, string $captionState, int $cursor, ?bool $captionValid, string $source, $result, ?array &$detail, ?PDO $pdo = null): string
     {
+        if (!($pdo instanceof PDO)) {
+            $pdo = $GLOBALS['pdo'] ?? null;
+        }
         $textResult = null;
         if (in_array($documentStatus, ['sent', 'failed'], true) && trim($caption) !== ''
             && in_array($captionState, ['not_attempted', 'failed'], true)) {
-            $checkpoint = static function (string $state, int $next) use ($invoiceId, $fileKey, $documentStatus, $caption): bool {
-                return self::rxAutoFileCaptionMark($invoiceId, $fileKey, $documentStatus, $caption, $state, $next);
+            $checkpoint = static function (string $state, int $next) use ($invoiceId, $fileKey, $documentStatus, $caption, $pdo): bool {
+                return self::rxAutoFileCaptionMark($invoiceId, $fileKey, $documentStatus, $caption, $state, $next, $pdo);
             };
             $text = rxSendRequiredMediaText(['chat_id' => $userId], $caption, null, $cursor, $checkpoint);
             $captionState = $text['state'];
@@ -682,7 +718,7 @@ final class ServiceDelivery
         $detail = \Faoxima\Services\Fulfillment\DeliveryState::deliveryComponentContext($components);
         $status = $detail['delivery_status'];
         $detail += [
-            'state' => $status === 'completed' ? 'sent' : ($status === 'unknown' ? 'unknown' : 'failed'),
+            'state' => $status === 'completed' ? 'sent' : ($documentStatus === 'retry' ? 'retry' : ($status === 'unknown' ? 'unknown' : 'failed')),
             'caption_required' => $captionRequired,
             'caption_valid' => $captionValid,
             'caption_complete' => !$captionRequired || $captionState === 'confirmed',
@@ -690,20 +726,32 @@ final class ServiceDelivery
             'caption_delivery_state' => $captionState,
             'caption_fallback_reason' => $source === 'separate_text' ? 'separate_caption_text' : null,
         ];
+        if ($documentStatus === 'retry' && $status !== 'completed') {
+            $detail['delivery_status'] = 'retry';
+        }
         return $detail['state'];
     }
 
-    public static function rxAutoFileSendDocument($user_id, $invoice_id, $file_key, $path, $public_name, $caption, ?array &$deliveryDetail = null, array $row = [])
+    public static function rxAutoFileLogFailure($invoiceId, $fileKey, string $stage, string $category): void
     {
+        error_log('rxAutoFileDelivery invoice=' . substr((string) $invoiceId, 0, 191) . ' file=' . substr((string) $fileKey, 0, 64) . ' stage=' . $stage . ' category=' . $category);
+    }
+
+    public static function rxAutoFileSendDocument($user_id, $invoice_id, $file_key, $path, $public_name, $caption, ?array &$deliveryDetail = null, array $row = [], ?PDO $pdo = null)
+    {
+        if (!($pdo instanceof PDO)) {
+            $pdo = $GLOBALS['pdo'] ?? null;
+        }
         $caption = (string) $caption;
         [$captionState, $cursor] = self::rxAutoFileCaptionProgress($row, $caption);
         $documentStatus = (string) ($row['status'] ?? '');
-        if (in_array($documentStatus, ['sent', 'unknown'], true)) {
-            return self::rxAutoFileFinish($user_id, $invoice_id, $file_key, $documentStatus, $caption, $captionState, $cursor, null, 'stored_state', null, $deliveryDetail);
+        if (in_array($documentStatus, ['sent', 'unknown', 'failed'], true)) {
+            return self::rxAutoFileFinish($user_id, $invoice_id, $file_key, $documentStatus, $caption, $captionState, $cursor, null, 'stored_state', null, $deliveryDetail, $pdo);
         }
         if (!is_file($path) || !is_readable($path)) {
-            self::rxAutoFileCaptionMark($invoice_id, $file_key, 'failed', $caption, $captionState, $cursor);
-            return self::rxAutoFileFinish($user_id, $invoice_id, $file_key, 'failed', $caption, $captionState, $cursor, null, 'none', null, $deliveryDetail);
+            self::rxAutoFileCaptionMark($invoice_id, $file_key, 'retry', $caption, $captionState, $cursor, $pdo);
+            self::rxAutoFileLogFailure($invoice_id, $file_key, 'prepare_document', 'retry');
+            return self::rxAutoFileFinish($user_id, $invoice_id, $file_key, 'retry', $caption, $captionState, $cursor, null, 'none', null, $deliveryDetail, $pdo);
         }
         $safeCaption = self::rxPrepareSafeMediaCaption($caption);
         $attach = $safeCaption !== null && $captionState === 'not_attempted' && $cursor === 0;
@@ -718,8 +766,9 @@ final class ServiceDelivery
         $documentStatus = 'unknown';
         for ($attempt = 0; $attempt < 2; $attempt++) {
             $pendingCaption = $attach ? 'unknown' : $captionState;
-            if (!self::rxAutoFileCaptionMark($invoice_id, $file_key, 'unknown', $caption, $pendingCaption, $cursor)) {
+            if (!self::rxAutoFileCaptionMark($invoice_id, $file_key, 'unknown', $caption, $pendingCaption, $cursor, $pdo)) {
                 $captionState = $pendingCaption;
+                self::rxAutoFileLogFailure($invoice_id, $file_key, 'persist_state', 'unknown');
                 break;
             }
             try {
@@ -729,18 +778,28 @@ final class ServiceDelivery
                 $documentState = \Faoxima\Services\Fulfillment\DeliveryState::deliveryResultState($result);
             } catch (Throwable $e) {
                 $documentState = 'unknown';
+                $result = null;
             }
-            $documentStatus = $documentState === 'confirmed' ? 'sent' : $documentState;
-            if ($attach && $documentState !== 'failed') {
+            $failureKind = $documentState === 'confirmed' ? 'none' : \Faoxima\Services\Fulfillment\DeliveryState::deliveryFailureKind($result);
+            $documentStatus = $documentState === 'confirmed' ? 'sent' : ($failureKind === 'retry' ? 'retry' : ($failureKind === 'permanent' ? 'failed' : 'unknown'));
+            if ($documentStatus !== 'sent') {
+                self::rxAutoFileLogFailure($invoice_id, $file_key, 'send_document', $documentStatus);
+            }
+            if ($attach && $documentState !== 'failed' && $failureKind !== 'retry') {
                 $captionState = $documentState;
             }
-            if (!self::rxAutoFileCaptionMark($invoice_id, $file_key, $documentStatus, $caption, $captionState, $cursor)) {
+            if (!self::rxAutoFileCaptionMark($invoice_id, $file_key, $documentStatus, $caption, $captionState, $cursor, $pdo)) {
                 $deliveryDetail = \Faoxima\Services\Fulfillment\DeliveryState::deliveryComponentContext([
                     'document' => ['required' => true, 'state' => $documentState],
                     'caption' => ['required' => trim($caption) !== '', 'state' => $captionState],
                     'persistence' => ['required' => true, 'state' => 'unknown'],
                 ]);
+                self::rxAutoFileLogFailure($invoice_id, $file_key, 'persist_state', 'unknown');
                 return 'unknown';
+            }
+            $retryAfter = $documentStatus === 'retry' && is_array($result) ? (int) ($result['parameters']['retry_after'] ?? 0) : 0;
+            if ($retryAfter > 0) {
+                throw new AutoFileRateLimit($retryAfter);
             }
             if (!$attach || !rxMediaCaptionRejected($result)) {
                 break;
@@ -749,18 +808,21 @@ final class ServiceDelivery
             $payload['caption'] = '';
             $documentStatus = 'unknown';
         }
-        return self::rxAutoFileFinish($user_id, $invoice_id, $file_key, $documentStatus, $caption, $captionState, $cursor, $safeCaption !== null, $attach ? 'document_caption' : 'none', $result, $deliveryDetail);
+        return self::rxAutoFileFinish($user_id, $invoice_id, $file_key, $documentStatus, $caption, $captionState, $cursor, $safeCaption !== null, $attach ? 'document_caption' : 'none', $result, $deliveryDetail, $pdo);
     }
 
-    public static function rxAutoFileSendContent($user_id, $invoice_id, $file_key, $content, $public_name, $caption, ?array &$deliveryDetail = null, array $row = [])
+    public static function rxAutoFileSendContent($user_id, $invoice_id, $file_key, $content, $public_name, $caption, ?array &$deliveryDetail = null, array $row = [], ?PDO $pdo = null)
     {
-        if (in_array($row['status'] ?? '', ['sent', 'unknown'], true)) {
-            return self::rxAutoFileSendDocument($user_id, $invoice_id, $file_key, '', $public_name, $caption, $deliveryDetail, $row);
+        if (!($pdo instanceof PDO)) {
+            $pdo = $GLOBALS['pdo'] ?? null;
+        }
+        if (in_array($row['status'] ?? '', ['sent', 'unknown', 'failed'], true)) {
+            return self::rxAutoFileSendDocument($user_id, $invoice_id, $file_key, '', $public_name, $caption, $deliveryDetail, $row, $pdo);
         }
         $temp = self::rxAutoFileTempPath($public_name);
         try {
             $path = file_put_contents($temp, (string) $content) === false ? '' : $temp;
-            return self::rxAutoFileSendDocument($user_id, $invoice_id, $file_key, $path, $public_name, $caption, $deliveryDetail, $row);
+            return self::rxAutoFileSendDocument($user_id, $invoice_id, $file_key, $path, $public_name, $caption, $deliveryDetail, $row, $pdo);
         } finally {
             @unlink($temp);
         }
@@ -768,6 +830,9 @@ final class ServiceDelivery
 
     public static function rxAutoFileRecord(array &$summary, string $status, array $detail = []): void
     {
+        if (!isset($summary[$status])) {
+            $summary[$status] = 0;
+        }
         $summary[$status]++;
         $summary['total']++;
         $summary['file_states'][] = [
@@ -777,7 +842,7 @@ final class ServiceDelivery
             'caption_chunks_state' => $detail['caption_chunks_state'] ?? 'not_attempted',
             'delivery_status' => $detail['delivery_status'] ?? ($status === 'sent' ? 'completed' : $status),
         ];
-        $summary['ok'] = $summary['failed'] === 0 && $summary['unknown'] === 0;
+        $summary['ok'] = $summary['failed'] === 0 && $summary['unknown'] === 0 && ($summary['retry'] ?? 0) === 0;
     }
 
     public static function rxAutoFileIncludeUnresolved(array $summary, array $state, array $handled): array
@@ -785,26 +850,28 @@ final class ServiceDelivery
         foreach (array_diff_key($state, $handled) as $row) {
             $status = $row['status'] ?? '';
             $captionPending = preg_match('/^caption_v1 (?:not_attempted|failed|unknown) |(?:^| )caption=(?:failed|unknown) source=/', (string) ($row['detail'] ?? '')) === 1;
-            if ($status !== 'unknown' && !$captionPending) {
+            if (!in_array($status, ['unknown', 'retry', 'failed'], true) && !$captionPending) {
                 continue;
             }
-            self::rxAutoFileRecord($summary, 'unknown', [
+            self::rxAutoFileRecord($summary, $status === 'retry' ? 'retry' : ($status === 'failed' ? 'failed' : 'unknown'), [
                 'document_state' => $status === 'sent' ? 'confirmed' : $status,
                 'caption_state' => $captionPending ? 'unknown' : 'not_attempted',
                 'caption_required' => $captionPending,
-                'delivery_status' => 'unknown',
+                'delivery_status' => $status === 'retry' ? 'retry' : ($status === 'failed' ? 'failed' : 'unknown'),
             ]);
         }
         return $summary;
     }
 
-    public static function rxAutoDeliverPurchaseFiles($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id)
+    public static function rxAutoDeliverPurchaseFiles($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id, ?PDO $pdo = null)
     {
-        $empty = ['ok' => true, 'sent' => 0, 'failed' => 0, 'unknown' => 0, 'skipped' => 0, 'total' => 0];
+        $empty = ['ok' => true, 'sent' => 0, 'retry' => 0, 'failed' => 0, 'unknown' => 0, 'skipped' => 0, 'total' => 0];
         $panel = self::rxAutoFilePanelRow($panel_info);
         if (!self::rxPanelAutoFileEnabled($panel) || ($panel['type'] ?? '') === 'Manualsale') return $empty;
         if (trim((string) $invoice_id) === '' || trim((string) $user_id) === '') return $empty;
-        $pdo = $GLOBALS['pdo'] ?? null;
+        if (!($pdo instanceof PDO)) {
+            $pdo = $GLOBALS['pdo'] ?? null;
+        }
         if (!($pdo instanceof PDO)) throw new RuntimeException('Automatic file delivery database is unavailable');
         $lock = 'rxauto:' . substr(hash('sha256', (string) ($GLOBALS['dbname'] ?? '') . '|' . (string) $invoice_id), 0, 56);
         $stmt = $pdo->prepare('SELECT GET_LOCK(?, 0)');
@@ -816,7 +883,7 @@ final class ServiceDelivery
             return $empty;
         }
         try {
-            return self::rxAutoDeliverPurchaseFilesUnlocked($panel, $config, $sub_link, $username_service, $user_id, $invoice_id);
+            return self::rxAutoDeliverPurchaseFilesUnlocked($panel, $config, $sub_link, $username_service, $user_id, $invoice_id, $pdo);
         } finally {
             try {
                 $release = $pdo->prepare('SELECT RELEASE_LOCK(?)');
@@ -828,10 +895,10 @@ final class ServiceDelivery
         }
     }
 
-    public static function rxAutoDeliverPurchaseFilesUnlocked($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id)
+    public static function rxAutoDeliverPurchaseFilesUnlocked($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id, ?PDO $pdo = null)
     {
         global $ManagePanel;
-        $result = ['ok' => true, 'sent' => 0, 'failed' => 0, 'unknown' => 0, 'skipped' => 0, 'total' => 0];
+        $result = ['ok' => true, 'sent' => 0, 'retry' => 0, 'failed' => 0, 'unknown' => 0, 'skipped' => 0, 'total' => 0];
         $panel = self::rxAutoFilePanelRow($panel_info);
         if (!self::rxPanelAutoFileEnabled($panel)) {
             return $result;
@@ -845,20 +912,28 @@ final class ServiceDelivery
         if ((string) ($panel['type'] ?? '') === 'Manualsale') {
             return $result;
         }
+        if (!($pdo instanceof PDO)) {
+            $pdo = $GLOBALS['pdo'] ?? null;
+        }
+        if (!($pdo instanceof PDO)) {
+            $result['ok'] = false;
+            $result['unknown'] = 1;
+            return $result;
+        }
         $autoManager = is_object($ManagePanel) ? $ManagePanel : (class_exists('ManagePanel') ? new ManagePanel() : null);
-        $state = \Faoxima\Services\Fulfillment\DeliveryState::autoFileDeliveryState($invoice_id);
+        $state = \Faoxima\Services\Fulfillment\DeliveryState::autoFileDeliveryState($pdo, $invoice_id);
         if ((string) ($panel['type'] ?? '') === 'jovadpanel') {
             if (!method_exists(\Faoxima\Services\Panels\Drivers\JovadPanel::class, 'jovadpanelAutoDeliverFiles')) {
                 return self::rxAutoFileIncludeUnresolved($result, $state, []);
             }
             $fileStates = [];
             $handled = [];
-            $deliver = static function ($fileKey, $path, $name, $caption) use ($state, $invoice_id, $user_id, &$fileStates, &$handled) {
+            $deliver = static function ($fileKey, $path, $name, $caption) use ($state, $invoice_id, $user_id, &$fileStates, &$handled, $pdo) {
                 $row = $state[$fileKey] ?? [];
-                if ($path === null && !in_array($row['status'] ?? '', ['sent', 'unknown'], true)) {
+                if ($path === null && !in_array($row['status'] ?? '', ['sent', 'unknown', 'failed'], true)) {
                     return null;
                 }
-                $status = self::rxAutoFileSendDocument($user_id, $invoice_id, $fileKey, $path ?? '', $name, $caption, $detail, $row);
+                $status = self::rxAutoFileSendDocument($user_id, $invoice_id, $fileKey, $path ?? '', $name, $caption, $detail, $row, $pdo);
                 $handled[$fileKey] = true;
                 $fileStates[] = $detail;
                 return $status;
@@ -882,7 +957,7 @@ final class ServiceDelivery
             $key = method_exists(\Faoxima\Services\Delivery\FileNaming::class, 'rxFileNamingKeySubscription') ? \Faoxima\Services\Delivery\FileNaming::rxFileNamingKeySubscription($panel['inboundid'] ?? '') : '';
             $resolved = self::rxAutoFileResolveNaming($panel, 'wgdashboard', $key, $defaultName, '');
             $fileKey = self::rxAutoFileKey('wgdashboard', $content);
-            $status = self::rxAutoFileSendContent($user_id, $invoice_id, $fileKey, $content, $resolved['filename'], $resolved['caption'], $detail, $state[$fileKey] ?? []);
+            $status = self::rxAutoFileSendContent($user_id, $invoice_id, $fileKey, $content, $resolved['filename'], $resolved['caption'], $detail, $state[$fileKey] ?? [], $pdo);
             self::rxAutoFileRecord($result, $status, $detail);
             return self::rxAutoFileIncludeUnresolved($result, $state, [$fileKey => true]);
         }
@@ -1012,15 +1087,15 @@ final class ServiceDelivery
                     }
                     $deliveredKeys[$fileKey] = true;
                     $row = $state[$fileKey] ?? [];
-                    if (in_array($row['status'] ?? '', ['sent', 'unknown'], true)) {
-                        $status = self::rxAutoFileSendDocument($user_id, $invoice_id, $fileKey, '', $resolved['filename'], $resolved['caption'], $detail, $row);
+                    if (in_array($row['status'] ?? '', ['sent', 'unknown', 'failed'], true)) {
+                        $status = self::rxAutoFileSendDocument($user_id, $invoice_id, $fileKey, '', $resolved['filename'], $resolved['caption'], $detail, $row, $pdo);
                         self::rxAutoFileRecord($result, $status, $detail);
                         continue;
                     }
                     $temp = self::rxAutoFileTempPath($resolved['filename']);
                     try {
                         $downloaded = \Faoxima\Services\Panels\Drivers\Rebecca::rebeccaDownloadConfigFile($rebeccaInfo['url'], $temp);
-                        $status = self::rxAutoFileSendDocument($user_id, $invoice_id, $fileKey, $downloaded ? $temp : '', $resolved['filename'], $resolved['caption'], $detail, $row);
+                        $status = self::rxAutoFileSendDocument($user_id, $invoice_id, $fileKey, $downloaded ? $temp : '', $resolved['filename'], $resolved['caption'], $detail, $row, $pdo);
                         self::rxAutoFileRecord($result, $status, $detail);
                     } finally {
                         @unlink($temp);
@@ -1049,19 +1124,19 @@ final class ServiceDelivery
                 continue;
             }
             $deliveredKeys[$fileKey] = true;
-            $status = self::rxAutoFileSendContent($user_id, $invoice_id, $fileKey, $content, $publicName, $caption, $detail, $state[$fileKey] ?? []);
+            $status = self::rxAutoFileSendContent($user_id, $invoice_id, $fileKey, $content, $publicName, $caption, $detail, $state[$fileKey] ?? [], $pdo);
             self::rxAutoFileRecord($result, $status, $detail);
         }
         return self::rxAutoFileIncludeUnresolved($result, $state, $deliveredKeys);
     }
 
-    public static function rxAutoDeliverPurchaseFilesSafe($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id)
+    public static function rxAutoDeliverPurchaseFilesSafe($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id, ?PDO $pdo = null)
     {
         try {
-            $summary = self::rxAutoDeliverPurchaseFiles($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id);
+            $summary = self::rxAutoDeliverPurchaseFiles($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id, $pdo);
         } catch (Throwable $e) {
             error_log('rxAutoDeliverPurchaseFiles failed: ' . get_class($e));
-            $summary = ['ok' => false, 'sent' => 0, 'failed' => 0, 'unknown' => 0, 'skipped' => 0, 'total' => 0];
+            $summary = ['ok' => false, 'sent' => 0, 'retry' => 0, 'failed' => 0, 'unknown' => 0, 'skipped' => 0, 'total' => 0];
         }
         $confirmed = (int) $summary['sent'];
         foreach ($summary['file_states'] ?? [] as $file) {
@@ -1069,8 +1144,19 @@ final class ServiceDelivery
                 $confirmed++;
             }
         }
+        $hasRetry = (int) ($summary['retry'] ?? 0) > 0;
         $summary['delivery_status'] = $summary['ok'] ? 'completed'
-            : ($summary['unknown'] > 0 || $summary['failed'] === 0 ? 'unknown' : ($confirmed > 0 ? 'partial' : 'failed'));
+            : (($summary['unknown'] ?? 0) > 0 || $hasRetry || ($summary['failed'] ?? 0) === 0 ? 'unknown' : ($confirmed > 0 ? 'partial' : 'failed'));
+        $rxNotifyUser = trim((string) $user_id);
+        if ($rxNotifyUser !== '' && in_array((string) $summary['delivery_status'], ['failed', 'partial', 'unknown'], true)) {
+            try {
+                $rxNoticeKey = in_array((string) $summary['delivery_status'], ['failed', 'partial'], true)
+                    ? 'service_files_incomplete_contact_support'
+                    : 'service_files_pending_retry';
+                sendmessage($rxNotifyUser, \Faoxima\Telegram\Support\MessageTemplates::get($rxNoticeKey), null, 'HTML');
+            } catch (Throwable $e) {
+            }
+        }
         return $summary;
     }
 
@@ -1175,22 +1261,25 @@ final class ServiceDelivery
             $deliveryResult = ['ok' => $deliveryStatus === 'completed', 'status' => $deliveryStatus];
         };
         $rxAutoFilesAttempt = static function () use ($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id, &$rxSetDelivery, &$rxAutoFilesSummary): void {
-            $rxAutoFilesSummary = ['ok' => false, 'sent' => 0, 'failed' => 0, 'unknown' => 0, 'skipped' => 0, 'total' => 0, 'delivery_status' => 'unknown', 'state' => 'unknown', 'counts' => []];
+            $rxAutoFilesSummary = ['ok' => false, 'sent' => 0, 'retry' => 0, 'failed' => 0, 'unknown' => 0, 'skipped' => 0, 'total' => 0, 'delivery_status' => 'unknown', 'state' => 'unknown', 'counts' => []];
             if (!method_exists(\Faoxima\Services\Delivery\ServiceDelivery::class, 'rxAutoDeliverPurchaseFilesSafe')) {
                 $rxAutoFilesSummary['delivery_status'] = 'skipped';
                 $rxAutoFilesSummary['state'] = 'skipped';
                 $rxSetDelivery('files', 'skipped', false);
                 return;
             }
-            $rxAutoFilesResult = self::rxAutoDeliverPurchaseFilesSafe($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id);
+            $rxDeliveryPdo = $GLOBALS['pdo'] ?? null;
+            $rxAutoFilesResult = self::rxAutoDeliverPurchaseFilesSafe($panel_info, $config, $sub_link, $username_service, $user_id, $invoice_id, $rxDeliveryPdo instanceof PDO ? $rxDeliveryPdo : null);
             $rxAutoFilesSummary = is_array($rxAutoFilesResult) ? $rxAutoFilesResult : [];
             $rxSent = (int) ($rxAutoFilesSummary['sent'] ?? 0);
+            $rxRetry = (int) ($rxAutoFilesSummary['retry'] ?? 0);
             $rxFailed = (int) ($rxAutoFilesSummary['failed'] ?? 0);
             $rxUnknown = (int) ($rxAutoFilesSummary['unknown'] ?? 0);
             $rxSkipped = (int) ($rxAutoFilesSummary['skipped'] ?? 0);
             $rxTotal = (int) ($rxAutoFilesSummary['total'] ?? 0);
             $rxAutoFilesSummary['counts'] = [
                 'sent' => $rxSent,
+                'retry' => $rxRetry,
                 'failed' => $rxFailed,
                 'unknown' => $rxUnknown,
                 'skipped' => $rxSkipped,
@@ -1205,13 +1294,13 @@ final class ServiceDelivery
                 if (($file['caption_chunks_state'] ?? '') === 'confirmed') {
                     $rxSetDelivery('auto_caption_chunks_' . $index, 'confirmed');
                 }
-                if (($file['delivery_status'] ?? '') === 'unknown') {
+                if (in_array(($file['delivery_status'] ?? ''), ['unknown', 'retry'], true)) {
                     $rxSetDelivery('auto_confirmation_' . $index, 'unknown');
                 }
             }
-            $unreported = $rxTotal > count($rxFileStates) || (empty($rxAutoFilesSummary['ok']) && $rxFailed + $rxUnknown === 0);
+            $unreported = $rxTotal > count($rxFileStates) || (empty($rxAutoFilesSummary['ok']) && $rxFailed + $rxUnknown + $rxRetry === 0);
             if ($unreported) {
-                $rxSetDelivery('files', $rxUnknown > 0 || $rxFailed === 0 ? 'unknown' : 'failed');
+                $rxSetDelivery('files', $rxUnknown + $rxRetry > 0 || $rxFailed === 0 ? 'unknown' : 'failed');
             }
         };
 

@@ -46,6 +46,7 @@ final class RenewalText
             'reason_panel_state_unavailable' => '⚠️ وضعیت فعلی سرویس از پنل قابل خواندن نیست؛ لطفاً چند دقیقه بعد دوباره تلاش کنید. مبلغی کسر نشد.',
             'reason_user_missing' => '❌ این سرویس در پنل یافت نشد؛ لطفاً با پشتیبانی در ارتباط باشید.',
             'reason_renewal_in_progress' => '⏳ عملیات دیگری روی این سرویس در حال انجام است؛ چند لحظه بعد دوباره تلاش کنید. مبلغی کسر نشد.',
+            'reason_renewal_lock_unavailable' => '⚠️ سامانه تمدید موقتاً در دسترس نیست؛ لطفاً چند دقیقه بعد دوباره تلاش کنید. مبلغی کسر نشد.',
             'reason_queued_exists' => '❌ یک رزرو اشتراک برای این سرویس در انتظار فعال‌سازی است. مبلغی از حساب شما کسر نشد.',
             'reason_trigger_unavailable' => '❌ زمان فعال‌سازی انتخاب‌شده برای این سرویس در دسترس نیست: {detail}',
             'reason_trigger_date_required' => '❌ برای فعال‌سازی در تاریخ مشخص، ابتدا تاریخ فعال‌سازی را تعیین کنید.',
@@ -314,6 +315,9 @@ final class RenewalText
                 return self::rxRenewalText('reason_user_missing');
             case 'renewal_in_progress':
                 return self::rxRenewalText('reason_renewal_in_progress');
+            case 'renewal_lock_unavailable':
+            case 'renewal_schema_unavailable':
+                return self::rxRenewalText('reason_renewal_lock_unavailable');
             case 'queued_renewal_exists':
                 return self::rxRenewalText('reason_queued_exists');
             case 'trigger_unavailable':

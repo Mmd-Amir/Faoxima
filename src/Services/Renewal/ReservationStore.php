@@ -3,6 +3,7 @@
 namespace Faoxima\Services\Renewal;
 
 use PDO;
+use RuntimeException;
 use Throwable;
 
 final class ReservationStore
@@ -74,6 +75,131 @@ final class ReservationStore
         ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci";
     }
 
+    public static function identifierColumns(): array
+    {
+        return [
+            'renewal_lock' => 'owner',
+            'renewal_operation' => 'op_id',
+        ];
+    }
+
+    public static function identifierColumnWidth(array $column): ?int
+    {
+        $type = strtolower(trim((string) ($column['Type'] ?? '')));
+        if (!preg_match('/^(?:var)?char\((\d+)\)$/', $type, $matches)) {
+            return null;
+        }
+        return (int) $matches[1];
+    }
+
+    public static function identifierColumnDefinition(array $column): string
+    {
+        $collation = (string) ($column['Collation'] ?? '');
+        if (preg_match('/\A[a-zA-Z0-9_]+\z/', $collation) !== 1) {
+            throw new RuntimeException('column collation is unavailable or invalid');
+        }
+        return 'VARCHAR(' . max(128, self::identifierColumnWidth($column) ?? 128) . ') COLLATE ' . $collation . ' NOT NULL';
+    }
+
+    public static function identifierColumnProblem(string $table, string $column, array $row): ?string
+    {
+        $key = $table . '.' . $column;
+        if ($row === []) {
+            return $key . ' is missing';
+        }
+        $type = strtolower(trim((string) ($row['Type'] ?? '')));
+        $width = self::identifierColumnWidth($row);
+        if ($width === null) {
+            return $key . ' has an unsupported type';
+        }
+        if (strpos($type, 'varchar(') !== 0) {
+            return $key . ' must be VARCHAR';
+        }
+        if ($width < 128) {
+            return $key . ' must allow at least 128 characters';
+        }
+        if (strtoupper((string) ($row['Null'] ?? '')) !== 'NO') {
+            return $key . ' must be NOT NULL';
+        }
+        return null;
+    }
+
+    public static function identifierSchemaProblems($runtimePdo): array
+    {
+        $pdo = $runtimePdo;
+        if (!($pdo instanceof PDO)) {
+            return ['database' => 'database connection is unavailable'];
+        }
+        $problems = [];
+        foreach (self::identifierColumns() as $table => $column) {
+            $key = $table . '.' . $column;
+            try {
+                $tableStmt = $pdo->query("SHOW TABLES LIKE '{$table}'");
+                if ($tableStmt === false || $tableStmt->fetch(PDO::FETCH_NUM) === false) {
+                    $problems[$key] = $key . ': table is missing';
+                    continue;
+                }
+                $stmt = $pdo->query("SHOW FULL COLUMNS FROM `{$table}` WHERE `Field` = '{$column}'");
+                $row = $stmt !== false ? $stmt->fetch(PDO::FETCH_ASSOC) : false;
+                $problem = is_array($row) ? self::identifierColumnProblem($table, $column, $row) : $key . ' is missing';
+                if ($problem !== null) {
+                    $problems[$key] = $problem;
+                }
+            } catch (Throwable $e) {
+                $problems[$key] = $key . ': ' . $e->getMessage();
+            }
+        }
+        return $problems;
+    }
+
+    public static function ensureIdentifierColumns($runtimePdo): array
+    {
+        $pdo = $runtimePdo;
+        if (!($pdo instanceof PDO)) {
+            return ['database' => 'database connection is unavailable'];
+        }
+        $problems = [];
+        foreach (self::identifierColumns() as $table => $column) {
+            $key = $table . '.' . $column;
+            try {
+                $tableStmt = $pdo->query("SHOW TABLES LIKE '{$table}'");
+                if ($tableStmt === false || $tableStmt->fetch(PDO::FETCH_NUM) === false) {
+                    continue;
+                }
+                $stmt = $pdo->query("SHOW FULL COLUMNS FROM `{$table}` WHERE `Field` = '{$column}'");
+                $row = $stmt !== false ? $stmt->fetch(PDO::FETCH_ASSOC) : false;
+                if (!is_array($row)) {
+                    $problems[$key] = $key . ' is missing';
+                    continue;
+                }
+                if (self::identifierColumnProblem($table, $column, $row) === null) {
+                    continue;
+                }
+                if (self::identifierColumnWidth($row) === null) {
+                    $problems[$key] = $key . ' has an unsupported type';
+                    continue;
+                }
+                $collation = $row['Collation'] ?? null;
+                if ($pdo->exec("ALTER TABLE `{$table}` MODIFY COLUMN `{$column}` " . self::identifierColumnDefinition($row)) === false) {
+                    $problems[$key] = $key . ': could not widen identifier column';
+                    continue;
+                }
+                $stmt = $pdo->query("SHOW FULL COLUMNS FROM `{$table}` WHERE `Field` = '{$column}'");
+                $row = $stmt !== false ? $stmt->fetch(PDO::FETCH_ASSOC) : false;
+                $problem = is_array($row) ? self::identifierColumnProblem($table, $column, $row) : $key . ' is missing after upgrade';
+                if ($problem === null && ($row['Collation'] ?? null) !== $collation) {
+                    $problem = $key . ' collation changed during upgrade';
+                }
+                if ($problem !== null) {
+                    $problems[$key] = $problem;
+                }
+            } catch (Throwable $e) {
+                $problems[$key] = $key . ': ' . $e->getMessage();
+            }
+        }
+        return $problems;
+    }
+
     public static function ensureSchema($runtimePdo): bool
     {
         static $ready = false;
@@ -87,13 +213,13 @@ final class ReservationStore
         try {
             $pdo->exec("CREATE TABLE IF NOT EXISTS renewal_lock (
                 service_key VARCHAR(191) NOT NULL PRIMARY KEY,
-                owner CHAR(32) NOT NULL,
+                owner VARCHAR(128) NOT NULL,
                 lease_expires_at INT UNSIGNED NOT NULL,
                 updated_at INT UNSIGNED NOT NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
             $pdo->exec("CREATE TABLE IF NOT EXISTS renewal_operation (
                 id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                op_id CHAR(32) NOT NULL,
+                op_id VARCHAR(128) NOT NULL,
                 source VARCHAR(40) NOT NULL,
                 ref VARCHAR(191) NULL,
                 service_key VARCHAR(191) NOT NULL,
@@ -137,6 +263,11 @@ final class ReservationStore
                 if (!isset($opColumns[$opName])) {
                     $pdo->exec("ALTER TABLE renewal_operation ADD COLUMN {$opName} {$opDefinition}");
                 }
+            }
+            $identifierProblems = self::identifierSchemaProblems($pdo);
+            if ($identifierProblems !== []) {
+                \Faoxima\Payments\Fulfillment\PaymentPolicy::log('RENEWAL_SCHEMA_FAILED', implode('; ', $identifierProblems), ['details' => array_keys($identifierProblems)]);
+                return false;
             }
             $panelTable = $pdo->query("SHOW TABLES LIKE 'marzban_panel'");
             if ($panelTable !== false && $panelTable->fetch(PDO::FETCH_NUM) !== false) {
@@ -203,11 +334,14 @@ final class ReservationStore
         return substr($key, 0, 191);
     }
 
-    public static function lockAcquire($runtimePdo, string $serviceKey, string $owner, int $ttl = RX_RN_LOCK_SECONDS): bool
+    public static function lockAcquireResult($runtimePdo, string $serviceKey, string $owner, int $ttl = RX_RN_LOCK_SECONDS): array
     {
         $pdo = $runtimePdo;
-        if (!($pdo instanceof PDO) || !self::ensureSchema($runtimePdo)) {
-            return false;
+        if (!($pdo instanceof PDO)) {
+            return ['ok' => false, 'reason' => 'database_unavailable', 'contended' => false];
+        }
+        if (!self::ensureSchema($runtimePdo)) {
+            return ['ok' => false, 'reason' => 'schema_unavailable', 'contended' => false];
         }
         try {
             $now = time();
@@ -218,13 +352,27 @@ final class ReservationStore
                 . "updated_at = IF(owner = VALUES(owner), VALUES(updated_at), updated_at)"
             );
             $stmt->execute([$serviceKey, $owner, $now + $ttl, $now]);
-            $check = $pdo->prepare("SELECT owner FROM renewal_lock WHERE service_key = ? LIMIT 1");
+            $check = $pdo->prepare("SELECT owner, lease_expires_at FROM renewal_lock WHERE service_key = ? LIMIT 1");
             $check->execute([$serviceKey]);
-            return hash_equals((string) $check->fetchColumn(), $owner);
+            $row = $check->fetch(PDO::FETCH_ASSOC);
+            if (is_array($row) && hash_equals((string) ($row['owner'] ?? ''), $owner)) {
+                return ['ok' => true, 'reason' => 'acquired', 'contended' => false];
+            }
+            $contended = is_array($row) && (int) ($row['lease_expires_at'] ?? 0) >= $now;
+            return [
+                'ok' => false,
+                'reason' => $contended ? 'lock_contended' : 'lock_unavailable',
+                'contended' => $contended,
+            ];
         } catch (Throwable $e) {
             \Faoxima\Payments\Fulfillment\PaymentPolicy::log('RENEWAL_LOCK_FAILED', $e->getMessage(), ['service_key' => $serviceKey]);
-            return false;
+            return ['ok' => false, 'reason' => 'lock_error', 'contended' => false];
         }
+    }
+
+    public static function lockAcquire($runtimePdo, string $serviceKey, string $owner, int $ttl = RX_RN_LOCK_SECONDS): bool
+    {
+        return !empty(self::lockAcquireResult($runtimePdo, $serviceKey, $owner, $ttl)['ok']);
     }
 
     public static function lockRelease($runtimePdo, string $serviceKey, string $owner): void

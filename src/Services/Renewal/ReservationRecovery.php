@@ -94,9 +94,11 @@ final class ReservationRecovery
             return ['op_id' => $opId, 'outcome' => 'manual_review', 'reason' => 'target_missing', 'op' => $op];
         }
         $serviceKey = (string) $op['service_key'];
-        if (!\Faoxima\Services\Renewal\ReservationStore::lockAcquire($runtimePdo, $serviceKey, $opId)) {
-            \Faoxima\Services\Renewal\ReservationStore::opUpdate($runtimePdo, $opId, ['state' => 'uncertain', 'next_attempt_at' => $now + 60]);
-            return ['op_id' => $opId, 'outcome' => 'busy', 'op' => $op];
+        $rxRecoveryLock = \Faoxima\Services\Renewal\ReservationStore::lockAcquireResult($runtimePdo, $serviceKey, $opId);
+        if (empty($rxRecoveryLock['ok'])) {
+            $rxRecoveryLockReason = !empty($rxRecoveryLock['contended']) ? 'lock_contended' : 'lock_unavailable';
+            \Faoxima\Services\Renewal\ReservationStore::opUpdate($runtimePdo, $opId, ['state' => 'uncertain', 'next_attempt_at' => $now + 60, 'last_error' => $rxRecoveryLockReason]);
+            return ['op_id' => $opId, 'outcome' => 'busy', 'reason' => $rxRecoveryLockReason, 'op' => $op];
         }
         try {
             $snapshot = \Faoxima\Services\Fulfillment\ProviderState::panelSnapshot($managePanel, (string) $op['name_panel'], (string) $op['username']);

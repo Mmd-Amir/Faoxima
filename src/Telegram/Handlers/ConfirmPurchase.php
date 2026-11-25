@@ -429,8 +429,13 @@ final class ConfirmPurchase
                 \Faoxima\Telegram\Navigation\Steps::step('home', $from_id);
                 return;
             }
+            if ($pdo instanceof \PDO && ($marzban_list_get['type'] ?? '') !== 'Manualsale') {
+                \Faoxima\Services\Fulfillment\Purchase::persistProvisionedUserInfo($pdo, (string) $randomString, is_array($dataoutput) ? $dataoutput : []);
+                \Faoxima\Services\Delivery\AutoFileQueue::enqueue($pdo, $marzban_list_get, (string) $randomString, (string) $from_id);
+            }
             $output_config_link = "";
             $config = "";
+            $marzban_list_get = \Faoxima\Services\Delivery\ServiceDelivery::rxPurchaseDeliveryPanel($marzban_list_get, $dataoutput['subscription_url'] ?? '');
             $output_config_link = \Faoxima\Services\Delivery\ServiceDelivery::rxShouldShowConnectionLink($marzban_list_get, $dataoutput['file_ext'] ?? null) ? \Faoxima\Services\Delivery\ServiceDelivery::rxResolveConnectionLink($marzban_list_get, $dataoutput['subscription_url'], $dataoutput['file_ext'] ?? null) : "";
             if ($marzban_list_get['config'] == "onconfig" && is_array($dataoutput['configs'])) {
                 $rxTestTextConfigs = method_exists(\Faoxima\Services\Panels\Drivers\JovadPanel::class, 'rxDeliveryTextConfigs') ? \Faoxima\Services\Panels\Drivers\JovadPanel::rxDeliveryTextConfigs($dataoutput['configs']) : $dataoutput['configs'];
@@ -464,13 +469,9 @@ final class ConfirmPurchase
             \Faoxima\Services\Fulfillment\WalletPurchaseEffects::send($pdo, (string) $from_id, (string) $randomString, 'delivery',
                 static function () use ($marzban_list_get, $dataoutput, $output_config_link, $Shoppinginfo, $textcreatuser, $randomString, $from_id) {
                     $deliveryResult = null;
-                    $deliver = static function () use ($marzban_list_get, $dataoutput, $output_config_link, $Shoppinginfo, $textcreatuser, $randomString, &$deliveryResult) {
-                        \Faoxima\Services\Delivery\ServiceDelivery::sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'],
-                            $Shoppinginfo, $textcreatuser, $randomString, null, 'images.jpg', false, $deliveryResult);
-                    };
-                    $deliver();
-                    $files = \Faoxima\Services\Delivery\ServiceDelivery::rxAutoDeliverPurchaseFilesSafe($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $from_id, $randomString);
-                    return !empty($deliveryResult['ok']) && empty($files['failed']) && empty($files['unknown']);
+                    \Faoxima\Services\Delivery\ServiceDelivery::sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'],
+                        $Shoppinginfo, $textcreatuser, $randomString, $from_id, 'images.jpg', false, $deliveryResult);
+                    return !empty($deliveryResult['ok']);
                 }
             );
             rxEndProgressMessage($from_id, $rxProgress);

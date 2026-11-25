@@ -2985,6 +2985,7 @@ final class JovadPanel
     $sent = 0;
     $failed = 0;
     $unknown = 0;
+    $retry = 0;
     $skipped = 0;
     $deliveredHashes = [];
     $total = 0;
@@ -3053,8 +3054,9 @@ final class JovadPanel
                 }
                 $failed += (int) ($status === 'failed');
                 $unknown += (int) ($status === 'unknown');
+                $retry += (int) ($status === 'retry');
                 if ($onResult !== null) {
-                    $onResult($rxJovadFileKey, 'failed', 'configuration download failed');
+                    $onResult($rxJovadFileKey, $status, 'configuration download failed');
                 }
                 continue;
             }
@@ -3097,12 +3099,16 @@ final class JovadPanel
                 $sent++;
             } elseif ($sendStatus === 'failed') {
                 $failed++;
+            } elseif ($sendStatus === 'retry') {
+                $retry++;
             } else {
                 $unknown++;
             }
             if ($onResult !== null) {
                 $onResult($rxJovadFileKey, $sendStatus, 'document delivery ' . $sendStatus);
             }
+        } catch (\Faoxima\Services\Delivery\AutoFileRateLimit $e) {
+            throw $e;
         } catch (Throwable $e) {
             if ($attempted) {
                 $unknown++;
@@ -3118,7 +3124,7 @@ final class JovadPanel
         }
     }
     if ($sent !== $total) {
-        return ['ok' => false, 'sent' => $sent, 'failed' => $failed, 'unknown' => $unknown, 'skipped' => $skipped, 'total' => $total, 'msg' => "ارسال فایل‌ها کامل نشد ({$sent} از {$total}). برای پیگیری با پشتیبانی تماس بگیرید."];
+        return ['ok' => false, 'sent' => $sent, 'failed' => $failed, 'unknown' => $unknown, 'retry' => $retry, 'skipped' => $skipped, 'total' => $total, 'msg' => "ارسال فایل‌ها کامل نشد ({$sent} از {$total}). برای پیگیری با پشتیبانی تماس بگیرید."];
     }
     return ['ok' => true, 'sent' => $sent, 'failed' => $failed, 'unknown' => $unknown, 'skipped' => $skipped, 'total' => $total];
 }
@@ -3359,6 +3365,7 @@ final class JovadPanel
         $result['sent'] += (int) ($delivery['sent'] ?? 0);
         $result['failed'] += (int) ($delivery['failed'] ?? 0);
         $result['unknown'] += (int) ($delivery['unknown'] ?? 0);
+        $result['retry'] = (int) ($result['retry'] ?? 0) + (int) ($delivery['retry'] ?? 0);
         $result['skipped'] += (int) ($delivery['skipped'] ?? 0);
         $result['total'] += (int) ($delivery['total'] ?? 0);
         if (empty($delivery['ok'])) {

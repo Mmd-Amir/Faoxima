@@ -131,9 +131,13 @@ final class ServiceHandler extends \Faoxima\Api\Handlers\BaseHandler
 
         if ($remote === null) {
             $managePanel = new ManagePanel();
-            $remote = $clientType === 'links'
-                ? $managePanel->DataUser($invoice['Service_location'], $invoice['username'])
-                : $managePanel->DataUser($invoice['Service_location'], $invoice['username'], $clientType);
+            try {
+                $remote = $clientType === 'links'
+                    ? $managePanel->DataUser($invoice['Service_location'], $invoice['username'])
+                    : $managePanel->DataUser($invoice['Service_location'], $invoice['username'], $clientType);
+            } catch (Throwable $e) {
+                $remote = null;
+            }
 
             if (is_array($remote) && method_exists(\Faoxima\Core\Cache\RedisCache::class, 'rx_redis_is_active') && \Faoxima\Core\Cache\RedisCache::rx_redis_is_active()) {
                 $rxPanelEncoded = json_encode($remote, JSON_UNESCAPED_UNICODE);
@@ -143,7 +147,23 @@ final class ServiceHandler extends \Faoxima\Api\Handlers\BaseHandler
             }
         }
 
+        $savedLink = \Faoxima\Services\Delivery\ServiceDelivery::rxSavedSubscriptionUrl($invoice, $panel);
         if (!is_array($remote) || !array_key_exists('data_limit', $remote) || !array_key_exists('used_traffic', $remote)) {
+            $remoteStatus = is_array($remote) ? strtolower((string) ($remote['status'] ?? '')) : '';
+            if ($savedLink !== '' && !in_array($remoteStatus, ['disabled', 'expired', 'limited'], true)) {
+                return [
+                    'status' => ($invoice['Status'] ?? '') === 'send_on_hold' ? 'on_hold' : 'active',
+                    'invoice_status' => $invoice['Status'],
+                    'username' => $invoice['username'],
+                    'product_name' => $invoice['name_product'],
+                    'panel_type' => $panel['type'] ?? '',
+                    'subscription_url' => $savedLink,
+                    'service_output' => [['type' => 'link', 'value' => $savedLink]],
+                    'client_type' => 'links',
+                    'client_documents' => [],
+                    'data_stale' => true,
+                ];
+            }
             \Faoxima\Api\Runtime\Logger::userFacing('Panel returned incomplete user data', [
                 'user_id'  => $this->user['id'],
                 'panel'    => $invoice['Service_location'],
@@ -191,7 +211,9 @@ final class ServiceHandler extends \Faoxima\Api\Handlers\BaseHandler
             $remote['links'] = [];
         } else {
             try {
-                \Faoxima\Core\Database\Db::update('invoice', 'user_info', json_encode($remote, JSON_UNESCAPED_UNICODE), 'id_invoice', $invoice['id_invoice']);
+                if ($savedLink === '' || !empty($remote['subscription_url'])) {
+                    \Faoxima\Core\Database\Db::update('invoice', 'user_info', json_encode($remote, JSON_UNESCAPED_UNICODE), 'id_invoice', $invoice['id_invoice']);
+                }
             } catch (Throwable $e) {
             }
         }
@@ -205,6 +227,10 @@ final class ServiceHandler extends \Faoxima\Api\Handlers\BaseHandler
         $remainingGb = $remainingBytes / pow(1024, 3);
 
         $config = [];
+        if ($savedLink !== '' && empty($remote['subscription_url']) && in_array($remoteStatus, ['active', 'on_hold'], true)) {
+            $remote['subscription_url'] = $savedLink;
+        }
+        $panel = \Faoxima\Services\Delivery\ServiceDelivery::rxPurchaseDeliveryPanel($panel, $remote['subscription_url'] ?? '');
         $type = $panel['type'] ?? '';
         $filePrefix = trim((string)($panel['namecustom'] ?? ''));
         if (strtolower($filePrefix) === 'none' || $type !== 'WGDashboard') {

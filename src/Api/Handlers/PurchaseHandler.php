@@ -623,6 +623,12 @@ final class PurchaseHandler extends \Faoxima\Api\Handlers\BaseHandler
             \Faoxima\Api\Runtime\Response::serverError(\Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_purchase_create_user_failed_customer', 'خطایی در ساخت اشتراک رخ داده است با پشتیبانی در ارتباط باشید'));
             return;
         }
+        $fileQueued = null;
+        if (($panel['type'] ?? '') !== 'Manualsale') {
+            $purchasePdo = \Faoxima\Api\Runtime\Db::pdo();
+            \Faoxima\Services\Fulfillment\Purchase::persistProvisionedUserInfo($purchasePdo, (string) $orderId, is_array($remote) ? $remote : []);
+            $fileQueued = \Faoxima\Services\Delivery\AutoFileQueue::enqueue($purchasePdo, $panel, (string) $orderId, (string) $this->user['id']);
+        }
 
         $configList = is_array($remote['configs'] ?? null) ? $remote['configs'] : [];
         $configsText = '';
@@ -649,6 +655,7 @@ final class PurchaseHandler extends \Faoxima\Api\Handlers\BaseHandler
                 $subLink = $manualContent;
             }
         } else {
+            $panel = \Faoxima\Services\Delivery\ServiceDelivery::rxPurchaseDeliveryPanel($panel, $remote['subscription_url'] ?? '');
             $showLink = ($panel['sublink'] ?? '') === 'onsublink';
             $subLink = $showLink ? (string)($remote['subscription_url'] ?? '') : '';
         }
@@ -688,7 +695,6 @@ final class PurchaseHandler extends \Faoxima\Api\Handlers\BaseHandler
         \Faoxima\Services\Fulfillment\WalletPurchaseEffects::send(\Faoxima\Api\Runtime\Db::pdo(), (string) $this->user['id'], $orderId, 'delivery',
             function () use ($panel, $remote, $usernameAc, $orderId, $product, $serviceTime, $template, $configList, $subLink, $backgroundImage) {
                 $deliveryResult = null;
-                $fileResult = [];
                 $cardSent = $this->sendInfoCardNotification(
                     $panel,
                     $remote,
@@ -731,20 +737,11 @@ final class PurchaseHandler extends \Faoxima\Api\Handlers\BaseHandler
                         $orderId,
                         $this->user['id'],
                         $backgroundImage,
-                        true,
+                        false,
                         $deliveryResult
                     );
-                } else {
-                    $fileResult = \Faoxima\Services\Delivery\ServiceDelivery::rxAutoDeliverPurchaseFilesSafe(
-                        $panel,
-                        $configList,
-                        $subLink,
-                        trim((string) ($remote['username'] ?? '')) !== '' ? $remote['username'] : $usernameAc,
-                        $this->user['id'],
-                        $orderId
-                    );
                 }
-                return !empty($deliveryResult['ok']) || ($cardSent && empty($fileResult['failed']) && empty($fileResult['unknown']));
+                return !empty($deliveryResult['ok']) || $cardSent;
             }
         );
 
@@ -846,6 +843,9 @@ final class PurchaseHandler extends \Faoxima\Api\Handlers\BaseHandler
                 'service_output'    => $serviceOutput,
             ],
         ];
+        if ($fileQueued !== null) {
+            $payload['service']['file_delivery_status'] = $fileQueued ? 'pending' : 'unavailable';
+        }
         if (method_exists(\Faoxima\Api\Runtime\MiniApp::class, '__miniapp_emit')) {
             \Faoxima\Api\Runtime\MiniApp::__miniapp_emit(200, $payload);
         } else {

@@ -179,9 +179,11 @@ final class ReservationExecution
         if ($serviceKey === '') {
             $serviceKey = \Faoxima\Services\Renewal\ReservationStore::serviceKey($row['id_invoice'] ?? '', $row['code_panel'] ?? '', $row['username'] ?? '');
         }
-        if (!\Faoxima\Services\Renewal\ReservationStore::lockAcquire($runtimePdo, $serviceKey, $token)) {
-            self::reservationTransition($runtimePdo, $id, $token, $from, ['next_attempt_at' => $now + 60, 'last_error' => 'service_busy']);
-            return ['outcome' => 'busy', 'reason' => 'service_busy', 'row' => $row];
+        $rxReservationLock = \Faoxima\Services\Renewal\ReservationStore::lockAcquireResult($runtimePdo, $serviceKey, $token);
+        if (empty($rxReservationLock['ok'])) {
+            $rxReservationLockReason = !empty($rxReservationLock['contended']) ? 'service_busy' : 'lock_unavailable';
+            self::reservationTransition($runtimePdo, $id, $token, $from, ['next_attempt_at' => $now + 60, 'last_error' => $rxReservationLockReason]);
+            return ['outcome' => 'busy', 'reason' => $rxReservationLockReason, 'row' => $row];
         }
         try {
             return self::reservationExecute($runtimePdo, $managePanel, $row, $panel, $from, $token, $serviceKey, $now);

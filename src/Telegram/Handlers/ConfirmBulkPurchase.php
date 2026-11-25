@@ -305,11 +305,15 @@ final class ConfirmBulkPurchase
                 $stmt->bind_param("sssssssssssssss", $from_id, $randomString, $username_acc, $date, $user['Processing_value'], $info_product['name_product'], $info_product['price_product'], $info_product['Volume_constraint'], $info_product['Service_time'], $Status, $notifctions, $invoiceIpLimit, $invoiceHwidLimit, $invoiceSymbolicLimitEnabled, $invoiceSymbolicLimitUsers);
                 $stmt->execute();
                 $stmt->close();
+                if ($pdo instanceof \PDO && ($marzban_list_get['type'] ?? '') !== 'Manualsale') {
+                    \Faoxima\Services\Fulfillment\Purchase::persistProvisionedUserInfo($pdo, (string) $randomString, is_array($dataoutput) ? $dataoutput : []);
+                }
                 if (($parts[0] ?? '') === 'customvolume') {
                     \Faoxima\Orders\Pricing\ExchangePricing::fxStoreInvoiceSnapshot($randomString, \Faoxima\Orders\Pricing\CustomDuration::fx_custom_snapshot($marzban_list_get, $user['agent'], $parts[2], $parts[1], $__bulkItemCharge, null));
                 }
                 $config = "";
-                $output_config_link = \Faoxima\Services\Delivery\ServiceDelivery::rxShouldShowConnectionLink($marzban_list_get, $dataoutput['file_ext'] ?? null) ? \Faoxima\Services\Delivery\ServiceDelivery::rxResolveConnectionLink($marzban_list_get, $dataoutput['subscription_url'], $dataoutput['file_ext'] ?? null) : "";
+                $deliveryPanel = \Faoxima\Services\Delivery\ServiceDelivery::rxPurchaseDeliveryPanel($marzban_list_get, $dataoutput['subscription_url'] ?? '');
+                $output_config_link = \Faoxima\Services\Delivery\ServiceDelivery::rxShouldShowConnectionLink($deliveryPanel, $dataoutput['file_ext'] ?? null) ? \Faoxima\Services\Delivery\ServiceDelivery::rxResolveConnectionLink($deliveryPanel, $dataoutput['subscription_url'], $dataoutput['file_ext'] ?? null) : "";
                 if ($marzban_list_get['config'] == "onconfig") {
                     if (is_array($dataoutput['configs'])) {
                         $rxBulkTextConfigs = method_exists(\Faoxima\Services\Panels\Drivers\JovadPanel::class, 'rxDeliveryTextConfigs') ? \Faoxima\Services\Panels\Drivers\JovadPanel::rxDeliveryTextConfigs($dataoutput['configs']) : $dataoutput['configs'];
@@ -339,7 +343,6 @@ final class ConfirmBulkPurchase
                     $textcreatuser .= \Faoxima\Orders\Pricing\CustomDuration::fx_custom_price_text($marzban_list_get, $user['agent'], $parts[2], $parts[1], $__bulkItemCharge);
                 }
                 $textcreatuser = \Faoxima\Core\Database\Db::applyConnectionPlaceholders($textcreatuser, $output_config_link, $config);
-                \Faoxima\Services\Delivery\ServiceDelivery::sendMessageService($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
                 $rxBulkFilesPaid = (float) $__bulkItemCharge <= 0;
                 if (is_callable([\Faoxima\Wallet\Balance\Balances::class, 'charge'])) {
                     $__bulkChargeLive = \Faoxima\Wallet\Balance\Balances::charge($pdo, $from_id, (float)$__bulkItemCharge, $__bulkAllowNeg);
@@ -354,7 +357,8 @@ final class ConfirmBulkPurchase
                     \Faoxima\Core\Database\SelectCache::clearSelectCache('user');
                 }
                 if ($rxBulkFilesPaid) {
-                    \Faoxima\Services\Delivery\ServiceDelivery::rxAutoDeliverPurchaseFilesSafe($marzban_list_get, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $from_id, $randomString);
+                    \Faoxima\Services\Delivery\AutoFileQueue::enqueue($pdo, $marzban_list_get, (string) $randomString, (string) $from_id);
+                    \Faoxima\Services\Delivery\ServiceDelivery::sendMessageService($deliveryPanel, $dataoutput['configs'], $output_config_link, $dataoutput['username'], $Shoppinginfo, $textcreatuser, $randomString);
                 }
                 $__bulkChargedTotal += $__bulkItemCharge;
             }

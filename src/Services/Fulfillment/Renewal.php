@@ -224,7 +224,8 @@ final class Renewal
             if (\Faoxima\Services\Renewal\ProviderRenewal::renewalIsPending($extend)) {
                 return \Faoxima\Payments\Fulfillment\Settlement::reconcileLater($pdo, $order_id, $rxToken, 'renewal_result_unverified: ' . (string) ($extend['operation_id'] ?? '') . ' ' . (is_scalar($extend['msg'] ?? null) ? (string) $extend['msg'] : ''));
             }
-            if (($extend['code'] ?? '') === 'renewal_in_progress' || (($extend['code'] ?? '') === 'panel_read_failed' && !empty($extend['no_mutation']))) {
+            if (in_array((string) ($extend['code'] ?? ''), ['renewal_in_progress', 'renewal_lock_unavailable', 'renewal_schema_unavailable'], true)
+                || (($extend['code'] ?? '') === 'panel_read_failed' && !empty($extend['no_mutation']))) {
                 return \Faoxima\Payments\Fulfillment\Settlement::defer($pdo, $order_id, $rxToken, 'renewal_deferred: ' . (string) $extend['code']);
             }
             if (($extend['status'] ?? false) == false && empty($extend['no_mutation']) && is_array($rxBeforeState) && is_array($rxTargetState)) {

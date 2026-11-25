@@ -2971,12 +2971,22 @@ try {
     } else {
         rxSafeAddIndex($connect, "queued_renewal", "idx_queued_renewal_username_status", "username", 191);
     }
-    if (!\Faoxima\Services\Renewal\ReservationStore::ensureSchema($pdo)) {
-        error_log("[table.php] renewal schema migration failed");
-    }
-} catch (Exception $e) {
-    error_log('[panels] ' . $e->getMessage());
+} catch (Throwable $e) {
+    error_log('[table.php] queued_renewal: ' . $e->getMessage());
 }
+$rxRenewalIdentifierProblems = [];
+$rxRenewalIdentifierMigrationProblems = \Faoxima\Services\Renewal\ReservationStore::ensureIdentifierColumns($pdo);
+if ($rxRenewalIdentifierMigrationProblems !== []) {
+    error_log('[table.php] renewal identifier schema migration failed: ' . implode('; ', $rxRenewalIdentifierMigrationProblems));
+}
+if (!\Faoxima\Services\Renewal\ReservationStore::ensureSchema($pdo)) {
+    error_log('[table.php] renewal schema migration failed');
+}
+$rxRenewalIdentifierProblems = \Faoxima\Services\Renewal\ReservationStore::identifierSchemaProblems($pdo);
+if ($rxRenewalIdentifierProblems !== []) {
+    error_log('[table.php] renewal identifier schema verification failed: ' . implode('; ', $rxRenewalIdentifierProblems));
+}
+
 try {
     $result = $connect->query("SHOW TABLES LIKE 'card_number'");
     $table_exists = ($result->num_rows > 0);
@@ -4100,6 +4110,22 @@ try {
     file_put_contents('error_log', '[table.php auto file delivery table] ' . $e->getMessage() . "\n", FILE_APPEND);
 }
 
+$pdo->exec("CREATE TABLE IF NOT EXISTS auto_file_delivery_queue (
+    id_invoice VARCHAR(200) NOT NULL PRIMARY KEY,
+    id_user VARCHAR(191) NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'pending',
+    attempts INT UNSIGNED NOT NULL DEFAULT 0,
+    next_attempt_at INT UNSIGNED NOT NULL,
+    blocked_until INT UNSIGNED NOT NULL DEFAULT 0,
+    KEY idx_afdq_due (status, next_attempt_at),
+    KEY idx_afdq_blocked (blocked_until)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+$pdo->exec("INSERT INTO auto_file_delivery_queue (id_invoice, id_user, next_attempt_at)
+    SELECT DISTINCT i.id_invoice, i.id_user, UNIX_TIMESTAMP()
+    FROM auto_file_delivery f JOIN invoice i ON i.id_invoice = f.id_invoice
+    WHERE f.status = 'retry' AND i.Status IN ('active', 'sendedwarn', 'send_on_hold')
+    ON DUPLICATE KEY UPDATE next_attempt_at = auto_file_delivery_queue.next_attempt_at");
+
 try {
     $connect->query("DELETE FROM textbot WHERE id_text IN ('miniapp_suggest_2','miniapp_suggest_3','miniapp_suggest_4')");
 } catch (Exception $e) {}
@@ -4264,5 +4290,9 @@ try {
 
 if (!empty($rxWalletSchemaError)) {
     throw new RuntimeException('wallet_ledger upgrade failed: ' . $rxWalletSchemaError);
+}
+
+if ($rxRenewalIdentifierProblems !== []) {
+    throw new RuntimeException('renewal identifier upgrade failed: ' . implode('; ', $rxRenewalIdentifierProblems));
 }
 

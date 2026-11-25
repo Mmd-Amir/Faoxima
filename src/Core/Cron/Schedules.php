@@ -41,6 +41,7 @@ final class Schedules
             'notification_expire' => ['script' => 'notification_expire.php', 'admin_label' => 'انقضای اعلان مینی‌اپ', 'instruction' => '🔔 حذف خودکار اعلان منقضی مینی‌اپ — %s', 'default' => ['unit' => 'minute', 'value' => 5]],
             'ip_block_notify' => ['script' => 'ip_block_notify.php', 'admin_label' => 'اطلاع مسدودشدن IP', 'instruction' => '📶 اطلاع‌رسانی مسدودشدن IP قبلی — %s', 'default' => ['unit' => 'minute', 'value' => 1]],
             'public_log_drain' => ['script' => 'public_log_drain.php', 'admin_label' => 'گزارش عمومی', 'instruction' => '📣 تخلیه صف گزارش عمومی خرید — %s', 'default' => ['unit' => 'minute', 'value' => 1]],
+            'auto_file_delivery' => ['script' => 'auto_file_delivery.php', 'admin_label' => 'ارسال فایل خرید', 'instruction' => '📎 ارسال فایل خریدهای ثبت‌شده — %s', 'default' => ['unit' => 'minute', 'value' => 1]],
             'queued_renewal' => ['script' => 'QueuedRenewalProcessor.php', 'admin_label' => 'رزرو اشتراک', 'instruction' => '🔋 بررسی و فعال‌سازی رزروهای اشتراک — %s', 'default' => ['unit' => 'minute', 'value' => 5]],
             'fx_rate_sync' => ['script' => 'fx_rate_sync.php', 'admin_label' => 'نرخ دلار (USDT)', 'instruction' => '💵 به‌روزرسانی نرخ USDT/IRT — %s', 'default' => ['unit' => 'minute', 'value' => 5]],
             'xui_inbound_sync' => ['script' => 'xui_inbound_sync.php', 'admin_label' => 'همگام‌سازی 3x-ui', 'instruction' => '🔄 همگام‌سازی اینباندهای کلاینت‌ها با کلاینت مرجع — %s', 'default' => ['unit' => 'minute', 'value' => 2]],
@@ -648,6 +649,13 @@ final class Schedules
                     $pdo,
                     "SELECT 1 FROM PublicLog_Queue WHERE (sent_at IS NULL AND attempts < 5)"
                     . " OR (sent_at IS NOT NULL AND sent_at < (NOW() - INTERVAL 3 DAY)) LIMIT 1"
+                );
+            case 'auto_file_delivery':
+                return self::rx_cron_work_probe(
+                    $pdo,
+                    "SELECT 1 FROM auto_file_delivery_queue WHERE status = 'pending' AND next_attempt_at <= ? LIMIT 1",
+                    [(int) $now],
+                    'auto_file_delivery_queue'
                 );
             case 'xui_inbound_sync':
                 return self::rx_cron_work_probe(

@@ -30,7 +30,7 @@ final class ProviderRenewal
     {
         $code = is_array($extend) ? (string) ($extend['code'] ?? '') : '';
         if (in_array($code, ['panel_policy_unsupported', 'panel_credit_suspended'], true)) return true;
-        return in_array($code, ['admin_blocked', 'pending_unsupported', 'result_not_usable', 'invalid_purchase', 'unknown_renewal_method', 'unsupported_renewal_method', 'unknown_policy', 'panel_state_unavailable', 'panel_read_failed', 'user_missing', 'renewal_in_progress', 'queued_renewal_exists', 'trigger_unavailable', 'trigger_date_required', 'trigger_date_invalid', 'trigger_date_expired', 'policy_invalid', 'reservation_unsupported'], true);
+        return in_array($code, ['admin_blocked', 'pending_unsupported', 'result_not_usable', 'invalid_purchase', 'unknown_renewal_method', 'unsupported_renewal_method', 'unknown_policy', 'panel_state_unavailable', 'panel_read_failed', 'user_missing', 'renewal_in_progress', 'renewal_lock_unavailable', 'renewal_schema_unavailable', 'queued_renewal_exists', 'trigger_unavailable', 'trigger_date_required', 'trigger_date_invalid', 'trigger_date_expired', 'policy_invalid', 'reservation_unsupported'], true);
     }
 
     public static function renewalIsPending($extend): bool

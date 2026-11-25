@@ -112,11 +112,16 @@ final class ServiceDelivery
                 $id_invoice = $dataget[1];
                 $nameloc = \Faoxima\Core\Database\Db::select("invoice", "*", "id_invoice", $id_invoice, "select");
             }
-            if ($nameloc == false)
+            if (!is_array($nameloc) || (string) ($nameloc['id_user'] ?? '') !== (string) $from_id)
                 return;
             if (method_exists(\Faoxima\Services\Fulfillment\StockPresentation::class, 'nmMaybeShowStockInvoiceDetails') && \Faoxima\Services\Fulfillment\StockPresentation::nmMaybeShowStockInvoiceDetails($from_id, $message_id ?? null, $nameloc)) { \Faoxima\Telegram\Navigation\Steps::step('home', $from_id); return; }
             if (method_exists(\Faoxima\Services\Fulfillment\StockPresentation::class, 'nmStopIfServicePanelBlocked') && \Faoxima\Services\Fulfillment\StockPresentation::nmStopIfServicePanelBlocked($nameloc, $from_id, null)) return;
             $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
+            $savedLink = is_array($marzban_list_get)
+                ? \Faoxima\Services\Delivery\ServiceDelivery::rxSavedSubscriptionUrl($nameloc, $marzban_list_get) : '';
+            if ($savedLink !== '') {
+                $marzban_list_get = \Faoxima\Services\Delivery\ServiceDelivery::rxPurchaseDeliveryPanel($marzban_list_get, $savedLink);
+            }
             if (($marzban_list_get['type'] ?? '') === 'jovadpanel' && ($marzban_list_get['sublink'] ?? '') !== 'onsublink') {
                 sendmessage($from_id, $datatextbot['dyn_errors_feature_unavailable_short'] ?? "❌ این قابلیت در دسترس نیست.", null, 'html');
                 return;
@@ -142,9 +147,17 @@ final class ServiceDelivery
 <code>{$manualDelivery['sub']}</code>", $bakinfos, 'HTML');
                 return;
             }
-            $Check_token = \Faoxima\Services\Panels\Drivers\Marzban::token_panel($marzban_list_get['url_panel'], $marzban_list_get['username_panel'], $marzban_list_get['password_panel']);
-            $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
-            if ($DataUserOut['status'] == "Unsuccessful") {
+            try {
+                $DataUserOut = $ManagePanel->DataUser($nameloc['Service_location'], $nameloc['username']);
+            } catch (\Throwable $e) {
+                $DataUserOut = ['status' => 'Unsuccessful'];
+            }
+            if (($DataUserOut['status'] ?? 'Unsuccessful') === 'Unsuccessful' || empty($DataUserOut['subscription_url'])) {
+                if ($savedLink !== '' && !in_array(strtolower((string) ($DataUserOut['status'] ?? '')), ['disabled', 'expired', 'limited'], true)) {
+                    $copy = \Faoxima\Telegram\Support\Transport::rx_copy_button_keyboard($savedLink, '📋 کپی لینک اشتراک');
+                    sendmessage($from_id, '<code>' . htmlspecialchars($savedLink, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</code>', $copy, 'HTML');
+                    return;
+                }
                 $offlinePanel = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
                 $offlineKeyboard = json_encode(['inline_keyboard' => [
                     [['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_renew'), 'callback_data' => 'extend_' . $nameloc['id_invoice']], ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('service_btn_buy_new'), 'callback_data' => 'buy_service']],

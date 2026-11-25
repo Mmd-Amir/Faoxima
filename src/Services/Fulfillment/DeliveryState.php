@@ -141,7 +141,7 @@ final class DeliveryState
         $invoice_id = trim((string) $invoice_id);
         $file_key = trim((string) $file_key);
         $status = (string) $status;
-        if ($invoice_id === '' || $file_key === '' || !in_array($status, ['sent', 'failed', 'unknown'], true)) {
+        if ($invoice_id === '' || $file_key === '' || !in_array($status, ['sent', 'failed', 'retry', 'unknown'], true)) {
             return false;
         }
         if (!($pdo instanceof PDO)) {
@@ -210,6 +210,50 @@ final class DeliveryState
         foreach (['timeout', 'timed out', 'curl', 'connection', 'network', 'اتصال'] as $needle) {
             if ($description !== '' && strpos($description, $needle) !== false) {
                 return 'unknown';
+            }
+        }
+        return 'unknown';
+    }
+
+    public static function deliveryFailureKind($response): string
+    {
+        if (is_string($response)) {
+            $decoded = json_decode($response, true);
+            if (is_array($decoded)) {
+                $response = $decoded;
+            }
+        } elseif (is_object($response)) {
+            $vars = get_object_vars($response);
+            if (is_array($vars)) {
+                $response = $vars;
+            }
+        }
+        if (is_bool($response)) {
+            return $response ? 'none' : 'unknown';
+        }
+        if (!is_array($response) || !array_key_exists('ok', $response) || !empty($response['_rx_invalid_response'])) {
+            return 'unknown';
+        }
+        if ($response['ok'] === true) {
+            return 'none';
+        }
+        $code = $response['error_code'] ?? null;
+        if ($code === 'RICH_VALIDATION_FAILED') {
+            return 'permanent';
+        }
+        if (is_numeric($code)) {
+            $numeric = (int) $code;
+            if ($numeric === 429 || $numeric >= 500) {
+                return 'retry';
+            }
+            if ($numeric >= 400 && $numeric < 500) {
+                return 'permanent';
+            }
+        }
+        $description = strtolower((string) ($response['description'] ?? ''));
+        foreach (['blocked', 'deactivated', 'chat not found', 'message to edit not found', 'message to delete not found', 'forbidden', 'bad request'] as $needle) {
+            if ($description !== '' && strpos($description, $needle) !== false) {
+                return 'permanent';
             }
         }
         return 'unknown';
@@ -335,7 +379,7 @@ final class DeliveryState
         foreach ($states as $state) {
             if ($state === 'confirmed') {
                 $confirmed++;
-            } elseif ($state === 'unknown' || $state === 'attempted') {
+            } elseif ($state === 'unknown' || $state === 'attempted' || $state === 'retry') {
                 $uncertain = true;
             }
         }

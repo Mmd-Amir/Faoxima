@@ -609,6 +609,7 @@ final class MessageTemplates
         $d['payment_tronado_manual_review'] = self::def('msg_pay_gateways', 'ترونادو: ارجاع به بررسی مدیریت', "⏳ پرداخت شما در ترونادو ثبت شده اما برای تأیید نهایی به بررسی مدیریت ارجاع شد. لطفاً با پشتیبانی در ارتباط باشید.\n\n🛒 کد فاکتور: <code>{order_id}</code>", ['order_id' => 'کد فاکتور']);
         $d['service_config_list_failed'] = self::def('msg_service_manage', 'نمایش لیست کانفیگ‌ها ناموفق', "❌ نمایش لیست کانفیگ‌ها ناموفق بود. لطفاً دوباره تلاش کنید.");
         $d['service_files_incomplete_contact_support'] = self::def('msg_service_manage', 'ارسال فایل‌های سرویس ناقص ماند', "⚠️ ارسال همه فایل‌های سرویس کامل نشد. برای پیگیری با پشتیبانی تماس بگیرید.");
+        $d['service_files_pending_retry'] = self::def('msg_service_manage', 'ارسال فایل سرویس در انتظار تأیید', "⚠️ ارسال فایل سرویس هنوز تأیید نشده است. برای دریافت لینک اشتراک یا فایل‌های موجود به صفحه سرویس مراجعه کنید.");
 
         self::$definitions = $d;
         return $d;
