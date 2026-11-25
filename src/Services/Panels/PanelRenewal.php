@@ -130,12 +130,8 @@ trait PanelRenewal
                 \Faoxima\Core\Database\Db::update("manualsell", "username", $username, "id", $newConfig['id']);
             }
 
-            $notifctions = json_encode(array(
-                'volume' => false,
-                'time' => false,
-            ));
             if (is_array($invoice)) {
-                \Faoxima\Core\Database\Db::update("invoice", "notifctions", $notifctions, 'id_invoice', $invoice['id_invoice']);
+                \Faoxima\Services\Fulfillment\DeliveryState::notificationCycleReset($invoice['id_invoice'], array('volume_cycle', 'time_cycle'), array('volume', 'volume_report', 'time', 'time_report'));
             }
             \Faoxima\Core\Database\Db::update("invoice", 'Status', "active", "username", $username);
             return array(
@@ -317,7 +313,7 @@ trait PanelRenewal
         if (!is_array($invoice)) {
             return;
         }
-        \Faoxima\Core\Database\Db::update("invoice", "notifctions", json_encode(array('volume' => false, 'time' => false)), 'id_invoice', $invoice['id_invoice']);
+        \Faoxima\Services\Fulfillment\DeliveryState::notificationCycleReset($invoice['id_invoice'], array('volume_cycle', 'time_cycle'), array('volume', 'volume_report', 'time', 'time_report'));
         if (($panel['type'] ?? '') != "WGDashboard") {
             \Faoxima\Core\Database\Db::update("invoice", 'user_info', null, "id_invoice", $invoice['id_invoice']);
         }

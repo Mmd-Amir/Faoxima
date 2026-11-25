@@ -46,6 +46,7 @@ final class InventoryProvisioning
         \Faoxima\Core\Database\Db::update('invoice', 'time_sell', time(), 'id_invoice', $invoice['id_invoice']);
         try { \Faoxima\Core\Database\Db::update('invoice', 'user_info', '', 'id_invoice', $invoice['id_invoice']); } catch (Throwable $e) {}
         try { \Faoxima\Core\Database\Db::update('invoice', 'source_panel_code', '', 'id_invoice', $invoice['id_invoice']); } catch (Throwable $e) {}
+        \Faoxima\Services\Fulfillment\DeliveryState::notificationCycleReset($invoice['id_invoice'], array('volume_cycle', 'time_cycle'), array('volume', 'volume_report', 'time', 'time_report'));
         $subLink = $dataoutput['subscription_url'] ?? '';
         $configs = $dataoutput['configs'] ?? [];
 

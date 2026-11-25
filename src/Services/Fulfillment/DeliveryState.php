@@ -215,6 +215,106 @@ final class DeliveryState
         return 'unknown';
     }
 
+    public static function notificationCycleReset($invoiceId, array $cycleKeys, array $flagKeys): bool
+    {
+        return self::notificationStateMutate($invoiceId, static function (array $state) use ($cycleKeys, $flagKeys) {
+            foreach ($cycleKeys as $cycleKey) {
+                $state[$cycleKey] = (int) ($state[$cycleKey] ?? 0) + 1;
+            }
+            foreach ($flagKeys as $flagKey) {
+                $state[$flagKey] = false;
+            }
+            return $state;
+        });
+    }
+
+    public static function notificationDelivered($invoiceId, string $flagKey, string $cycleKey, int $expectedCycle): bool
+    {
+        return self::notificationStateMutate($invoiceId, static function (array $state) use ($flagKey, $cycleKey, $expectedCycle) {
+            if ((int) ($state[$cycleKey] ?? 0) !== $expectedCycle) {
+                return null;
+            }
+            $state[$flagKey] = true;
+            return $state;
+        });
+    }
+
+    private static function notificationStateMutate($invoiceId, callable $mutator): bool
+    {
+        $pdo = \Faoxima\Core\Database\Db::getDatabaseConnection();
+        if (!($pdo instanceof PDO)) {
+            return false;
+        }
+        $started = false;
+        try {
+            if (!$pdo->inTransaction()) {
+                if (!$pdo->beginTransaction()) {
+                    return false;
+                }
+                $started = true;
+            }
+            $select = $pdo->prepare('SELECT notifctions FROM invoice WHERE id_invoice = ? FOR UPDATE');
+            if (!$select->execute([$invoiceId])) {
+                if ($started && $pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                return false;
+            }
+            $row = $select->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($row)) {
+                if ($started && $pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                return false;
+            }
+            $state = json_decode((string) ($row['notifctions'] ?? ''), true);
+            if (!is_array($state)) {
+                $state = [];
+            }
+            $next = $mutator($state);
+            if (!is_array($next)) {
+                if ($started && $pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                return false;
+            }
+            $encoded = json_encode($next);
+            if ($encoded === false) {
+                if ($started && $pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                return false;
+            }
+            $update = $pdo->prepare('UPDATE invoice SET notifctions = ? WHERE id_invoice = ?');
+            if (!$update->execute([$encoded, $invoiceId])) {
+                if ($started && $pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                return false;
+            }
+            if ($started) {
+                if (!$pdo->commit()) {
+                    if ($pdo->inTransaction()) {
+                        try {
+                            $pdo->rollBack();
+                        } catch (Throwable $ignored) {
+                        }
+                    }
+                    return false;
+                }
+            }
+            return true;
+        } catch (Throwable $e) {
+            if ($started && $pdo->inTransaction()) {
+                try {
+                    $pdo->rollBack();
+                } catch (Throwable $ignored) {
+                }
+            }
+            return false;
+        }
+    }
+
     public static function deliveryAggregate(array $components): string
     {
         $required = [];

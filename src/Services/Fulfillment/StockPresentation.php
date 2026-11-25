@@ -308,6 +308,7 @@ final class StockPresentation
             \Faoxima\Core\Database\Db::update('invoice','time_sell',time(),'id_invoice',$invoice['id_invoice']);
             \Faoxima\Core\Database\Db::update('invoice','user_info',$stockNew['content'],'id_invoice',$invoice['id_invoice']);
             try{ \Faoxima\Core\Database\Db::update('invoice','source_panel_code',$panel['code_panel']??'','id_invoice',$invoice['id_invoice']); }catch(Throwable $e){}
+            \Faoxima\Services\Fulfillment\DeliveryState::notificationCycleReset($invoice['id_invoice'], array('volume_cycle', 'time_cycle'), array('volume', 'volume_report', 'time', 'time_report'));
             $invoiceNew=array_merge($invoice,['name_product'=>$product['name_product'],'price_product'=>$product['price_product'],'Volume'=>$product['Volume_constraint'],'Service_time'=>$product['Service_time'],'time_sell'=>time(),'user_info'=>$stockNew['content'],'source_panel_code'=>$panel['code_panel']??'']);
             self::nmStockDeliverConfig($stockNew,$invoiceNew,'✅ تمدید سرویس از انبار شبکه‌ملی با موفقیت انجام شد');
             sendmessage($chatId,\Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_errors_stock_extend_success','✅ تمدید انباری انجام شد و موجودی انبار یک عدد کم شد.'),$keyboard??null,'HTML');

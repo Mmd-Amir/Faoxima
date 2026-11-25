@@ -362,6 +362,7 @@ final class ServiceRenewConfirmHandler extends \Faoxima\Api\Handlers\BaseHandler
                 \Faoxima\Core\Database\Db::update('invoice', 'price_before_discount', (string)$discPriceBefore, 'id_invoice', $invoice['id_invoice']);
             }
             try { \Faoxima\Core\Database\Db::update('invoice', 'source_panel_code', $panel['code_panel'], 'id_invoice', $invoice['id_invoice']); } catch (Throwable $e) {}
+            \Faoxima\Services\Fulfillment\DeliveryState::notificationCycleReset($invoice['id_invoice'], array('volume_cycle', 'time_cycle'), array('volume', 'volume_report', 'time', 'time_report'));
 
             if (!empty($stockNew['id']) && method_exists(\Faoxima\Services\Fulfillment\StockPresentation::class, 'nmStockMarkDelivered')) {
                 \Faoxima\Services\Fulfillment\Inventory::nmStockMarkDelivered(\Faoxima\Api\Runtime\Db::pdo(), $stockNew['id'], $this->user['id'], $invoice['id_invoice'], ['mode' => 'miniapp_extend_national_stock']);

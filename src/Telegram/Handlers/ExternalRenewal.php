@@ -276,6 +276,7 @@ final class ExternalRenewal
                 \Faoxima\Core\Database\Db::update("invoice", "time_sell", time(), "id_invoice", $nameloc['id_invoice']);
                 \Faoxima\Core\Database\Db::update("invoice", "user_info", $stockNew['content'], "id_invoice", $nameloc['id_invoice']);
                 try { \Faoxima\Core\Database\Db::update("invoice", "source_panel_code", $marzban_list_get['code_panel'], "id_invoice", $nameloc['id_invoice']); } catch (Throwable $e) {}
+                \Faoxima\Services\Fulfillment\DeliveryState::notificationCycleReset($nameloc['id_invoice'], array('volume_cycle', 'time_cycle'), array('volume', 'volume_report', 'time', 'time_report'));
                 $invoiceNew = array_merge($nameloc, [
                     'name_product' => $prodcut['name_product'],
                     'price_product' => $prodcut['price_product'],

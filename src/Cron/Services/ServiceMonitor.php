@@ -65,10 +65,24 @@ final class ServiceMonitor
             return;
         }
 
+        $initialState = json_decode((string) ($invoice['notifctions'] ?? ''), true);
+        if (!is_array($initialState)) {
+            $initialState = [];
+        }
+        $volumeCycle = (int) ($initialState['volume_cycle'] ?? 0);
+        $timeCycle = (int) ($initialState['time_cycle'] ?? 0);
         \Faoxima\Core\Database\Db::update("invoice", "time_cron", time(), "id_invoice", $invoice['id_invoice']);
-        $check_send = json_decode($invoice['notifctions'], true);
         $data = $this->persistProviderState($data, $invoice);
-        $this->applyMaintenancePolicy($data, $invoice, $check_send);
+        $freshInvoice = \Faoxima\Core\Database\Db::select("invoice", "id_invoice,id_user,username,Service_location,name_product,bottype,Status,notifctions,uuid", "id_invoice", $invoice['id_invoice']);
+        if (is_array($freshInvoice)) {
+            $invoice = $freshInvoice;
+        }
+        $check_send = json_decode((string) ($invoice['notifctions'] ?? ''), true);
+        if (!is_array($check_send)) {
+            $check_send = [];
+        }
+        $data['invoice'] = $invoice;
+        $this->applyMaintenancePolicy($data, $invoice, $check_send, $volumeCycle, $timeCycle);
     }
 
     private function persistProviderState(array $data, array $invoice): array
@@ -102,15 +116,19 @@ final class ServiceMonitor
         return $data;
     }
 
-    private function applyMaintenancePolicy(array $data, array $invoice, $check_send): void
+    private function applyMaintenancePolicy(array $data, array $invoice, array $check_send, $volumeCycle = 0, $timeCycle = 0): void
     {
-        $result = false;
-        if (!$check_send['volume']) {
-            if ($this->status_cron['volume']) $result = $this->checkVolumeThreshold($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
+        $volumeUserDone = !empty($check_send['volume']);
+        $volumeReportDone = !empty($check_send['volume_report']);
+        $volumeCycleStable = $volumeCycle === (int) ($check_send['volume_cycle'] ?? 0);
+        if ($volumeCycleStable && (!$volumeUserDone || !$volumeReportDone) && $this->status_cron['volume']) {
+            $this->checkVolumeThreshold($data['invoice'], $data['user'], $data['userData'], $invoice['username'], $volumeUserDone, $volumeReportDone, $volumeCycle);
         }
-        if ($result) $data['invoice'] = \Faoxima\Core\Database\Db::select("invoice", "id_invoice,id_user,username,Service_location,name_product,bottype,Status,notifctions,uuid", "id_invoice", $invoice['id_invoice']);
-        if (!$check_send['time']) {
-            if ($this->status_cron['day']) $this->checkTimeExpiration($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
+        $timeUserDone = !empty($check_send['time']);
+        $timeReportDone = !empty($check_send['time_report']);
+        $timeCycleStable = $timeCycle === (int) ($check_send['time_cycle'] ?? 0);
+        if ($timeCycleStable && (!$timeUserDone || !$timeReportDone) && $this->status_cron['day']) {
+            $this->checkTimeExpiration($data['invoice'], $data['user'], $data['userData'], $invoice['username'], $timeUserDone, $timeReportDone, $timeCycle);
         }
         $removalResult = false;
         if ($this->status_cron['remove']) $removalResult = $this->shouldRemoveService($data['invoice'], $data['user'], $data['userData'], $invoice['username']);
@@ -174,7 +192,7 @@ final class ServiceMonitor
         return htmlspecialchars($label, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     }
 
-    private function checkVolumeThreshold($invoice, $user, $userData, $username)
+    private function checkVolumeThreshold($invoice, $user, $userData, $username, $userDone = false, $reportDone = false, $cycle = 0)
     {
         $remainingVolume = $userData['data_limit'] - $userData['used_traffic'];
         $volumeWarningThreshold = $this->setting['volumewarn'] * pow(1024, 3);
@@ -194,10 +212,17 @@ final class ServiceMonitor
                 'volume' => $formattedVolume,
             ]);
             $shouldNotify = !empty($user['status_cron'] ?? null);
-            $sent = $this->send_notifactions($invoice, $shouldNotify, $message, true, $invoice['bottype']);
-            $this->sendReportNotification($reportMessage);
-            if ($sent) {
-                $this->updateInvoiceStatus("volume", $invoice);
+            if (!$userDone) {
+                $sent = $this->send_notifactions($invoice, $shouldNotify, $message, true, $invoice['bottype']);
+                if ($sent === 'confirmed') {
+                    \Faoxima\Services\Fulfillment\DeliveryState::notificationDelivered($invoice['id_invoice'], 'volume', 'volume_cycle', $cycle);
+                }
+            }
+            if (!$reportDone) {
+                $reportSent = $this->sendReportNotification($reportMessage);
+                if ($reportSent === 'confirmed') {
+                    \Faoxima\Services\Fulfillment\DeliveryState::notificationDelivered($invoice['id_invoice'], 'volume_report', 'volume_cycle', $cycle);
+                }
             }
             return true;
         }
@@ -327,7 +352,7 @@ final class ServiceMonitor
         );
         $this->Panel->Modifyuser($invoice['username'], $panel_info['code_panel'], $configs);
     }
-    private function checkTimeExpiration($invoice, $user, $userData, $username)
+    private function checkTimeExpiration($invoice, $user, $userData, $username, $userDone = false, $reportDone = false, $cycle = 0)
     {
         $validStatuses = ['expired', 'on_hold', 'limited'];
         if (in_array($userData['status'], $validStatuses)) {
@@ -358,10 +383,17 @@ final class ServiceMonitor
                 'days' => $daysRemaining,
             ]);
             $shouldNotify = !empty($user['status_cron'] ?? null);
-            $sent = $this->send_notifactions($invoice, $shouldNotify, $message, true, $invoice['bottype']);
-            $this->sendReportNotification($reportMessage);
-            if ($sent) {
-                $this->updateInvoiceStatus("time", $invoice);
+            if (!$userDone) {
+                $sent = $this->send_notifactions($invoice, $shouldNotify, $message, true, $invoice['bottype']);
+                if ($sent === 'confirmed') {
+                    \Faoxima\Services\Fulfillment\DeliveryState::notificationDelivered($invoice['id_invoice'], 'time', 'time_cycle', $cycle);
+                }
+            }
+            if (!$reportDone) {
+                $reportSent = $this->sendReportNotification($reportMessage);
+                if ($reportSent === 'confirmed') {
+                    \Faoxima\Services\Fulfillment\DeliveryState::notificationDelivered($invoice['id_invoice'], 'time_report', 'time_cycle', $cycle);
+                }
             }
             return true;
         }
@@ -370,12 +402,12 @@ final class ServiceMonitor
     private function send_notifactions($invoice, bool $shouldNotify, $message, $keyboard_active, $bot_token)
     {
         if (!$shouldNotify) {
-            return true;
+            return 'skipped';
         }
         $keyboard = $this->createExtendServiceKeyboard($invoice['id_invoice']);
         $keyboard = $keyboard_active ? $keyboard : null;
         $result = sendmessage($invoice['id_user'], $message, $keyboard, 'HTML', $bot_token);
-        return is_array($result) && ($result['ok'] ?? false) === true;
+        return \Faoxima\Services\Fulfillment\DeliveryState::deliveryResultState($result);
     }
 
     private function createExtendServiceKeyboard($invoiceId)
@@ -391,7 +423,7 @@ final class ServiceMonitor
 
     private function sendReportNotification($reportMessage)
     {
-        if (empty($this->setting['Channel_Report'])) return true;
+        if (empty($this->setting['Channel_Report'])) return 'skipped';
 
 
         $result = telegram('sendmessage', [
@@ -400,14 +432,6 @@ final class ServiceMonitor
             'text' => $reportMessage,
             'parse_mode' => "HTML"
         ]);
-        return is_array($result) && ($result['ok'] ?? false) === true;
-    }
-
-    private function updateInvoiceStatus($type, $invoice)
-    {
-        $data = json_decode($invoice['notifctions'], true);
-        $data[$type] = true;
-        $data = json_encode($data);
-        \Faoxima\Core\Database\Db::update("invoice", "notifctions", $data, "id_invoice", $invoice['id_invoice']);
+        return \Faoxima\Services\Fulfillment\DeliveryState::deliveryResultState($result);
     }
 }

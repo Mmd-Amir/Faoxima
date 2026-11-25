@@ -19,12 +19,6 @@ trait PanelExtras
                 'msg' => 'data not found'
             );
         }
-        $notif_value = json_decode($invoice['notifctions'], true);
-        $notifctions = json_encode(array(
-            'volume' => false,
-            'time' => $notif_value['time'],
-        ));
-        \Faoxima\Core\Database\Db::update("invoice", "notifctions", $notifctions, 'id_invoice', $invoice['id_invoice']);
         $user_info = $this->DataUser($panel['name_panel'], $username_account);
         if ($user_info['status'] == "Unsuccessful") {
             return array(
@@ -56,7 +50,11 @@ trait PanelExtras
                 return array('status' => false, 'msg' => 'Panel Not Found');
             }
             $res = $mgr->addVolume($local['panel_user_id'], (int) $new_limit, $pdo);
-            return array('status' => !empty($res['ok']));
+            $rxSuccess = !empty($res['ok']);
+            if ($rxSuccess) {
+                \Faoxima\Services\Fulfillment\DeliveryState::notificationCycleReset($invoice['id_invoice'], array('volume_cycle'), array('volume', 'volume_report'));
+            }
+            return array('status' => $rxSuccess);
         }
         if ($this->isPasarGuardDialect($panel)) {
             $configuredGroups = is_array($inbounds) ? $inbounds : (is_string($inbounds) ? json_decode($inbounds, true) : []);
@@ -154,6 +152,7 @@ trait PanelExtras
                     'msg' => isset($log['msg']) ? $log['msg'] : ''
                 );
             }
+            \Faoxima\Services\Fulfillment\DeliveryState::notificationCycleReset($invoice['id_invoice'], array('volume_cycle'), array('volume', 'volume_report'));
             return array(
                 'status' => true,
                 'data' => $log
@@ -177,19 +176,24 @@ trait PanelExtras
             );
         } elseif ($panel['type'] == "jovadpanel") {
             $extra_volume = \Faoxima\Services\Panels\Drivers\JovadPanel::jovadpanelAddVolume($panel, (string) $username_account, (int) $new_limit);
+            $rxSuccess = !empty($extra_volume['status']);
+            if ($rxSuccess) {
+                \Faoxima\Services\Fulfillment\DeliveryState::notificationCycleReset($invoice['id_invoice'], array('volume_cycle'), array('volume', 'volume_report'));
+            }
             return array(
-                'status' => !empty($extra_volume['status']),
+                'status' => $rxSuccess,
                 'data' => $extra_volume['data'] ?? null,
                 'msg' => $extra_volume['msg'] ?? null
             );
         }
         $extra_volume = $this->Modifyuser($username_account, $panel['name_panel'], $data);
-        if ($extra_volume['status'] == false) {
+        if (empty($extra_volume['status'])) {
             return array(
                 'status' => false,
-                'msg' => $extra_volume['msg']
+                'msg' => $extra_volume['msg'] ?? null
             );
         }
+        \Faoxima\Services\Fulfillment\DeliveryState::notificationCycleReset($invoice['id_invoice'], array('volume_cycle'), array('volume', 'volume_report'));
         return $extra_volume;
     }
 
@@ -205,12 +209,6 @@ trait PanelExtras
                 'msg' => 'data not found'
             );
         }
-        $notif_value = json_decode($invoice['notifctions'], true);
-        $notifctions = json_encode(array(
-            'volume' => $notif_value['volume'],
-            'time' => false,
-        ));
-        \Faoxima\Core\Database\Db::update("invoice", "notifctions", $notifctions, 'id_invoice', $invoice['id_invoice']);
         $user_info = $this->DataUser($panel['name_panel'], $username_account);
         if ($user_info['status'] == "Unsuccessful") {
             return array(
@@ -243,7 +241,11 @@ trait PanelExtras
                 return array('status' => false, 'msg' => 'Panel Not Found');
             }
             $res = $mgr->extendUser($local['panel_user_id'], \Faoxima\Services\Panels\Drivers\Remnawave::remnawave_iso_from_timestamp($new_limit), $pdo);
-            return array('status' => !empty($res['ok']));
+            $rxSuccess = !empty($res['ok']);
+            if ($rxSuccess) {
+                \Faoxima\Services\Fulfillment\DeliveryState::notificationCycleReset($invoice['id_invoice'], array('time_cycle'), array('time', 'time_report'));
+            }
+            return array('status' => $rxSuccess);
         }
         if ($this->isPasarGuardDialect($panel)) {
             $configuredGroups = is_array($inbounds) ? $inbounds : (is_string($inbounds) ? json_decode($inbounds, true) : []);
@@ -334,6 +336,7 @@ trait PanelExtras
                     'msg' => isset($log['msg']) ? $log['msg'] : ''
                 );
             }
+            \Faoxima\Services\Fulfillment\DeliveryState::notificationCycleReset($invoice['id_invoice'], array('time_cycle'), array('time', 'time_report'));
             return array(
                 'status' => true,
                 'data' => $log
@@ -357,19 +360,24 @@ trait PanelExtras
             );
         } elseif ($panel['type'] == "jovadpanel") {
             $extra_time = \Faoxima\Services\Panels\Drivers\JovadPanel::jovadpanelAddTime($panel, (string) $username_account, (int) $new_limit);
+            $rxSuccess = !empty($extra_time['status']);
+            if ($rxSuccess) {
+                \Faoxima\Services\Fulfillment\DeliveryState::notificationCycleReset($invoice['id_invoice'], array('time_cycle'), array('time', 'time_report'));
+            }
             return array(
-                'status' => !empty($extra_time['status']),
+                'status' => $rxSuccess,
                 'data' => $extra_time['data'] ?? null,
                 'msg' => $extra_time['msg'] ?? null
             );
         }
         $extra_time = $this->Modifyuser($username_account, $panel['name_panel'], $data);
-        if ($extra_time['status'] == false) {
+        if (empty($extra_time['status'])) {
             return array(
                 'status' => false,
-                'msg' => $extra_time['msg']
+                'msg' => $extra_time['msg'] ?? null
             );
         }
+        \Faoxima\Services\Fulfillment\DeliveryState::notificationCycleReset($invoice['id_invoice'], array('time_cycle'), array('time', 'time_report'));
         return $extra_time;
     }
 }
