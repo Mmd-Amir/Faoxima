@@ -2,6 +2,8 @@
 
 namespace Faoxima\Telegram\Handlers;
 
+use Faoxima\Orders\Pricing\ExchangePricing;
+use Faoxima\Telegram\Support\ServiceProductIdentity;
 use PDO;
 
 /**
@@ -41,143 +43,11 @@ final class ServiceList
     ) {
         switch ($telegramRoute) {
         case 'services':
-            $rxServiceStatuses = ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin'];
-            $rxServiceStatusSql = "status IN ('" . implode("','", $rxServiceStatuses) . "')";
-            $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :id_user AND $rxServiceStatusSql");
-            $stmt->bindParam(':id_user', $from_id);
-            $stmt->execute();
-            $invoices = $stmt->fetch(PDO::FETCH_ASSOC);
-            if ($invoices === false && $setting['NotUser'] == "offnotuser") {
-                sendmessage($from_id, $textbotlang['users']['sell']['service_not_available'], null, 'html');
-                return;
-            }
-            \Faoxima\Telegram\Media\SectionMedia::rx_section_media_enter('services', $from_id, $datain, $message_id, ['myservicesbtn'], ['myservicesbtn']);
-
-            $stmt = $pdo->prepare("SELECT name_product FROM invoice WHERE id_user = :id_user AND $rxServiceStatusSql GROUP BY name_product ORDER BY name_product ASC");
-            $stmt->execute([':id_user' => $from_id]);
-            $serviceProducts = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            $keyboardlists = [
-                'inline_keyboard' => \Faoxima\Telegram\Support\NavigationFunctionsHelpers::rxBotServiceProductButtons($serviceProducts, $textbotlang['users']['customsellvolume']['title'] ?? 'سرویس دلخواه'),
-            ];
-            $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
-            $backuser = [
-                \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back_main'), 'callback_data' => 'backuser'], 'backuser', $_rx_nav_s)
-            ];
-            if ($setting['NotUser'] == "onnotuser") {
-                $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['page']['notusernameme'], 'callback_data' => 'notusernameme']];
-            }
-            $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice', '_rxcolor' => 'subscription_list:search']];
-            $keyboardlists['inline_keyboard'][] = $backuser;
-            $keyboard_json = json_encode($keyboardlists);
-            $rxProductListText = "🛍 سرویس‌های من\n\nبرای مشاهده نام‌های کاربری، محصول مورد نظر را انتخاب کنید.\n\n🔎 برای پیدا کردن سریع سرویس خود می‌توانید از دکمه جستجو سریع استفاده کنید.";
-            if ($datain == "backorder" || $datain == "myservicesbtn") {
-                Editmessagetext($from_id, $message_id, $rxProductListText, $keyboard_json);
-            } else {
-                sendmessage($from_id, $rxProductListText, $keyboard_json, 'html');
-            }
-
-            break;
         case 'services_page':
-            $rxProductHash = $dataget[2];
-            $rxRequestedPage = isset($dataget[3]) ? (int) $dataget[3] : 1;
-            $rxServiceStatuses = ['active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin'];
-            $rxServiceStatusSql = "status IN ('" . implode("','", $rxServiceStatuses) . "')";
-            $stmt = $pdo->prepare("SELECT name_product FROM invoice WHERE id_user = :id_user AND $rxServiceStatusSql GROUP BY name_product ORDER BY name_product ASC");
-            $stmt->execute([':id_user' => $from_id]);
-            $rxProductRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            $rxSelectedProduct = null;
-            $rxSelectedFound = false;
-            foreach ($rxProductRows as $rxProductRow) {
-                $rxProductValue = $rxProductRow['name_product'];
-                $rxProductKey = md5($rxProductValue === null ? 'NULL' : 'P:' . $rxProductValue);
-                if ($rxProductKey === $rxProductHash) {
-                    $rxSelectedProduct = $rxProductValue;
-                    $rxSelectedFound = true;
-                    break;
-                }
-            }
-            $_rx_nav_s = (isset($_rx_nav_styles) && is_array($_rx_nav_styles)) ? $_rx_nav_styles : [];
-            $backuser = [
-                \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back_main'), 'callback_data' => 'backuser'], 'backuser', $_rx_nav_s)
-            ];
-            if (!$rxSelectedFound) {
-                $rxUnavailableKeyboard = json_encode(['inline_keyboard' => [
-                    [['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => 'myservicesbtn']],
-                    $backuser
-                ]]);
-                Editmessagetext($from_id, $message_id, $datatextbot['dyn_errors_service_not_found'] ?? "❌ سرویس مورد نظر پیدا نشد.", $rxUnavailableKeyboard);
-                return;
-            }
-            $rxProductWhere = $rxSelectedProduct === null ? "name_product IS NULL" : "name_product = :name_product";
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM invoice WHERE id_user = :id_user AND $rxProductWhere AND $rxServiceStatusSql");
-            $rxCountParams = [':id_user' => $from_id];
-            if ($rxSelectedProduct !== null) {
-                $rxCountParams[':name_product'] = $rxSelectedProduct;
-            }
-            $stmt->execute($rxCountParams);
-            $rxTotalServices = (int) $stmt->fetchColumn();
-            if ($rxTotalServices === 0) {
-                $rxUnavailableKeyboard = json_encode(['inline_keyboard' => [
-                    [['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => 'myservicesbtn']],
-                    $backuser
-                ]]);
-                Editmessagetext($from_id, $message_id, $datatextbot['dyn_errors_service_not_found'] ?? "❌ سرویس مورد نظر پیدا نشد.", $rxUnavailableKeyboard);
-                return;
-            }
-            $items_per_page = 5;
-            $rxTotalPages = max(1, (int) ceil($rxTotalServices / $items_per_page));
-            $page = max(1, min($rxRequestedPage, $rxTotalPages));
-            $start_index = ($page - 1) * $items_per_page;
-            $stmt = $pdo->prepare("SELECT * FROM invoice WHERE id_user = :id_user AND $rxProductWhere AND $rxServiceStatusSql ORDER BY time_sell DESC, id_invoice ASC LIMIT $start_index, $items_per_page");
-            $rxRowsParams = [':id_user' => $from_id];
-            if ($rxSelectedProduct !== null) {
-                $rxRowsParams[':name_product'] = $rxSelectedProduct;
-            }
-            $stmt->execute($rxRowsParams);
-            $serviceRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            $keyboardlists = [
-                'inline_keyboard' => [],
-            ];
-            foreach ($serviceRows as $row) {
-                $data = "";
-                if ($setting['statusnamecustom'] == 'onnamecustom' && trim((string) ($row['note'] ?? '')) !== '') {
-                    $data = " | {$row['note']}";
-                }
-                $keyboardlists['inline_keyboard'][] = [
-                    [
-                        'text' => "✨" . (string) ($row['username'] ?? '') . $data . \Faoxima\Services\Delivery\ServiceDelivery::rxServiceListStatusSuffix($row) . "✨",
-                        'callback_data' => "quickview_" . $row['id_invoice']
-                    ],
-                ];
-            }
-            $pagination_buttons = [];
-            if ($page > 1) {
-                $pagination_buttons[] = [
-                    'text' => $textbotlang['users']['page']['previous'],
-                    'callback_data' => 'previous_page_' . $rxProductHash . '_' . ($page - 1),
-                    '_rxcolor' => 'subscription_list:previous'
-                ];
-            }
-            if ($page < $rxTotalPages) {
-                $pagination_buttons[] = [
-                    'text' => $textbotlang['users']['page']['next'],
-                    'callback_data' => 'next_page_' . $rxProductHash . '_' . ($page + 1),
-                    '_rxcolor' => 'subscription_list:next'
-                ];
-            }
-            if (!empty($pagination_buttons)) {
-                $keyboardlists['inline_keyboard'][] = $pagination_buttons;
-            }
-            $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['search']['title'], 'callback_data' => 'searchservice', '_rxcolor' => 'subscription_list:search']];
-            if ($setting['NotUser'] == "onnotuser") {
-                $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['page']['notusernameme'], 'callback_data' => 'notusernameme']];
-            }
-            $keyboardlists['inline_keyboard'][] = [['text' => $textbotlang['users']['stateus']['backlist'], 'callback_data' => 'myservicesbtn']];
-            $keyboardlists['inline_keyboard'][] = $backuser;
-            $keyboard_json = json_encode($keyboardlists);
-            Editmessagetext($from_id, $message_id, $textbotlang['users']['sell']['service_sell'], $keyboard_json);
-
-            break;
+            return self::browse(
+                $pdo, $from_id, $message_id, $datain, $telegramRoute, $dataget[2] ?? null,
+                $setting, $datatextbot, $textbotlang, $_rx_nav_styles
+            );
         case 'lookup_prompt':
             sendmessage($from_id, $textbotlang['users']['stateus']['SendUsername'], $backuser, 'html');
             \Faoxima\Telegram\Navigation\Steps::step('getusernameinfo', $from_id);
@@ -316,6 +186,143 @@ final class ServiceList
             break;
         }
 
+        return true;
+    }
+
+    private static function browse($pdo, $fromId, $messageId, &$callback, $route, $legacyProductKey, $setting, $texts, $language, $navigationStyles)
+    {
+        $isEntry = $route === 'services';
+        $isLegacy = !$isEntry && !str_starts_with((string) $callback, 'ms:');
+        $isHome = $isEntry || $isLegacy || $callback === 'ms:home';
+        $panelKey = $productKey = null;
+        $requestedPage = 1;
+        if (!$isHome && preg_match('/^ms:([a-f0-9]{20})(?::([a-f0-9]{20}|trial):([0-9]{1,10}))?$/D', $callback, $selection)) {
+            $panelKey = $selection[1];
+            $productKey = $selection[2] ?? null;
+            $requestedPage = (int) ($selection[3] ?? 1);
+        } elseif (!$isHome && preg_match('/^ms:custom:([0-9]{1,10})$/D', $callback, $selection)) {
+            $productKey = 'custom';
+            $requestedPage = (int) $selection[1];
+        }
+
+        $customLabel = $language['users']['customsellvolume']['title'] ?? 'سرویس دلخواه';
+        $customNames = ['', trim($customLabel), '🛍 حجم دلخواه', '⚙️ سرویس دلخواه', 'سرویس سفارشی'];
+        $panels = $products = $serviceRows = [];
+        $hasCustom = false;
+        $legacyFound = !$isLegacy;
+        if ($isHome || $panelKey !== null || $productKey === 'custom') {
+            $snapshotColumn = ExchangePricing::fxTableHasColumn('invoice', 'pricing_snapshot') ? ', pricing_snapshot' : '';
+            $stmt = $pdo->prepare("SELECT id_invoice, username, note, Status, Service_location, name_product{$snapshotColumn}
+                FROM invoice WHERE id_user = :id_user
+                AND Status IN ('active', 'end_of_time', 'end_of_volume', 'sendedwarn', 'send_on_hold', 'disabled', 'disablebyadmin')
+                ORDER BY time_sell DESC, id_invoice ASC");
+            $stmt->execute([':id_user' => $fromId]);
+            $invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $identity = $invoices !== [] ? new ServiceProductIdentity($pdo, (string) $fromId) : null;
+            foreach ($invoices as $invoice) {
+                $storedName = $invoice['name_product'];
+                if (!$legacyFound) {
+                    $legacyFound = md5($storedName === null ? 'NULL' : 'P:' . $storedName) === $legacyProductKey;
+                }
+                $name = trim((string) $storedName);
+                $product = $identity->productForInvoice($invoice);
+                if ($product === null && (in_array($name, $customNames, true) || \Faoxima\Services\Renewal\Plans::renewalIsCustomCode($name))) {
+                    $hasCustom = true;
+                    if ($productKey === 'custom') {
+                        $serviceRows[] = $invoice;
+                    }
+                    continue;
+                }
+
+                $panel = (string) $invoice['Service_location'];
+                $key = substr(hash('sha256', $panel), 0, 20);
+                $panels[$key] = trim($panel) !== '' ? $panel : 'پنل نامشخص';
+                if ($key !== $panelKey) {
+                    continue;
+                }
+
+                $isTrial = $product === null && $name === RX_TEST_PRODUCT_NAME;
+                $identityKey = $product !== null ? 'product:' . $product['id'] : 'invoice:' . $invoice['id_invoice'];
+                $group = $isTrial ? 'trial' : substr(hash('sha256', $identityKey), 0, 20);
+                if ($productKey === null) {
+                    $label = $product !== null && $product['name'] !== '' ? $product['name'] : $name;
+                    if ($product === null && !$isTrial) {
+                        $label .= ' | ' . $invoice['username'];
+                    }
+                    $products[$group] ??= ['name' => $label, 'reference' => $product['id'] ?? $invoice['id_invoice']];
+                } elseif ($group === $productKey) {
+                    $serviceRows[] = $invoice;
+                }
+            }
+        }
+
+        $backToMain = \Faoxima\Telegram\Keyboard\LayoutFunctions::rx_kb_style(
+            ['text' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_btn_back_main'), 'callback_data' => 'backuser'],
+            'backuser',
+            is_array($navigationStyles) ? $navigationStyles : []
+        );
+        $search = ['text' => $language['users']['search']['title'], 'callback_data' => 'searchservice', '_rxcolor' => 'subscription_list:search'];
+        $lookup = ['text' => $language['users']['page']['notusernameme'], 'callback_data' => 'notusernameme'];
+        $back = [
+            'text' => $language['users']['stateus']['backlist'],
+            'callback_data' => $panelKey !== null && $productKey !== null && isset($panels[$panelKey]) ? "ms:$panelKey" : 'ms:home',
+        ];
+
+        if ($isHome && $legacyFound) {
+            $hasServices = $panels !== [] || $hasCustom;
+            $message = $language['users']['sell']['service_not_available'];
+            if ($isEntry && !$hasServices && $setting['NotUser'] === 'offnotuser') {
+                sendmessage($fromId, $message, null, 'html');
+                return;
+            }
+            if ($isEntry) {
+                \Faoxima\Telegram\Media\SectionMedia::rx_section_media_enter('services', $fromId, $callback, $messageId, ['myservicesbtn'], ['myservicesbtn']);
+            }
+            $buttons = [];
+            asort($panels, SORT_NATURAL | SORT_FLAG_CASE);
+            foreach ($panels as $key => $name) {
+                $buttons[] = [['text' => $name, 'callback_data' => "ms:$key"]];
+            }
+            if ($hasCustom) {
+                $buttons[] = [['text' => $customLabel, 'callback_data' => 'ms:custom:1']];
+            }
+            if ($setting['NotUser'] === 'onnotuser') {
+                $buttons[] = [$lookup];
+            }
+            $buttons[] = [$search];
+            if ($hasServices || $setting['NotUser'] === 'onnotuser') {
+                $message = "🛍 سرویس‌های من\n\nبرای مشاهده سرویس‌ها، پنل یا سرویس دلخواه را انتخاب کنید.\n\n🔎 برای پیدا کردن سریع سرویس خود می‌توانید از دکمه جستجو سریع استفاده کنید.";
+            }
+        } elseif ($products !== []) {
+            $buttons = \Faoxima\Telegram\Support\NavigationFunctionsHelpers::rxBotServiceProductButtons($products, "ms:$panelKey");
+            $buttons[] = [$back];
+            $panelLabel = htmlspecialchars($panels[$panelKey], ENT_QUOTES, 'UTF-8');
+            $message = "🛍 سرویس‌های من — $panelLabel\n\nبرای مشاهده نام‌های کاربری، محصول مورد نظر را انتخاب کنید.";
+        } elseif ($serviceRows !== []) {
+            $callbackPrefix = 'ms:' . ($productKey === 'custom' ? 'custom' : "$panelKey:$productKey");
+            $buttons = \Faoxima\Telegram\Support\NavigationFunctionsHelpers::rxBotServiceUsernameButtons(
+                $serviceRows, $requestedPage, $callbackPrefix, $setting['statusnamecustom'] === 'onnamecustom', $language['users']['page']
+            );
+            $buttons[] = [$search];
+            if ($setting['NotUser'] === 'onnotuser') {
+                $buttons[] = [$lookup];
+            }
+            $buttons[] = [$back];
+            $message = $language['users']['sell']['service_sell'];
+        } else {
+            $message = $texts['dyn_errors_service_not_found'] ?? "❌ سرویس مورد نظر پیدا نشد.";
+            $keyboard = json_encode(['inline_keyboard' => [[$back], [$backToMain]]]);
+            Editmessagetext($fromId, $messageId, $message, $keyboard);
+            return;
+        }
+
+        $buttons[] = [$backToMain];
+        $keyboard = json_encode(['inline_keyboard' => $buttons]);
+        if (!$isEntry || in_array($callback, ['backorder', 'myservicesbtn'], true)) {
+            Editmessagetext($fromId, $messageId, $message, $keyboard);
+        } else {
+            sendmessage($fromId, $message, $keyboard, 'html');
+        }
         return true;
     }
 }

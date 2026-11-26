@@ -27,6 +27,7 @@ final class SectionRoutes
                 'producttime_' => 'purchase', 'productvolume_' => 'purchase', 'paneluserbuy_' => 'purchase',
                 'extends_' => 'extend', 'serviceextend' => 'extend',
                 'quickview_' => 'services', 'updateproduct_' => 'services', 'subscriptionurl_' => 'services',
+                'ms:' => 'services',
                 'removeserviceuser_' => 'services', 'transfer_' => 'services', 'infocard_qr_' => 'services',
                 'Extra_time_' => 'services', 'Extra_volume_' => 'services', 'Extra_volumes_' => 'services',
                 'extravolunme' => 'services', 'nmstock' => 'services',

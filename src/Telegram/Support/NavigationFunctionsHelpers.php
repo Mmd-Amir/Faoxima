@@ -32,20 +32,56 @@ final class NavigationFunctionsHelpers
         && isset(\Faoxima\Orders\Pricing\CustomDuration::fx_duration_tariffs($panel, $user['agent'])[(int) $duration]);
 }
 
-    public static function rxBotServiceProductButtons(array $products, $customProductLabel): array
-{
-    $buttons = [];
-    foreach ($products as $product) {
-        $value = $product['name_product'];
-        $label = trim((string) $value);
-        $key = md5($value === null ? 'NULL' : 'P:' . $value);
-        $buttons[] = [[
-            'text' => $label !== '' ? $label : $customProductLabel,
-            'callback_data' => 'myservicescat_' . $key,
-        ]];
+    public static function rxBotServiceProductButtons(array $products, string $panelCallback): array
+    {
+        $labelCounts = array_count_values(array_column($products, 'name'));
+        uasort($products, static fn (array $left, array $right): int => strnatcasecmp($left['name'], $right['name']));
+        $buttons = [];
+        foreach ($products as $key => $product) {
+            $label = $product['name'];
+            if ($key !== 'trial' && $labelCounts[$label] > 1) {
+                $label .= ' | #' . $product['reference'];
+            }
+            $buttons[] = [['text' => $label, 'callback_data' => "{$panelCallback}:{$key}:1"]];
+        }
+        return $buttons;
     }
-    return $buttons;
-}
+
+    public static function rxBotServiceUsernameButtons(array $services, int $requestedPage, string $callbackPrefix, bool $showNotes, array $pageLabels): array
+    {
+        $perPage = 5;
+        $totalPages = (int) ceil(count($services) / $perPage);
+        $page = max(1, min($requestedPage, $totalPages));
+        $buttons = [];
+        foreach (array_slice($services, ($page - 1) * $perPage, $perPage) as $service) {
+            $note = $showNotes && trim((string) ($service['note'] ?? '')) !== '' ? ' | ' . $service['note'] : '';
+            $suffix = \Faoxima\Services\Delivery\ServiceDelivery::rxServiceListStatusSuffix($service);
+            $buttons[] = [[
+                'text' => '✨' . (string) ($service['username'] ?? '') . $note . $suffix . '✨',
+                'callback_data' => 'quickview_' . $service['id_invoice'],
+            ]];
+        }
+
+        $pagination = [];
+        if ($page > 1) {
+            $pagination[] = [
+                'text' => $pageLabels['previous'],
+                'callback_data' => $callbackPrefix . ':' . ($page - 1),
+                '_rxcolor' => 'subscription_list:previous',
+            ];
+        }
+        if ($page < $totalPages) {
+            $pagination[] = [
+                'text' => $pageLabels['next'],
+                'callback_data' => $callbackPrefix . ':' . ($page + 1),
+                '_rxcolor' => 'subscription_list:next',
+            ];
+        }
+        if ($pagination !== []) {
+            $buttons[] = $pagination;
+        }
+        return $buttons;
+    }
 
     public static function rxBotResetPendingTransfer($pdo, $fromId, array &$user): void
 {

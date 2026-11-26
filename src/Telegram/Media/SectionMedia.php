@@ -63,7 +63,7 @@ final class SectionMedia
                 $rxBannerPlain = trim((string) \Faoxima\Telegram\Rich\Markup::rx_richUi_plainText((string) $text, $parse_mode, true));
                 if ($rxBannerPlain !== '' && mb_strlen($rxBannerPlain, 'UTF-8') <= 1024) {
                     $rxBannerPhotoCaption = htmlspecialchars($rxBannerPlain, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-                    $text = $rxBannerPhotoCaption;
+                    $rxBannerCaptionText = $rxBannerPhotoCaption;
                 }
             }
             if ($rxBannerPhotoCaption !== null) {
@@ -76,7 +76,7 @@ final class SectionMedia
                     'parse_mode' => $parse_mode,
                 ];
                 if (strtolower((string) $parse_mode) === 'html') {
-                    $photoPayload['caption'] = (string) $text;
+                    $photoPayload['caption'] = (string) ($rxBannerCaptionText ?? $text);
                     $photoResult = rxSendMediaWithCaption('sendphoto', $photoPayload, null, $bannerDelivery);
                     $rxPhotoStatus = $bannerDelivery['delivery_status'];
                 } else {
@@ -482,12 +482,49 @@ final class SectionMedia
     {
         $fileId = self::rx_buy_banner_file_id();
         if ($fileId !== '') {
+            $rxBuyNeedsRich = preg_match('/^[A-Za-z0-9_\-]{20,}$/', $fileId) === 1
+                && method_exists(\Faoxima\Telegram\Rich\Markup::class, 'rx_richUi_requiresRich')
+                && \Faoxima\Telegram\Rich\Markup::rx_richUi_requiresRich((string) $text);
+            if ($rxBuyNeedsRich) {
+                $rxBuyRichResult = telegram('sendphoto', [
+                    'chat_id' => $chat_id,
+                    'photo' => $fileId,
+                    'caption' => (string) $text,
+                    'reply_markup' => $keyboard,
+                    'parse_mode' => 'HTML',
+                ]);
+                $rxBuyRichState = is_callable([\Faoxima\Services\Fulfillment\DeliveryState::class, 'deliveryResultState']) ? \Faoxima\Services\Fulfillment\DeliveryState::deliveryResultState($rxBuyRichResult) : (!empty($rxBuyRichResult['ok']) ? 'confirmed' : 'failed');
+                if (method_exists(\Faoxima\Telegram\Rich\Diagnostics::class, 'rx_richDiag_log')) {
+                    \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_log('RICH_DELIVERY_COMPLETED', 'banner_delivery', $rxBuyRichState, [
+                        'delivery_mode' => 'rich_photo_banner_native_keyboard',
+                        'section' => 'buy',
+                        'result' => \Faoxima\Telegram\Rich\Diagnostics::rx_richDiag_result($rxBuyRichResult),
+                    ], $rxBuyRichState === 'confirmed' ? 'info' : 'warning');
+                }
+                if ($rxBuyRichState === 'confirmed') {
+                    if ($isCallback) {
+                        deletemessage($chat_id, $message_id);
+                    }
+                    \Faoxima\Telegram\Presentation\Decor::rx_decor_record($chat_id, $rxBuyRichResult, 'screen', 'buy');
+                    return $rxBuyRichResult;
+                }
+                if ($rxBuyRichState === 'unknown') {
+                    return $rxBuyRichResult;
+                }
+            }
             $rxBuyPhotoCaption = method_exists(\Faoxima\Services\Delivery\ServiceDelivery::class, 'rxPrepareSafeMediaCaption') ? \Faoxima\Services\Delivery\ServiceDelivery::rxPrepareSafeMediaCaption((string) $text) : (string) $text;
+            if ($rxBuyPhotoCaption === null && method_exists(\Faoxima\Telegram\Rich\Markup::class, 'rx_richUi_plainText')) {
+                $rxBuyPlain = trim((string) \Faoxima\Telegram\Rich\Markup::rx_richUi_plainText((string) $text, 'HTML', true));
+                if ($rxBuyPlain !== '' && mb_strlen($rxBuyPlain, 'UTF-8') <= 1024) {
+                    $rxBuyPhotoCaption = htmlspecialchars($rxBuyPlain, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                    $rxBuyCaptionText = $rxBuyPhotoCaption;
+                }
+            }
             if ($rxBuyPhotoCaption !== null) {
                 $photoResult = rxSendMediaWithCaption('sendphoto', [
                     'chat_id' => $chat_id,
                     'photo' => $fileId,
-                    'caption' => (string) $text,
+                    'caption' => (string) ($rxBuyCaptionText ?? $text),
                     '_rx_rich_split' => false,
                     'reply_markup' => $keyboard,
                     'parse_mode' => 'HTML',

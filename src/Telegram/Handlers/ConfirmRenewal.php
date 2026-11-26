@@ -199,6 +199,7 @@ final class ConfirmRenewal
                         'reservation' => $rxReservationSelection
                     ));
                     $value = \Faoxima\Orders\Pricing\ExchangePricing::fxValueWithSnapshot($value, $fxRenewSnapshot);
+                    $value = \Faoxima\Telegram\Support\ServiceProductIdentity::linkRenewal($value, (string) $nameloc['id_invoice'], $prodcut);
                     $type = "extend_user";
                     $status = "unpaid";
                     $extend = '';
@@ -338,6 +339,7 @@ final class ConfirmRenewal
                 'reservation' => $rxReservationSelection
             ));
             $value = \Faoxima\Orders\Pricing\ExchangePricing::fxValueWithSnapshot($value, $fxRenewSnapshot);
+            $value = \Faoxima\Telegram\Support\ServiceProductIdentity::linkRenewal($value, (string) $nameloc['id_invoice'], $prodcut);
             $type = "extend_user";
             $status = "paid";
             $extend_json = json_encode($extend);

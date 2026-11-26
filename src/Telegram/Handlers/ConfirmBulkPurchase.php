@@ -212,7 +212,11 @@ final class ConfirmBulkPurchase
                     $Status = "active";
                     $stmt->bind_param("sssssssssssssss", $from_id, $randomString, $username_acc, $date, $marzban_list_get['name_panel'], $info_product['name_product'], $info_product['price_product'], $info_product['Volume_constraint'], $info_product['Service_time'], $Status, $notifctions, $invoiceIpLimit, $invoiceHwidLimit, $invoiceSymbolicLimitEnabled, $invoiceSymbolicLimitUsers);
                     $stmt->execute();
+                    $invoiceInserted = $stmt->affected_rows === 1;
                     $stmt->close();
+                    if ($invoiceInserted) {
+                        \Faoxima\Telegram\Support\ServiceProductIdentity::recordPurchase($randomString, $info_product);
+                    }
                     try {
                         \Faoxima\Core\Database\Db::update("invoice", "user_info", $stock['content'], "id_invoice", $randomString);
                         \Faoxima\Core\Database\Db::update("invoice", "source_panel_code", $marzban_list_get['code_panel'] ?? '', "id_invoice", $randomString);
@@ -304,12 +308,16 @@ final class ConfirmBulkPurchase
                 $Status = "active";
                 $stmt->bind_param("sssssssssssssss", $from_id, $randomString, $username_acc, $date, $user['Processing_value'], $info_product['name_product'], $info_product['price_product'], $info_product['Volume_constraint'], $info_product['Service_time'], $Status, $notifctions, $invoiceIpLimit, $invoiceHwidLimit, $invoiceSymbolicLimitEnabled, $invoiceSymbolicLimitUsers);
                 $stmt->execute();
+                $invoiceInserted = $stmt->affected_rows === 1;
                 $stmt->close();
                 if ($pdo instanceof \PDO && ($marzban_list_get['type'] ?? '') !== 'Manualsale') {
                     \Faoxima\Services\Fulfillment\Purchase::persistProvisionedUserInfo($pdo, (string) $randomString, is_array($dataoutput) ? $dataoutput : []);
                 }
-                if (($parts[0] ?? '') === 'customvolume') {
-                    \Faoxima\Orders\Pricing\ExchangePricing::fxStoreInvoiceSnapshot($randomString, \Faoxima\Orders\Pricing\CustomDuration::fx_custom_snapshot($marzban_list_get, $user['agent'], $parts[2], $parts[1], $__bulkItemCharge, null));
+                if ($invoiceInserted) {
+                    $purchaseSnapshot = ($parts[0] ?? '') === 'customvolume'
+                        ? \Faoxima\Orders\Pricing\CustomDuration::fx_custom_snapshot($marzban_list_get, $user['agent'], $parts[2], $parts[1], $__bulkItemCharge, null)
+                        : null;
+                    \Faoxima\Telegram\Support\ServiceProductIdentity::recordPurchase($randomString, $info_product, $purchaseSnapshot);
                 }
                 $config = "";
                 $deliveryPanel = \Faoxima\Services\Delivery\ServiceDelivery::rxPurchaseDeliveryPanel($marzban_list_get, $dataoutput['subscription_url'] ?? '');

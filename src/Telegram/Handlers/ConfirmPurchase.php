@@ -237,13 +237,16 @@ final class ConfirmPurchase
             $Status = "unpaid";
             $stmt->bind_param("sssssssssssssssss", $from_id, $randomString, $username_ac, $date, $marzban_list_get['name_panel'], $info_product['name_product'], $priceproduct, $info_product['Volume_constraint'], $info_product['Service_time'], $Status, $userdate['nameconfig'], $user['affiliates'], $notifctions, $invoiceIpLimit, $invoiceHwidLimit, $invoiceSymbolicLimitEnabled, $invoiceSymbolicLimitUsers);
             $stmt->execute();
+            $invoiceInserted = $stmt->affected_rows === 1;
             $stmt->close();
             $fxBuyBasePrice = $parts[0] == "customvolume" ? \Faoxima\Orders\Pricing\ExchangePricing::fxCustomBasePrice($marzban_list_get, $user['agent'], $parts[2], $parts[1]) : ($info_product['fx_base_price'] ?? $fxBuyListPrice);
             $fxBuySnapshot = \Faoxima\Orders\Pricing\ExchangePricing::fxPricingSnapshot($marzban_list_get, $fxBuyKinds, $fxBuyBasePrice, $priceproduct, (float) $fxBuyListPrice - (float) $priceproduct, ['product' => (string)($info_product['code_product'] ?? '')]);
             if (($parts[0] ?? '') === 'customvolume') {
                 $fxBuySnapshot = \Faoxima\Orders\Pricing\CustomDuration::fx_custom_snapshot($marzban_list_get, $user['agent'], $parts[2], $parts[1], $priceproduct, $fxBuySnapshot);
             }
-            \Faoxima\Orders\Pricing\ExchangePricing::fxStoreInvoiceSnapshot($randomString, $fxBuySnapshot);
+            if ($invoiceInserted) {
+                \Faoxima\Telegram\Support\ServiceProductIdentity::recordPurchase($randomString, $info_product, $fxBuySnapshot);
+            }
             if ($priceproduct > \Faoxima\Orders\Checkout\Checkout::availableForUser($user) && $user['agent'] != "n2" && intval($priceproduct) != 0) {
                 $marzbandirectpay = \Faoxima\Services\Panels\PanelFeatures::panel_feature_enabled($marzban_list_get, 'directbuy') ? "ondirectbuy" : "offdirectbuy";
                 if ($marzbandirectpay == "offdirectbuy") {
