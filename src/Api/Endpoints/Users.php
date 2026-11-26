@@ -42,7 +42,7 @@ final class Users
             [\Faoxima\Api\Runtime\EndpointSupport::class, "sanitizeRecursive"],
         );
         $setting = \Faoxima\Core\Database\Db::select("setting", "*");
-        \Faoxima\Api\Management\UserManagement::dispatch($pdo, $request->method, $request->data, $domainhosts ?? null, $setting, $otherservice);
+        \Faoxima\Api\Management\UserManagement::dispatch($pdo, $request->method, $request->data, $domainhosts ?? null, $setting);
 
         return 1;
     }

@@ -7,7 +7,7 @@ use PDO;
 
 final class UserManagement
 {
-    public static function dispatch(PDO $pdo, string $method, array $data, ?string $domainhosts, mixed $setting, mixed $otherservice): void
+    public static function dispatch(PDO $pdo, string $method, array $data, ?string $domainhosts, mixed $setting): void
     {
         switch ($data['actions'] ?? '') {
             case 'users':
@@ -20,7 +20,7 @@ final class UserManagement
                 UserAccountManagement::userAdd($pdo, $method, $data, $setting);
                 return;
             case 'block_user':
-                UserAccountManagement::blockUser($method, $data, $setting, $otherservice);
+                UserAccountManagement::blockUser($method, $data, $setting);
                 return;
             case 'verify_user':
                 UserAccountManagement::verifyUser($method, $data);

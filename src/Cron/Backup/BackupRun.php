@@ -135,7 +135,7 @@ final class BackupRun
         $run = new self();
         $run->pdo = $pdo;
         $run->root = $root;
-        $run->reportThread = Db::select("topicid", "idreport", "report", "backupfile", "select")['idreport'];
+        $run->reportThread = Db::select("topicid", "idreport", "report", "backupfile", "select")['idreport'] ?? null;
         $run->setting = Db::select("setting", "*");
         $GLOBALS['setting'] = $run->setting;
         $run->deadline = microtime(true) + 240;
@@ -393,12 +393,15 @@ final class BackupRun
 
     private function abort(string $telegramText, string $taskReason, string $message, ?string $discard = null): void
     {
-        telegram('sendmessage', [
-            'chat_id' => $this->setting['Channel_Report'],
-            'parse_mode' => 'HTML',
-            'message_thread_id' => $this->reportThread,
-            'text' => $telegramText,
-        ]);
+        $chatId = trim((string) ($this->setting['Channel_Report'] ?? ''));
+        if ($chatId !== '' && $chatId !== '0' && (int) $this->reportThread > 0) {
+            telegram('sendmessage', [
+                'chat_id' => $chatId,
+                'parse_mode' => 'HTML',
+                'message_thread_id' => (int) $this->reportThread,
+                'text' => $telegramText,
+            ]);
+        }
         if ($discard !== null && file_exists($discard)) {
             unlink($discard);
         }

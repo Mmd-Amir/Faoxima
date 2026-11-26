@@ -82,7 +82,7 @@ final class UserAccountManagement
         }
     }
 
-    public static function blockUser(string $method, array $data, array $setting, mixed $otherservice): void
+    public static function blockUser(string $method, array $data, array $setting): void
     {
         EndpointSupport::validateMethod('POST', $method);
 
@@ -106,7 +106,7 @@ final class UserAccountManagement
         }
         \Faoxima\Core\Database\Db::update("user", "description_blocking", $data['description'], "id", $data['chat_id']);
         \Faoxima\Core\Database\Db::update("user", "User_Status", $typeblock, "id", $data['chat_id']);
-        EndpointSupport::sendReport($text_report, $setting['Channel_Report'], $otherservice, null);
+        \Faoxima\Admin\Users\UserStatus::report((string) ($setting['Channel_Report'] ?? ''), $text_report);
         EndpointSupport::sendJsonResponse(true, "Successful");
     }
 

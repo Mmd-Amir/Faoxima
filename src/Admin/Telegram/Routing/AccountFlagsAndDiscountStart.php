@@ -3,7 +3,7 @@
 namespace Faoxima\Admin\Telegram\Routing;
 
 /**
- * Handler stage. Inherited by value: $ManagePanel, $_toggle_notice, $adminExecution, $adminrulecheck, $backadmin, $connect, $datain, $from_id, $keyboard, $keyboardadmin, $message_id, $otherservice, $setting, $shopkeyboard, $text_inline, $textbotlang, $user.
+ * Handler stage. Inherited by value: $ManagePanel, $_toggle_notice, $adminExecution, $adminrulecheck, $backadmin, $connect, $datain, $from_id, $keyboard, $keyboardadmin, $message_id, $setting, $shopkeyboard, $text_inline, $textbotlang, $user.
  * Inherited or exported by reference: $Response, $adminAction, $adminRouteMatched, $dataget, $info_product, $text, $username.
  * Returns true to continue the request pipeline, anything else stops it.
  */
@@ -26,7 +26,6 @@ final class AccountFlagsAndDiscountStart
         $keyboard,
         $keyboardadmin,
         $message_id,
-        $otherservice,
         $setting,
         $shopkeyboard,
         &$text,
@@ -97,7 +96,6 @@ final class AccountFlagsAndDiscountStart
             keyboard: $keyboard ?? null,
             keyboardadmin: $keyboardadmin ?? null,
             message_id: $message_id ?? null,
-            otherservice: $otherservice ?? null,
             setting: $setting ?? null,
             shopkeyboard: $shopkeyboard ?? null,
             text: $text,

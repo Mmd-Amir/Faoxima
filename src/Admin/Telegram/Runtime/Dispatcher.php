@@ -162,7 +162,6 @@ final class Dispatcher
         $optionathx_ui = &$GLOBALS['optionathx_ui'];
         $optionwg = &$GLOBALS['optionwg'];
         $otherreport = &$GLOBALS['otherreport'];
-        $otherservice = &$GLOBALS['otherservice'];
         $output = &$GLOBALS['output'];
         $page = &$GLOBALS['page'];
         $panel = &$GLOBALS['panel'];
@@ -1110,7 +1109,6 @@ final class Dispatcher
                 keyboard: $keyboard ?? null,
                 keyboardadmin: $keyboardadmin ?? null,
                 message_id: $message_id ?? null,
-                otherservice: $otherservice ?? null,
                 paymentreports: $paymentreports ?? null,
                 pdo: $pdo ?? null,
                 randomString: $randomString,
@@ -1141,7 +1139,6 @@ final class Dispatcher
                 keyboard: $keyboard ?? null,
                 keyboardadmin: $keyboardadmin ?? null,
                 message_id: $message_id ?? null,
-                otherservice: $otherservice ?? null,
                 setting: $setting ?? null,
                 shopkeyboard: $shopkeyboard ?? null,
                 text: $text,

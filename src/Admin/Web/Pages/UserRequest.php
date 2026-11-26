@@ -54,20 +54,13 @@ final class UserRequest
             if ($act === 'user_status' && $targetUid !== '') {
                 $status = (string)($_POST['status'] ?? '');
                 if (in_array($status, ['block', 'active'], true)) {
+                    \Faoxima\Admin\Users\UserStatus::change($targetUid, $status, [\Faoxima\Core\Database\Db::class, 'update']);
                     if ($status === 'block') {
                         $textblok = "کاربر با آیدی عددی {$_GET['id']} در ربات مسدود گردید \n\n<blockquote>ادمین مسدود کننده : پنل تحت وب</blockquote>\n<blockquote>نام کاربری : {$_SESSION['user']}</blockquote>";
-                        if (strlen($setting['Channel_Report']) > 0) {
-                            telegram('sendmessage', [
-                                'chat_id'           => $setting['Channel_Report'],
-                                'message_thread_id' => $otherservice,
-                                'text'              => $textblok,
-                                'parse_mode'        => "HTML"
-                            ]);
-                        }
+                        \Faoxima\Admin\Users\UserStatus::report((string) ($setting['Channel_Report'] ?? ''), $textblok);
                     } else {
                         sendmessage($_GET['id'], \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_panel_user_unblocked_notice', "✳️ حساب کاربری شما از مسدودی خارج شد ✳️\nاکنون میتوانید از ربات استفاده کنید "), null, 'HTML');
                     }
-                    \Faoxima\Admin\Users\UserStatus::change($targetUid, $status, 'update');
                 }
                 header("Location: user.php?id=" . urlencode($targetUid));
                 exit;

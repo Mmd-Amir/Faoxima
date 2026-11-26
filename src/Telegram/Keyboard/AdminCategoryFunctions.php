@@ -10,8 +10,8 @@ final class AdminCategoryFunctions
     return \Faoxima\Admin\Keyboard\CategoryKeyboard::build(
         $pdo,
         $textbotlang,
-        method_exists(\Faoxima\Telegram\Keyboard\LayoutFunctions::class, 'rx_keyboardToInline') ? 'rx_keyboardToInline' : null,
-        method_exists(\Faoxima\Admin\Keyboard\ProviderMenuRenderingHelpers::class, 'rx_finalizeInlineAdminKb') ? 'rx_finalizeInlineAdminKb' : null,
+        [LayoutFunctions::class, 'rx_keyboardToInline'],
+        [\Faoxima\Admin\Keyboard\ProviderMenuRenderingHelpers::class, 'rx_finalizeInlineAdminKb'],
     );
 }
 }

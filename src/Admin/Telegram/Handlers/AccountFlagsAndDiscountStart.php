@@ -3,7 +3,7 @@
 namespace Faoxima\Admin\Telegram\Handlers;
 
 /**
- * Handler stage. Inherited by value: $ManagePanel, $_toggle_notice, $adminAction, $adminExecution, $backadmin, $connect, $dataget, $from_id, $keyboard, $keyboardadmin, $message_id, $otherservice, $setting, $shopkeyboard, $text_inline, $textbotlang.
+ * Handler stage. Inherited by value: $ManagePanel, $_toggle_notice, $adminAction, $adminExecution, $backadmin, $connect, $dataget, $from_id, $keyboard, $keyboardadmin, $message_id, $setting, $shopkeyboard, $text_inline, $textbotlang.
  * Inherited or exported by reference: $Response, $info_product, $text, $username.
  * Returns true to continue the request pipeline, anything else stops it.
  */
@@ -23,7 +23,6 @@ final class AccountFlagsAndDiscountStart
         $keyboard,
         $keyboardadmin,
         $message_id,
-        $otherservice,
         $setting,
         $shopkeyboard,
         &$text,
@@ -79,7 +78,7 @@ final class AccountFlagsAndDiscountStart
         case 2:
             $iduser = $dataget[1];
             $userdata = \Faoxima\Core\Database\Db::select("user", "*", "id", $iduser, "select");
-            if ($userdata['User_Status'] == "Active") {
+            if (strtolower((string) ($userdata['User_Status'] ?? '')) === 'active') {
                 \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($from_id, $textbotlang['Admin']['ManageUser']['UserNotBlock'], null, 'HTML');
                 return;
             }
@@ -93,17 +92,9 @@ $iduser  در ربات  رفع مسدود گردید
                     ],
                 ]
             ]);
-            if (strlen($setting['Channel_Report']) > 0) {
-                telegram('sendmessage', [
-                    'chat_id' => $setting['Channel_Report'],
-                    'message_thread_id' => $otherservice,
-                    'text' => $textblok,
-                    'parse_mode' => "HTML",
-                    'reply_markup' => $Response
-                ]);
-            }
-            \Faoxima\Admin\Users\UserStatus::change($iduser, 'Active', 'update');
+            \Faoxima\Admin\Users\UserStatus::change($iduser, 'Active', [\Faoxima\Core\Database\Db::class, 'update']);
             \Faoxima\Core\Database\Db::update("user", "description_blocking", " ", "id", $iduser);
+            \Faoxima\Admin\Users\UserStatus::report((string) ($setting['Channel_Report'] ?? ''), $textblok, $Response);
             \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($from_id, $textbotlang['Admin']['ManageUser']['UserUnblocked'], $keyboardadmin, 'HTML');
             sendmessage($iduser, "✳️ حساب کاربری شما از مسدودی خارج شد ✳️
 اکنون میتوانید از ربات استفاده کنید ✔️", $keyboard, 'HTML');

@@ -96,9 +96,10 @@ final class ReportRouting
                 'errorreport'   => "❌ گزارش خطا ها",
                 'paymentreport' => "💰 گزارش مالی",
                 'receiptreport' => "🧾 گزارش رسید",
+                'backupfile'    => "🤖 بکاپ ربات نماینده",
             ];
 
-            $extraReportKeys = ['porsantreport', 'reportnight', 'reportcron', 'backupfile'];
+            $extraReportKeys = ['porsantreport', 'reportnight', 'reportcron'];
 
             foreach ($reportTopics as $reportKey => $reportName) {
                 \Faoxima\Core\Database\Db::update("topicid", "idreport", "0", "report", $reportKey);

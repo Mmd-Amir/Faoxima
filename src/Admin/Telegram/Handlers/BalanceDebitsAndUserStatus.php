@@ -6,7 +6,7 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Handler stage. Inherited by value: $adminAction, $adminExecution, $backadmin, $connect, $dataget, $from_id, $keyboard, $keyboardadmin, $message_id, $otherservice, $paymentreports, $pdo, $setting, $text, $textbotlang, $update, $user, $username.
+ * Handler stage. Inherited by value: $adminAction, $adminExecution, $backadmin, $connect, $dataget, $from_id, $keyboard, $keyboardadmin, $message_id, $paymentreports, $pdo, $setting, $text, $textbotlang, $update, $user, $username.
  * Inherited or exported by reference: $Response, $invoice, $randomString, $stmt.
  * Returns true to continue the request pipeline, anything else stops it.
  */
@@ -24,7 +24,6 @@ final class BalanceDebitsAndUserStatus
         $keyboard,
         $keyboardadmin,
         $message_id,
-        $otherservice,
         $paymentreports,
         $pdo,
         &$randomString,
@@ -193,7 +192,7 @@ final class BalanceDebitsAndUserStatus
 
             $iduser = $dataget[1];
             \Faoxima\Core\Database\Db::update("user", "Processing_value", $iduser, "id", $from_id);
-            \Faoxima\Admin\Users\UserStatus::change($iduser, 'block', 'update');
+            \Faoxima\Admin\Users\UserStatus::change($iduser, 'block', [\Faoxima\Core\Database\Db::class, 'update']);
             \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($from_id, $textbotlang['Admin']['ManageUser']['BlockUser'], $backadmin, 'HTML');
             \Faoxima\Telegram\Navigation\Steps::step('adddecriptionblock', $from_id);
             $textblok = "کاربر با آیدی عددی
@@ -206,15 +205,7 @@ $iduser  در ربات مسدود گردید
                     ],
                 ]
             ]);
-            if (strlen($setting['Channel_Report']) > 0) {
-                telegram('sendmessage', [
-                    'chat_id' => $setting['Channel_Report'],
-                    'message_thread_id' => $otherservice,
-                    'text' => $textblok,
-                    'parse_mode' => "HTML",
-                    'reply_markup' => $Response
-                ]);
-            }
+            \Faoxima\Admin\Users\UserStatus::report((string) ($setting['Channel_Report'] ?? ''), $textblok, $Response);
             break;
         case 7:
             $iduser = $dataget[1];

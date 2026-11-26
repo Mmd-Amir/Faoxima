@@ -341,6 +341,26 @@ final class BackupRuntime
             $expire->execute([$id]);
             return 'failed';
         }
+        $configuredChatId = trim((string) ($setting['Channel_Report'] ?? ''));
+        $chatId = trim((string) ($row['chat_id'] ?? ''));
+        $threadId = (int) ($row['thread_id'] ?? 0);
+        if ($chatId === '' || $chatId === '0') {
+            $chatId = $configuredChatId;
+            $threadId = (int) $reportbackup;
+        } elseif ($threadId <= 0 && $chatId === $configuredChatId) {
+            $threadId = (int) $reportbackup;
+        }
+        if ($chatId === '' || $chatId === '0' || $threadId <= 0) {
+            $reason = ($chatId === '' || $chatId === '0') ? 'backup_report_chat_missing' : 'backup_report_topic_missing';
+            $defer = $pdo->prepare("UPDATE cron_backup_delivery SET next_attempt_at = ?, last_error = ?, updated_at = NOW() WHERE id = ? AND state = 'pending' AND next_attempt_at <= ?");
+            $defer->execute([$now + 900, $reason, $id, $now]);
+            if ($defer->rowCount() !== 1) {
+                return 'busy';
+            }
+            self::logMessage('ERROR', 'Backup delivery deferred because the report destination is incomplete', ['reason' => $reason]);
+            return 'pending';
+        }
+
         $claim = $pdo->prepare("UPDATE cron_backup_delivery SET state = 'sending', attempts = attempts + 1, last_error = NULL, updated_at = NOW() WHERE id = ? AND state = 'pending' AND attempts < 5 AND next_attempt_at <= ?");
         $claim->execute([$id, $now]);
         if ($claim->rowCount() !== 1) {
@@ -354,9 +374,9 @@ final class BackupRuntime
         }
         $attempts = (int) ($row['attempts'] ?? 0) + 1;
         $sendResult = telegram('sendDocument', [
-            'chat_id' => (string) ($row['chat_id'] ?? ($setting['Channel_Report'] ?? '')),
+            'chat_id' => $chatId,
             'parse_mode' => 'HTML',
-            'message_thread_id' => $row['thread_id'] ?? $reportbackup,
+            'message_thread_id' => $threadId,
             'document' => new CURLFile($filePath),
             'caption' => "📦 خروجی دیتابیس ربات اصلی\n\nبرای حمایت از این پروژه، لطفاً در گیت‌هاب به آن ستاره (Star) دهید.\n⭐ https://github.com/Mmd-Amir/Faoxima",
             '_rx_curl_timeout' => 30,

@@ -3,7 +3,7 @@
 namespace Faoxima\Admin\Telegram\Routing;
 
 /**
- * Handler stage. Inherited by value: $adminExecution, $backadmin, $connect, $datain, $from_id, $keyboard, $keyboardadmin, $message_id, $otherservice, $paymentreports, $pdo, $setting, $text, $textbotlang, $update, $user, $username.
+ * Handler stage. Inherited by value: $adminExecution, $backadmin, $connect, $datain, $from_id, $keyboard, $keyboardadmin, $message_id, $paymentreports, $pdo, $setting, $text, $textbotlang, $update, $user, $username.
  * Inherited or exported by reference: $Response, $adminAction, $adminRouteMatched, $dataget, $invoice, $randomString, $stmt.
  * Returns true to continue the request pipeline, anything else stops it.
  */
@@ -23,7 +23,6 @@ final class BalanceDebitsAndUserStatus
         $keyboard,
         $keyboardadmin,
         $message_id,
-        $otherservice,
         $paymentreports,
         $pdo,
         &$randomString,
@@ -85,7 +84,6 @@ final class BalanceDebitsAndUserStatus
             keyboard: $keyboard ?? null,
             keyboardadmin: $keyboardadmin ?? null,
             message_id: $message_id ?? null,
-            otherservice: $otherservice ?? null,
             paymentreports: $paymentreports ?? null,
             pdo: $pdo ?? null,
             randomString: $randomString,
