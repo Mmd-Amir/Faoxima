@@ -9,7 +9,7 @@ x-runtime-logging: &runtime-logging
 services:
   nginx:
     logging: *runtime-logging
-    image: nginx:1.27-alpine
+    image: nginx:1.30.8-alpine
     depends_on:
       - app
     ports:

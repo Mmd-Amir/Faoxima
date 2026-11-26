@@ -24,6 +24,7 @@ fi
 unset _script_dir
 readonly BOT_DIR="$PROJECT_DIR"
 readonly COMPOSE_FILE="${PROJECT_DIR}/docker-compose.yml"
+readonly NGINX_IMAGE="nginx:1.30.8-alpine"
 readonly ENV_FILE="${PROJECT_DIR}/.env"
 readonly ENV_EXAMPLE="${PROJECT_DIR}/.env.example"
 readonly LOG_FILE="/var/log/faoxima_installer.log"
@@ -2910,6 +2911,47 @@ migrate_runtime_config_values() {
     done
 }
 
+configured_nginx_image() {
+    dc config nginx | awk '
+        /^  nginx:$/ { in_nginx = 1; next }
+        /^  [^ ]/ { in_nginx = 0 }
+        in_nginx && /^    image: / { print $2; found = 1 }
+        END { if (!found) exit 1 }
+    '
+}
+
+upgrade_nginx_for_bot_update() {
+    local configured_image container_id running_image
+    configured_image=$(configured_nginx_image) || return 1
+
+    # Additional bot updates and older archives can leave the legacy host Compose file in place.
+    case "$configured_image" in
+        nginx:1.27-alpine|nginx:1.27.5-alpine)
+            sed -i -E "s|^([[:space:]]*image:[[:space:]]*)['\"]?${configured_image//./\\.}['\"]?([[:space:]]*(#.*)?)$|\1${NGINX_IMAGE}\2|" "$COMPOSE_FILE" || return 1
+            configured_image=$(configured_nginx_image) || return 1
+            if [ "$configured_image" != "$NGINX_IMAGE" ]; then
+                ui_err "The legacy Nginx image is still configured. Set the nginx service image to ${NGINX_IMAGE} and retry."
+                return 1
+            fi
+            ;;
+        "$NGINX_IMAGE") ;;
+        *) return 0 ;;
+    esac
+
+    container_id=$(dc ps -q --status running nginx) || return 1
+    if [ -n "$container_id" ]; then
+        running_image=$(docker inspect --format '{{.Config.Image}}' "$container_id") || return 1
+        [ "$running_image" != "$NGINX_IMAGE" ] || return 0
+    fi
+
+    ui_action "Upgrading Nginx to ${NGINX_IMAGE}..."
+    dc pull nginx || return 1
+    dc run --rm --no-deps -T nginx nginx -t || return 1
+    dc up -d --no-deps --pull never nginx || return 1
+    dc exec -T nginx nginx -v || return 1
+    ui_ok "Nginx upgraded to ${NGINX_IMAGE}."
+}
+
 update_bot_source() {
     local code_dir="$1" app_service="$2" label="$3" \
         mode="$4" version_arg1="$5" version_arg2="$6" zip_path="$7" \
@@ -3027,6 +3069,11 @@ update_bot_source() {
     dc restart "$app_service" || { normalize_source_permissions "$code_dir" || true; ui_err "Failed to restart the '${app_service}' container after the update."; return 1; }
     sleep 2
     if ! grant_file_permissions "$app_service"; then
+        return 1
+    fi
+
+    if ! upgrade_nginx_for_bot_update; then
+        ui_err "Nginx upgrade failed. The bot update remains pending; fix the error above and retry."
         return 1
     fi
 
