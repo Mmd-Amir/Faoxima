@@ -2,6 +2,7 @@
 
 namespace Faoxima\Telegram\Handlers\Gateways;
 
+use Faoxima\Payments\Receipts\ReceiptOrders;
 use Throwable;
 
 /**
@@ -34,7 +35,17 @@ final class Card
         $user
     ) {
         $from_id_sql = (string) $from_id;
+        $lockName = ReceiptOrders::cardCreationLockName($from_id_sql);
+        $lockAcquired = false;
 
+        try {
+                $lockStmt = $pdo->prepare('SELECT GET_LOCK(?, 5)');
+                $lockStmt->execute([$lockName]);
+                $lockAcquired = (int) $lockStmt->fetchColumn() === 1;
+                if (!$lockAcquired) {
+                    sendmessage($from_id, '⏳ درخواست پرداخت شما در حال ثبت است. لطفاً پیام پرداخت را بررسی کنید و در صورت نیاز کمی بعد دوباره تلاش کنید.', null, 'HTML');
+                    return;
+                }
                 $_cc_keep_invoice = "{$user['Processing_value_tow']}|{$user['Processing_value_one']}";
                 $_sbv_reuse = is_callable([\Faoxima\Payments\Receipts\ReceiptOrders::class, 'findReusable']) ? \Faoxima\Payments\Receipts\ReceiptOrders::findReusable($pdo, $from_id_sql, $_cc_keep_invoice, $user['Processing_value']) : null;
                 if ($_sbv_reuse === null && method_exists(\Faoxima\Payments\Receipts\ReceiptRuntime::class, 'rx_sbv_active_payment')) {
@@ -45,24 +56,23 @@ final class Card
                     }
                 }
                 if ($_sbv_reuse === null) {
-                    $stale_cutoff = date('Y/m/d H:i:s', time() - 15 * 60);
-                    \Faoxima\Payments\Receipts\Cancellation::cancelAbandonedCardPaymentsForUser($pdo, $from_id_sql, 'stale_unpaid', [
-                        'methods' => ['cart to cart'],
-                        'created_before' => $stale_cutoff,
-                        'preserve_invoice_key' => $_cc_keep_invoice,
-                    ]);
-                    \Faoxima\Payments\Receipts\Cancellation::cancelAbandonedCardPaymentsForUser($pdo, $from_id_sql, 'superseded', [
-                        'methods' => ['cart to cart'],
-                        'preserve_invoice_key' => $_cc_keep_invoice,
-                    ]);
-
-                    $_stmt = $connect->prepare("SELECT id FROM Payment_report WHERE id_user = ? AND (payment_Status = 'Unpaid' OR payment_Status = 'waiting' OR payment_Status = 'pending') AND Payment_Method = 'cart to cart' LIMIT 1");
-                    $_stmt->bind_param("s", $from_id_sql);
-                    $_stmt->execute();
-                    $checkpay = $_stmt->get_result();
-                    $_stmt->close();
-                    if (mysqli_num_rows($checkpay) != 0) {
-                        sendmessage($from_id, $textbotlang['Admin']['SettingPayment']['issetpay'], null, 'HTML');
+                    $activeReport = ReceiptOrders::findActiveCardReport($pdo, $from_id_sql, $_cc_keep_invoice);
+                    if ($activeReport === null) {
+                        $stale_cutoff = date('Y/m/d H:i:s', time() - 15 * 60);
+                        \Faoxima\Payments\Receipts\Cancellation::cancelAbandonedCardPaymentsForUser($pdo, $from_id_sql, 'stale_unpaid', [
+                            'methods' => ['cart to cart'],
+                            'created_before' => $stale_cutoff,
+                            'preserve_invoice_key' => $_cc_keep_invoice,
+                        ]);
+                        \Faoxima\Payments\Receipts\Cancellation::cancelAbandonedCardPaymentsForUser($pdo, $from_id_sql, 'superseded', [
+                            'methods' => ['cart to cart'],
+                            'preserve_invoice_key' => $_cc_keep_invoice,
+                        ]);
+                        $activeReport = ReceiptOrders::findActiveCardReport($pdo, $from_id_sql);
+                    }
+                    if ($activeReport !== null) {
+                        $orderCode = htmlspecialchars((string) $activeReport['id_order'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                        sendmessage($from_id, $textbotlang['Admin']['SettingPayment']['issetpay'] . "\nکد پیگیری پرداخت فعال <code>{$orderCode}</code>", null, 'HTML');
                         return;
                     }
                 }
@@ -194,6 +204,24 @@ final class Card
                     sendmessage($from_id, \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_errors_purchase_or_payment_restart', '❌ خطایی رخ داده است لطفا مراحل خرید یا پرداخت  را مجدد انجام دهید'), $keyboard, 'HTML');
                     return;
                 }
+        } catch (Throwable $e) {
+            if (function_exists('rx_log_event')) {
+                rx_log_event('CARD_PAYMENT_INIT_FAILED', $e->getMessage(), ['id_user' => $from_id_sql]);
+            }
+            sendmessage($from_id, \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_errors_purchase_or_payment_restart', '❌ خطایی رخ داده است لطفا مراحل خرید یا پرداخت  را مجدد انجام دهید'), $keyboard, 'HTML');
+            return;
+        } finally {
+            if ($lockAcquired) {
+                try {
+                    $releaseStmt = $pdo->prepare('SELECT RELEASE_LOCK(?)');
+                    $releaseStmt->execute([$lockName]);
+                } catch (Throwable $e) {
+                    if (function_exists('rx_log_event')) {
+                        rx_log_event('CARD_PAYMENT_UNLOCK_FAILED', $e->getMessage(), ['id_user' => $from_id_sql]);
+                    }
+                }
+            }
+        }
 
                 $_cv_active = !in_array($from_id, $admin_ids)
                     && ($setting['card_verify_status'] ?? 'offcardverify') === 'oncardverify'

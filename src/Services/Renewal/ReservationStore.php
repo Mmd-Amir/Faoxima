@@ -408,6 +408,93 @@ final class ReservationStore
         return function_exists('mb_substr') ? mb_substr($error, 0, 2000, 'UTF-8') : substr($error, 0, 2000);
     }
 
+    public static function opFind($runtimePdo, string $opId): ?array
+    {
+        $pdo = $runtimePdo;
+        if (!($pdo instanceof PDO) || $opId === '' || !self::ensureSchema($runtimePdo)) {
+            throw new RuntimeException('Renewal operation storage is unavailable');
+        }
+        $stmt = $pdo->prepare("SELECT * FROM renewal_operation WHERE op_id = ? LIMIT 1");
+        if ($stmt === false || !$stmt->execute([$opId])) {
+            throw new RuntimeException('Could not read renewal operation');
+        }
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $errorCode = $stmt->errorCode();
+        if ($row === false && $errorCode !== null && $errorCode !== '00000') {
+            throw new RuntimeException('Could not fetch renewal operation');
+        }
+        return is_array($row) ? $row : null;
+    }
+
+    public static function opFindByRef($runtimePdo, string $source, string $ref, string $serviceKey): ?array
+    {
+        $pdo = $runtimePdo;
+        if (!($pdo instanceof PDO) || $ref === '' || $serviceKey === '' || !self::ensureSchema($runtimePdo)) {
+            throw new RuntimeException('Renewal operation storage is unavailable');
+        }
+        $stmt = $pdo->prepare("SELECT * FROM renewal_operation WHERE service_key = ? AND source = ? AND ref = ? ORDER BY id DESC LIMIT 2");
+        if ($stmt === false || !$stmt->execute([$serviceKey, $source, $ref])) {
+            throw new RuntimeException('Could not read renewal operation by reference');
+        }
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $errorCode = $stmt->errorCode();
+        if ($errorCode !== null && $errorCode !== '00000') {
+            throw new RuntimeException('Could not fetch renewal operation by reference');
+        }
+        if (count($rows) > 1) {
+            throw new RuntimeException('Multiple renewal operations share the same reference');
+        }
+        return $rows[0] ?? null;
+    }
+
+    public static function opResume($runtimePdo, array $operation): bool
+    {
+        $pdo = $runtimePdo;
+        $opId = (string) ($operation['op_id'] ?? '');
+        if (!($pdo instanceof PDO) || $opId === '' || !self::ensureSchema($runtimePdo)) {
+            return false;
+        }
+        try {
+            $stmt = $pdo->prepare("UPDATE renewal_operation SET state = 'applying', attempt_count = attempt_count + 1, updated_at = ?
+                WHERE op_id = ? AND stage = ? AND state = ? AND state IN ('applying', 'uncertain', 'reconciling')");
+            $stmt->execute([time(), $opId, $operation['stage'], $operation['state']]);
+            return $stmt->rowCount() > 0;
+        } catch (Throwable $e) {
+            \Faoxima\Payments\Fulfillment\PaymentPolicy::log('RENEWAL_OPERATION_RESUME_FAILED', $e->getMessage(), ['op_id' => $opId]);
+            return false;
+        }
+    }
+
+    public static function opAdvanceStage(PDO $pdo, string $opId, string $from, string $to, ?array $before = null): bool
+    {
+        $stmt = $pdo->prepare("UPDATE renewal_operation SET stage = ?, before_state = COALESCE(?, before_state), updated_at = ?
+            WHERE op_id = ? AND state = 'applying' AND stage = ?");
+        return $stmt !== false
+            && $stmt->execute([$to, $before === null ? null : \Faoxima\Payments\Fulfillment\Claims::json($before), time(), $opId, $from])
+            && $stmt->rowCount() === 1;
+    }
+
+    public static function opStage(array $operation): string
+    {
+        return explode(':', (string) ($operation['stage'] ?? ''), 2)[0];
+    }
+
+    public static function resetConfirmed(array $operation, array $snapshot): bool
+    {
+        $before = \Faoxima\Payments\Fulfillment\Claims::decode($operation['before_state'] ?? null);
+        $usedBefore = $before['reset_start_used'] ?? $before['used_traffic'] ?? null;
+        $usedAfter = $snapshot['used_traffic'] ?? null;
+        return !empty($snapshot['ok']) && !empty($snapshot['exists']) && is_numeric($usedBefore) && is_numeric($usedAfter)
+            && $usedBefore > 0 && $usedAfter >= 0 && $usedAfter < $usedBefore
+            && ($usedAfter == 0 || ($usedAfter <= RX_RN_USAGE_SLACK && $usedBefore - $usedAfter >= RX_RN_USAGE_SLACK));
+    }
+
+    public static function resetStillPending(?array $operation, array $snapshot): bool
+    {
+        return $operation !== null && in_array(self::opStage($operation), ['reset_sent', 'reset_failed'], true)
+            && !self::resetConfirmed($operation, $snapshot);
+    }
+
     public static function opStart($runtimePdo, array $op): bool
     {
         $pdo = $runtimePdo;
@@ -419,9 +506,8 @@ final class ReservationStore
             $stmt = $pdo->prepare(
                 "INSERT INTO renewal_operation (op_id, source, ref, service_key, username, name_panel, id_invoice, method, policy, state, stage, attempt_count, before_state, target_state, finalize_context, finalize_state, created_at, updated_at) "
                 . "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'applying', 'planned', 1, ?, ?, ?, ?, ?, ?) "
-                . "ON DUPLICATE KEY UPDATE state = 'applying', stage = 'planned', attempt_count = attempt_count + 1, target_state = VALUES(target_state), updated_at = VALUES(updated_at)"
             );
-            $stmt->execute([
+            return $stmt->execute([
                 (string) $op['op_id'],
                 (string) ($op['source'] ?? 'wallet'),
                 isset($op['ref']) ? substr((string) $op['ref'], 0, 191) : null,
@@ -438,7 +524,6 @@ final class ReservationStore
                 $now,
                 $now,
             ]);
-            return true;
         } catch (Throwable $e) {
             \Faoxima\Payments\Fulfillment\PaymentPolicy::log('RENEWAL_OPERATION_START_FAILED', $e->getMessage(), ['op_id' => $op['op_id'] ?? null]);
             return false;

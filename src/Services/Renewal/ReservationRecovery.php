@@ -106,6 +106,9 @@ final class ReservationRecovery
             if ($class === 'unknown') {
                 return $back('panel_read_failed: ' . (string) ($snapshot['error'] ?? ''));
             }
+            if (\Faoxima\Services\Renewal\ReservationStore::resetStillPending($op, $snapshot)) {
+                return $back('reset_confirmation_pending');
+            }
             if ($class === 'ambiguous') {
                 \Faoxima\Services\Renewal\ReservationStore::opUpdate($runtimePdo, $opId, ['state' => 'manual_review', 'last_error' => 'panel_state_ambiguous']);
                 \Faoxima\Payments\Fulfillment\Settlement::alertAdmin('renewal:' . $opId, 'وضعیت سرویس پس از تمدید نامشخص است و بررسی دستی لازم است', ['username' => (string) $op['username']]);
@@ -127,6 +130,7 @@ final class ReservationRecovery
                 'lock_owner' => $opId,
                 'service_key' => $serviceKey,
                 'op_id' => $opId,
+                'resume' => true,
                 'source' => (string) $op['source'],
                 'ref' => (string) ($op['ref'] ?? ''),
                 'method' => (string) ($op['method'] ?? ''),

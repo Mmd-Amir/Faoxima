@@ -610,27 +610,35 @@ final class ManualCrypto
         if ($rate === null || $rate <= 0) {
             return ['ok' => false, 'error' => 'rate-unavailable'];
         }
-        $rawCoin = $amountIrt / $rate;
-        $finalCoin = self::crypto_unique_amount($rawCoin, $currency, null, $iranianMode);
-        $finalAmountIrt = (int) round($finalCoin * $rate);
-
-        global $connect;
-        $orderId = bin2hex(random_bytes(6));
-        $now = date('Y/m/d H:i:s');
-        $statusUnpaid = 'Unpaid';
-
-
+        global $connect, $pdo;
+        $userIdStr = (string) $userId;
+        $lockName = 'faoxima_crypto_init_' . substr(hash('sha256', $userIdStr . '|' . $currency), 0, 40);
         $methodLabel = 'arze digital offline';
         $network = $currencies[$currency]['network'];
+        $locked = false;
 
         try {
+            $locked = \Faoxima\Payments\Settlement\PendingInvoices::acquireCreationLock($pdo, $lockName);
+            if (!$locked) {
+                return ['ok' => false, 'error' => 'invoice-busy'];
+            }
+            $active = \Faoxima\Payments\Settlement\PendingInvoices::findRecentInvoice($pdo, $userIdStr, $methodLabel, null, 30, $invoiceMeta, $amountIrt, $currency);
+            if ($active !== null) {
+                return ['ok' => false, 'error' => 'invoice-pending', 'order_id' => $active];
+            }
+
+            $rawCoin = $amountIrt / $rate;
+            $finalCoin = self::crypto_unique_amount($rawCoin, $currency, null, $iranianMode);
+            $finalAmountIrt = (int) round($finalCoin * $rate);
+            $orderId = bin2hex(random_bytes(6));
+            $now = date('Y/m/d H:i:s');
+            $statusUnpaid = 'Unpaid';
             $stmt = $connect->prepare(
                 "INSERT INTO Payment_report
                     (id_user, id_order, time, price, payment_Status, Payment_Method,
                      id_invoice, crypto_currency, crypto_network, crypto_amount, crypto_wallet_to, crypto_iranian_mode, crypto_rate_irt, source)
                  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             );
-            $userIdStr = (string) $userId;
             $amountIrtStr = (string) $amountIrt;
             $coinStr = number_format($finalCoin, $currencies[$currency]['decimals'], '.', '');
             $iranianModeStr = '0';
@@ -641,11 +649,18 @@ final class ManualCrypto
                 $userIdStr, $orderId, $now, $amountIrtStr, $statusUnpaid, $methodLabel,
                 $invoiceMeta, $currency, $network, $coinStr, $wallet['wallet_address'], $iranianModeStr, $rateStr, $sourceStr
             );
-            $stmt->execute();
+            $saved = $stmt->execute() && $stmt->affected_rows === 1;
             $stmt->close();
+            if (!$saved) {
+                return ['ok' => false, 'error' => 'db-write-failed'];
+            }
         } catch (Throwable $e) {
             error_log('[crypto] create_invoice: ' . $e->getMessage());
             return ['ok' => false, 'error' => 'db-write-failed'];
+        } finally {
+            if ($locked) {
+                \Faoxima\Payments\Settlement\PendingInvoices::releaseCreationLock($pdo, $lockName);
+            }
         }
 
         $ttl = 1800;

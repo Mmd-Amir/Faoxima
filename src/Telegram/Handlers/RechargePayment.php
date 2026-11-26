@@ -2,6 +2,9 @@
 
 namespace Faoxima\Telegram\Handlers;
 
+use Faoxima\Payments\Settlement\PendingInvoices;
+use Throwable;
+
 /**
  * Handler stage. Inherited by value: $_cc_insert_err, $_rx_payrcpt_styles, $admin_ids, $backuser, $callback_query_id, $connect, $datain, $datatextbot, $errorreport, $explorerHint, $from_id, $hashHint, $invoiceMsg, $keyboard, $setting, $telegramRoute, $textbotlang, $update, $username.
  * Inherited or exported by reference: $btn, $cur, $data, $invoice, $label, $message_id, $payment, $pdo, $randomString, $reason, $result, $rows, $sendresidcart, $stmt, $textcart, $user.
@@ -56,6 +59,27 @@ final class RechargePayment
                 return;
             }
             if (!preg_match('/^sbv(resume|cancel)_\w+$/', (string) $datain) && !\Faoxima\Orders\Checkout\CheckoutRuntime::rx_ck_bot_payment_guard($user, $message_id)) { return; }
+            $method = (string) $datain;
+            $gatewayMethods = PendingInvoices::rx_gateway_payment_method_map();
+            $lockName = null;
+            if ($method === 'startelegrams' || (isset($gatewayMethods[$method]) && !in_array($method, ['rialit', 'tetraminator'], true))) {
+                $lockName = 'faoxima_payment_init_' . $from_id . '_' . $method;
+                try {
+                    $locked = PendingInvoices::acquireCreationLock($pdo, $lockName);
+                } catch (Throwable $e) {
+                    error_log('[payment invoice lock] ' . $e->getMessage());
+                    $locked = false;
+                }
+                if (!$locked) {
+                    sendmessage($from_id, '⏳ فاکتور پرداخت در حال بررسی است. لطفاً کمی بعد دوباره تلاش کنید.', $keyboard, 'HTML');
+                    return;
+                }
+            }
+
+            try {
+                if ($lockName !== null && self::stopForExistingInvoice($pdo, $method, (string) $from_id, $user, $keyboard)) {
+                    return;
+                }
             $__chargeBonus = is_callable([\Faoxima\Cashback\ChargeBonus::class, 'pendingChargeBonus']) ? \Faoxima\Cashback\ChargeBonus::pendingChargeBonus($user) : 0;
             if ($datain == "cart_to_offline") {
                 if (\Faoxima\Telegram\Handlers\Gateways\Card::handle(_cc_insert_err: $_cc_insert_err ?? null, _rx_payrcpt_styles: $_rx_payrcpt_styles ?? null, admin_ids: $admin_ids ?? null, backuser: $backuser ?? null, callback_query_id: $callback_query_id ?? null, connect: $connect ?? null, data: $data, datatextbot: $datatextbot ?? null, from_id: $from_id ?? null, invoice: $invoice, keyboard: $keyboard ?? null, message_id: $message_id, pdo: $pdo ?? null, randomString: $randomString, sendresidcart: $sendresidcart, setting: $setting ?? null, stmt: $stmt, textbotlang: $textbotlang ?? null, textcart: $textcart, user: $user ?? null) !== true) {
@@ -153,9 +177,40 @@ final class RechargePayment
                     }
                 }
             }
+            } finally {
+                if ($lockName !== null) {
+                    PendingInvoices::releaseCreationLock($pdo, $lockName);
+                }
+            }
             break;
         }
 
+        return true;
+    }
+
+    private static function stopForExistingInvoice(\PDO $pdo, string $method, string $userId, array $user, $keyboard): bool
+    {
+        try {
+            if ($method === 'iranpay2') {
+                // The Mini App and bot store different method labels for this gateway.
+                $pendingOrder = PendingInvoices::findRecentInvoice($pdo, $userId, $method, true, PendingInvoices::rx_gateway_stale_minutes($method));
+            } elseif ($method === 'startelegrams') {
+                $invoiceKey = ($user['Processing_value_tow'] ?? '') . '|' . ($user['Processing_value_one'] ?? '');
+                $pendingOrder = PendingInvoices::findRecentInvoice($pdo, $userId, 'Star Telegram', false, 30, $invoiceKey, (int) ($user['Processing_value'] ?? 0));
+            } else {
+                return false;
+            }
+        } catch (Throwable $e) {
+            error_log('[payment invoice lookup] ' . $e->getMessage());
+            sendmessage($userId, '⏳ بررسی فاکتور پرداخت موقتاً ممکن نیست. لطفاً کمی بعد دوباره تلاش کنید.', $keyboard, 'HTML');
+            return true;
+        }
+        if ($pendingOrder === null) {
+            return false;
+        }
+
+        $orderCode = htmlspecialchars($pendingOrder, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        sendmessage($userId, "⏳ برای ادامه، فاکتور قبلی را در ربات یا مینی‌اپ باز کنید.\nکد پیگیری <code>{$orderCode}</code>", $keyboard, 'HTML');
         return true;
     }
 }

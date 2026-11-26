@@ -43,25 +43,30 @@ final class RenewalSelection
     ) {
         switch ($telegramRoute) {
         case 'renewal_start':
-            $id_invoice = $dataget[1];
+            $id_invoice = $dataget[1] ?? null;
             $nameloc = \Faoxima\Core\Database\Db::select("invoice", "*", "id_invoice", $id_invoice, "select");
 
-            if (!is_array($nameloc) || (string)($nameloc['id_user'] ?? '') !== (string)$from_id) {
+            if (!is_array($nameloc)) {
+                self::rxRenewalStop($from_id, $datatextbot, $textbotlang);
+                return;
+            }
+            if ((string)($nameloc['id_user'] ?? '') !== (string)$from_id) {
                 if (function_exists('rx_log_event')) {
                     rx_log_event('INVOICE_OWNERSHIP_DENIED', 'Handler extend on non-owned invoice', [
                         'from_id' => $from_id, 'invoice' => $id_invoice, 'handler' => 'extend',
                     ]);
                 }
-                return;
-            }
-            if ($nameloc == false) {
-                sendmessage($from_id, $datatextbot['dyn_errors_renewal_failed_restart'] ?? "❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.", null, 'HTML');
+                self::rxRenewalStop($from_id, $datatextbot, $textbotlang);
                 return;
             }
             if (method_exists(\Faoxima\Services\Fulfillment\StockPresentation::class, 'nmMaybeShowStockInvoiceDetails') && \Faoxima\Services\Fulfillment\StockPresentation::nmMaybeShowStockInvoiceDetails($from_id, $message_id ?? null, $nameloc)) { \Faoxima\Telegram\Navigation\Steps::step('home', $from_id); return; }
             if (method_exists(\Faoxima\Services\Fulfillment\StockPresentation::class, 'nmStopIfServicePanelBlocked') && \Faoxima\Services\Fulfillment\StockPresentation::nmStopIfServicePanelBlocked($nameloc, $from_id, null)) return;
             $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
-            if ($marzban_list_get['status_extend'] == "off_extend") {
+            if (!is_array($marzban_list_get) || empty($marzban_list_get)) {
+                self::rxRenewalStop($from_id, $datatextbot, $textbotlang, (string)($nameloc['id_invoice'] ?? ''));
+                return;
+            }
+            if (($marzban_list_get['status_extend'] ?? '') == "off_extend") {
                 sendmessage($from_id, $datatextbot['dyn_errors_extend_unavailable_panel'] ?? "❌ امکان تمدید در این پنل وجود ندارد", null, 'html');
                 return;
             }
@@ -154,8 +159,13 @@ final class RenewalSelection
             break;
         case 'renewal_duration':
             $userdate = json_decode($user['Processing_value'], true);
-            $nameloc = \Faoxima\Core\Database\Db::select("invoice", "*", "id_invoice", $userdate['id_invoice'], "select");
-            $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
+            $rxRenewalCtx = self::rxRenewalLoadContext($userdate['id_invoice'] ?? null, $from_id);
+            if ($rxRenewalCtx === null) {
+                self::rxRenewalStop($from_id, $datatextbot, $textbotlang);
+                return;
+            }
+            $nameloc = $rxRenewalCtx['invoice'];
+            $marzban_list_get = $rxRenewalCtx['panel'];
             $mainvolume = json_decode($marzban_list_get['mainvolume'], true);
             $mainvolume = $mainvolume[$user['agent']];
             $maxvolume = json_decode($marzban_list_get['maxvolume'], true);
@@ -187,7 +197,13 @@ final class RenewalSelection
         case 'renewal_month':
             $monthenumber = $dataget[1];
             $userdate = json_decode($user['Processing_value'], true);
-            $nameloc = \Faoxima\Core\Database\Db::select("invoice", "*", "id_invoice", $userdate['id_invoice'], "select");
+            $rxRenewalCtx = self::rxRenewalLoadContext($userdate['id_invoice'] ?? null, $from_id);
+            if ($rxRenewalCtx === null) {
+                self::rxRenewalStop($from_id, $datatextbot, $textbotlang);
+                return;
+            }
+            $nameloc = $rxRenewalCtx['invoice'];
+            $marzban_list_get = $rxRenewalCtx['panel'];
             $stmt = $pdo->prepare("SELECT * FROM product WHERE (FIND_IN_SET(:service_location, Location) > 0 OR Location = '/all') AND Service_time = :monthe AND (FIND_IN_SET(:agent, REPLACE(agent, ' ', '')) > 0 OR agent IN ('all', 'allusers'))");
             $stmt->execute([
                 ':service_location' => $nameloc['Service_location'],
@@ -195,7 +211,6 @@ final class RenewalSelection
                 ':agent' => $user['agent'],
             ]);
             $productextend = ['inline_keyboard' => []];
-            $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
             $statusshowprice = \Faoxima\Services\Panels\PanelFeatures::panel_feature_enabled($marzban_list_get, 'showprice') ? "onshowprice" : "offshowprice";
             while ($result = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $result = \Faoxima\Orders\Pricing\ExchangePricing::fxApplyToProduct($result, $marzban_list_get);
@@ -231,8 +246,13 @@ final class RenewalSelection
             break;
         case 'renewal_product':
             $userdate = json_decode($user['Processing_value'], true);
-            $nameloc = \Faoxima\Core\Database\Db::select("invoice", "*", "id_invoice", $userdate['id_invoice'], "select");
-            $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
+            $rxRenewalCtx = self::rxRenewalLoadContext($userdate['id_invoice'] ?? null, $from_id);
+            if ($rxRenewalCtx === null) {
+                self::rxRenewalStop($from_id, $datatextbot, $textbotlang);
+                return;
+            }
+            $nameloc = $rxRenewalCtx['invoice'];
+            $marzban_list_get = $rxRenewalCtx['panel'];
             if ($user['step'] == "getvolumecustomuserforextend") {
                 if (!ctype_digit($text)) {
                     sendmessage($from_id, $textbotlang['Admin']['Product']['Invalidtime'], $backuser, 'HTML');
@@ -268,14 +288,9 @@ final class RenewalSelection
                     return;
                 }
                 $codeproduct = $codeproduct['code_product'];
-                $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
             } else {
                 $codeproduct = $dataget[1];
             }
-            $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
-            $custompricevalue = \Faoxima\Orders\Pricing\ExchangePricing::fxAdjustBaseToman($eextraprice[$user['agent']], $marzban_list_get, 'custom_volume');
-            $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
-            $customtimevalueprice = \Faoxima\Orders\Pricing\ExchangePricing::fxAdjustBaseToman($eextraprice[$user['agent']], $marzban_list_get, 'custom_time');
             if ($user['step'] == "getvolumecustomuserforextend") {
                 $product['name_product'] = $nameloc['name_product'];
                 $product['code_product'] = "customvolume";
@@ -373,8 +388,13 @@ final class RenewalSelection
         case 'renewal_discount':
             if (!isset($update['message']) && empty($text)) { return; }
             $userdate = json_decode($user['Processing_value'], true);
-            $nameloc = \Faoxima\Core\Database\Db::select("invoice", "*", "id_invoice", $userdate['id_invoice'], "select");
-            $marzban_list_get = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $nameloc['Service_location'], "select");
+            $rxRenewalCtx = self::rxRenewalLoadContext($userdate['id_invoice'] ?? null, $from_id);
+            if ($rxRenewalCtx === null) {
+                self::rxRenewalStop($from_id, $datatextbot, $textbotlang);
+                return;
+            }
+            $nameloc = $rxRenewalCtx['invoice'];
+            $marzban_list_get = $rxRenewalCtx['panel'];
             if (!\Faoxima\Core\Database\Db::rxTableValueExists('DiscountSell', 'codeDiscount', $text)) {
                 sendmessage($from_id, $textbotlang['users']['Discount']['notcode'], $backuser, 'HTML');
                 return;
@@ -395,10 +415,6 @@ final class RenewalSelection
             $__dlabel = $__dv['label'];
             $rxDiscountAppliedTpl = $datatextbot['dyn_errors_discount_applied'] ?? "🤩 کد تخفیف شما درست بود و تخفیف %s روی فاکتور شما اعمال شد.";
             sendmessage($from_id, sprintf($rxDiscountAppliedTpl, $__dlabel), $keyboard, 'HTML');
-            $eextraprice = json_decode($marzban_list_get['pricecustomvolume'], true);
-            $custompricevalue = \Faoxima\Orders\Pricing\ExchangePricing::fxAdjustBaseToman($eextraprice[$user['agent']], $marzban_list_get, 'custom_volume');
-            $eextraprice = json_decode($marzban_list_get['pricecustomtime'], true);
-            $customtimevalueprice = \Faoxima\Orders\Pricing\ExchangePricing::fxAdjustBaseToman($eextraprice[$user['agent']], $marzban_list_get, 'custom_time');
             if ($nameloc['name_product'] == "🛍 حجم دلخواه" || $nameloc['name_product'] == "⚙️ سرویس دلخواه" || \Faoxima\Services\Renewal\Plans::renewalIsCustomCode($userdate['code_product'] ?? '')) {
                 $info_product['code_product'] = "pre";
                 $info_product['name_product'] = $nameloc['name_product'];
@@ -417,6 +433,10 @@ final class RenewalSelection
                 $stmt->bindParam(':agent', $user['agent'], PDO::PARAM_STR);
                 $stmt->execute();
                 $info_product = $stmt->fetch(PDO::FETCH_ASSOC);
+            }
+            if (!is_array($info_product) || !array_key_exists('price_product', $info_product)) {
+                self::rxRenewalStop($from_id, $datatextbot, $textbotlang, (string)($nameloc['id_invoice'] ?? ''));
+                return;
             }
             $fxRenewCustom = ($nameloc['name_product'] == "🛍 حجم دلخواه" || $nameloc['name_product'] == "⚙️ سرویس دلخواه" || \Faoxima\Services\Renewal\Plans::renewalIsCustomCode($userdate['code_product'] ?? ''));
             $fxRenewKinds = $fxRenewCustom ? ['custom_volume', 'custom_time'] : 'product';
@@ -465,5 +485,42 @@ final class RenewalSelection
         }
 
         return true;
+    }
+
+    private static function rxRenewalLoadContext($idInvoice, $from_id)
+    {
+        if (!is_scalar($idInvoice) || trim((string) $idInvoice) === '') {
+            return null;
+        }
+        $invoice = \Faoxima\Core\Database\Db::select("invoice", "*", "id_invoice", (string) $idInvoice, "select");
+        if (!is_array($invoice) || (string) ($invoice['id_user'] ?? '') !== (string) $from_id) {
+            return null;
+        }
+        $panelName = trim((string) ($invoice['Service_location'] ?? ''));
+        if ($panelName === '') {
+            return null;
+        }
+        $panel = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $panelName, "select");
+        if (!is_array($panel) || empty($panel)) {
+            return null;
+        }
+        return ['invoice' => $invoice, 'panel' => $panel];
+    }
+
+    private static function rxRenewalStop($from_id, $datatextbot, $textbotlang, $idInvoice = '')
+    {
+        $keyboard = ['inline_keyboard' => []];
+        $invoiceId = trim((string) $idInvoice);
+        if ($invoiceId !== '') {
+            $keyboard['inline_keyboard'][] = [[
+                'text' => $textbotlang['users']['stateus']['backservice'] ?? 'بازگشت به سرویس',
+                'callback_data' => 'product_' . $invoiceId,
+            ]];
+        }
+        $keyboard['inline_keyboard'][] = [[
+            'text' => $textbotlang['users']['stateus']['backlist'] ?? 'بازگشت',
+            'callback_data' => 'backorder',
+        ]];
+        sendmessage($from_id, $datatextbot['dyn_errors_renewal_failed_restart'] ?? "❌ تمدید با خطا مواجه گردید مراحل تمدید را مجددا انجام دهید.", json_encode($keyboard), 'HTML');
     }
 }

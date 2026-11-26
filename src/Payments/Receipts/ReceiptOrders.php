@@ -276,6 +276,29 @@ final class ReceiptOrders
         }
     }
 
+    public static function cardCreationLockName(string $userId): string
+    {
+        return 'faoxima_payment_init_' . $userId . '_carttocart';
+    }
+
+    public static function findActiveCardReport(PDO $pdo, string $userId, ?string $invoiceKey = null): ?array
+    {
+        $sql = "SELECT id_order FROM Payment_report
+              WHERE id_user = ?
+                AND Payment_Method IN ('cart to cart', 'carttocart_pv')
+                AND payment_Status IN ('Unpaid', 'pending', 'waiting', 'processing', 'reconciling', 'manual_review')
+                AND COALESCE(direct_payment_done, 0) = 0";
+        $params = [$userId];
+        if ($invoiceKey !== null) {
+            $sql .= ' AND id_invoice = ?';
+            $params[] = $invoiceKey;
+        }
+        $stmt = $pdo->prepare($sql . ' ORDER BY id DESC LIMIT 1');
+        $stmt->execute($params);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row === false ? null : $row;
+    }
+
     public static function userLock($runtimePdo, string $userId, int $timeout = 5): bool
     {
         $pdo = \Faoxima\Payments\Receipts\Settings::pdo($runtimePdo);

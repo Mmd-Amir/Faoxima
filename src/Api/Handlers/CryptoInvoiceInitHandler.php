@@ -138,6 +138,12 @@ final class CryptoInvoiceInitHandler extends \Faoxima\Api\Handlers\BaseHandler
 
         if (!is_array($result) || empty($result['ok'])) {
             $err = is_array($result) ? (string)($result['error'] ?? '') : 'unknown';
+            if ($err === 'invoice-pending') {
+                \Faoxima\Api\Runtime\Response::fail(409, '⏳ برای این پرداخت فاکتور فعال دارید. از همان فاکتور ادامه دهید.', ['code' => 'invoice_pending', 'order_id' => (string) $result['order_id']]);
+            }
+            if ($err === 'invoice-busy') {
+                \Faoxima\Api\Runtime\Response::fail(409, '⏳ ثبت فاکتور در حال انجام است. لطفاً کمی بعد دوباره تلاش کنید.', ['code' => 'invoice_busy']);
+            }
             $msg = self::REASON_FA[$err] ?? ('خطا در ساخت فاکتور: ' . $err);
             if ($err === 'below-min' && isset($result['min'])) {
                 $msg = '❌ حداقل مبلغ برای این روش ' . number_format((int)$result['min']) . ' تومان است';

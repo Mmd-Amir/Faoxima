@@ -100,6 +100,46 @@ final class PendingInvoices
         ];
     }
 
+    public static function acquireCreationLock(PDO $pdo, string $name): bool
+    {
+        $stmt = $pdo->prepare('SELECT GET_LOCK(?, 5)');
+        $stmt->execute([$name]);
+        return (int) $stmt->fetchColumn() === 1;
+    }
+
+    public static function releaseCreationLock(PDO $pdo, string $name): void
+    {
+        try {
+            $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$name]);
+        } catch (Throwable $e) {
+            error_log('[payment invoice lock] ' . $e->getMessage());
+        }
+    }
+
+    public static function findRecentInvoice(PDO $pdo, string $userId, string $method, ?bool $miniApp, int $minutes, ?string $invoiceKey = null, ?int $amount = null, ?string $currency = null): ?string
+    {
+        $sql = "SELECT id_order FROM Payment_report
+                 WHERE id_user = ? AND Payment_Method = ?
+                   AND payment_Status IN ('Unpaid', 'pending', 'waiting', 'processing', 'reconciling', 'manual_review')
+                   AND COALESCE(direct_payment_done, 0) = 0 AND time >= ?";
+        $params = [$userId, $method, date('Y/m/d H:i:s', time() - $minutes * 60)];
+        if ($miniApp !== null) {
+            $sql .= $miniApp ? " AND source = 'miniapp'" : " AND (source IS NULL OR source <> 'miniapp')";
+        }
+        if ($invoiceKey !== null && $amount !== null) {
+            $sql .= ' AND id_invoice = ? AND price = ?';
+            array_push($params, $invoiceKey, $amount);
+        }
+        if ($currency !== null) {
+            $sql .= ' AND crypto_currency = ?';
+            $params[] = $currency;
+        }
+        $stmt = $pdo->prepare($sql . ' ORDER BY id DESC LIMIT 1');
+        $stmt->execute($params);
+        $orderId = $stmt->fetchColumn();
+        return $orderId === false ? null : (string) $orderId;
+    }
+
     public static function rx_gateway_stale_minutes($paymentMethod)
     {
         if ($paymentMethod === 'tonpay') {

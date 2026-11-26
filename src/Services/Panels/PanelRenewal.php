@@ -441,7 +441,21 @@ trait PanelRenewal
                     return ['status' => false, 'code' => 'renewal_in_progress', 'no_mutation' => true, 'operation_id' => $opId];
                 }
             }
-            if (!\Faoxima\Services\Renewal\ReservationStore::opStart($pdo, array(
+            try {
+                $rxResumeOp = \Faoxima\Services\Renewal\ReservationStore::opFind($pdo, $opId);
+            } catch (Throwable $lookupError) {
+                return $this->rxRenewalUncertain($opId, $plan, $before, null, 'renewal_operation_lookup_failed: ' . $lookupError->getMessage(), $diag, false);
+            }
+            if (!is_array($rxResumeOp) && !empty($opts['resume'])) {
+                return $this->rxRenewalUncertain($opId, $plan, $before, null, 'renewal_operation_missing', $diag, false);
+            }
+            if (is_array($rxResumeOp)) {
+                if (($rxResumeOp['service_key'] ?? '') !== $serviceKey || ($rxResumeOp['source'] ?? '') !== $source
+                    || (string) ($rxResumeOp['ref'] ?? '') !== $diag['ref']
+                    || !\Faoxima\Services\Renewal\ReservationStore::opResume($pdo, $rxResumeOp)) {
+                    return $this->rxRenewalUncertain($opId, $plan, $before, null, 'renewal_operation_resume_failed', $diag, false);
+                }
+            } elseif (!\Faoxima\Services\Renewal\ReservationStore::opStart($pdo, array(
                 'op_id' => $opId,
                 'source' => $source,
                 'ref' => $opts['ref'] ?? null,
@@ -456,29 +470,74 @@ trait PanelRenewal
                 'finalize' => is_array($opts['finalize'] ?? null) ? $opts['finalize'] : null,
             ))) {
                 $rxLogFail('apply_persist', 'operation_persist_failed', 'none');
-                return array('status' => false, 'code' => 'operation_persist_failed', 'no_mutation' => true, 'operation_id' => $opId, 'msg' => 'renewal operation could not be persisted');
+                return $this->rxRenewalUncertain($opId, $plan, $before, null, 'operation_persist_failed', $diag, false);
             }
             $resetDone = false;
-            if (!empty($plan['reset_usage']) && ($panel['type'] ?? '') !== 'jovadpanel' && \Faoxima\Payments\Fulfillment\Claims::int($data_user['used_traffic'] ?? 0) > 0) {
-                \Faoxima\Services\Renewal\ReservationStore::opUpdate($pdo, $opId, array('stage' => 'reset_sent'));
-                $reset = $this->ResetUserDataUsage($username, $panel['name_panel']);
-                if (!is_array($reset) || empty($reset['status'])) {
-                    $resetMsg = is_array($reset) ? (is_scalar($reset['msg'] ?? null) ? (string) $reset['msg'] : json_encode($reset['msg'] ?? '')) : '';
+            $rxStoredStage = (string) ($rxResumeOp['stage'] ?? 'planned');
+            $rxResetStage = \Faoxima\Services\Renewal\ReservationStore::opStage($rxResumeOp ?? ['stage' => 'planned']);
+            if (!in_array($rxResetStage, ['planned', 'reset_sent', 'reset_done', 'modify_sent'], true)) {
+                return $this->rxRenewalUncertain($opId, $plan, $before, null, 'renewal_operation_stage_not_resumable', $diag);
+            }
+            if ($rxResetStage === 'modify_sent' && !empty($plan['reset_usage']) && ($panel['type'] ?? '') !== 'jovadpanel') {
+                return $this->rxRenewalUncertain($opId, $plan, $before, null, 'modify_confirmation_pending', $diag);
+            }
+            if (!empty($plan['reset_usage']) && ($panel['type'] ?? '') !== 'jovadpanel') {
+                if ($rxResetStage === 'reset_sent') {
                     $probe = \Faoxima\Services\Fulfillment\ProviderState::panelSnapshot($this, (string) $panel['name_panel'], $username, (string) $panel['type']);
                     if (empty($probe['ok']) || empty($probe['exists'])) {
+                        return $this->rxRenewalUncertain($opId, $plan, $before, null, 'reset_confirmation_pending: ' . (string) ($probe['error'] ?? 'panel read failed'), $diag);
+                    }
+                    if (!\Faoxima\Services\Renewal\ReservationStore::resetConfirmed($rxResumeOp, $probe)) {
+                        return $this->rxRenewalUncertain($opId, $plan, $before, \Faoxima\Services\Fulfillment\ProviderState::limits($probe), 'reset_confirmation_pending', $diag);
+                    }
+                    if (!\Faoxima\Services\Renewal\ReservationStore::opAdvanceStage($pdo, $opId, $rxStoredStage, 'reset_done')) {
+                        return $this->rxRenewalUncertain($opId, $plan, $before, null, 'reset_confirmation_persist_failed', $diag);
+                    }
+                    $rxStoredStage = 'reset_done';
+                    $resetDone = true;
+                } elseif ($rxResetStage === 'reset_done') {
+                    $resetDone = true;
+                } elseif (\Faoxima\Payments\Fulfillment\Claims::int($data_user['used_traffic'] ?? 0) > 0) {
+                    $resetBaseline = $before + ['reset_start_used' => \Faoxima\Payments\Fulfillment\Claims::int($data_user['used_traffic'])];
+                    if (!\Faoxima\Services\Renewal\ReservationStore::opAdvanceStage($pdo, $opId, $rxStoredStage, 'reset_sent', $resetBaseline)) {
+                        return $this->rxRenewalUncertain($opId, $plan, $before, null, 'reset_request_persist_failed', $diag);
+                    }
+                    try {
+                        $reset = $this->ResetUserDataUsage($username, $panel['name_panel']);
+                    } catch (Throwable $resetError) {
+                        return $this->rxRenewalUncertain($opId, $plan, $before, null, 'reset_result_unknown: ' . $resetError->getMessage(), $diag);
+                    }
+                    $rxResetKind = $this->rxRenewalResetKind($reset);
+                    $resetMsg = is_array($reset) ? (is_scalar($reset['msg'] ?? null) ? (string) $reset['msg'] : json_encode($reset['msg'] ?? '')) : '';
+                    if ($rxResetKind === 'uncertain') {
+                        $rxLogFail('apply_reset', 'reset_result_unknown', 'uncertain', $resetMsg);
                         return $this->rxRenewalUncertain($opId, $plan, $before, null, 'reset_result_unknown: ' . $resetMsg, $diag);
                     }
-                    $probeUsed = \Faoxima\Payments\Fulfillment\Claims::int($probe['used_traffic']);
-                    if ($probeUsed > RX_RN_USAGE_SLACK && $probeUsed + RX_RN_USAGE_SLACK > \Faoxima\Payments\Fulfillment\Claims::int($data_user['used_traffic'] ?? 0)) {
-                        \Faoxima\Services\Renewal\ReservationStore::opUpdate($pdo, $opId, array('state' => 'failed', 'stage' => 'reset_failed', 'last_error' => $resetMsg));
-                        $rxLogFail('apply_reset', 'reset_failed', 'attempted_not_applied', $resetMsg);
-                        return array('status' => false, 'code' => 'reset_failed', 'no_mutation' => true, 'operation_id' => $opId, 'msg' => 'error reset : ' . $resetMsg);
+                    if ($rxResetKind === 'rejected') {
+                        $probe = \Faoxima\Services\Fulfillment\ProviderState::panelSnapshot($this, (string) $panel['name_panel'], $username, (string) $panel['type']);
+                        if (empty($probe['ok']) || empty($probe['exists'])) {
+                            return $this->rxRenewalUncertain($opId, $plan, $before, null, 'reset_rejected_unverified: ' . $resetMsg, $diag);
+                        }
+                        if (!\Faoxima\Services\Renewal\ReservationStore::resetConfirmed(['before_state' => \Faoxima\Payments\Fulfillment\Claims::json($resetBaseline)], $probe)) {
+                            if (!\Faoxima\Services\Renewal\ReservationStore::opAdvanceStage($pdo, $opId, 'reset_sent', 'reset_failed')) {
+                                return $this->rxRenewalUncertain($opId, $plan, $before, null, 'reset_rejection_persist_failed', $diag);
+                            }
+                            \Faoxima\Services\Renewal\ReservationStore::opUpdate($pdo, $opId, array('state' => 'failed', 'stage' => 'reset_failed', 'last_error' => $resetMsg));
+                            $rxLogFail('apply_reset', 'reset_failed', 'attempted_not_applied', $resetMsg);
+                            return array('status' => false, 'code' => 'reset_failed', 'no_mutation' => true, 'operation_id' => $opId, 'msg' => 'error reset : ' . $resetMsg);
+                        }
                     }
+                    if (!\Faoxima\Services\Renewal\ReservationStore::opAdvanceStage($pdo, $opId, 'reset_sent', 'reset_done')) {
+                        return $this->rxRenewalUncertain($opId, $plan, $before, null, 'reset_confirmation_persist_failed', $diag);
+                    }
+                    $rxStoredStage = 'reset_done';
+                    $resetDone = true;
                 }
-                $resetDone = true;
-                \Faoxima\Services\Renewal\ReservationStore::opUpdate($pdo, $opId, array('stage' => 'reset_done'));
             }
-            \Faoxima\Services\Renewal\ReservationStore::opUpdate($pdo, $opId, array('stage' => 'modify_sent'));
+            if ($rxStoredStage !== 'modify_sent'
+                && !\Faoxima\Services\Renewal\ReservationStore::opAdvanceStage($pdo, $opId, $rxStoredStage, 'modify_sent')) {
+                return $this->rxRenewalUncertain($opId, $plan, $before, null, 'modify_request_persist_failed', $diag);
+            }
             $write = $this->rxRenewalPanelWrite($panel, $data_user, $invoice, $product, $plan, $username, $opId);
             if (empty($write['status'])) {
                 $writeMsg = is_scalar($write['msg'] ?? null) ? (string) $write['msg'] : json_encode($write['msg'] ?? '');
@@ -497,6 +556,9 @@ trait PanelRenewal
                     return array('status' => false, 'code' => 'panel_write_failed', 'no_mutation' => true, 'operation_id' => $opId, 'msg' => $writeMsg);
                 }
                 if ($class === 'before') {
+                    if ($resetDone && ($panel['type'] ?? '') !== 'jovadpanel') {
+                        return $this->rxRenewalUncertain($opId, $plan, $before, \Faoxima\Services\Fulfillment\ProviderState::limits($probe), 'modify_confirmation_pending: ' . $writeMsg, $diag);
+                    }
                     $write = $this->rxRenewalPanelWrite($panel, $data_user, $invoice, $product, $plan, $username, $opId);
                     if (empty($write['status'])) {
                         return $this->rxRenewalUncertain($opId, $plan, $before, \Faoxima\Services\Fulfillment\ProviderState::limits($probe), 'partial_write: ' . $writeMsg, $diag);
@@ -564,10 +626,37 @@ trait PanelRenewal
 
 
 
-    private function rxRenewalUncertain($opId, array $plan, array $before, $after, $reason, array $diag)
+    private function rxRenewalResetKind($reset)
+    {
+        if (!is_array($reset)) {
+            return 'uncertain';
+        }
+        if (!empty($reset['status'])) {
+            return 'applied';
+        }
+        if (!empty($reset['uncertain']) || (string) ($reset['code'] ?? '') === 'uncertain') {
+            return 'uncertain';
+        }
+        $message = strtolower(trim(
+            (is_scalar($reset['msg'] ?? null) ? (string) $reset['msg'] : '') . ' ' .
+            (is_scalar($reset['error'] ?? null) ? (string) $reset['error'] : '')
+        ));
+        foreach (array('timed out', 'timeout', 'could not resolve', 'connection reset', 'empty reply', 'recv failure', 'send failure', 'no response') as $hint) {
+            if ($message !== '' && strpos($message, $hint) !== false) {
+                return 'uncertain';
+            }
+        }
+        return !empty($reset['rejected']) ? 'rejected' : 'uncertain';
+    }
+
+
+
+    private function rxRenewalUncertain($opId, array $plan, array $before, $after, $reason, array $diag, bool $persist = true)
     {
         global $pdo;
-        \Faoxima\Services\Renewal\ReservationStore::opUpdate($pdo, $opId, array('state' => 'uncertain', 'last_error' => $reason, 'result_state' => $after, 'next_attempt_at' => time() + 120));
+        if ($persist) {
+            \Faoxima\Services\Renewal\ReservationStore::opUpdate($pdo, $opId, array('state' => 'uncertain', 'last_error' => $reason, 'result_state' => $after, 'next_attempt_at' => time() + 120));
+        }
         \Faoxima\Services\Renewal\RenewalLog::rx_renewal_log('apply_uncertain', trim((string) $reason) !== '' ? (string) $reason : 'pending_verification', array(
             'panel_name' => (string) ($diag['panel'] ?? ''),
             'panel_type' => (string) ($diag['panel_type'] ?? ''),

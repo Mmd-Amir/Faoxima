@@ -2,6 +2,7 @@
 
 namespace Faoxima\Admin\Telegram\Handlers;
 
+use PDO;
 use PDOException;
 
 /**
@@ -112,7 +113,9 @@ final class WorkerSettingsAndCatalogControls
                 \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($from_id, "❌ نام آموزش باید کمتر از 150 کاراکتر باشد", null, 'HTML');
                 return;
             }
-            \Faoxima\Core\Database\Db::update("help", "category", $text, "name_os", $user['Processing_value']);
+            if (!self::saveHelpEdit($pdo, 'category = ?', [$text], $user, $from_id, $backadmin, $json_list_helpkey)) {
+                return;
+            }
             \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($from_id, "✅ نام دسته آموزش بروزرسانی شد", $helpedit, 'HTML');
             \Faoxima\Telegram\Navigation\Steps::step('help_edit', $from_id);
             break;
@@ -122,7 +125,9 @@ final class WorkerSettingsAndCatalogControls
             break;
         case 10:
             if (!isset($update['message']) && empty($text)) { return; }
-            \Faoxima\Core\Database\Db::update("help", "Description_os", $text, "name_os", $user['Processing_value']);
+            if (!self::saveHelpEdit($pdo, 'Description_os = ?', [$text], $user, $from_id, $backadmin, $json_list_helpkey)) {
+                return;
+            }
             \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($from_id, "✅ توضیحات  آموزش بروزرسانی شد", $helpedit, 'HTML');
             \Faoxima\Telegram\Navigation\Steps::step('help_edit', $from_id);
             break;
@@ -132,16 +137,18 @@ final class WorkerSettingsAndCatalogControls
             break;
         case 12:
             if (!isset($update['message']) && empty($text)) { return; }
-            if ($photo) {
-                if (isset($photoid))
-                    \Faoxima\Core\Database\Db::update("help", "Media_os", $photoid, "name_os", $user['Processing_value']);
-                \Faoxima\Core\Database\Db::update("help", "type_Media_os", "photo", "name_os", $user['Processing_value']);
-            } elseif ($video) {
-                if (isset($videoid))
-                    \Faoxima\Core\Database\Db::update("help", "Media_os", $videoid, "name_os", $user['Processing_value']);
-                \Faoxima\Core\Database\Db::update("help", "type_Media_os", "video", "name_os", $user['Processing_value']);
+            if ($photo && !empty($photoid)) {
+                $media = [$photoid, 'photo'];
+            } elseif ($video && !empty($videoid)) {
+                $media = [$videoid, 'video'];
+            } else {
+                \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($from_id, "❌ لطفاً یک تصویر یا ویدیو برای آموزش ارسال کنید.", $backadmin, 'HTML');
+                return;
             }
-            \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($from_id, "✅ توضیحات  آموزش بروزرسانی شد", $helpedit, 'HTML');
+            if (!self::saveHelpEdit($pdo, 'Media_os = ?, type_Media_os = ?', $media, $user, $from_id, $backadmin, $json_list_helpkey)) {
+                return;
+            }
+            \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($from_id, "✅ رسانهٔ آموزش به‌روزرسانی شد.", $helpedit, 'HTML');
             \Faoxima\Telegram\Navigation\Steps::step('help_edit', $from_id);
             break;
         case 13:
@@ -154,7 +161,9 @@ final class WorkerSettingsAndCatalogControls
                 \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($from_id, "📌 نام باید کمتر از ۲۰۰ کاراکتر باشد.", $backadmin, 'HTML');
                 return;
             }
-            \Faoxima\Core\Database\Db::update("help", "app_title", $text, "name_os", $user['Processing_value']);
+            if (!self::saveHelpEdit($pdo, 'app_title = ?', [$text], $user, $from_id, $backadmin, $json_list_helpkey)) {
+                return;
+            }
             \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($from_id, "📌 لینک دانلود اپ را ارسال نمایید", $backadmin, 'HTML');
             \Faoxima\Telegram\Navigation\Steps::step('changeapplinkhelp', $from_id);
             break;
@@ -164,7 +173,9 @@ final class WorkerSettingsAndCatalogControls
                 \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($from_id, $textbotlang['Admin']['managepanel']['Invalid-domain'], $backadmin, 'HTML');
                 return;
             }
-            \Faoxima\Core\Database\Db::update("help", "app_link", $text, "name_os", $user['Processing_value']);
+            if (!self::saveHelpEdit($pdo, 'app_link = ?', [$text], $user, $from_id, $backadmin, $json_list_helpkey)) {
+                return;
+            }
             \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($from_id, "✅ لینک برنامه با موفقیت بروزرسانی گردید.", $helpedit, 'HTML');
             \Faoxima\Telegram\Navigation\Steps::step('help_edit', $from_id);
             break;
@@ -299,5 +310,34 @@ final class WorkerSettingsAndCatalogControls
         }
 
         return true;
+    }
+
+    private static function saveHelpEdit(PDO $pdo, string $assignments, array $values, array $user, $adminId, $backKeyboard, $helpList): bool
+    {
+        $name = (string) ($user['Processing_value'] ?? '');
+        try {
+            if ($name !== '') {
+                $stmt = $pdo->prepare("UPDATE help SET {$assignments} WHERE name_os = ?");
+                $stmt->execute([...$values, $name]);
+                if ($stmt->rowCount() > 0) {
+                    \Faoxima\Core\Database\SelectCache::clearSelectCache('help');
+                    return true;
+                }
+                // MySQL can report zero affected rows when the submitted value is unchanged.
+                $exists = $pdo->prepare('SELECT 1 FROM help WHERE name_os = ? LIMIT 1');
+                $exists->execute([$name]);
+                if ($exists->fetchColumn() !== false) {
+                    return true;
+                }
+            }
+        } catch (PDOException $e) {
+            error_log('[admin help edit] ' . $e->getMessage());
+            \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($adminId, "❌ ذخیرهٔ تغییرات آموزش ممکن نشد. لطفاً دوباره تلاش کنید.", $backKeyboard, 'HTML');
+            return false;
+        }
+
+        \Faoxima\Telegram\Navigation\Steps::step('getnameforedite', $adminId);
+        \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($adminId, "❌ آموزش انتخاب‌شده پیدا نشد. لطفاً دوباره یک آموزش انتخاب کنید.", $helpList, 'HTML');
+        return false;
     }
 }

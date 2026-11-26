@@ -3,6 +3,7 @@
 namespace Faoxima\Admin\Telegram\Handlers;
 
 use PDO;
+use PDOException;
 
 /**
  * Handler stage. Inherited by value: $adminAction, $adminExecution, $backadmin, $connect, $datagetr, $from_id, $inline_query_id, $keyboardadmin, $message_id, $pdo, $query, $text, $textbotlang, $user.
@@ -134,54 +135,33 @@ final class InlineInvoiceAndResellerTools
             Editmessagetext($from_id, $message_id, $textbotlang['Admin']['ManageUser']['mangebtnuserdec'], $keyboard_json);
             break;
         case 5:
-            \Faoxima\Core\Database\Db::update("user", "pagenumber", "1", "id", $from_id);
-            $page = 1;
-            $items_per_page = 10;
-            $start_index = ($page - 1) * $items_per_page;
-            $result = (function() use ($connect, $start_index, $items_per_page) { $_s=(int)$start_index; $_p=(int)$items_per_page; $_stmt=$connect->prepare("SELECT * FROM user WHERE cardpayment = \'1\' LIMIT ?,?"); $_stmt->bind_param("ii",$_s,$_p); $_stmt->execute(); $r=$_stmt->get_result(); $_stmt->close(); return $r; })();
-            $rows = [];
-            while ($row = mysqli_fetch_assoc($result)) {
-                $rows[] = $row;
-            }
-            $keyboard_json = \Faoxima\Admin\Keyboard\AdminBuildersHelpers::buildUserListKeyboard($rows, $textbotlang, 'next_pageusercart', 'previous_pageusercart', true);
-            Editmessagetext($from_id, $message_id, $textbotlang['Admin']['ManageUser']['mangebtnuserdec'], $keyboard_json);
-            break;
         case 6:
-            $numpage = \Faoxima\Core\Database\Db::select("user", "*", null, null, "count");
-            $page = $user['pagenumber'];
-            $items_per_page = 10;
-            $sum = $user['pagenumber'] * $items_per_page;
-            if ($sum > $numpage) {
-                $next_page = 1;
-            } else {
-                $next_page = $page + 1;
-            }
-            $start_index = ($next_page - 1) * $items_per_page;
-            $result = (function() use ($connect, $start_index, $items_per_page) { $_s=(int)$start_index; $_p=(int)$items_per_page; $_stmt=$connect->prepare("SELECT * FROM user WHERE cardpayment = \'1\' LIMIT ?,?"); $_stmt->bind_param("ii",$_s,$_p); $_stmt->execute(); $r=$_stmt->get_result(); $_stmt->close(); return $r; })();
-            $rows = [];
-            while ($row = mysqli_fetch_assoc($result)) {
-                $rows[] = $row;
-            }
-            $keyboard_json = \Faoxima\Admin\Keyboard\AdminBuildersHelpers::buildUserListKeyboard($rows, $textbotlang, 'next_pageusercart', 'previous_pageusercart', true);
-            \Faoxima\Core\Database\Db::update("user", "pagenumber", $next_page, "id", $from_id);
-            Editmessagetext($from_id, $message_id, $textbotlang['Admin']['ManageUser']['mangebtnuserdec'], $keyboard_json);
-            break;
         case 7:
-            $page = $user['pagenumber'];
-            $items_per_page = 10;
-            if ($user['pagenumber'] <= 1) {
-                $next_page = 1;
-            } else {
-                $next_page = $page - 1;
-            }
-            $start_index = ($next_page - 1) * $items_per_page;
-            $result = (function() use ($connect, $start_index, $items_per_page) { $_s=(int)$start_index; $_p=(int)$items_per_page; $_stmt=$connect->prepare("SELECT * FROM user WHERE cardpayment = \'1\' LIMIT ?,?"); $_stmt->bind_param("ii",$_s,$_p); $_stmt->execute(); $r=$_stmt->get_result(); $_stmt->close(); return $r; })();
-            $rows = [];
-            while ($row = mysqli_fetch_assoc($result)) {
-                $rows[] = $row;
+            $page = max(1, (int) ($user['pagenumber'] ?? 1));
+            $next_page = match ($adminAction) {
+                6 => $page + 1,
+                7 => max(1, $page - 1),
+                default => 1,
+            };
+            try {
+                $cardUsers = $pdo->prepare("SELECT id, username FROM user WHERE cardpayment = :enabled ORDER BY id LIMIT 10 OFFSET :offset");
+                $cardUsers->bindValue(':enabled', '1', PDO::PARAM_STR);
+                $cardUsers->bindValue(':offset', ($next_page - 1) * 10, PDO::PARAM_INT);
+                $cardUsers->execute();
+                $rows = $cardUsers->fetchAll(PDO::FETCH_ASSOC);
+                if ($rows === [] && $next_page > 1) {
+                    $next_page = 1;
+                    $cardUsers->bindValue(':offset', 0, PDO::PARAM_INT);
+                    $cardUsers->execute();
+                    $rows = $cardUsers->fetchAll(PDO::FETCH_ASSOC);
+                }
+                \Faoxima\Core\Database\Db::update("user", "pagenumber", $next_page, "id", $from_id);
+            } catch (PDOException $e) {
+                error_log('[admin card payment user list] ' . $e->getMessage());
+                sendmessage($from_id, "❌ دریافت فهرست کاربران کارت‌به‌کارت ممکن نشد. لطفاً دوباره تلاش کنید.", $backadmin, 'HTML');
+                return;
             }
             $keyboard_json = \Faoxima\Admin\Keyboard\AdminBuildersHelpers::buildUserListKeyboard($rows, $textbotlang, 'next_pageusercart', 'previous_pageusercart', true);
-            \Faoxima\Core\Database\Db::update("user", "pagenumber", $next_page, "id", $from_id);
             Editmessagetext($from_id, $message_id, $textbotlang['Admin']['ManageUser']['mangebtnuserdec'], $keyboard_json);
             break;
         case 8:

@@ -692,6 +692,21 @@ trait PanelLifecycle
     }
 
 
+    private static function rxResetResponseUncertain($reset)
+    {
+        if (!is_array($reset)) {
+            return true;
+        }
+        if (!empty($reset['uncertain'])) {
+            return true;
+        }
+        $status = (isset($reset['status']) && is_numeric($reset['status'])) ? (int) $reset['status'] : null;
+        return $status === 0 || $status === 202 || $status === 408
+            || $status === 409 || $status === 425 || $status === 429
+            || ($status >= 500 && $status <= 599)
+            || ($status === null && !is_bool($reset['status'] ?? null));
+    }
+
     function ResetUserDataUsage($username, $name_panel)
     {
         $panel = $this->loadPanel($name_panel, "name_panel");
@@ -703,9 +718,17 @@ trait PanelLifecycle
         }
         if ($panel['type'] == "marzban") {
             $reset = \Faoxima\Services\Panels\Drivers\Marzban::ResetUserDataUsage($username, $panel['name_panel']);
+            if (self::rxResetResponseUncertain($reset)) {
+                return array(
+                    'status' => false,
+                    'uncertain' => true,
+                    'msg' => 'error  : ' . (is_scalar($reset['error'] ?? null) ? (string) $reset['error'] : 'no response after reset request')
+                );
+            }
             if (!empty($reset['status']) && $reset['status'] != 200) {
                 return array(
                     'status' => false,
+                    'rejected' => in_array((int) $reset['status'], [400, 401, 403, 404, 405, 422], true),
                     'msg' => 'error code : ' . $reset['status']
                 );
             } elseif (!empty($reset['error'])) {
@@ -714,10 +737,14 @@ trait PanelLifecycle
                     'msg' => 'error  : ' . $reset['error']
                 );
             }
-            $reset = json_decode($reset['body'], true);
+            $reset = json_decode((string) ($reset['body'] ?? ''), true);
+            if (!is_array($reset) || $reset === []) {
+                return ['status' => false, 'uncertain' => true, 'msg' => 'invalid panel response'];
+            }
             if (!empty($reset['detail'])) {
                 return array(
                     'status' => false,
+                    'rejected' => true,
                     'msg' => $reset['detail']
                 );
             }
@@ -727,9 +754,17 @@ trait PanelLifecycle
             );
         } elseif ($panel['type'] == "pasarguard") {
             $reset = \Faoxima\Services\Panels\Drivers\PasarGuard::pasarguardResetUserDataUsage($username, $panel['name_panel']);
+            if (self::rxResetResponseUncertain($reset)) {
+                return array(
+                    'status' => false,
+                    'uncertain' => true,
+                    'msg' => 'error  : ' . (is_scalar($reset['error'] ?? null) ? (string) $reset['error'] : 'no response after reset request')
+                );
+            }
             if (!empty($reset['status']) && $reset['status'] != 200) {
                 return array(
                     'status' => false,
+                    'rejected' => in_array((int) $reset['status'], [400, 401, 403, 404, 405, 422], true),
                     'msg' => 'error code : ' . $reset['status']
                 );
             } elseif (!empty($reset['error'])) {
@@ -740,15 +775,17 @@ trait PanelLifecycle
             }
             $resetRaw = (string) ($reset['body'] ?? '');
             $reset = json_decode($resetRaw, true);
-            if (trim($resetRaw) !== '' && !is_array($reset)) {
+            if (!is_array($reset) || $reset === []) {
                 return array(
                     'status' => false,
+                    'uncertain' => true,
                     'msg' => 'invalid panel response'
                 );
             }
             if (!empty($reset['detail'])) {
                 return array(
                     'status' => false,
+                    'rejected' => true,
                     'msg' => $reset['detail']
                 );
             }
@@ -758,9 +795,17 @@ trait PanelLifecycle
             );
         } elseif ($panel['type'] == 'x-ui_single') {
             $reset = \Faoxima\Services\Panels\Drivers\XuiSingle::ResetUserDataUsagex_uisin($username, $panel['name_panel']);
+            if (self::rxResetResponseUncertain($reset)) {
+                return array(
+                    'status' => false,
+                    'uncertain' => true,
+                    'msg' => 'error  : ' . (is_scalar($reset['error'] ?? null) ? (string) $reset['error'] : 'no response after reset request')
+                );
+            }
             if (!empty($reset['status']) && $reset['status'] != 200) {
                 return array(
                     'status' => false,
+                    'rejected' => in_array((int) $reset['status'], [400, 401, 403, 404, 405, 422], true),
                     'msg' => 'error code : ' . $reset['status']
                 );
             } elseif (!empty($reset['error'])) {
@@ -769,11 +814,15 @@ trait PanelLifecycle
                     'msg' => 'error  : ' . $reset['error']
                 );
             }
-            $reset = json_decode($reset['body'], true);
+            $reset = json_decode((string) ($reset['body'] ?? ''), true);
+            if (!is_array($reset) || !is_bool($reset['success'] ?? null)) {
+                return ['status' => false, 'uncertain' => true, 'msg' => 'invalid panel response'];
+            }
             if (!$reset['success']) {
                 return array(
                     'status' => false,
-                    'msg' => 'error :' . $reset['msg']
+                    'rejected' => true,
+                    'msg' => 'error :' . ($reset['msg'] ?? '')
                 );
             }
             return array(
@@ -796,6 +845,13 @@ trait PanelLifecycle
                 );
             }
             $reset = \Faoxima\Services\Panels\Drivers\WgDashboard::ResetUserDataUsagewg($datauser['id'], $panel['name_panel']);
+            if (self::rxResetResponseUncertain($reset)) {
+                return array(
+                    'status' => false,
+                    'uncertain' => true,
+                    'msg' => 'error  : ' . (is_scalar($reset['error'] ?? null) ? (string) $reset['error'] : 'no response after reset request')
+                );
+            }
             if (isset($reset['status']) && $reset['status'] === false) {
                 return array(
                     'status' => false,
@@ -805,6 +861,7 @@ trait PanelLifecycle
             if (!empty($reset['status']) && $reset['status'] != 200) {
                 return array(
                     'status' => false,
+                    'rejected' => in_array((int) $reset['status'], [400, 401, 403, 404, 405, 422], true),
                     'msg' => 'error code : ' . $reset['status']
                 );
             } elseif (!empty($reset['error'])) {

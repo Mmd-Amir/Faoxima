@@ -130,6 +130,10 @@ final class ReservationExecution
             'next_attempt_at' => $permanent ? null : $now + (int) ($extra['delay'] ?? \Faoxima\Services\Renewal\ReservationOrders::reservationBackoff($attempts)),
         ], array_intersect_key($extra, array_flip(['before_state', 'target_state', 'stage'])));
         self::reservationTransition($runtimePdo, (int) $row['id'], $token, $status, $fields);
+        if ($permanent && ($extra['status'] ?? '') === 'reconciling') {
+            \Faoxima\Payments\Fulfillment\Settlement::alertAdmin('reservation:' . (int) $row['id'],
+                'نتیجه تمدید رزروشده نامشخص است و نیاز به بررسی دستی دارد.', ['username' => (string) $row['username']]);
+        }
         \Faoxima\Services\Renewal\RenewalLog::rx_renewal_log('reservation_' . ($permanent ? 'failed' : 'retry'), $reason, [
             'panel_name' => (string) $row['name_panel'],
             'username' => (string) $row['username'],
@@ -259,14 +263,29 @@ final class ReservationExecution
         }
         $storedTarget = \Faoxima\Payments\Fulfillment\Claims::decode($row['target_state'] ?? null);
         $plan = null;
-        if ($from === 'reconciling' && is_array($storedTarget) && !empty($storedTarget['rx_renewal_plan'])) {
+        $operation = \Faoxima\Services\Renewal\ReservationStore::opFindByRef($runtimePdo, 'reservation', 'reservation:' . $id, $serviceKey);
+        if ($operation !== null) {
+            $storedTarget = \Faoxima\Payments\Fulfillment\Claims::decode($operation['target_state'] ?? null);
+            if (!is_array($storedTarget) || empty($storedTarget['rx_renewal_plan'])) {
+                return self::reservationFail($runtimePdo, $row, $token, 'renewal_operation_target_missing', true, $now);
+            }
+        }
+        if (($from === 'reconciling' || $operation !== null) && is_array($storedTarget) && !empty($storedTarget['rx_renewal_plan'])) {
             $class = \Faoxima\Services\Renewal\Plans::renewalClassify($snapshot, $storedTarget);
+            if (\Faoxima\Services\Renewal\ReservationStore::resetStillPending($operation, $snapshot)) {
+                return self::reservationFail($runtimePdo, $row, $token, 'reset_confirmation_pending', false, $now, ['status' => 'reconciling']);
+            }
             if ($class === 'target') {
-                self::reservationTransition($runtimePdo, $id, $token, 'applied', ['stage' => 'done', 'applied_at' => date('Y/m/d H:i:s', $now), 'result_state' => \Faoxima\Services\Fulfillment\ProviderState::limits($snapshot), 'output' => 'reconciled', 'active_key_clear' => true]);
+                $after = \Faoxima\Services\Fulfillment\ProviderState::limits($snapshot);
+                self::reservationTransition($runtimePdo, $id, $token, 'applied', ['stage' => 'done', 'applied_at' => date('Y/m/d H:i:s', $now), 'result_state' => $after, 'output' => 'reconciled', 'active_key_clear' => true]);
+                if ($operation !== null) {
+                    \Faoxima\Services\Renewal\ReservationStore::opUpdate($runtimePdo, (string) $operation['op_id'],
+                        ['state' => 'verified', 'stage' => 'reconciled', 'result_state' => $after, 'last_error' => null]);
+                }
                 if (method_exists($managePanel, 'rxRenewalLocalSuccess')) {
                     $managePanel->rxRenewalLocalSuccess($panel, $username, (string) ($row['id_invoice'] ?? ''));
                 }
-                return ['outcome' => 'applied', 'reason' => 'reconciled', 'row' => $row, 'before' => \Faoxima\Payments\Fulfillment\Claims::decode($row['before_state'] ?? null), 'after' => \Faoxima\Services\Fulfillment\ProviderState::limits($snapshot)];
+                return ['outcome' => 'applied', 'reason' => 'reconciled', 'row' => $row, 'before' => \Faoxima\Payments\Fulfillment\Claims::decode($row['before_state'] ?? null), 'after' => $after];
             }
             if ($class === 'ambiguous') {
                 return self::reservationFail($runtimePdo, $row, $token, 'panel_state_ambiguous_after_interrupted_activation', true, $now);
@@ -297,7 +316,8 @@ final class ReservationExecution
         $res = $managePanel->applyStoredRenewalPlan((string) $panel['name_panel'], $username, $plan, [
             'lock_owner' => $token,
             'service_key' => $serviceKey,
-            'op_id' => $token,
+            'op_id' => $operation['op_id'] ?? $token,
+            'resume' => $operation !== null,
             'source' => 'reservation',
             'ref' => 'reservation:' . $id,
             'method' => 'reservation:' . (string) ($row['policy'] ?? ''),

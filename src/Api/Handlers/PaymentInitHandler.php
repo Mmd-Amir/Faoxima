@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Faoxima\Api\Handlers;
 
+use Faoxima\Payments\Receipts\ReceiptOrders;
+use Faoxima\Payments\Settlement\PendingInvoices;
 use PDO;
 use Throwable;
 
@@ -101,8 +103,10 @@ final class PaymentInitHandler extends \Faoxima\Api\Handlers\BaseHandler
         }
 
 
-        $lockMethodKey = ($method === 'carttocart' || $method === 'carttocart_pv') ? 'carttocart' : $method;
-        $lockName = 'faoxima_payment_init_' . $this->user['id'] . '_' . $lockMethodKey;
+        $isCardPayment = $method === 'carttocart' || $method === 'carttocart_pv';
+        $lockName = $isCardPayment
+            ? ReceiptOrders::cardCreationLockName((string) $this->user['id'])
+            : 'faoxima_payment_init_' . $this->user['id'] . '_' . $method;
         $pdo = \Faoxima\Api\Runtime\Db::pdo();
         $lockStmt = $pdo->prepare('SELECT GET_LOCK(:n, 5)');
         $lockStmt->execute([':n' => $lockName]);
@@ -120,10 +124,8 @@ final class PaymentInitHandler extends \Faoxima\Api\Handlers\BaseHandler
         });
 
         try {
-            if ($method === 'carttocart' || $method === 'carttocart_pv') {
-                $keepInvoiceKey = ($serverPurchaseUsername !== null && $serverPurchaseUsername !== '')
-                    ? 'getconfigafterpay|' . $serverPurchaseUsername
-                    : null;
+            if ($isCardPayment) {
+                $keepInvoiceKey = $ck !== null ? (string) $ck['op_key'] : null;
                 $this->sbvDeferPurge = method_exists(\Faoxima\Payments\Receipts\ReceiptRuntime::class, 'rx_sbv_active_payment') && \Faoxima\Payments\Receipts\ReceiptOrders::activePayment(\Faoxima\Api\Runtime\Db::pdo(), (string) $this->user['id']) !== null;
                 if (!$this->sbvDeferPurge) {
                     $this->purgeCardAndGuard($keepInvoiceKey);
@@ -131,6 +133,14 @@ final class PaymentInitHandler extends \Faoxima\Api\Handlers\BaseHandler
             } else {
                 if ($method !== 'rialit' && $method !== 'tetraminator') {
                     $this->purgeStaleGatewayOrders((int)$this->user['id'], $method);
+
+                    $botMethod = PendingInvoices::rx_gateway_payment_method_map()[$method] ?? null;
+                    $botOrder = $botMethod === null ? null : PendingInvoices::findRecentInvoice(
+                        $pdo, (string) $this->user['id'], $botMethod, false, PendingInvoices::rx_gateway_stale_minutes($botMethod)
+                    );
+                    if ($botOrder !== null) {
+                        \Faoxima\Api\Runtime\Response::fail(409, '⏳ یک فاکتور فعال در ربات تلگرام دارید. پرداخت را از پیام قبلی ادامه دهید.', ['code' => 'gateway_payment_pending', 'order_id' => $botOrder]);
+                    }
 
                     $pendingFreshGateway = (int) \Faoxima\Api\Runtime\Db::fetchScalar(
                         "SELECT COUNT(*) FROM Payment_report
@@ -336,19 +346,19 @@ final class PaymentInitHandler extends \Faoxima\Api\Handlers\BaseHandler
 
     private function purgeCardAndGuard(?string $keepInvoiceKey): void
     {
-        $this->purgeStaleCarttocart((int)$this->user['id'], $keepInvoiceKey);
-        $this->purgeAbandonedCarttocart((int)$this->user['id'], $keepInvoiceKey);
-
-        $pendingFresh = (int) \Faoxima\Api\Runtime\Db::fetchScalar(
-            "SELECT COUNT(*) FROM Payment_report
-              WHERE id_user = :u
-                AND payment_Status IN ('Unpaid','pending','waiting')
-                AND (Payment_Method = 'cart to cart' OR Payment_Method = 'carttocart_pv')
-                AND source = 'miniapp'",
-            [':u' => $this->user['id']]
-        );
-        if ($pendingFresh > 0) {
-            \Faoxima\Api\Runtime\Response::fail(409, \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_paymentinit_pending_request_exists', '⏳ یک درخواست پرداخت در انتظار بررسی دارید. لطفاً ابتدا آن را تکمیل یا لغو کنید.'));
+        $pdo = \Faoxima\Api\Runtime\Db::pdo();
+        $userId = (string) $this->user['id'];
+        $activeReport = $keepInvoiceKey !== null ? ReceiptOrders::findActiveCardReport($pdo, $userId, $keepInvoiceKey) : null;
+        if ($activeReport === null) {
+            $this->purgeStaleCarttocart((int) $userId, $keepInvoiceKey);
+            $this->purgeAbandonedCarttocart((int) $userId, $keepInvoiceKey);
+            $activeReport = ReceiptOrders::findActiveCardReport($pdo, $userId);
+        }
+        if ($activeReport !== null) {
+            \Faoxima\Api\Runtime\Response::fail(409, \Faoxima\Telegram\Support\Texts::faoxima_textbot_get('dyn_paymentinit_pending_request_exists', '⏳ یک درخواست پرداخت در انتظار بررسی دارید. لطفاً ابتدا آن را تکمیل یا لغو کنید.'), [
+                'code' => 'card_payment_pending',
+                'order_id' => (string) $activeReport['id_order'],
+            ]);
         }
     }
 
@@ -593,7 +603,8 @@ final class PaymentInitHandler extends \Faoxima\Api\Handlers\BaseHandler
                 }
             }
             if ($sbvReuse === null && $this->sbvDeferPurge) {
-                $this->purgeCardAndGuard(($this->user['Processing_value_tow'] ?? '') === 'getconfigafterpay' ? $sbvInvoiceKey : null);
+                $operation = (string) ($this->user['Processing_value_tow'] ?? '');
+                $this->purgeCardAndGuard(in_array($operation, \Faoxima\Orders\Checkout\Checkout::operations(), true) ? $sbvInvoiceKey : null);
             }
         }
 

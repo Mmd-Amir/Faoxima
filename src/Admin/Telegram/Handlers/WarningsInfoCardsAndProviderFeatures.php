@@ -2,6 +2,9 @@
 
 namespace Faoxima\Admin\Telegram\Handlers;
 
+use PDO;
+use PDOException;
+
 /**
  * Handler stage. Inherited by value: $adminAction, $adminExecution, $backadmin, $callback_query_id, $colorMatch, $dataget, $from_id, $keyboardadmin, $message_id, $pdo, $rxPanelAlreadyLoadedForEditpanel, $setting, $text, $textbotlang, $update, $user.
  * Inherited or exported by reference: $code_panel, $panel, $stmt, $value, $valuenew.
@@ -131,10 +134,17 @@ final class WarningsInfoCardsAndProviderFeatures
             }
             break;
         case 5:
-            $panel = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $user['Processing_value'], "select");
-            if (!in_array($panel['subvip'], ['offsubvip', 'onsubvip'])) {
-                \Faoxima\Core\Database\Db::update("marzban_panel", "subvip", "offsubvip", "code_panel", $panel['code_panel']);
-                $panel = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "code_panel", $panel['code_panel'], "select");
+            $panelName = (string) ($user['Processing_value'] ?? '');
+            $panel = $panelName === '' ? false : \Faoxima\Core\Database\Db::select("marzban_panel", "*", "name_panel", $panelName, "select", ['cache' => false]);
+            if (!is_array($panel) || empty($panel['code_panel'])) {
+                self::replyPanelUnavailable($from_id);
+                return;
+            }
+            if (!in_array($panel['subvip'] ?? null, ['offsubvip', 'onsubvip'], true)) {
+                $panel = self::saveExistingPanel($pdo, $panel, ['subvip' => 'offsubvip'], $from_id, $backadmin);
+                if ($panel === null) {
+                    return;
+                }
             }
             $customvlume = json_decode($panel['customvolume'], true);
             if (!is_array($customvlume)) { $customvlume = ['f' => '0', 'n' => '0', 'n2' => '0']; }
@@ -145,65 +155,48 @@ final class WarningsInfoCardsAndProviderFeatures
             $type = $dataget[1];
             $value = $dataget[2];
             $code_panel = $dataget[3];
-            $panelCurrent = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "code_panel", $code_panel, "select");
-            if (!is_array($panelCurrent)) {
-                $panelCurrent = array();
+            $panelCurrent = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "code_panel", $code_panel, "select", ['cache' => false]);
+            if (!is_array($panelCurrent) || empty($panelCurrent['code_panel'])) {
+                self::replyPanelUnavailable($from_id);
+                return;
             }
+            $changes = [];
             if ($type == "stautsconfig") {
                 $valuenew = (($panelCurrent['config'] ?? '') == "onconfig") ? "offconfig" : "onconfig";
-                \Faoxima\Core\Database\Db::update("marzban_panel", "config", $valuenew, "code_panel", $code_panel);
+                $changes['config'] = $valuenew;
             } elseif ($type == "sublink") {
                 $valuenew = (($panelCurrent['sublink'] ?? '') == "onsublink") ? "offsublink" : "onsublink";
-                \Faoxima\Core\Database\Db::update("marzban_panel", "sublink", $valuenew, "code_panel", $code_panel);
+                $changes['sublink'] = $valuenew;
             } elseif ($type == "autofile") {
                 $valuenew = (($panelCurrent['auto_file'] ?? 'offautofile') == "onautofile") ? "offautofile" : "onautofile";
-                \Faoxima\Core\Database\Db::update("marzban_panel", "auto_file", $valuenew, "code_panel", $code_panel);
+                $changes['auto_file'] = $valuenew;
             } elseif ($type == "statusbuy") {
                 $valuenew = (($panelCurrent['status'] ?? '') == "active") ? "disable" : "active";
-                \Faoxima\Core\Database\Db::update("marzban_panel", "status", $valuenew, "code_panel", $code_panel);
+                $changes['status'] = $valuenew;
             } elseif ($type == "statustest") {
                 $valuenew = (($panelCurrent['TestAccount'] ?? '') == "ONTestAccount") ? "OFFTestAccount" : "ONTestAccount";
-                \Faoxima\Core\Database\Db::update("marzban_panel", "TestAccount", $valuenew, "code_panel", $code_panel);
+                $changes['TestAccount'] = $valuenew;
             } elseif ($type == "versionpanel") {
                 $valuenew = ((string)($panelCurrent['version_panel'] ?? '0') === "1") ? "0" : "1";
-                \Faoxima\Core\Database\Db::update("marzban_panel", "version_panel", $valuenew, "code_panel", $code_panel);
+                $changes['version_panel'] = $valuenew;
             } elseif ($type == "connecton") {
                 $valuenew = (($panelCurrent['conecton'] ?? '') == "onconecton") ? "offconecton" : "onconecton";
-                \Faoxima\Core\Database\Db::update("marzban_panel", "conecton", $valuenew, "code_panel", $code_panel);
+                $changes['conecton'] = $valuenew;
             } elseif ($type == "stautsextend") {
                 $valuenew = (($panelCurrent['status_extend'] ?? '') == "on_extend") ? "off_extend" : "on_extend";
-                \Faoxima\Core\Database\Db::update("marzban_panel", "status_extend", $valuenew, "code_panel", $code_panel);
+                $changes['status_extend'] = $valuenew;
             } elseif ($type == "changeloc") {
                 $valuenew = (($panelCurrent['changeloc'] ?? '') == "onchangeloc") ? "offchangeloc" : "onchangeloc";
-                \Faoxima\Core\Database\Db::update("marzban_panel", "changeloc", $valuenew, "code_panel", $code_panel);
+                $changes['changeloc'] = $valuenew;
             } elseif ($type == "inbocunddisable") {
                 $valuenew = (($panelCurrent['inboundstatus'] ?? '') == "oninbounddisable") ? "offinbounddisable" : "oninbounddisable";
-                \Faoxima\Core\Database\Db::update("marzban_panel", "inboundstatus", $valuenew, "code_panel", $code_panel);
+                $changes['inboundstatus'] = $valuenew;
             } elseif ($type == "subvip") {
                 $valuenew = (($panelCurrent['subvip'] ?? '') == "onsubvip") ? "offsubvip" : "onsubvip";
-                \Faoxima\Core\Database\Db::update("marzban_panel", "subvip", $valuenew, "code_panel", $code_panel);
+                $changes['subvip'] = $valuenew;
             } elseif ($type == "ipguard") {
                 $valuenew = (($panelCurrent['ip_limit_guard'] ?? '') == "onipguard") ? "offipguard" : "onipguard";
-                \Faoxima\Core\Database\Db::update("marzban_panel", "ip_limit_guard", $valuenew, "code_panel", $code_panel);
-                if ($valuenew === "onipguard" && ($panelCurrent['type'] ?? '') === "rebecca" && method_exists(\Faoxima\Services\Panels\Drivers\Rebecca::class, 'rebeccaAccessInsightsPermissionStatus')) {
-                    $rxIpGuardCheck = \Faoxima\Services\Panels\Drivers\Rebecca::rebeccaAccessInsightsPermissionStatus($panelCurrent['name_panel']);
-                    if ($rxIpGuardCheck['status'] === true) {
-                        sendmessage($from_id, "✅ محدودیت IP برای پنل «{$panelCurrent['name_panel']}» با موفقیت فعال شد.", null, 'html');
-                    } elseif ($rxIpGuardCheck['reason'] === 'forbidden') {
-                        sendmessage(
-                            $from_id,
-                            "⚠️ محدودیت IP فعال شد، اما با یک محدودیت مهم:\n\n"
-                                . "API Key این پنل به لاگ هسته‌ی Xray دسترسی ندارد (سطح دسترسی سودو ادمین نیست)، بنابراین:\n\n"
-                                . "▫️ تعداد کاربران مجاز طبق تنظیمات شما اعمال می‌شود (این بخش درست کار می‌کند)\n"
-                                . "▫️ اما تعداد IP متصل و اعلان خودکار کرون (قطع IP تکراری) کار نخواهد کرد، چون این‌ها نیاز به خواندن لاگ Xray دارند\n\n"
-                                . "برای فعال شدن کامل این قابلیت، API Key باید با دسترسی سودو ادمین ساخته شود.",
-                            null,
-                            'html'
-                        );
-                    } else {
-                        sendmessage($from_id, "⚠️ محدودیت IP فعال شد، اما بررسی اتصال به پنل با خطا مواجه شد: " . htmlspecialchars((string) ($rxIpGuardCheck['msg'] ?? ''), ENT_QUOTES, 'UTF-8'), null, 'html');
-                    }
-                }
+                $changes['ip_limit_guard'] = $valuenew;
             } elseif ($type == "customstatusf") {
                 $customvlume = json_decode($panelCurrent['customvolume'] ?? '', true);
                 if (!is_array($customvlume)) {
@@ -211,7 +204,7 @@ final class WarningsInfoCardsAndProviderFeatures
                 }
                 $valuenew = ((string)($customvlume['f'] ?? '0') === "1") ? "0" : "1";
                 $customvlume['f'] = $valuenew;
-                \Faoxima\Core\Database\Db::update("marzban_panel", "customvolume", json_encode($customvlume), "code_panel", $code_panel);
+                $changes['customvolume'] = json_encode($customvlume);
             } elseif ($type == "customstatusn") {
                 $customvlume = json_decode($panelCurrent['customvolume'] ?? '', true);
                 if (!is_array($customvlume)) {
@@ -219,7 +212,7 @@ final class WarningsInfoCardsAndProviderFeatures
                 }
                 $valuenew = ((string)($customvlume['n'] ?? '0') === "1") ? "0" : "1";
                 $customvlume['n'] = $valuenew;
-                \Faoxima\Core\Database\Db::update("marzban_panel", "customvolume", json_encode($customvlume), "code_panel", $code_panel);
+                $changes['customvolume'] = json_encode($customvlume);
             } elseif ($type == "customstatusn2") {
                 $customvlume = json_decode($panelCurrent['customvolume'] ?? '', true);
                 if (!is_array($customvlume)) {
@@ -227,14 +220,16 @@ final class WarningsInfoCardsAndProviderFeatures
                 }
                 $valuenew = ((string)($customvlume['n2'] ?? '0') === "1") ? "0" : "1";
                 $customvlume['n2'] = $valuenew;
-                \Faoxima\Core\Database\Db::update("marzban_panel", "customvolume", json_encode($customvlume), "code_panel", $code_panel);
+                $changes['customvolume'] = json_encode($customvlume);
             } elseif ($type == "nationalnet") {
                 $valuenew = (($panelCurrent['national_net_status'] ?? '') == "on_national_net") ? "off_national_net" : "on_national_net";
-                \Faoxima\Core\Database\Db::update("marzban_panel", "national_net_status", $valuenew, "code_panel", $code_panel);
-                if ($valuenew == "on_national_net") \Faoxima\Core\Database\Db::update("marzban_panel", "stock_source_panel", $code_panel, "code_panel", $code_panel);
+                $changes['national_net_status'] = $valuenew;
+                if ($valuenew == "on_national_net") {
+                    $changes['stock_source_panel'] = $code_panel;
+                }
             } elseif ($type == "on_hold_Test") {
                 $valuenew = ((string)($panelCurrent['on_hold_test'] ?? '0') === "0") ? "1" : "0";
-                \Faoxima\Core\Database\Db::update("marzban_panel", "on_hold_test", $valuenew, "code_panel", $code_panel);
+                $changes['on_hold_test'] = $valuenew;
             } elseif (preg_match('/^pf(\d+)$/', $type, $rxPfMatch)) {
                 $rxFeatKeysOrdered = \Faoxima\Services\Panels\PanelFeatures::panel_feature_keys();
                 $featureKey = $rxFeatKeysOrdered[(int) $rxPfMatch[1]] ?? '';
@@ -246,20 +241,32 @@ final class WarningsInfoCardsAndProviderFeatures
                     $currentFeatureValue = (string) ($shopFeatures[$featureKey] ?? '0');
                     $shopFeatures[$featureKey] = ($currentFeatureValue === "1") ? "0" : "1";
                     $rxNewFeaturesJson = json_encode($shopFeatures, JSON_UNESCAPED_UNICODE);
-                    \Faoxima\Core\Database\Db::update("marzban_panel", "shop_features", $rxNewFeaturesJson, "code_panel", $code_panel);
-                    $panelCurrent['shop_features'] = $rxNewFeaturesJson;
+                    $changes['shop_features'] = $rxNewFeaturesJson;
                 }
-                $panel = $panelCurrent;
-                $rxPanelAlreadyLoadedForEditpanel = true;
             }
-            if (empty($rxPanelAlreadyLoadedForEditpanel)) {
-                $panel = \Faoxima\Core\Database\Db::select("marzban_panel", "*", "code_panel", $code_panel, "select");
-            }
-            unset($rxPanelAlreadyLoadedForEditpanel);
-
-            if (!is_array($panel)) {
-                \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($from_id, "❌ این پنل دیگر در دسترس نیست (احتمالاً حذف شده است).", $backadmin, 'HTML');
+            $panel = $changes === [] ? $panelCurrent : self::saveExistingPanel($pdo, $panelCurrent, $changes, $from_id, $backadmin);
+            if ($panel === null) {
                 return;
+            }
+
+            if (($changes['ip_limit_guard'] ?? null) === 'onipguard' && ($panel['type'] ?? '') === "rebecca" && method_exists(\Faoxima\Services\Panels\Drivers\Rebecca::class, 'rebeccaAccessInsightsPermissionStatus')) {
+                $rxIpGuardCheck = \Faoxima\Services\Panels\Drivers\Rebecca::rebeccaAccessInsightsPermissionStatus($panel['name_panel']);
+                if ($rxIpGuardCheck['status'] === true) {
+                    sendmessage($from_id, "✅ محدودیت IP برای پنل «{$panel['name_panel']}» با موفقیت فعال شد.", null, 'html');
+                } elseif ($rxIpGuardCheck['reason'] === 'forbidden') {
+                    sendmessage(
+                        $from_id,
+                        "⚠️ محدودیت IP فعال شد، اما با یک محدودیت مهم:\n\n"
+                            . "API Key این پنل به لاگ هسته‌ی Xray دسترسی ندارد (سطح دسترسی سودو ادمین نیست)، بنابراین:\n\n"
+                            . "▫️ تعداد کاربران مجاز طبق تنظیمات شما اعمال می‌شود (این بخش درست کار می‌کند)\n"
+                            . "▫️ اما تعداد IP متصل و اعلان خودکار کرون (قطع IP تکراری) کار نخواهد کرد، چون این‌ها نیاز به خواندن لاگ Xray دارند\n\n"
+                            . "برای فعال شدن کامل این قابلیت، API Key باید با دسترسی سودو ادمین ساخته شود.",
+                        null,
+                        'html'
+                    );
+                } else {
+                    sendmessage($from_id, "⚠️ محدودیت IP فعال شد، اما بررسی اتصال به پنل با خطا مواجه شد: " . htmlspecialchars((string) ($rxIpGuardCheck['msg'] ?? ''), ENT_QUOTES, 'UTF-8'), null, 'html');
+                }
             }
 
             $customvlume = json_decode($panel['customvolume'], true);
@@ -318,5 +325,49 @@ final class WarningsInfoCardsAndProviderFeatures
         }
 
         return true;
+    }
+
+    private static function saveExistingPanel(?PDO $pdo, array $panel, array $changes, $adminId, $backKeyboard): ?array
+    {
+        try {
+            $pdo ??= \Faoxima\Core\Database\Db::getDatabaseConnection();
+            if (!$pdo instanceof PDO) {
+                throw new PDOException('Database connection unavailable');
+            }
+
+            $assignments = [];
+            foreach (array_keys($changes) as $column) {
+                $assignments[] = $column . ' = ?';
+            }
+            $identity = [$panel['id'], $panel['code_panel']];
+            $stmt = $pdo->prepare('UPDATE marzban_panel SET ' . implode(', ', $assignments) . ' WHERE id = ? AND code_panel = ?');
+            $stmt->execute([...array_values($changes), ...$identity]);
+            if ($stmt->rowCount() > 0) {
+                \Faoxima\Core\Database\SelectCache::clearSelectCache('marzban_panel');
+                \Faoxima\Core\Database\SelectCache::faoxima_bust_bot_selectcache('marzban_panel');
+            }
+
+            $stmt = $pdo->prepare('SELECT * FROM marzban_panel WHERE id = ? AND code_panel = ? LIMIT 1');
+            $stmt->execute($identity);
+            $updatedPanel = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (is_array($updatedPanel)) {
+                return $updatedPanel;
+            }
+        } catch (PDOException $e) {
+            error_log('[admin panel features] ' . $e->getMessage());
+            \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($adminId, "❌ ذخیرهٔ تنظیمات پنل ممکن نشد. لطفاً دوباره تلاش کنید.", $backKeyboard, 'HTML');
+            return null;
+        }
+
+        self::replyPanelUnavailable($adminId);
+        return null;
+    }
+
+    private static function replyPanelUnavailable($adminId): void
+    {
+        $keyboard = json_encode(['inline_keyboard' => [[
+            ['text' => 'بازگشت به مدیریت پنل‌ها', 'callback_data' => 'admin_panels'],
+        ]]], JSON_UNESCAPED_UNICODE);
+        \Faoxima\Telegram\Support\Replies::nm_adminInstantReply($adminId, "❌ پنل انتخاب‌شده در دسترس نیست. لطفاً دوباره پنل را انتخاب کنید.", $keyboard, 'HTML');
     }
 }

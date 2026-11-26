@@ -713,9 +713,10 @@ final class Purchase
             \Faoxima\Orders\Checkout\Settlement::settlementStatements($rxCk, $order_id, $Balance_id['id'], (int) round($__walletPortion), 'خرید سرویس'),
             [["UPDATE Payment_report SET dec_not_confirmed = CASE WHEN dec_not_confirmed IS NULL OR dec_not_confirmed = '' THEN ? ELSE CONCAT(dec_not_confirmed, ' | ', ?) END WHERE id_order = ?", [$__doneNote, $__doneNote, $order_id]]]
         );
-        if (!empty($get_invoice['id_invoice'])) {
-            $rxStatements[] = ["UPDATE invoice SET Status = 'active' WHERE id_invoice = ?", [$get_invoice['id_invoice']]];
-        }
+        $activateInvoice = array_key_exists('invalidated_at', $get_invoice)
+            ? "UPDATE invoice SET Status = 'active', invalidated_at = NULL WHERE id_invoice = ?"
+            : "UPDATE invoice SET Status = 'active' WHERE id_invoice = ?";
+        $rxStatements[] = [$activateInvoice, [$get_invoice['id_invoice']]];
         $rxCompletion = \Faoxima\Payments\Fulfillment\Settlement::complete($pdo, $order_id, $rxToken, ['username' => (string) $dataoutput['username'], 'renamed_from' => $dataoutput['renamed_from'] ?? null], $rxStatements);
         if ($rxCompletion !== 'completed') {
             return \Faoxima\Payments\Fulfillment\Settlement::completionOutcome($pdo, $order_id, $rxToken, $rxCompletion);
@@ -879,9 +880,7 @@ $textonebuy
             $scorenew = $Balance_id['score'] + 1;
             \Faoxima\Core\Database\Db::update("user", "score", $scorenew, "id", $Balance_id['id']);
         }
-        \Faoxima\Core\Database\Db::update("invoice", "Status", "active", "username", $get_invoice['username']);
         if ($Payment_report['Payment_Method'] == "cart to cart" or $Payment_report['Payment_Method'] == "arze digital offline") {
-            \Faoxima\Core\Database\Db::update("invoice", "Status", "active", "id_invoice", $get_invoice['id_invoice']);
             $rxFmtBalanceBeforeBuy = \Faoxima\Core\Support\Formatting::rxFormatToman($Balance_id['Balance']);
             $textconfrom = "✅ پرداخت تایید شده
 🛍خرید سرویس

@@ -33,7 +33,13 @@ final class DigitalTronPayment
                 $invoiceMeta = sprintf('%s|%s', $user['Processing_value_tow'] ?? '', $user['Processing_value_one'] ?? '');
                 $result = \Faoxima\Payments\Crypto\ManualCrypto::crypto_create_invoice($from_id, $amountIrt, $cur, $invoiceMeta);
                 if (empty($result['ok'])) {
+                    if (($result['error'] ?? '') === 'invoice-pending') {
+                        $orderCode = htmlspecialchars((string) $result['order_id'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                        sendmessage($from_id, "⏳ فاکتور فعال دارید. از پیام پرداخت قبلی ادامه دهید.\nکد پیگیری <code>{$orderCode}</code>", $keyboard, 'HTML');
+                        return;
+                    }
                     $errMap = [
+                        'invoice-busy' => '⏳ ثبت فاکتور در حال انجام است. لطفاً کمی بعد دوباره تلاش کنید.',
                         'currency-not-supported' => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_crypto_create_error_currency'),
                         'wallet-not-configured'  => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_crypto_create_error_wallet'),
                         'below-min'              => \Faoxima\Telegram\Support\MessageTemplates::plain('payment_crypto_create_error_below_min'),

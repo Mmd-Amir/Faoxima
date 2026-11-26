@@ -149,6 +149,19 @@ final class Renewal
                 'price' => $Payment_report['price'],
                 'reservation' => array_merge($rxReservationSel, ['payment_ref' => $order_id]),
             ];
+            $rxExistingOp = null;
+            if ($rxPhase === 'reconcile' && !$rxQueuedRenewal && ($marzban_list_get['type'] ?? '') !== 'Manualsale') {
+                $rxServiceKey = \Faoxima\Services\Renewal\ReservationStore::serviceKey($nameloc['id_invoice'], $marzban_list_get['code_panel'], $nameloc['username']);
+                try {
+                    $rxExistingOp = \Faoxima\Services\Renewal\ReservationStore::opFindByRef($pdo, 'payment', (string) $order_id, $rxServiceKey);
+                } catch (Throwable $lookupError) {
+                    return \Faoxima\Payments\Fulfillment\Settlement::reconcileLater($pdo, $order_id, $rxToken, 'renewal_operation_lookup_failed');
+                }
+                if (is_array($rxExistingOp) && (string) ($rxExistingOp['op_id'] ?? '') !== '') {
+                    $rxExtendOptions['op_id'] = (string) $rxExistingOp['op_id'];
+                    $rxExtendOptions['resume'] = true;
+                }
+            }
             $rxReconcilable = !$rxQueuedRenewal && is_array($rxRenewMode) && ($marzban_list_get['type'] ?? '') !== 'Manualsale'
                 && (\Faoxima\Services\Fulfillment\Delivery::panelReconcilable($marzban_list_get) || ($marzban_list_get['type'] ?? '') === 'WGDashboard');
             $rxSnap = \Faoxima\Services\Fulfillment\ProviderState::snapshotFromDatauser($DataUserOut, (string) ($marzban_list_get['type'] ?? ''));
@@ -166,6 +179,9 @@ final class Renewal
                     if ($rxClass === 'unknown') {
                         return \Faoxima\Payments\Fulfillment\Settlement::defer($pdo, $order_id, $rxToken, 'renewal_panel_read_failed: ' . (string) ($rxSnap['error'] ?? ''));
                     }
+                    if (\Faoxima\Services\Renewal\ReservationStore::resetStillPending($rxExistingOp, $rxSnap)) {
+                        return \Faoxima\Payments\Fulfillment\Settlement::reconcileLater($pdo, $order_id, $rxToken, 'renewal_reset_confirmation_pending');
+                    }
                     if ($rxClass === 'ambiguous') {
                         return \Faoxima\Payments\Fulfillment\Settlement::manualReview($pdo, $order_id, $rxToken, 'renewal_panel_state_ambiguous', ['username' => (string) $nameloc['username']]);
                     }
@@ -173,6 +189,10 @@ final class Renewal
                         $rxApply = false;
                         $extend = ['status' => true, 'reconciled' => true];
                         $rxAfterState = \Faoxima\Services\Fulfillment\ProviderState::limits($rxSnap);
+                        if ($rxExistingOp !== null) {
+                            \Faoxima\Services\Renewal\ReservationStore::opUpdate($pdo, (string) $rxExistingOp['op_id'],
+                                ['state' => 'verified', 'stage' => 'reconciled', 'result_state' => $rxAfterState, 'last_error' => null]);
+                        }
                         $ManagePanel->rxRenewalLocalSuccess($marzban_list_get, (string) $nameloc['username'], (string) $nameloc['id_invoice']);
                     } elseif (!\Faoxima\Payments\Fulfillment\Settlement::markApplying($pdo, $order_id, $rxToken)) {
                         return \Faoxima\Payments\Fulfillment\Claims::result('already_processing', 'ownership_lost');
@@ -218,11 +238,19 @@ final class Renewal
                         $ManagePanel, $marzban_list_get, $prodcut, (string) $nameloc['username'], $rxTargetState, $rxExtendOptions
                     );
                 } catch (Throwable $rxPanelError) {
-                    return \Faoxima\Payments\Fulfillment\Settlement::reconcileLater($pdo, $order_id, $rxToken, 'renewal_panel_exception: ' . $rxPanelError->getMessage());
+                    $pendingResult = \Faoxima\Payments\Fulfillment\Settlement::reconcileLater($pdo, $order_id, $rxToken, 'renewal_panel_exception: ' . $rxPanelError->getMessage());
+                    if ($rxPhase !== 'reconcile') {
+                        sendmessage($Balance_id['id'], \Faoxima\Services\Renewal\RenewalText::rxRenewalText('pending_verification'), $keyboard, 'HTML');
+                    }
+                    return $pendingResult;
                 }
             }
             if (\Faoxima\Services\Renewal\ProviderRenewal::renewalIsPending($extend)) {
-                return \Faoxima\Payments\Fulfillment\Settlement::reconcileLater($pdo, $order_id, $rxToken, 'renewal_result_unverified: ' . (string) ($extend['operation_id'] ?? '') . ' ' . (is_scalar($extend['msg'] ?? null) ? (string) $extend['msg'] : ''));
+                $pendingResult = \Faoxima\Payments\Fulfillment\Settlement::reconcileLater($pdo, $order_id, $rxToken, 'renewal_result_unverified: ' . (string) ($extend['operation_id'] ?? '') . ' ' . (is_scalar($extend['msg'] ?? null) ? (string) $extend['msg'] : ''));
+                if ($rxPhase !== 'reconcile') {
+                    sendmessage($Balance_id['id'], \Faoxima\Services\Renewal\RenewalText::rxRenewalText('pending_verification'), $keyboard, 'HTML');
+                }
+                return $pendingResult;
             }
             if (in_array((string) ($extend['code'] ?? ''), ['renewal_in_progress', 'renewal_lock_unavailable', 'renewal_schema_unavailable'], true)
                 || (($extend['code'] ?? '') === 'panel_read_failed' && !empty($extend['no_mutation']))) {
@@ -247,6 +275,10 @@ final class Renewal
                 $rxAfterState = $rxVerify['after'];
             }
         if ($extend['status'] == false) {
+            if ($rxExistingOp !== null && !empty($rxTargetState['reset_usage'])
+                && in_array(\Faoxima\Services\Renewal\ReservationStore::opStage($rxExistingOp), ['reset_sent', 'reset_done', 'modify_sent'], true)) {
+                return \Faoxima\Payments\Fulfillment\Settlement::reconcileLater($pdo, $order_id, $rxToken, 'renewal_resume_result_unverified');
+            }
             $__refundEx = \Faoxima\Payments\Settlement\Refunds::paymentOnce($pdo, $Payment_report['id_order'], $Balance_id['id'], $Payment_report['price'], 'بازگشت وجه - خطا در تمدید سرویس', (string)($nameloc['id_invoice'] ?? ''));
             if ($__refundEx === 'duplicate') {
                 return \Faoxima\Payments\Fulfillment\Settlement::fail($pdo, $order_id, $rxToken, 'renewal_failed', $__refundEx);
