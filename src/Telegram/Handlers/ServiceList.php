@@ -207,7 +207,8 @@ final class ServiceList
 
         $customLabel = $language['users']['customsellvolume']['title'] ?? 'سرویس دلخواه';
         $customNames = ['', trim($customLabel), '🛍 حجم دلخواه', '⚙️ سرویس دلخواه', 'سرویس سفارشی'];
-        $panels = $products = $serviceRows = [];
+        $panels = $products = $serviceRows = $panelServiceRows = [];
+        $previousProductGroup = null;
         $hasCustom = false;
         $legacyFound = !$isLegacy;
         if ($isHome || $panelKey !== null || $productKey === 'custom') {
@@ -242,17 +243,26 @@ final class ServiceList
                 }
 
                 $isTrial = $product === null && $name === RX_TEST_PRODUCT_NAME;
-                $identityKey = $product !== null ? 'product:' . $product['id'] : 'invoice:' . $invoice['id_invoice'];
-                $group = $isTrial ? 'trial' : substr(hash('sha256', $identityKey), 0, 20);
+                $label = $product !== null && $product['name'] !== '' ? $product['name'] : $name;
+                $group = $isTrial ? 'trial' : substr(hash('sha256', 'name:' . $label), 0, 20);
                 if ($productKey === null) {
-                    $label = $product !== null && $product['name'] !== '' ? $product['name'] : $name;
-                    if ($product === null && !$isTrial) {
-                        $label .= ' | ' . $invoice['username'];
+                    $products[$group] = $label;
+                } else {
+                    $panelServiceRows[$group][] = $invoice;
+                    if (!$isTrial && $previousProductGroup === null) {
+                        $previousIdentity = $product !== null ? 'product:' . $product['id'] : 'invoice:' . $invoice['id_invoice'];
+                        if (substr(hash('sha256', $previousIdentity), 0, 20) === $productKey
+                            || ($name !== $label && substr(hash('sha256', 'name:' . $name), 0, 20) === $productKey)) {
+                            $previousProductGroup = $group;
+                        }
                     }
-                    $products[$group] ??= ['name' => $label, 'reference' => $product['id'] ?? $invoice['id_invoice']];
-                } elseif ($group === $productKey) {
-                    $serviceRows[] = $invoice;
                 }
+            }
+            if ($panelKey !== null && $productKey !== null) {
+                if (!isset($panelServiceRows[$productKey]) && $previousProductGroup !== null) {
+                    $productKey = $previousProductGroup;
+                }
+                $serviceRows = $panelServiceRows[$productKey] ?? [];
             }
         }
 

@@ -34,14 +34,9 @@ final class NavigationFunctionsHelpers
 
     public static function rxBotServiceProductButtons(array $products, string $panelCallback): array
     {
-        $labelCounts = array_count_values(array_column($products, 'name'));
-        uasort($products, static fn (array $left, array $right): int => strnatcasecmp($left['name'], $right['name']));
+        asort($products, SORT_NATURAL | SORT_FLAG_CASE);
         $buttons = [];
-        foreach ($products as $key => $product) {
-            $label = $product['name'];
-            if ($key !== 'trial' && $labelCounts[$label] > 1) {
-                $label .= ' | #' . $product['reference'];
-            }
+        foreach ($products as $key => $label) {
             $buttons[] = [['text' => $label, 'callback_data' => "{$panelCallback}:{$key}:1"]];
         }
         return $buttons;
