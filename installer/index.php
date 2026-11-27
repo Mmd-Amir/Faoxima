@@ -29,7 +29,9 @@ $configDirectory = $rootDirectory . 'config.php';
 // An installation that is already configured is never reinstalled from this endpoint: only the session that just completed the
 // installation may see the success page and run the cleanup. Anyone else gets a plain 404 and the installer removes itself.
 if (rx_config_is_already_installed($configDirectory) && ($_SESSION['rx_step'] ?? '') !== 'success') {
-    @rx_cleanup_installer(__DIR__, 'config_bootstrap');
+    if (function_exists('rx_cleanup_installer')) {
+        @rx_cleanup_installer(__DIR__, 'config_bootstrap');
+    }
     http_response_code(404);
     header('Content-Type: text/plain; charset=utf-8');
     echo 'Not Found';
@@ -112,7 +114,7 @@ if (!$isRootExecution && $rxAction === 'cleanup') {
     header('Content-Type: application/json; charset=utf-8');
     $csrfValid = isset($uPOST['csrf_token']) && hash_equals($csrfToken, (string) $uPOST['csrf_token']);
     $allowed = ($_SESSION['rx_step'] ?? '') === 'success' && $csrfValid && rx_config_is_already_installed($configDirectory);
-    $cleaned = $allowed ? rx_cleanup_installer(__DIR__, 'installer_shutdown') : false;
+    $cleaned = $allowed && function_exists('rx_cleanup_installer') ? rx_cleanup_installer(__DIR__, 'installer_shutdown') : false;
     if ($allowed && !rx_installation_lock_is_busy($rootDirectory)) {
         @unlink(rx_installation_lock_path($rootDirectory));
     }

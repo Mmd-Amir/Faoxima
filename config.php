@@ -141,137 +141,8 @@ if (!function_exists('getMysqliConnection')) {
     }
 }
 
-if (!function_exists('rx_cleanup_installer')) {
-    function rx_cleanup_installer(string $installerDir, string $trigger = 'installer'): bool {
-        $rootDir = dirname($installerDir);
-        $logsDir = $rootDir . DIRECTORY_SEPARATOR . 'logs';
-        $flagFile = $logsDir . DIRECTORY_SEPARATOR . '.cleanup_failed';
-
-        if ($trigger === 'config_bootstrap' && is_file($flagFile)) {
-            $mtime = (int)@filemtime($flagFile);
-            if ((time() - $mtime) < 300) {
-                return false;
-            }
-        }
-
-        if (!is_dir($installerDir)) {
-            if (is_file($flagFile)) {
-                @unlink($flagFile);
-            }
-            return true;
-        }
-
-        $indexFile = $installerDir . DIRECTORY_SEPARATOR . 'index.php';
-        if (is_file($indexFile)) {
-            @chmod($indexFile, 0666);
-            @file_put_contents($indexFile, "<?php http_response_code(404); exit;\n");
-        }
-
-        @chmod($rootDir, 0777);
-        @chmod($installerDir, 0777);
-
-        $deleteRecursive = static function (string $dir) use (&$deleteRecursive): bool {
-            if (!is_dir($dir)) {
-                return true;
-            }
-            @chmod($dir, 0777);
-            $items = @scandir($dir);
-            if ($items === false) {
-                return false;
-            }
-
-            $success = true;
-            foreach ($items as $item) {
-                if ($item === '.' || $item === '..') {
-                    continue;
-                }
-                $path = $dir . DIRECTORY_SEPARATOR . $item;
-                clearstatcache(true, $path);
-                if (function_exists('opcache_invalidate')) {
-                    @opcache_invalidate($path, true);
-                }
-                @chmod($path, 0777);
-
-                if (is_dir($path) && !is_link($path)) {
-                    if (!$deleteRecursive($path)) {
-                        $success = false;
-                    }
-                    if (!@rmdir($path)) {
-                        $success = false;
-                    }
-                } else {
-                    if (!@unlink($path)) {
-                        @chmod($path, 0666);
-                        if (!@unlink($path)) {
-                            $success = false;
-                        }
-                    }
-                }
-            }
-            return $success;
-        };
-
-        $deleteRecursive($installerDir);
-        clearstatcache(true, $installerDir);
-
-        if (!is_dir($installerDir)) {
-            if (is_file($flagFile)) {
-                @unlink($flagFile);
-            }
-            return true;
-        }
-
-        if (@rmdir($installerDir)) {
-            if (is_file($flagFile)) {
-                @unlink($flagFile);
-            }
-            return true;
-        }
-
-        $escapedDir = escapeshellarg($installerDir);
-        $shellCmd = strncasecmp(PHP_OS, 'WIN', 3) === 0
-            ? "rmdir /s /q {$escapedDir} 2>&1"
-            : "chmod -R 777 {$escapedDir} 2>&1; rm -rf {$escapedDir} 2>&1";
-
-        if (function_exists('exec')) {
-            @exec($shellCmd);
-        } elseif (function_exists('shell_exec')) {
-            @shell_exec($shellCmd);
-        } elseif (function_exists('system')) {
-            ob_start();
-            @system($shellCmd);
-            ob_end_clean();
-        } elseif (function_exists('passthru')) {
-            ob_start();
-            @passthru($shellCmd);
-            ob_end_clean();
-        }
-
-        clearstatcache(true, $installerDir);
-        if (!is_dir($installerDir)) {
-            if (is_file($flagFile)) {
-                @unlink($flagFile);
-            }
-            return true;
-        }
-
-        @touch($flagFile);
-
-        if ($trigger === 'installer_shutdown') {
-            $phpBin = PHP_BINARY && is_executable(PHP_BINARY) ? PHP_BINARY : 'php';
-            $cleanCode = "define('REFACTORED_LEGACY_ROOT', " . var_export($rootDir, true) . ");";
-            $cleanCode .= "require_once " . var_export($rootDir . '/config.php', true) . ";";
-            $cleanCode .= "if (function_exists('rx_cleanup_installer')) { rx_cleanup_installer(" . var_export($installerDir, true) . ", 'background'); }";
-            $cmdStr = escapeshellarg($phpBin) . " -r " . escapeshellarg("sleep(1); " . $cleanCode);
-            if (strncasecmp(PHP_OS, 'WIN', 3) === 0) {
-                @pclose(@popen("start /B " . $cmdStr, "r"));
-            } else {
-                @exec($cmdStr . " > /dev/null 2>&1 &");
-            }
-        }
-
-        return !is_dir($installerDir);
-    }
+if (!function_exists('rx_cleanup_installer') && is_file(__DIR__ . '/lib/InstallerCleanup.php')) {
+    require_once __DIR__ . '/lib/InstallerCleanup.php';
 }
 
 if ($dbname !== '' && $usernamedb !== '') {
@@ -279,7 +150,7 @@ if ($dbname !== '' && $usernamedb !== '') {
         @mysqli_report(MYSQLI_REPORT_OFF);
     }
     $rxInstallerDir = __DIR__ . DIRECTORY_SEPARATOR . 'installer';
-    if (is_dir($rxInstallerDir) && !defined('RX_INSTALLER_RUNNING')) {
+    if (is_dir($rxInstallerDir) && !defined('RX_INSTALLER_RUNNING') && function_exists('rx_cleanup_installer')) {
         rx_cleanup_installer($rxInstallerDir, 'config_bootstrap');
     }
     $dbhostResolved = $dbhost !== '' ? $dbhost : 'localhost';
